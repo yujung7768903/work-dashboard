@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+"""작업 대시보드 CLI. 파싱·위임·출력만 하고 도메인 로직은 갖지 않음"""
+import argparse
+import json
+import sys
+
+from app.constants import UNASSIGNED_LABEL
+from app.db import connect
+from app.errors import DomainError, NotFound
+from app.repositories import categories as category_repo
+from app.repositories import subtasks as subtask_repo
+from app.repositories import todos as todo_repo
+from app.repositories import sessions as session_repo
+from app.repositories import workspaces as workspace_repo
+from app.services import board, planning, session_link
+
+NONE_LITERAL = "none"
+REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
+STATUS_TARGETS = ("todo", "subtask", "workspace")
+CONTEXT_ARGS = ("background", "purpose", "goal", "considerations")
+DETAIL_LABELS = (
+    ("배경", "background"),
+    ("목적", "purpose"),
+    ("목표", "goal"),
+    ("고려사항", "considerations"),
+)
+EXIT_OK = 0
+EXIT_ERROR = 1
+
+
+def main(argv=None):
+    args = _build_parser().parse_args(argv)
+    con = connect()
+    try:
+        args.handler(con, args)
+    except DomainError as error:
+        print(str(error), file=sys.stderr)
+        return EXIT_ERROR
+    return EXIT_OK
+
+
+def _build_parser():
+    parser = argparse.ArgumentParser(description="작업 대시보드 CLI")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    listing = sub.add_parser("ls", help="전체 트리 개요")
+    listing.add_argument(
+        "--group-by",
+        default=board.GROUP_BY_WORKSPACE,
+        choices=board.GROUP_BY_CHOICES,
+        dest="group_by",
+    )
+    _add_json_flag(listing)
+    listing.set_defaults(handler=_cmd_ls)
+
+    upcoming = sub.add_parser("next", help="다음에 할 일 1건")
+    _add_json_flag(upcoming)
+    upcoming.set_defaults(handler=_cmd_next)
+
+    show = sub.add_parser("show", help="워크스페이스 상세")
+    show.add_argument("target", help="워크스페이스 id 또는 Jira ID")
+    _add_json_flag(show)
+    show.set_defaults(handler=_cmd_show)
+
+    add_category = sub.add_parser("add-category")
+    add_category.add_argument("name")
+    add_category.set_defaults(handler=_cmd_add_category)
+
+    add_workspace = sub.add_parser("add-workspace")
+    add_workspace.add_argument("category")
+    add_workspace.add_argument("name")
+    for field in CONTEXT_ARGS:
+        add_workspace.add_argument(f"--{field}", default=None)
+    add_workspace.add_argument("--jira", default=None)
+    add_workspace.set_defaults(handler=_cmd_add_workspace)
+
+    add_todo = sub.add_parser("add-todo")
+    add_todo.add_argument("title")
+    add_todo.add_argument("--category", default=None)
+    add_todo.add_argument("--workspace", default=None)
+    add_todo.set_defaults(handler=_cmd_add_todo)
+
+    add_subtask = sub.add_parser("add-subtask")
+    add_subtask.add_argument("todo_id", type=int)
+    add_subtask.add_argument("title")
+    add_subtask.set_defaults(handler=_cmd_add_subtask)
+
+    move_todo = sub.add_parser("move-todo")
+    move_todo.add_argument("todo_id", type=int)
+    move_todo.add_argument("--workspace", required=True, help="워크스페이스 id 또는 none")
+    move_todo.set_defaults(handler=_cmd_move_todo)
+
+    set_status = sub.add_parser("set-status")
+    set_status.add_argument("target", choices=STATUS_TARGETS)
+    set_status.add_argument("item_id", type=int)
+    set_status.add_argument("status")
+    set_status.set_defaults(handler=_cmd_set_status)
+
+    reorder = sub.add_parser("reorder")
+    reorder.add_argument("kind", choices=REORDER_KINDS)
+    reorder.add_argument(
+        "--scope",
+        default=None,
+        help="todos 면 워크스페이스 id(미분류는 none), subtasks 면 할일 id",
+    )
+    reorder.add_argument("ids", nargs="+", type=int)
+    reorder.set_defaults(handler=_cmd_reorder)
+
+    remove_category = sub.add_parser("rm-category")
+    remove_category.add_argument("category_id", type=int)
+    remove_category.set_defaults(handler=_cmd_rm_category)
+
+    done_today = sub.add_parser("done-today")
+    done_today.add_argument("--date", default=None)
+    _add_json_flag(done_today)
+    done_today.set_defaults(handler=_cmd_done_today)
+
+    sessions = sub.add_parser("sessions", help="활성 세션 목록")
+    _add_json_flag(sessions)
+    sessions.set_defaults(handler=_cmd_sessions)
+
+    classify = sub.add_parser("classify", help="세션 분류 등록")
+    classify.add_argument("session")
+    classify.add_argument("--category", default=None)
+    classify.add_argument("--workspace", type=int, default=None)
+    classify.set_defaults(handler=_cmd_classify)
+
+    link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
+    link_todo.add_argument("session")
+    link_todo.add_argument("todo_id", type=int)
+    link_todo.set_defaults(handler=_cmd_link_todo)
+
+    return parser
+
+
+def _add_json_flag(parser):
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Claude 파싱용 JSON 출력"
+    )
+
+
+def _cmd_ls(con, args):
+    tree = board.tree(con, args.group_by)
+    if args.as_json:
+        _emit_json(tree)
+        return
+    for group in tree["groups"]:
+        print(f"{group['name']}  {group['done_count']}/{group['total_count']}")
+        for todo in group["todos"]:
+            print(f"  [{todo['status']}] {todo['id']}. {todo['title']}")
+            for subtask in todo["subtasks"]:
+                print(f"      - [{subtask['status']}] {subtask['title']}")
+
+
+def _cmd_next(con, args):
+    picked = planning.next_todo(con)
+    if args.as_json:
+        _emit_json(picked)
+        return
+    if not picked:
+        print("다음에 할 일이 없음")
+        return
+    scope = picked["workspace"]["name"] if picked["workspace"] else UNASSIGNED_LABEL
+    print(f"{scope} / {picked['todo']['title']}")
+
+
+def _cmd_show(con, args):
+    workspace = _resolve_workspace(con, args.target)
+    todos = todo_repo.list_by_workspace(con, workspace["id"])
+    if args.as_json:
+        _emit_json({"workspace": workspace, "todos": todos})
+        return
+    print(f"{workspace['name']} [{workspace['status']}]")
+    for label, key in DETAIL_LABELS:
+        print(f"{label}: {workspace[key] or '(미입력)'}")
+    for todo in todos:
+        print(f"  [{todo['status']}] {todo['id']}. {todo['title']}")
+
+
+def _cmd_add_category(con, args):
+    print(category_repo.create(con, args.name)["name"])
+
+
+def _cmd_add_workspace(con, args):
+    category = category_repo.get_by_name(con, args.category)
+    created = workspace_repo.create(
+        con,
+        category["id"],
+        args.name,
+        background=args.background,
+        purpose=args.purpose,
+        goal=args.goal,
+        considerations=args.considerations,
+        jira_id=args.jira,
+    )
+    print(f"{created['id']}. {created['name']}")
+
+
+def _cmd_add_todo(con, args):
+    category_id = (
+        category_repo.get_by_name(con, args.category)["id"] if args.category else None
+    )
+    workspace_id = int(args.workspace) if args.workspace else None
+    created = todo_repo.create(
+        con, args.title, category_id=category_id, workspace_id=workspace_id
+    )
+    print(f"{created['id']}. {created['title']}")
+
+
+def _cmd_add_subtask(con, args):
+    created = subtask_repo.create(con, args.todo_id, args.title)
+    print(f"{created['id']}. {created['title']}")
+
+
+def _cmd_move_todo(con, args):
+    workspace_id = None if args.workspace == NONE_LITERAL else int(args.workspace)
+    moved = todo_repo.update(con, args.todo_id, workspace_id=workspace_id)
+    scope = (
+        workspace_repo.get(con, workspace_id)["name"]
+        if workspace_id
+        else UNASSIGNED_LABEL
+    )
+    print(f"{moved['title']} → {scope}")
+
+
+def _cmd_set_status(con, args):
+    updaters = {
+        "workspace": workspace_repo.update,
+        "subtask": subtask_repo.update,
+        "todo": todo_repo.update,
+    }
+    updated = updaters[args.target](con, args.item_id, status=args.status)
+    print(f"{updated.get('title') or updated.get('name')} → {updated['status']}")
+
+
+def _cmd_reorder(con, args):
+    if args.kind == "categories":
+        category_repo.reorder(con, args.ids)
+    elif args.kind == "workspaces":
+        workspace_repo.reorder(con, args.ids)
+    elif args.kind == "todos":
+        scope = None if args.scope in (None, NONE_LITERAL) else int(args.scope)
+        todo_repo.reorder(con, args.ids, scope)
+    else:
+        subtask_repo.reorder(con, args.ids, int(args.scope))
+    print(f"{len(args.ids)}건 재정렬")
+
+
+def _cmd_rm_category(con, args):
+    category_repo.delete(con, args.category_id)
+    print("삭제됨")
+
+
+def _cmd_done_today(con, args):
+    rows = planning.done_on(con, args.date)
+    if args.as_json:
+        _emit_json(rows)
+        return
+    if not rows:
+        print("완료한 할일이 없음")
+        return
+    for row in rows:
+        print(f"- {row['workspace_name']} / {row['title']}")
+
+
+def _cmd_sessions(con, args):
+    payload = session_link.active_payload(con)
+    if args.as_json:
+        _emit_json(payload)
+        return
+    if not payload["sessions"]:
+        print("돌고 있는 세션이 없음")
+    for session in payload["sessions"]:
+        scope = session["workspace_name"] or session["category_name"] or "분류 전"
+        print(f"[{session['state']}] {scope} / {session['last_prompt'] or '(지시 없음)'}")
+    if payload["unclassified_count"]:
+        print(f"분류 전 {payload['unclassified_count']}건")
+
+
+def _cmd_classify(con, args):
+    updated = session_repo.classify(
+        con, args.session, category_name=args.category, workspace_id=args.workspace
+    )
+    scope = updated["workspace_id"] or "-"
+    print(f"분류됨: category={updated['category_id']} workspace={scope}")
+
+
+def _cmd_link_todo(con, args):
+    session_repo.link_todo(con, args.session, args.todo_id)
+    print(f"할일 {args.todo_id} 연결됨")
+
+
+def _resolve_workspace(con, target):
+    """숫자면 id, 아니면 Jira ID 로 조회"""
+    if target.isdigit():
+        return workspace_repo.get(con, int(target))
+    found = workspace_repo.get_by_jira(con, target)
+    if not found:
+        raise NotFound(f"'{target}' 에 해당하는 워크스페이스 없음")
+    return found
+
+
+def _emit_json(payload):
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

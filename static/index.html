@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>작업 대시보드</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header>
+    <h1>작업 대시보드</h1>
+    <nav id="tabs">
+      <button data-tab="board" class="active">보드</button>
+      <button data-tab="workspace">워크스페이스</button>
+      <button data-tab="categories">카테고리</button>
+    </nav>
+  </header>
+
+  <p id="error" hidden></p>
+
+  <section id="tab-board" class="tab">
+    <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
+    <div id="session-panel">
+      <div id="session-head">
+        <span id="session-count">돌고 있는 세션 0</span>
+        <span id="session-warn" hidden></span>
+      </div>
+      <ul id="session-list"></ul>
+    </div>
+    <form id="quick-add">
+      <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>
+      <select id="quick-category"></select>
+      <button type="submit">+</button>
+    </form>
+    <div id="board-controls">
+      <label><input type="radio" name="group-by" value="workspace" checked> 워크스페이스</label>
+      <label><input type="radio" name="group-by" value="category"> 카테고리</label>
+      <label><input type="checkbox" id="show-done"> 완료 항목 표시</label>
+    </div>
+    <div id="groups"></div>
+    <details id="done-today">
+      <summary>오늘 완료</summary>
+      <ul id="done-list"></ul>
+    </details>
+  </section>
+
+  <section id="tab-workspace" class="tab" hidden>
+    <form id="workspace-add">
+      <input id="workspace-new-name" placeholder="새 워크스페이스" required>
+      <select id="workspace-new-category"></select>
+      <button type="submit">추가</button>
+    </form>
+    <div id="workspace-list"></div>
+  </section>
+
+  <section id="tab-categories" class="tab" hidden>
+    <form id="category-add">
+      <input id="category-name" placeholder="새 카테고리" required>
+      <button type="submit">추가</button>
+    </form>
+    <ul id="category-list"></ul>
+  </section>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
