@@ -77,7 +77,7 @@
 
 번들러·프레임워크 없이 ES 모듈로 나눈다. HTTP로 서빙하므로 `<script type="module">`이 그대로 동작한다. `api.js`가 fetch 래퍼를 전담하고 나머지 모듈은 DOM만 다룬다.
 
-실행: `python3 server.py [--host HOST] [--port PORT]`. 기본 `127.0.0.1:8081` (pixel-office가 8080 사용). 인증이 없으므로 LAN 노출은 `--host 0.0.0.0` 명시가 필요하다.
+실행: `python3 server.py [--host HOST] [--port PORT]`. 기본 `127.0.0.1:9080` (8080·8081 은 흔히 쓰여 충돌 가능). 인증이 없으므로 LAN 노출은 `--host 0.0.0.0` 명시가 필요하다.
 
 ## 데이터 모델
 
@@ -265,7 +265,7 @@ python3 dash.py done-today [--date YYYY-MM-DD] [--json]   그날 완료한 할�
 
 ```python
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8081
+DEFAULT_PORT = 9080
 BUSY_TIMEOUT_MS = 5000
 UNASSIGNED_LABEL = "미분류"
 SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "스킬 개발", "프로세스 개선")

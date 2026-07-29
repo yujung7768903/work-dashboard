@@ -2,7 +2,7 @@
 import os
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8081
+DEFAULT_PORT = 9080
 BUSY_TIMEOUT_MS = 5000
 
 DEFAULT_DB_PATH = os.path.expanduser("~/.claude/work-dashboard/dash.db")

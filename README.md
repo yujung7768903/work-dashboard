@@ -6,7 +6,7 @@
 ## 실행
 
 ```bash
-python3 server.py                    # http://127.0.0.1:8081
+python3 server.py                    # http://127.0.0.1:9080
 python3 server.py --host 0.0.0.0     # 폰에서 볼 때 (인증 없음, LAN 노출 주의)
 ```
 

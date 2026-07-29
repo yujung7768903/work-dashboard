@@ -23,7 +23,7 @@
 - 상수 값 (스펙에서 그대로 옮김):
   ```python
   DEFAULT_HOST = "127.0.0.1"
-  DEFAULT_PORT = 8081
+  DEFAULT_PORT = 9080
   BUSY_TIMEOUT_MS = 5000
   UNASSIGNED_LABEL = "미분류"
   SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "스킬 개발", "프로세스 개선")
@@ -167,7 +167,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app'`
 import os
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8081
+DEFAULT_PORT = 9080
 BUSY_TIMEOUT_MS = 5000
 
 DEFAULT_DB_PATH = os.path.expanduser("~/.claude/work-dashboard/dash.db")
@@ -3597,7 +3597,7 @@ git commit -m "feat: 카테고리 관리와 워크스페이스 생성 추가"
 ## 실행
 
 ```bash
-python3 server.py                    # http://127.0.0.1:8081
+python3 server.py                    # http://127.0.0.1:9080
 python3 server.py --host 0.0.0.0     # 폰에서 볼 때 (인증 없음, LAN 노출 주의)
 ```
 
