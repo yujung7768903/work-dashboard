@@ -1,9 +1,7 @@
 // 드래그 재정렬·이동. 렌더 직후 attachDragHandlers 로 리스너를 붙임
 import * as api from "./api.js";
-import { currentGroupBy } from "./board.js";
 import { run } from "./main.js";
 
-const GROUP_BY_WORKSPACE = "workspace";
 const UNASSIGNED_KIND = "unassigned";
 const DROP_CLASS = "drop-target";
 const DRAG_GROUP = "group";
@@ -53,9 +51,6 @@ function attachTodoHandlers(todo) {
 
 async function dropGroup(source, target) {
   if (source === target) return;
-  if (currentGroupBy() !== GROUP_BY_WORKSPACE) {
-    throw new Error("워크스페이스 기준 그룹핑에서만 순위를 바꿀 수 있습니다");
-  }
   if (source.dataset.kind === UNASSIGNED_KIND || target.dataset.kind === UNASSIGNED_KIND) {
     throw new Error("미분류 그룹은 순위를 바꿀 수 없습니다");
   }
@@ -72,9 +67,6 @@ async function dropTodo(todoElement, group) {
     );
     await api.reorder("todos", ids, scopeOf(group));
     return;
-  }
-  if (currentGroupBy() !== GROUP_BY_WORKSPACE) {
-    throw new Error("카테고리 기준에서는 그룹 간 이동을 할 수 없습니다");
   }
   await api.updateTodo(todoId, { workspace_id: scopeOf(group) });
 }

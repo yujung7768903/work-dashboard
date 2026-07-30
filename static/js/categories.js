@@ -1,6 +1,19 @@
-// 카테고리 관리. 각 줄에서 워크스페이스를 바로 만들 수 있음
+// 카테고리 관리. 색·이모지를 여기서 바꾸고, 각 줄에서 워크스페이스를 바로 만들 수 있음
 import * as api from "./api.js";
 import { run } from "./main.js";
+
+// 이모지 피커 격자. CSS 가 8열이므로 8의 배수로 두면 줄이 맞음
+const EMOJI_CHOICES = [
+  "💻", "🖥️", "⌨️", "📱", "🧩", "⚙️", "🛠️", "🔧",
+  "🚨", "⚠️", "🔥", "⚡", "🐛", "🩹", "🔍", "🧪",
+  "📋", "📝", "📄", "📊", "📈", "🗂️", "🗓️", "⏱️",
+  "🚀", "✅", "🎯", "📌", "🔖", "💡", "🧠", "🤖",
+  "🔐", "🌐", "🗄️", "☁️", "📦", "🔁", "📮", "💬",
+];
+const NO_EMOJI = "";
+const NO_EMOJI_LABEL = "＋";
+
+let openPickerId = null;
 
 export async function renderCategories() {
   const categories = await api.getCategories();
@@ -19,12 +32,14 @@ function categoryRow(category, index, categories) {
   name.addEventListener("blur", () =>
     run(async () => {
       if (name.value === category.name) return;
-      await api.renameCategory(category.id, name.value);
+      await api.updateCategory(category.id, { name: name.value });
       await renderCategories();
     })
   );
 
   item.append(
+    emojiPicker(category),
+    colorInput(category),
     name,
     moveButton(index, categories, -1),
     moveButton(index, categories, 1),
@@ -32,6 +47,60 @@ function categoryRow(category, index, categories) {
     removeButton(category)
   );
   return item;
+}
+
+function colorInput(category) {
+  const input = document.createElement("input");
+  input.type = "color";
+  input.value = category.color;
+  input.title = "카드 상단 배경색";
+  // change: 색을 고르는 중이 아니라 확정했을 때만 저장
+  input.addEventListener("change", () =>
+    run(async () => {
+      await api.updateCategory(category.id, { color: input.value });
+      await renderCategories();
+    })
+  );
+  return input;
+}
+
+function emojiPicker(category) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "emoji-pick";
+  const toggle = document.createElement("button");
+  toggle.textContent = category.emoji || NO_EMOJI_LABEL;
+  toggle.title = "이모지 선택";
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openPickerId = openPickerId === category.id ? null : category.id;
+    run(renderCategories);
+  });
+  wrapper.appendChild(toggle);
+  if (openPickerId === category.id) wrapper.appendChild(emojiGrid(category));
+  return wrapper;
+}
+
+function emojiGrid(category) {
+  const grid = document.createElement("div");
+  grid.className = "emoji-grid";
+  EMOJI_CHOICES.forEach((emoji) => grid.appendChild(emojiCell(category, emoji, emoji)));
+  grid.appendChild(emojiCell(category, NO_EMOJI, "×"));
+  return grid;
+}
+
+function emojiCell(category, emoji, text) {
+  const button = document.createElement("button");
+  button.textContent = text;
+  button.title = emoji ? emoji : "이모지 없음";
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    run(async () => {
+      openPickerId = null;
+      await api.updateCategory(category.id, { emoji });
+      await renderCategories();
+    });
+  });
+  return button;
 }
 
 function moveButton(index, categories, offset) {
@@ -76,6 +145,13 @@ function removeButton(category) {
   );
   return button;
 }
+
+// 격자 밖을 누르면 닫기
+document.addEventListener("click", () => {
+  if (openPickerId === null) return;
+  openPickerId = null;
+  run(renderCategories);
+});
 
 document.getElementById("category-add").addEventListener("submit", (event) => {
   event.preventDefault();

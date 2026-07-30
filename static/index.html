@@ -32,15 +32,14 @@
       <select id="quick-category"></select>
       <button type="submit">+</button>
     </form>
+    <div id="category-filter"></div>
     <div id="board-controls">
-      <label><input type="radio" name="group-by" value="workspace" checked> 워크스페이스</label>
-      <label><input type="radio" name="group-by" value="category"> 카테고리</label>
       <label><input type="checkbox" id="show-done"> 완료 항목 표시</label>
     </div>
     <div id="groups"></div>
     <details id="done-today">
-      <summary>오늘 완료</summary>
-      <ul id="done-list"></ul>
+      <summary>완료</summary>
+      <div id="done-groups"></div>
     </details>
   </section>
 

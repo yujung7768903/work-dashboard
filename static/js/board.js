@@ -1,4 +1,4 @@
-// 보드 탭 렌더. 그룹핑 전환, 빠른 추가, 상태 토글, 오늘 완료
+// 보드 탭 렌더. 카테고리 라벨 필터, 빠른 추가, 상태 토글, 완료 워크스페이스 이동
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { run } from "./main.js";
@@ -6,32 +6,45 @@ import { startSessionPolling } from "./sessions.js";
 import { focusWorkspace } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
+const GROUP_BY_WORKSPACE = "workspace";
 const UNASSIGNED_KIND = "unassigned";
 const UNASSIGNED_LABEL = "미분류";
 const DONE = "done";
 const TODO = "todo";
+const ALL_CATEGORIES = { id: null, name: "전체" };
+const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
 
-export function currentGroupBy() {
-  return document.querySelector('input[name="group-by"]:checked').value;
-}
+// null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
+let activeCategoryId = null;
 
 function showDone() {
   return document.getElementById("show-done").checked;
 }
 
 export async function renderBoard() {
-  const [tree, next, categories, doneToday] = await Promise.all([
-    api.getTree(currentGroupBy()),
+  const [tree, next, categories] = await Promise.all([
+    api.getTree(GROUP_BY_WORKSPACE),
     api.getNext(),
     api.getCategories(),
-    api.getDoneToday(),
   ]);
   renderNext(next);
-  renderCategoryOptions(categories);
-  renderGroups(tree.groups);
-  renderDoneToday(doneToday);
+  renderQuickCategories(categories);
+  renderCategoryFilter(categories);
+  const visible = tree.groups.filter(inActiveCategory);
+  renderGroups(visible.filter((group) => !isComplete(group)));
+  renderCompleted(visible.filter(isComplete));
   attachDragHandlers(renderBoard);
   startSessionPolling(openWorkspace);
+}
+
+// 할일이 하나라도 있고 전부 done 이면 카드째 완료 영역으로 내려감
+function isComplete(group) {
+  return group.total_count > 0 && group.done_count === group.total_count;
+}
+
+// 미분류는 카테고리가 없으므로 필터를 걸면 숨김
+function inActiveCategory(group) {
+  return activeCategoryId === null || group.category_id === activeCategoryId;
 }
 
 function openWorkspace(workspaceId) {
@@ -50,12 +63,39 @@ function renderNext(next) {
   target.textContent = `${scope} / ${next.todo.title}`;
 }
 
-function renderCategoryOptions(categories) {
+function renderQuickCategories(categories) {
   const select = document.getElementById("quick-category");
   const rendered = categories
-    .map((category) => `<option value="${category.id}">${category.name}</option>`)
+    .map((category) => `<option value="${category.id}">${label(category)}</option>`)
     .join("");
   if (select.innerHTML !== rendered) select.innerHTML = rendered;
+}
+
+function renderCategoryFilter(categories) {
+  const container = document.getElementById("category-filter");
+  container.innerHTML = "";
+  container.append(
+    filterPill(ALL_CATEGORIES),
+    ...categories.map((category) => filterPill(category))
+  );
+}
+
+function filterPill(category) {
+  const pill = document.createElement("button");
+  pill.className = "cat-pill";
+  pill.textContent = label(category);
+  // 색이 없으면 CSS 의 옅은 회색 기본값을 씀 (전체 라벨)
+  if (category.color) pill.style.setProperty("--cat", category.color);
+  pill.classList.toggle("active", activeCategoryId === category.id);
+  pill.addEventListener("click", () => {
+    activeCategoryId = category.id;
+    run(renderBoard);
+  });
+  return pill;
+}
+
+function label({ emoji, name }) {
+  return [emoji, name].filter(Boolean).join(" ");
 }
 
 function renderGroups(groups) {
@@ -64,12 +104,25 @@ function renderGroups(groups) {
   groups.forEach((group) => container.appendChild(groupElement(group)));
 }
 
-function groupElement(group) {
+function renderCompleted(groups) {
+  const container = document.getElementById("done-groups");
+  container.innerHTML = "";
+  if (!groups.length) {
+    container.textContent = NO_COMPLETED;
+    return;
+  }
+  // 완료 영역에서는 '완료 항목 표시' 와 무관하게 끝낸 할일을 보여줌
+  groups.forEach((group) => container.appendChild(groupElement(group, true)));
+}
+
+function groupElement(group, alwaysShowDone = false) {
   const details = document.createElement("details");
   details.open = true;
   details.className = `group ${group.kind}`;
   details.dataset.groupId = group.id ?? "";
   details.dataset.kind = group.kind;
+  // 카드 상단 배경색. 미분류는 색이 없어 CSS 기본값(옅은 회색)이 남음
+  if (group.category_color) details.style.setProperty("--cat", group.category_color);
   if (group.kind !== UNASSIGNED_KIND) details.draggable = true;
 
   const summary = document.createElement("summary");
@@ -77,7 +130,7 @@ function groupElement(group) {
     .filter(Boolean)
     .join("  ");
   const name = document.createElement("span");
-  name.textContent = group.name;
+  name.textContent = label({ emoji: group.category_emoji, name: group.name });
   const metaNode = document.createElement("span");
   metaNode.className = "group-meta";
   metaNode.textContent = meta;
@@ -85,7 +138,7 @@ function groupElement(group) {
   details.appendChild(summary);
 
   group.todos
-    .filter((todo) => showDone() || todo.status !== DONE)
+    .filter((todo) => alwaysShowDone || showDone() || todo.status !== DONE)
     .forEach((todo) => {
       details.appendChild(todoElement(todo));
       if (todo.subtasks.length) details.appendChild(subtaskList(todo));
@@ -158,17 +211,6 @@ function subtaskList(todo) {
     list.appendChild(item);
   });
   return list;
-}
-
-function renderDoneToday(rows) {
-  document.querySelector("#done-today summary").textContent = `오늘 완료 ${rows.length}건`;
-  const list = document.getElementById("done-list");
-  list.innerHTML = "";
-  rows.forEach((row) => {
-    const item = document.createElement("li");
-    item.textContent = `${row.workspace_name} / ${row.title}`;
-    list.appendChild(item);
-  });
 }
 
 document.getElementById("quick-add").addEventListener("submit", (event) => {
