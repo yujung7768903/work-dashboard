@@ -21,12 +21,14 @@ def tree(con, group_by):
 
 
 def _workspace_groups(con):
-    names = {row["id"]: row["name"] for row in category_repo.list_all(con)}
+    # 보드가 카테고리 색·이모지로 카드 상단을 칠하고 라벨 필터를 거는 데 씀
+    by_id = {row["id"]: row for row in category_repo.list_all(con)}
     groups = []
     for workspace in workspace_repo.list_all(con):
         todos = _with_subtasks(con, todo_repo.list_by_workspace(con, workspace["id"]))
         if not todos:
             continue
+        category = by_id.get(workspace["category_id"]) or {}
         groups.append(
             _group(
                 kind=GROUP_BY_WORKSPACE,
@@ -34,7 +36,10 @@ def _workspace_groups(con):
                 name=workspace["name"],
                 sort_order=workspace["sort_order"],
                 todos=todos,
-                category_name=names.get(workspace["category_id"]),
+                category_id=workspace["category_id"],
+                category_name=category.get("name"),
+                category_color=category.get("color"),
+                category_emoji=category.get("emoji"),
                 status=workspace["status"],
                 jira_id=workspace["jira_id"],
             )

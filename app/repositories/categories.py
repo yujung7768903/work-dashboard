@@ -1,6 +1,9 @@
 """카테고리 저장·조회. 비어 있을 때만 삭제 허용"""
+import re
+
 from app import ordering
-from app.db import now, transaction
+from app.constants import COLOR_PATTERN, EMOJI_MAX_CHARS, SEED_CATEGORY_EMOJI
+from app.db import now, palette_color, transaction
 from app.errors import Conflict, NotFound, Validation
 
 TABLE = "categories"
@@ -9,14 +12,21 @@ OCCUPANT_TABLES = (("workspaces", "워크스페이스"), ("todos", "할일"))
 
 
 def create(con, name):
-    """맨 뒤에 붙임"""
+    """맨 뒤에 붙임. 색은 순번대로 팔레트에서 자동 배정하고 이후 수정 가능"""
     cleaned = _clean_name(name)
     _reject_duplicate(con, cleaned)
     order = ordering.next_order(con, TABLE, *ALL_SCOPE)
     with transaction(con):
         cursor = con.execute(
-            "INSERT INTO categories(name, sort_order, created_at) VALUES(?,?,?)",
-            (cleaned, order, now()),
+            "INSERT INTO categories(name, sort_order, color, emoji, created_at)"
+            " VALUES(?,?,?,?,?)",
+            (
+                cleaned,
+                order,
+                palette_color(order),
+                SEED_CATEGORY_EMOJI.get(cleaned, ""),
+                now(),
+            ),
         )
     return get(con, cursor.lastrowid)
 
@@ -45,11 +55,29 @@ def get_by_name(con, name):
 
 
 def rename(con, category_id, name):
+    return update(con, category_id, name=name)
+
+
+def update(con, category_id, **fields):
+    """이름·색·이모지를 부분 수정. 준 필드만 건드림"""
     get(con, category_id)
-    cleaned = _clean_name(name)
-    _reject_duplicate(con, cleaned, exclude_id=category_id)
+    changes = {}
+    if "name" in fields:
+        cleaned = _clean_name(fields["name"])
+        _reject_duplicate(con, cleaned, exclude_id=category_id)
+        changes["name"] = cleaned
+    if "color" in fields:
+        changes["color"] = _clean_color(fields["color"])
+    if "emoji" in fields:
+        changes["emoji"] = _clean_emoji(fields["emoji"])
+    if not changes:
+        raise Validation("수정할 필드가 없음 (name·color·emoji)")
+    assignments = ", ".join(f"{key}=?" for key in changes)
     with transaction(con):
-        con.execute("UPDATE categories SET name=? WHERE id=?", (cleaned, category_id))
+        con.execute(
+            f"UPDATE categories SET {assignments} WHERE id=?",
+            (*changes.values(), category_id),
+        )
     return get(con, category_id)
 
 
@@ -69,6 +97,21 @@ def _clean_name(name):
     cleaned = (name or "").strip()
     if not cleaned:
         raise Validation("카테고리 이름이 비어 있음")
+    return cleaned
+
+
+def _clean_color(color):
+    cleaned = (color or "").strip()
+    if not re.match(COLOR_PATTERN, cleaned):
+        raise Validation(f"색은 #rrggbb 형식이어야 함: {color!r}")
+    return cleaned.lower()
+
+
+def _clean_emoji(emoji):
+    """빈 값은 '이모지 없음'. 그림문자 판별까지는 하지 않고 길이만 제한"""
+    cleaned = (emoji or "").strip()
+    if len(cleaned) > EMOJI_MAX_CHARS:
+        raise Validation(f"이모지는 {EMOJI_MAX_CHARS}자 이내여야 함")
     return cleaned
 
 

@@ -4,13 +4,22 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from app.constants import BUSY_TIMEOUT_MS, DB_PATH_ENV, DEFAULT_DB_PATH, SEED_CATEGORIES
+from app.constants import (
+    BUSY_TIMEOUT_MS,
+    CATEGORY_PALETTE,
+    DB_PATH_ENV,
+    DEFAULT_DB_PATH,
+    SEED_CATEGORIES,
+    SEED_CATEGORY_EMOJI,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categories(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     sort_order INTEGER NOT NULL,
+    color TEXT,
+    emoji TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS workspaces(
@@ -77,6 +86,11 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def palette_color(sort_order):
+    """카테고리 기본 색. 팔레트를 다 쓰면 처음으로 돌아감"""
+    return CATEGORY_PALETTE[(sort_order - 1) % len(CATEGORY_PALETTE)]
+
+
 def resolve_path(path=None):
     """인자 > 환경변수 > 기본 경로 순"""
     return path or os.environ.get(DB_PATH_ENV) or DEFAULT_DB_PATH
@@ -95,6 +109,7 @@ def connect(path=None):
     con.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
     con.executescript(SCHEMA)
     con.commit()
+    _add_category_style_columns(con)
     _seed_categories(con)
     return con
 
@@ -118,8 +133,28 @@ def _seed_categories(con):
     stamp = now()
     for order, name in enumerate(SEED_CATEGORIES, start=1):
         con.execute(
-            "INSERT INTO categories(name, sort_order, created_at) VALUES(?,?,?)",
-            (name, order, stamp),
+            "INSERT INTO categories(name, sort_order, color, emoji, created_at)"
+            " VALUES(?,?,?,?,?)",
+            (name, order, palette_color(order), SEED_CATEGORY_EMOJI.get(name, ""), stamp),
         )
     con.execute("INSERT INTO meta(key, value) VALUES(?,?)", (SEEDED_FLAG, stamp))
+    con.commit()
+
+
+def _add_category_style_columns(con):
+    """색·이모지 컬럼을 뒤늦게 붙임. 비어 있는 행만 채우므로 사용자가 지운 이모지는 되살아나지 않음"""
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(categories)")}
+    for column in ("color", "emoji"):
+        if column not in columns:
+            con.execute(f"ALTER TABLE categories ADD COLUMN {column} TEXT")
+    rows = con.execute(
+        "SELECT id, name, sort_order FROM categories"
+        " WHERE color IS NULL OR emoji IS NULL"
+    ).fetchall()
+    for row in rows:
+        con.execute(
+            "UPDATE categories SET color=COALESCE(color,?), emoji=COALESCE(emoji,?)"
+            " WHERE id=?",
+            (palette_color(row["sort_order"]), SEED_CATEGORY_EMOJI.get(row["name"], ""), row["id"]),
+        )
     con.commit()

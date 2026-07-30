@@ -125,7 +125,7 @@ def _route_patch(con, head, item_id, body):
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":
-        return category_repo.rename(con, item_id, body.get("name"))
+        return category_repo.update(con, item_id, **body)
     if head == "workspaces":
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
