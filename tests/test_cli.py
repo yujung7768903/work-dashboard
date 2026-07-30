@@ -133,7 +133,7 @@ class CliTest(unittest.TestCase):
         )
         self.assertEqual(code, 0)
         self.assertIn("세션 할일", out)
-        code, out, _ = self.run_cli("show-todo", "1")
+        code, out, _ = self.run_cli("show-note", "1")
         self.assertIn("파일 경계 메모", out)
 
     def test_add_todo_with_unclassified_session_exits_one(self):
@@ -145,16 +145,32 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("분류", err)
 
-    def test_show_todo_without_note(self):
+    def test_show_note_without_note(self):
         self.run_cli("add-todo", "노트 없음", "--category", "운영")
-        code, out, _ = self.run_cli("show-todo", "1")
+        code, out, _ = self.run_cli("show-note", "1")
         self.assertEqual(code, 0)
         self.assertIn("(없음)", out)
 
-    def test_show_todo_missing_exits_one(self):
-        code, _, err = self.run_cli("show-todo", "9999")
+    def test_show_note_missing_exits_one(self):
+        code, _, err = self.run_cli("show-note", "9999")
         self.assertEqual(code, 1)
         self.assertIn("없음", err)
+
+    def test_show_todo_lists_ids_and_context_marker(self):
+        self.run_cli("add-workspace", "개발", "KT")
+        self.run_cli("add-todo", "노트 있음", "--workspace", "1", "--note", "메모")
+        self.run_cli("add-todo", "노트 없음", "--workspace", "1")
+        code, out, _ = self.run_cli("show-todo", "--workspace", "1")
+        self.assertEqual(code, 0)
+        self.assertIn("1. [todo] 노트 있음 (컨텍스트)", out)
+        self.assertIn("2. [todo] 노트 없음", out)
+        self.assertNotIn("2. [todo] 노트 없음 (컨텍스트)", out)
+
+    def test_show_todo_empty_scope(self):
+        self.run_cli("add-workspace", "개발", "KT")
+        code, out, _ = self.run_cli("show-todo", "--workspace", "1")
+        self.assertEqual(code, 0)
+        self.assertIn("없음", out)
 
     def test_add_subtask_under_todo(self):
         self.run_cli("add-todo", "문의", "--category", "운영")

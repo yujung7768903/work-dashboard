@@ -128,10 +128,16 @@ def _build_parser():
     classify.add_argument("--workspace", type=int, default=None)
     classify.set_defaults(handler=_cmd_classify)
 
-    show_todo = sub.add_parser("show-todo", help="할일 컨텍스트(note) 전문")
-    show_todo.add_argument("todo_id", type=int)
+    show_todo = sub.add_parser("show-todo", help="할일 목록 (id·제목·컨텍스트 유무)")
+    show_todo.add_argument("--workspace", type=int, default=None)
+    show_todo.add_argument("--session", default=None)
     _add_json_flag(show_todo)
     show_todo.set_defaults(handler=_cmd_show_todo)
+
+    show_note = sub.add_parser("show-note", help="할일 컨텍스트(note) 전문")
+    show_note.add_argument("todo_id", type=int)
+    _add_json_flag(show_note)
+    show_note.set_defaults(handler=_cmd_show_note)
 
     link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
     link_todo.add_argument("session")
@@ -308,6 +314,37 @@ def _cmd_classify(con, args):
 
 
 def _cmd_show_todo(con, args):
+    """할일 목록. 컨텍스트 전문은 show-note 로 따로 꺼냄"""
+    todos = _todos_in_scope(con, args)
+    if args.as_json:
+        _emit_json(todos)
+        return
+    if not todos:
+        print("할일이 없음")
+        return
+    for todo in todos:
+        marker = " (컨텍스트)" if todo["note"] else ""
+        print(f"{todo['id']}. [{todo['status']}] {todo['title']}{marker}")
+
+
+def _todos_in_scope(con, args):
+    """--workspace / --session 이 있으면 그 범위, 없으면 전체"""
+    if args.session:
+        workspace_id, category_id = _scope_from_session(con, args.session)
+        if workspace_id is not None:
+            return todo_repo.list_by_workspace(con, workspace_id)
+        return todo_repo.list_by_category(con, category_id)
+    if args.workspace is not None:
+        workspace_repo.get(con, args.workspace)
+        return todo_repo.list_by_workspace(con, args.workspace)
+    return [
+        todo
+        for group in board.tree(con, board.GROUP_BY_CATEGORY)["groups"]
+        for todo in group["todos"]
+    ]
+
+
+def _cmd_show_note(con, args):
     todo = todo_repo.get(con, args.todo_id)
     subtasks = subtask_repo.list_by_todo(con, args.todo_id)
     if args.as_json:

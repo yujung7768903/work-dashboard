@@ -26,7 +26,7 @@ FRESHNESS_GUIDE = (
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
     "범위를 벗어나는 작업은 착수 전 사용자에게 확인받는다. "
-    "할일에 (컨텍스트) 표시가 있으면 착수 전 dash.py show-todo <id> 로 읽는다."
+    "할일에 (컨텍스트) 표시가 있으면 착수 전 dash.py show-note <id> 로 읽는다."
 )
 UNCLASSIFIED_GUIDE = (
     "지침: 이번 세션을 한 번 분류한다. "
