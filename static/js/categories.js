@@ -10,9 +10,6 @@ const EMOJI_CHOICES = [
   "🚀", "✅", "🎯", "📌", "🔖", "💡", "🧠", "🤖",
   "🔐", "🌐", "🗄️", "☁️", "📦", "🔁", "📮", "💬",
 ];
-const NO_EMOJI = "";
-const NO_EMOJI_LABEL = "＋";
-
 let openPickerId = null;
 
 export async function renderCategories() {
@@ -68,7 +65,7 @@ function emojiPicker(category) {
   const wrapper = document.createElement("div");
   wrapper.className = "emoji-pick";
   const toggle = document.createElement("button");
-  toggle.textContent = category.emoji || NO_EMOJI_LABEL;
+  toggle.textContent = category.emoji;
   toggle.title = "이모지 선택";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -80,18 +77,17 @@ function emojiPicker(category) {
   return wrapper;
 }
 
+// 지우기는 두지 않는다. 카테고리는 항상 이모지를 갖는다
 function emojiGrid(category) {
   const grid = document.createElement("div");
   grid.className = "emoji-grid";
-  EMOJI_CHOICES.forEach((emoji) => grid.appendChild(emojiCell(category, emoji, emoji)));
-  grid.appendChild(emojiCell(category, NO_EMOJI, "×"));
+  EMOJI_CHOICES.forEach((emoji) => grid.appendChild(emojiCell(category, emoji)));
   return grid;
 }
 
-function emojiCell(category, emoji, text) {
+function emojiCell(category, emoji) {
   const button = document.createElement("button");
-  button.textContent = text;
-  button.title = emoji ? emoji : "이모지 없음";
+  button.textContent = emoji;
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     run(async () => {

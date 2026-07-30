@@ -132,10 +132,16 @@ class CategoryRepoTest(unittest.TestCase):
         dev = category_repo.get_by_name(self.con, "개발")
         self.assertEqual((dev["color"], dev["emoji"]), (CATEGORY_PALETTE[0], "💻"))
 
-    def test_created_category_gets_next_palette_color(self):
+    def test_created_category_gets_next_palette_color_and_an_emoji(self):
         created = category_repo.create(self.con, "신규")
         expected = CATEGORY_PALETTE[len(SEED_CATEGORIES) % len(CATEGORY_PALETTE)]
-        self.assertEqual((created["color"], created["emoji"]), (expected, ""))
+        self.assertEqual(created["color"], expected)
+        self.assertTrue(created["emoji"], "새 카테고리도 이모지를 가져야 함")
+
+    def test_every_category_always_has_an_emoji(self):
+        category_repo.create(self.con, "신규")
+        blanks = [row["name"] for row in category_repo.list_all(self.con) if not row["emoji"]]
+        self.assertEqual(blanks, [])
 
     def test_update_sets_color_and_emoji_without_touching_name(self):
         target = category_repo.get_by_name(self.con, "운영")
@@ -148,10 +154,10 @@ class CategoryRepoTest(unittest.TestCase):
         with self.assertRaises(Validation):
             category_repo.update(self.con, target["id"], color="red")
 
-    def test_update_allows_clearing_emoji(self):
+    def test_update_rejects_clearing_emoji(self):
         target = category_repo.get_by_name(self.con, "개발")
-        cleared = category_repo.update(self.con, target["id"], emoji="")
-        self.assertEqual(cleared["emoji"], "")
+        with self.assertRaises(Validation):
+            category_repo.update(self.con, target["id"], emoji="")
 
     def test_update_without_fields_is_rejected(self):
         target = category_repo.get_by_name(self.con, "운영")
@@ -178,13 +184,15 @@ class CategoryRepoTest(unittest.TestCase):
         row = category_repo.get_by_name(temp_db(path), "개발")
         self.assertEqual((row["color"], row["emoji"]), (CATEGORY_PALETTE[0], "💻"))
 
-    def test_backfill_does_not_revive_cleared_emoji(self):
-        """빈 문자열은 '없음'이라 다시 열어도 시드 이모지가 되살아나지 않음"""
+    def test_backfill_fills_empty_emoji_of_unknown_category(self):
+        """이름을 모르는 카테고리의 빈 이모지도 열 때 자동으로 채워짐"""
         path = temp_db_path()
         first = temp_db(path)
-        category_repo.update(first, category_repo.get_by_name(first, "개발")["id"], emoji="")
+        created = category_repo.create(first, "새 분류")
+        first.execute("UPDATE categories SET emoji='' WHERE id=?", (created["id"],))
+        first.commit()
         first.close()
-        self.assertEqual(category_repo.get_by_name(temp_db(path), "개발")["emoji"], "")
+        self.assertTrue(category_repo.get(temp_db(path), created["id"])["emoji"])
 
     def test_delete_empty_category_succeeds(self):
         target = category_repo.get_by_name(self.con, "운영")

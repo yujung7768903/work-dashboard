@@ -9,6 +9,7 @@ from app.constants import (
     CATEGORY_PALETTE,
     DB_PATH_ENV,
     DEFAULT_DB_PATH,
+    EMOJI_FALLBACKS,
     SEED_CATEGORIES,
     SEED_CATEGORY_EMOJI,
 )
@@ -91,6 +92,14 @@ def palette_color(sort_order):
     return CATEGORY_PALETTE[(sort_order - 1) % len(CATEGORY_PALETTE)]
 
 
+def default_emoji(sort_order, name):
+    """카테고리는 항상 이모지를 갖는다. 아는 이름이면 그 이모지, 아니면 순번대로 배정"""
+    known = SEED_CATEGORY_EMOJI.get(name)
+    if known:
+        return known
+    return EMOJI_FALLBACKS[(sort_order - 1) % len(EMOJI_FALLBACKS)]
+
+
 def resolve_path(path=None):
     """인자 > 환경변수 > 기본 경로 순"""
     return path or os.environ.get(DB_PATH_ENV) or DEFAULT_DB_PATH
@@ -135,26 +144,29 @@ def _seed_categories(con):
         con.execute(
             "INSERT INTO categories(name, sort_order, color, emoji, created_at)"
             " VALUES(?,?,?,?,?)",
-            (name, order, palette_color(order), SEED_CATEGORY_EMOJI.get(name, ""), stamp),
+            (name, order, palette_color(order), default_emoji(order, name), stamp),
         )
     con.execute("INSERT INTO meta(key, value) VALUES(?,?)", (SEEDED_FLAG, stamp))
     con.commit()
 
 
 def _add_category_style_columns(con):
-    """색·이모지 컬럼을 뒤늦게 붙임. 비어 있는 행만 채우므로 사용자가 지운 이모지는 되살아나지 않음"""
+    """색·이모지 컬럼을 뒤늦게 붙이고 빈 값을 채움. 이모지 없는 카테고리는 남기지 않는다"""
     columns = {row["name"] for row in con.execute("PRAGMA table_info(categories)")}
     for column in ("color", "emoji"):
         if column not in columns:
             con.execute(f"ALTER TABLE categories ADD COLUMN {column} TEXT")
     rows = con.execute(
-        "SELECT id, name, sort_order FROM categories"
-        " WHERE color IS NULL OR emoji IS NULL"
+        "SELECT id, name, sort_order, color, emoji FROM categories"
+        " WHERE color IS NULL OR color = '' OR emoji IS NULL OR emoji = ''"
     ).fetchall()
     for row in rows:
         con.execute(
-            "UPDATE categories SET color=COALESCE(color,?), emoji=COALESCE(emoji,?)"
-            " WHERE id=?",
-            (palette_color(row["sort_order"]), SEED_CATEGORY_EMOJI.get(row["name"], ""), row["id"]),
+            "UPDATE categories SET color=?, emoji=? WHERE id=?",
+            (
+                row["color"] or palette_color(row["sort_order"]),
+                row["emoji"] or default_emoji(row["sort_order"], row["name"]),
+                row["id"],
+            ),
         )
     con.commit()

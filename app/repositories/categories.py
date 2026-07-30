@@ -2,8 +2,8 @@
 import re
 
 from app import ordering
-from app.constants import COLOR_PATTERN, EMOJI_MAX_CHARS, SEED_CATEGORY_EMOJI
-from app.db import now, palette_color, transaction
+from app.constants import COLOR_PATTERN, EMOJI_MAX_CHARS
+from app.db import default_emoji, now, palette_color, transaction
 from app.errors import Conflict, NotFound, Validation
 
 TABLE = "categories"
@@ -20,13 +20,7 @@ def create(con, name):
         cursor = con.execute(
             "INSERT INTO categories(name, sort_order, color, emoji, created_at)"
             " VALUES(?,?,?,?,?)",
-            (
-                cleaned,
-                order,
-                palette_color(order),
-                SEED_CATEGORY_EMOJI.get(cleaned, ""),
-                now(),
-            ),
+            (cleaned, order, palette_color(order), default_emoji(order, cleaned), now()),
         )
     return get(con, cursor.lastrowid)
 
@@ -108,8 +102,10 @@ def _clean_color(color):
 
 
 def _clean_emoji(emoji):
-    """빈 값은 '이모지 없음'. 그림문자 판별까지는 하지 않고 길이만 제한"""
+    """카테고리는 항상 이모지를 갖는다. 그림문자 판별까지는 하지 않고 길이만 제한"""
     cleaned = (emoji or "").strip()
+    if not cleaned:
+        raise Validation("이모지는 비울 수 없음. 다른 이모지를 고르세요")
     if len(cleaned) > EMOJI_MAX_CHARS:
         raise Validation(f"이모지는 {EMOJI_MAX_CHARS}자 이내여야 함")
     return cleaned
