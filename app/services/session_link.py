@@ -17,9 +17,16 @@ CONTEXT_LABELS = (
     ("목표", "goal"),
     ("고려사항", "considerations"),
 )
+# 여러 세션이 같은 저장소를 동시에 고치므로 모든 주입에 붙는 공통 규칙
+FRESHNESS_GUIDE = (
+    "공통: 다른 세션이 같은 코드·문서를 고칠 수 있다. 착수 전에 최신 상태를 다시 읽는다 "
+    "— git status/log 로 브랜치 상태를 확인하고, 고칠 파일과 관련 문서를 그때 읽는다. "
+    "컨텍스트에 남아 있는 예전 내용을 근거로 수정하지 않는다."
+)
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
-    "범위를 벗어나는 작업은 착수 전 사용자에게 확인받는다."
+    "범위를 벗어나는 작업은 착수 전 사용자에게 확인받는다. "
+    "할일에 (컨텍스트) 표시가 있으면 착수 전 dash.py show-todo <id> 로 읽는다."
 )
 UNCLASSIFIED_GUIDE = (
     "지침: 이번 세션을 한 번 분류한다. "
@@ -111,6 +118,7 @@ def _classified_block(con, session):
     lines.append("할일:")
     lines.extend(_todo_lines(con, workspace["id"]))
     lines.append(CLASSIFIED_GUIDE)
+    lines.append(FRESHNESS_GUIDE)
     lines.append(BLOCK_CLOSE)
     return "\n".join(lines)
 
@@ -136,6 +144,7 @@ def _unclassified_block(con, session):
     else:
         lines.append("  (없음)")
     lines.append(UNCLASSIFIED_GUIDE)
+    lines.append(FRESHNESS_GUIDE)
     lines.append(BLOCK_CLOSE)
     return "\n".join(lines)
 
@@ -144,6 +153,9 @@ def _todo_lines(con, workspace_id):
     todos = todo_repo.list_by_workspace(con, workspace_id)
     if not todos:
         return ["  (없음)"]
+    # note 는 내용을 넣지 않고 존재만 표시 — 할일 12개 컨텍스트를 다 넣으면 세션이 오염됨
     return [
-        f"  {todo['sort_order']}. [{todo['status']}] {todo['title']}" for todo in todos
+        f"  {todo['sort_order']}. [{todo['status']}] {todo['title']}"
+        + (f" (컨텍스트 #{todo['id']})" if todo["note"] else "")
+        for todo in todos
     ]

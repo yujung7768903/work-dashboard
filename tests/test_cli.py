@@ -120,6 +120,42 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("연결", out)
 
+    def test_add_todo_with_session_uses_its_workspace(self):
+        from app.db import connect
+        from app.repositories import sessions as session_repo
+
+        self.run_cli("add-workspace", "개발", "KT")
+        con = connect()
+        session_repo.register(con, "todo-sess")
+        session_repo.classify(con, "todo-sess", workspace_id=1)
+        code, out, _ = self.run_cli(
+            "add-todo", "세션 할일", "--session", "todo-sess", "--note", "파일 경계 메모"
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("세션 할일", out)
+        code, out, _ = self.run_cli("show-todo", "1")
+        self.assertIn("파일 경계 메모", out)
+
+    def test_add_todo_with_unclassified_session_exits_one(self):
+        from app.db import connect
+        from app.repositories import sessions as session_repo
+
+        session_repo.register(connect(), "bare-sess")
+        code, _, err = self.run_cli("add-todo", "안 됨", "--session", "bare-sess")
+        self.assertEqual(code, 1)
+        self.assertIn("분류", err)
+
+    def test_show_todo_without_note(self):
+        self.run_cli("add-todo", "노트 없음", "--category", "운영")
+        code, out, _ = self.run_cli("show-todo", "1")
+        self.assertEqual(code, 0)
+        self.assertIn("(없음)", out)
+
+    def test_show_todo_missing_exits_one(self):
+        code, _, err = self.run_cli("show-todo", "9999")
+        self.assertEqual(code, 1)
+        self.assertIn("없음", err)
+
     def test_add_subtask_under_todo(self):
         self.run_cli("add-todo", "문의", "--category", "운영")
         code, out, _ = self.run_cli("add-subtask", "1", "회신 초안")

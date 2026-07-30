@@ -6,7 +6,7 @@ import sys
 
 from app.constants import UNASSIGNED_LABEL
 from app.db import connect
-from app.errors import DomainError, NotFound
+from app.errors import DomainError, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
@@ -78,6 +78,9 @@ def _build_parser():
     add_todo.add_argument("title")
     add_todo.add_argument("--category", default=None)
     add_todo.add_argument("--workspace", default=None)
+    add_todo.add_argument("--session", default=None,
+                          help="이 세션이 붙은 워크스페이스에 추가")
+    add_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
     add_todo.set_defaults(handler=_cmd_add_todo)
 
     add_subtask = sub.add_parser("add-subtask")
@@ -124,6 +127,11 @@ def _build_parser():
     classify.add_argument("--category", default=None)
     classify.add_argument("--workspace", type=int, default=None)
     classify.set_defaults(handler=_cmd_classify)
+
+    show_todo = sub.add_parser("show-todo", help="할일 컨텍스트(note) 전문")
+    show_todo.add_argument("todo_id", type=int)
+    _add_json_flag(show_todo)
+    show_todo.set_defaults(handler=_cmd_show_todo)
 
     link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
     link_todo.add_argument("session")
@@ -201,10 +209,24 @@ def _cmd_add_todo(con, args):
         category_repo.get_by_name(con, args.category)["id"] if args.category else None
     )
     workspace_id = int(args.workspace) if args.workspace else None
+    if args.session and workspace_id is None and category_id is None:
+        workspace_id, category_id = _scope_from_session(con, args.session)
     created = todo_repo.create(
-        con, args.title, category_id=category_id, workspace_id=workspace_id
+        con,
+        args.title,
+        category_id=category_id,
+        workspace_id=workspace_id,
+        note=args.note,
     )
     print(f"{created['id']}. {created['title']}")
+
+
+def _scope_from_session(con, claude_session_id):
+    """세션이 붙은 워크스페이스(없으면 카테고리)에 할일을 만들기 위한 소속 결정"""
+    session = session_repo.get(con, claude_session_id)
+    if session["workspace_id"] is None and session["category_id"] is None:
+        raise Validation("세션이 아직 분류되지 않아 할일을 붙일 곳이 없음")
+    return session["workspace_id"], session["category_id"]
 
 
 def _cmd_add_subtask(con, args):
@@ -283,6 +305,18 @@ def _cmd_classify(con, args):
     )
     scope = updated["workspace_id"] or "-"
     print(f"분류됨: category={updated['category_id']} workspace={scope}")
+
+
+def _cmd_show_todo(con, args):
+    todo = todo_repo.get(con, args.todo_id)
+    subtasks = subtask_repo.list_by_todo(con, args.todo_id)
+    if args.as_json:
+        _emit_json({"todo": todo, "subtasks": subtasks})
+        return
+    print(f"[{todo['status']}] {todo['id']}. {todo['title']}")
+    print(f"컨텍스트: {todo['note'] or '(없음)'}")
+    for subtask in subtasks:
+        print(f"  - [{subtask['status']}] {subtask['title']}")
 
 
 def _cmd_link_todo(con, args):
