@@ -94,7 +94,17 @@ function inkOn(hex) {
 function filterPill(category) {
   const pill = document.createElement("button");
   pill.className = "cat-pill";
-  pill.textContent = label(category);
+  const name = document.createElement("span");
+  name.textContent = category.name;
+  if (category.emoji) {
+    const emoji = document.createElement("span");
+    emoji.className = "emoji";
+    emoji.textContent = category.emoji;
+    // 공백 텍스트 노드는 flex 에서 렌더되지 않지만 접근성 이름과 textContent 를 지켜준다
+    pill.append(emoji, " ", name);
+  } else {
+    pill.appendChild(name);
+  }
   // 색이 없으면 CSS 의 중립 회색 기본값을 씀 (전체 라벨)
   if (category.color) {
     pill.style.setProperty("--cat", category.color);

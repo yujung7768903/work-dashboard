@@ -57,22 +57,37 @@ nav button.active { color: var(--accent); background: rgba(49, 130, 246, 0.1); }
   border-radius: var(--r-ctl); font-weight: 500;
 }
 
+/* p 기본 마진(1em)이 다른 블록의 12px 과 어긋나므로 명시 */
 #next-line {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); padding: 12px 14px; color: var(--muted);
+  box-shadow: var(--shadow-card); padding: 12px 14px; margin: var(--gap) 0;
+  color: var(--muted);
 }
 #next-text { font-weight: 600; color: var(--fg); }
 
 form { display: flex; gap: 6px; margin: var(--gap) 0; flex-wrap: wrap; }
 input, select, textarea {
   padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--r-ctl);
-  background: var(--surface); color: inherit; font: inherit; letter-spacing: inherit;
+  background-color: var(--surface); color: inherit; font: inherit; letter-spacing: inherit;
 }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.15);
 }
+/* 네이티브 화살표는 오른쪽 테두리에 붙어 여백이 없으므로 직접 그린다 */
+select {
+  appearance: none; padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%238b95a1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+}
 #quick-title { flex: 1 1 200px; }
+/* 아이콘 하나뿐인 버튼은 정사각으로 만들어 누를 면적을 확보 */
+#quick-submit {
+  width: 41px; flex: none; padding: 0; font-size: 20px; line-height: 1;
+  background-color: var(--accent); color: #fff; font-weight: 400;
+}
+#quick-submit:hover { background-color: #1b64da; }
 
 /* 기본 버튼은 회색 면. 선 대신 면으로 눌리는 느낌을 준다 */
 button {
@@ -102,12 +117,17 @@ button:disabled { color: var(--line); cursor: default; }
 /* --on-cat: 카테고리 색 위에 얹을 글자색. JS 가 색의 명도를 보고 흰·검 중
    대비가 큰 쪽을 인라인으로 넣으므로 어떤 색을 골라도 4.5:1 이상이 나온다.
    여기 기본값은 색이 없는 '전체' 라벨용 */
+/* 이모지와 이름을 gap 으로 띄운다. 공백 문자로 띄우면 이모지 글리프 폭 때문에
+   왼쪽 여백이 더 넓어 보인다 */
 .cat-pill {
   --on-cat: #fff;
-  padding: 7px 15px; border-radius: var(--r-pill);
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 14px; border-radius: var(--r-pill);
   background-color: var(--cat-bg); color: var(--cat-ink);
   font-weight: 600; font-size: 14px;
 }
+/* 이모지는 글리프 자체의 좌우 여백이 있어 살짝 당겨줘야 좌우가 같아 보인다 */
+.cat-pill .emoji { margin-left: -2px; font-size: 13px; }
 .cat-pill:hover:not(.active) {
   background-color: color-mix(in srgb, var(--cat) 26%, var(--surface));
 }
@@ -224,6 +244,8 @@ button:disabled { color: var(--line); cursor: default; }
 #session-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
 #session-warn { color: var(--danger); font-weight: 500; }
 #session-list { list-style: none; margin: 6px 0 0; padding: 0; }
+/* 돌고 있는 세션이 0 개면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
+#session-list:empty { display: none; }
 #session-list li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
 #session-list li.working { cursor: pointer; }
 #session-list li.idle { color: var(--muted); }
