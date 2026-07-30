@@ -36,7 +36,10 @@ UNCLASSIFIED_GUIDE = (
     "등록: python3 dash.py classify <session> --category <이름> [--workspace <id>] "
     "코드·문서를 바꾸거나 여러 턴에 걸치거나 산출물이 남는 작업이면 "
     "dash.py add-todo 로 할일을 만들고 dash.py link-todo <session> <todo-id> 로 연결한다. "
-    "단발 조회·설명 질문이면 할일을 만들지 않는다."
+    "단발 조회·설명 질문이면 할일을 만들지 않는다. "
+    "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
+    "dash.py show-todo --session <session> 으로 할일을 직접 확인하고 "
+    "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."
 )
 SCOPE_GUIDE = (
     "지침: 이 브랜치 작업은 위 하위단계 범위 내에서만 진행한다. "
