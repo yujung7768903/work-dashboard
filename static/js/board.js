@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { run } from "./main.js";
 import { startSessionPolling } from "./sessions.js";
+import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
 const GROUP_BY_WORKSPACE = "workspace";
@@ -15,6 +16,8 @@ const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
 
 // null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
 let activeCategoryId = null;
+// 케밥 메뉴가 열린 할일. 한 번에 하나만 열림
+let openMenuTodoId = null;
 
 function showDone() {
   return document.getElementById("show-done").checked;
@@ -169,29 +172,50 @@ function todoElement(todo) {
   title.className = "title";
   title.textContent = todo.title;
 
-  const addSubtask = document.createElement("button");
-  addSubtask.textContent = "+하위";
-  addSubtask.addEventListener("click", () =>
-    run(async () => {
-      const value = prompt("하위 할일 제목");
-      if (!value) return;
-      await api.createSubtask(todo.id, value);
-      await renderBoard();
-    })
-  );
-
-  const remove = document.createElement("button");
-  remove.textContent = "×";
-  remove.addEventListener("click", () =>
-    run(async () => {
-      if (!confirm(`"${todo.title}" 삭제할까요? 하위 할일도 함께 사라집니다.`)) return;
-      await api.deleteTodo(todo.id);
-      await renderBoard();
-    })
-  );
-
-  row.append(statusButton, title, addSubtask, remove);
+  row.append(statusButton, title, todoMenu(todo));
   return row;
+}
+
+// 하위 추가·삭제는 오른쪽 케밥 메뉴 안으로. 워크스페이스 카드와 같은 ws-menu 스타일 재사용
+function todoMenu(todo) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "ws-menu";
+  const toggle = document.createElement("button");
+  toggle.textContent = "⋮";
+  toggle.title = "하위 할일 추가 · 삭제";
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
+    run(renderBoard);
+  });
+  wrapper.appendChild(toggle);
+  if (openMenuTodoId === todo.id) wrapper.appendChild(todoMenuItems(todo));
+  return wrapper;
+}
+
+function todoMenuItems(todo) {
+  const items = document.createElement("div");
+  items.className = "ws-menu-items";
+  items.append(
+    menuItem("하위 할일 추가", () =>
+      run(async () => {
+        openMenuTodoId = null;
+        const value = prompt("하위 할일 제목");
+        if (value) await api.createSubtask(todo.id, value);
+        await renderBoard();
+      })
+    ),
+    menuItem("삭제", () =>
+      run(async () => {
+        openMenuTodoId = null;
+        if (confirm(`"${todo.title}" 삭제할까요? 하위 할일도 함께 사라집니다.`)) {
+          await api.deleteTodo(todo.id);
+        }
+        await renderBoard();
+      })
+    )
+  );
+  return items;
 }
 
 function subtaskList(todo) {
@@ -228,3 +252,10 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
 });
 
 document.getElementById("board-controls").addEventListener("change", () => run(renderBoard));
+
+// 항목 밖을 누르면 열린 케밥 메뉴 닫기
+document.addEventListener("click", () => {
+  if (openMenuTodoId === null) return;
+  openMenuTodoId = null;
+  run(renderBoard);
+});

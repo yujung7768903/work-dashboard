@@ -157,7 +157,8 @@ function menuItems(workspace) {
   return items;
 }
 
-function menuItem(label, onClick) {
+// 보드의 할일 케밥 메뉴도 같은 항목 버튼을 씀
+export function menuItem(label, onClick) {
   const button = document.createElement("button");
   button.textContent = label;
   button.addEventListener("click", (event) => {
