@@ -1,4 +1,4 @@
-// 카테고리 관리. 각 줄에서 워크스페이스를 바로 만들 수 있음
+// 카테고리 관리. 색을 여기서 바꾸고, 각 줄에서 워크스페이스를 바로 만들 수 있음
 import * as api from "./api.js";
 import { run } from "./main.js";
 
@@ -19,12 +19,13 @@ function categoryRow(category, index, categories) {
   name.addEventListener("blur", () =>
     run(async () => {
       if (name.value === category.name) return;
-      await api.renameCategory(category.id, name.value);
+      await api.updateCategory(category.id, { name: name.value });
       await renderCategories();
     })
   );
 
   item.append(
+    colorInput(category),
     name,
     moveButton(index, categories, -1),
     moveButton(index, categories, 1),
@@ -32,6 +33,21 @@ function categoryRow(category, index, categories) {
     removeButton(category)
   );
   return item;
+}
+
+function colorInput(category) {
+  const input = document.createElement("input");
+  input.type = "color";
+  input.value = category.color;
+  input.title = "카드 상단 배경색";
+  // change: 색을 고르는 중이 아니라 확정했을 때만 저장
+  input.addEventListener("change", () =>
+    run(async () => {
+      await api.updateCategory(category.id, { color: input.value });
+      await renderCategories();
+    })
+  );
+  return input;
 }
 
 function moveButton(index, categories, offset) {

@@ -74,8 +74,11 @@ function optionsHtml(items, selectedId) {
 }
 
 function readCard(workspace, categories, counts) {
+  const category = categories.find((item) => item.id === workspace.category_id);
   const card = document.createElement("div");
   card.className = "ws-card";
+  // 보드 카드와 같은 카테고리 색을 상단에 깖. 못 찾으면 CSS 기본값(옅은 회색)
+  if (category?.color) card.style.setProperty("--cat", category.color);
   const jira = workspace.jira_id ? ` · ${workspace.jira_id}` : "";
   const progress = counts[workspace.id] ? ` · 할일 ${counts[workspace.id]}` : "";
 
@@ -87,9 +90,7 @@ function readCard(workspace, categories, counts) {
   name.textContent = workspace.name;
   const meta = document.createElement("div");
   meta.className = "ws-meta";
-  meta.textContent =
-    `${nameById(categories, workspace.category_id)} · ${workspace.status}` +
-    `${jira}${progress}`;
+  meta.textContent = `${category?.name ?? "?"} · ${workspace.status}${jira}${progress}`;
   title.append(name, meta);
   head.append(title, menu(workspace));
   card.appendChild(head);
@@ -251,11 +252,6 @@ function collect(inputs) {
     fields[key] = inputs[key].value;
   });
   return fields;
-}
-
-function nameById(items, id) {
-  const found = items.find((item) => item.id === id);
-  return found ? found.name : "?";
 }
 
 // 카드 밖을 누르면 열린 메뉴 닫기
