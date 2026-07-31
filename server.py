@@ -93,6 +93,10 @@ def _route_get(con, head, item_id, query):
                 "todos": todo_repo.list_by_workspace(con, item_id),
             }
         return workspace_repo.list_all(con)
+    if head == "todos":
+        if not item_id:
+            raise Validation("id 가 필요함")
+        return session_link.todo_detail(con, item_id)
     if head == "sessions":
         if item_id:
             return session_link.detail(con, item_id)

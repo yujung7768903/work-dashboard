@@ -7,6 +7,18 @@ const ACTIVE = "active";
 const NO_WORKSPACE = "―";
 const UNCLASSIFIED_LABEL = "분류 전";
 const ROLE_LABELS = { user: "나", assistant: "클로드" };
+const OVERVIEW_TAB = "overview";
+const SESSION_TAB = "session";
+const TABS = [
+  [OVERVIEW_TAB, "개요"],
+  [SESSION_TAB, "세션"],
+];
+// 개요의 시각 목록. 실제 순서는 값으로 정렬하므로 여기 순서는 라벨 짝짓기용일 뿐
+const TIME_FIELDS = [
+  ["created_at", "생성"],
+  ["updated_at", "수정"],
+  ["completed_at", "완료"],
+];
 
 let timer = null;
 // 사용자가 펼친 '대기 중'은 폴링이 접지 않도록 모듈에 남긴다
@@ -70,28 +82,134 @@ function sessionRow(session) {
   const age = element("span", "age", formatAge(session.last_seen_at));
 
   item.append(mark, scope, category, prompt, age);
-  item.addEventListener("click", () => openSessionDetail(session));
+  item.addEventListener("click", () => openDetail({ session }));
   return item;
 }
 
-// 보드의 세션 줄과 사용량 레일의 세션 카드가 같은 팝업을 쓴다
-export function openSessionDetail(session) {
+// 세션 줄·사용량 레일의 세션 카드·보드의 할일이 모두 이 팝업 하나를 쓴다.
+// 어디서 열었느냐는 처음 켜지는 탭만 바꾼다 — 세션은 세션 탭, 할일은 개요 탭
+export function openDetail(target) {
   // 폴링이 목록을 다시 그려도 팝업은 별도 요소라 안 건드린다. 대화는 열 때 한 번만 읽음
   const dialog = document.getElementById("session-modal");
   const body = document.getElementById("session-modal-body");
   body.textContent = "불러오는 중";
   if (!dialog.open) dialog.showModal();
-  Promise.all([api.getSession(session.id), api.getWorkspaces(), api.getCategories()])
-    .then(([detail, workspaces, categories]) =>
-      body.replaceChildren(
-        headBlock(detail.session, categories),
-        classifyRow(detail.session, workspaces, categories, dialog),
-        logSection(detail.messages)
-      )
-    )
+  loadContext(target)
+    .then((context) => body.replaceChildren(...tabbed(context, dialog)))
     .catch((error) => {
       body.textContent = error.message;
     });
+}
+
+// 두 갈래 입력을 같은 모양으로 맞춘다 — 이후 렌더는 어디서 열렸는지 모른다
+async function loadContext(target) {
+  const [workspaces, categories] = await Promise.all([
+    api.getWorkspaces(),
+    api.getCategories(),
+  ]);
+  const common = { workspaces, categories };
+  if (target.session) {
+    const detail = await api.getSession(target.session.id);
+    return { ...detail, ...common, tab: SESSION_TAB };
+  }
+  const { todo, sessions } = await api.getTodo(target.todo.id);
+  // 할일에서 열면 세션 탭은 그 할일을 마지막으로 잡은 세션을 보여준다
+  const detail = sessions.length ? await api.getSession(sessions[0].id) : null;
+  return {
+    session: detail?.session ?? null,
+    messages: detail?.messages ?? [],
+    todos: [todo],
+    ...common,
+    tab: OVERVIEW_TAB,
+  };
+}
+
+function tabbed(context, dialog) {
+  const panes = {
+    [OVERVIEW_TAB]: overviewPane(context.todos),
+    [SESSION_TAB]: sessionPane(context, dialog),
+  };
+  Object.entries(panes).forEach(([key, pane]) => {
+    pane.hidden = key !== context.tab;
+  });
+  return [tabBar(panes, context.tab), ...Object.values(panes)];
+}
+
+function tabBar(panes, active) {
+  const bar = element("div", "dlg-tabs");
+  TABS.forEach(([key, label]) => {
+    const button = element("button", null, label);
+    button.type = "button";
+    button.classList.toggle("active", key === active);
+    button.addEventListener("click", () => {
+      Array.from(bar.children).forEach((node) => node.classList.remove("active"));
+      button.classList.add("active");
+      Object.entries(panes).forEach(([paneKey, pane]) => {
+        pane.hidden = paneKey !== key;
+      });
+    });
+    bar.appendChild(button);
+  });
+  return bar;
+}
+
+function overviewPane(todos) {
+  const pane = element("div", "dlg-pane");
+  if (!todos?.length) {
+    pane.appendChild(element("p", "muted", "연결된 할일이 없습니다."));
+    return pane;
+  }
+  todos.forEach((todo) => pane.appendChild(todoBlock(todo)));
+  return pane;
+}
+
+function todoBlock(todo) {
+  const block = element("div", "dlg-section");
+  block.append(
+    element("p", "dlg-title", todo.title),
+    timeList(todo),
+    element("p", "label", "note"),
+    element("p", todo.note ? "note-body" : "muted", todo.note || "(없음)")
+  );
+  return block;
+}
+
+// 완료 시각이 없는 할일도 있어 빈 값은 빼고, 남은 것만 최근 순으로 세운다
+function timeList(todo) {
+  const list = element("ul", "time-list");
+  TIME_FIELDS.filter(([key]) => todo[key])
+    .map(([key, label]) => ({ label, iso: todo[key] }))
+    .sort((a, b) => Date.parse(b.iso) - Date.parse(a.iso))
+    .forEach(({ label, iso }) => {
+      const item = document.createElement("li");
+      item.append(
+        element("span", "dlg-badge", label),
+        element("span", "when", formatWhen(iso)),
+        element("span", "age", formatAge(iso))
+      );
+      list.appendChild(item);
+    });
+  return list;
+}
+
+function formatWhen(iso) {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  return new Date(ms).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function sessionPane(context, dialog) {
+  const pane = element("div", "dlg-pane");
+  if (!context.session) {
+    pane.appendChild(element("p", "muted", "이 할일을 잡은 세션이 없습니다."));
+    return pane;
+  }
+  pane.append(
+    headBlock(context.session, context.categories),
+    classifyRow(context.session, context.workspaces, context.categories, dialog),
+    logSection(context.messages)
+  );
+  return pane;
 }
 
 function headBlock(session, categories) {

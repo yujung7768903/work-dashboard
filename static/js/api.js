@@ -33,6 +33,7 @@ export const createWorkspace = (fields) => request("POST", "/workspaces", fields
 export const updateWorkspace = (id, fields) => request("PATCH", `/workspaces/${id}`, fields);
 export const deleteWorkspace = (id) => request("DELETE", `/workspaces/${id}`);
 
+export const getTodo = (id) => request("GET", `/todos/${id}`);
 export const createTodo = (fields) => request("POST", "/todos", fields);
 export const updateTodo = (id, fields) => request("PATCH", `/todos/${id}`, fields);
 export const deleteTodo = (id) => request("DELETE", `/todos/${id}`);

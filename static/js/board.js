@@ -2,7 +2,7 @@
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { run } from "./main.js";
-import { startSessionPolling } from "./sessions.js";
+import { openDetail, startSessionPolling } from "./sessions.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
@@ -161,18 +161,22 @@ function todoElement(todo) {
   const statusButton = document.createElement("button");
   statusButton.textContent = todo.status;
   statusButton.title = "상태 순환 (todo → doing → done)";
-  statusButton.addEventListener("click", () =>
+  statusButton.addEventListener("click", (event) => {
+    // 행 전체가 팝업을 여는 클릭이라 버튼은 거기까지 올라가지 않게 막는다
+    event.stopPropagation();
     run(async () => {
       await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
       await renderBoard();
-    })
-  );
+    });
+  });
 
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = todo.title;
 
   row.append(statusButton, title, todoMenu(todo));
+  // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
+  row.addEventListener("click", () => openDetail({ todo }));
   return row;
 }
 

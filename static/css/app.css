@@ -290,6 +290,8 @@ button:disabled { color: var(--line); cursor: default; }
   border-top: 1px solid var(--line);
 }
 .todo .title { flex: 1; }
+/* 행 전체가 상세 팝업을 여는 클릭 대상 */
+.todo { cursor: pointer; }
 .todo.done .title { color: var(--muted); text-decoration: line-through; }
 /* 상태 배지처럼 보이게 좁고 둥글게 */
 .todo > button:first-child {
@@ -435,6 +437,35 @@ button:disabled { color: var(--line); cursor: default; }
   font-size: var(--fs-title); line-height: var(--lh-tight); padding: 0 var(--sp-4);
 }
 #session-modal-body { padding: var(--pad-card); overflow: auto; }
+
+/* 팝업 탭. 개요 = 할일의 시각·note, 세션 = 분류·최근 대화 */
+.dlg-tabs {
+  display: flex; gap: var(--sp-4);
+  margin: 0 0 var(--sp-12); padding-right: var(--sp-32);
+  border-bottom: 1px solid var(--line);
+}
+.dlg-tabs button {
+  background: none; border-bottom: 2px solid transparent;
+  padding: var(--sp-8) var(--sp-12);
+  color: var(--muted); font-size: var(--fs-sm); font-weight: 600;
+}
+.dlg-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+/* 탭 바로 아래 첫 블록은 이미 간격이 있어 위 여백을 지운다 */
+.dlg-pane > .dlg-section:first-child { margin-top: 0; }
+
+.time-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
+.time-list li {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-2) 0; font-size: var(--fs-sm);
+}
+.time-list .when { flex: 1; }
+.time-list .age { color: var(--muted); }
+/* note 는 세션에 그대로 주입되는 글이라 줄바꿈을 살려서 보여준다 */
+.note-body {
+  margin: var(--sp-4) 0 0; padding: var(--sp-12); border-radius: var(--r-ctl);
+  background: var(--bg); font-size: var(--fs-sm); line-height: var(--lh-body);
+  white-space: pre-wrap;
+}
 
 .dlg-head { margin-bottom: var(--sp-12); }
 .dlg-title {
