@@ -1,5 +1,6 @@
 // 활성 세션 영역. 이 영역만 폴링해 편집 중인 입력을 건드리지 않음
 import * as api from "./api.js";
+import { focusWorkspace } from "./workspace.js";
 
 const POLL_INTERVAL_MS = 2000;
 const WORKING = "working";
@@ -9,12 +10,10 @@ const UNCLASSIFIED_LABEL = "분류 전";
 const ROLE_LABELS = { user: "나", assistant: "클로드" };
 
 let timer = null;
-let pickWorkspace = null;
 // 사용자가 펼친 '대기 중'은 폴링이 접지 않도록 모듈에 남긴다
 let showIdle = false;
 
-export async function renderSessions(onPick) {
-  if (onPick) pickWorkspace = onPick;
+export async function renderSessions() {
   const payload = await api.getSessions();
   const working = payload.sessions.filter((s) => s.state === WORKING);
   const idle = payload.sessions.filter((s) => s.state !== WORKING);
@@ -31,7 +30,7 @@ export async function renderSessions(onPick) {
   list.innerHTML = "";
   const shown = showIdle ? [...working, ...idle] : working;
   shown.forEach((session) => list.appendChild(sessionRow(session)));
-  if (idle.length) list.appendChild(idleToggle(idle.length, onPick));
+  if (idle.length) list.appendChild(idleToggle(idle.length));
 }
 
 // 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다
@@ -46,7 +45,7 @@ function formatAge(iso) {
   return `${Math.floor(sec / 86400)}d`;
 }
 
-function idleToggle(count, onPick) {
+function idleToggle(count) {
   const item = document.createElement("li");
   item.className = "more";
   const button = document.createElement("button");
@@ -54,7 +53,7 @@ function idleToggle(count, onPick) {
   button.textContent = showIdle ? "대기 중 숨기기" : `대기 중 ${count}개 보기`;
   button.addEventListener("click", () => {
     showIdle = !showIdle;
-    renderSessions(onPick).catch(() => {});
+    renderSessions().catch(() => {});
   });
   item.appendChild(button);
   return item;
@@ -72,11 +71,12 @@ function sessionRow(session) {
   const age = element("span", "age", formatAge(session.last_seen_at));
 
   item.append(mark, scope, category, prompt, age);
-  item.addEventListener("click", () => openDetail(session));
+  item.addEventListener("click", () => openSessionDetail(session));
   return item;
 }
 
-function openDetail(session) {
+// 보드의 세션 줄과 사용량 레일의 세션 카드가 같은 팝업을 쓴다
+export function openSessionDetail(session) {
   // 폴링이 목록을 다시 그려도 팝업은 별도 요소라 안 건드린다. 대화는 열 때 한 번만 읽음
   const dialog = document.getElementById("session-modal");
   const body = document.getElementById("session-modal-body");
@@ -141,11 +141,12 @@ function classifyRow(session, workspaces, categories, dialog) {
   });
   row.append(select, save);
 
-  if (session.workspace_id && pickWorkspace) {
+  if (session.workspace_id) {
     const open = element("button", null, "워크스페이스 열기");
     open.addEventListener("click", () => {
       dialog.close();
-      pickWorkspace(session.workspace_id);
+      focusWorkspace(session.workspace_id);
+      document.querySelector('#tabs button[data-tab="workspace"]').click();
     });
     row.append(open);
   }
@@ -209,6 +210,7 @@ function logSection(messages) {
   const list = element("ul", "session-log");
   messages.forEach((message) => {
     const item = element("li", message.role);
+    item.title = message.text; // 목록에서는 몇 줄만 보이므로 전문은 툴팁으로
     item.append(
       element("span", "dlg-badge", ROLE_LABELS[message.role] ?? message.role),
       element("span", "text", message.text)
@@ -232,10 +234,10 @@ function element(tag, className, text) {
   return node;
 }
 
-export function startSessionPolling(onPick) {
+export function startSessionPolling() {
   if (timer) clearInterval(timer);
   // 폴링 실패는 삼킨다 — 2초마다 배너를 덮어쓰면 다른 조작의 에러가 지워짐
-  const tick = () => renderSessions(onPick).catch(() => {});
+  const tick = () => renderSessions().catch(() => {});
   tick();
   timer = setInterval(tick, POLL_INTERVAL_MS);
 }

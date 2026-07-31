@@ -202,7 +202,8 @@
 .u-chip.plain { background: color-mix(in srgb, var(--fg) 7%, var(--surface)); color: var(--muted); }
 
 /* 돌고 있는 세션 — 구분선 대신 카드 사이 간격이 항목을 가른다 */
-.u-sess-item { display: flex; gap: 9px; align-items: flex-start; }
+/* 카드를 누르면 세션 상세 팝업이 열린다 */
+.u-sess-item { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
 .u-sess-mark {
   flex: none; width: 7px; height: 7px; border-radius: 50%;
   margin-top: 6px; background: var(--muted);

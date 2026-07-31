@@ -350,9 +350,9 @@ button:disabled { color: var(--line); cursor: default; }
   background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
 }
 #session-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
-/* 스크롤해도 닫기 버튼은 오른쪽 위에 남는다 */
+/* 스크롤해도 닫기 버튼은 오른쪽 위에 남는다. 아래 여백은 본문이 끌어올려 채움 */
 .modal-close {
-  position: sticky; top: 8px; float: right; margin: 8px 8px 0 0; z-index: 1;
+  display: block; position: sticky; top: 8px; margin: 8px 8px -28px auto; z-index: 1;
   background: none; color: var(--muted); font-size: 19px; line-height: 1; padding: 2px 8px;
 }
 #session-modal-body { padding: 16px 18px 18px; }
@@ -383,8 +383,17 @@ button:disabled { color: var(--line); cursor: default; }
 .session-status { flex-basis: 100%; color: var(--danger); font-size: 13px; margin: 0; }
 .session-status:empty { display: none; }
 .session-log { list-style: none; margin: 0; padding: 0; }
-.session-log > li { padding: 8px 0; border-top: 1px solid var(--line); }
+.session-log > li {
+  display: flex; gap: 7px; align-items: flex-start;
+  padding: 8px 0; border-top: 1px solid var(--line);
+}
 .session-log > li:first-child { border-top: none; }
+.session-log .dlg-badge { flex: none; margin-right: 0; }
+/* 한 발화가 길어도 팝업이 벽 텍스트가 되지 않게. 전문은 툴팁으로 */
+.session-log .text {
+  flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 /* 내 말이 눈에 먼저 들어와야 흐름을 따라갈 수 있다 */
 .session-log > li.user .dlg-badge {
   background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent);

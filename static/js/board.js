@@ -3,7 +3,6 @@ import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { run } from "./main.js";
 import { startSessionPolling } from "./sessions.js";
-import { focusWorkspace } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
 const GROUP_BY_WORKSPACE = "workspace";
@@ -34,7 +33,7 @@ export async function renderBoard() {
   renderGroups(visible.filter((group) => !isComplete(group)));
   renderCompleted(visible.filter(isComplete));
   attachDragHandlers(renderBoard);
-  startSessionPolling(openWorkspace);
+  startSessionPolling();
 }
 
 // 할일이 하나라도 있고 전부 done 이면 카드째 완료 영역으로 내려감
@@ -45,12 +44,6 @@ function isComplete(group) {
 // 미분류는 카테고리가 없으므로 필터를 걸면 숨김
 function inActiveCategory(group) {
   return activeCategoryId === null || group.category_id === activeCategoryId;
-}
-
-function openWorkspace(workspaceId) {
-  // 세션 줄 클릭 → 워크스페이스 탭에서 해당 카드 강조
-  focusWorkspace(workspaceId);
-  document.querySelector('#tabs button[data-tab="workspace"]').click();
 }
 
 function renderNext(next) {
