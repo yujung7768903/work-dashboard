@@ -124,8 +124,9 @@
 .u-chart svg { display: block; overflow: visible; }
 .u-tick { fill: var(--muted); }
 .u-end-label { fill: var(--fg); font-size: 10px; font-weight: 600; }
-/* 휴일 날짜만 분홍. 막대는 모델 색이라 라벨에서만 구분한다 */
-.u-tick.u-holiday { fill: var(--u-holiday); font-weight: 600; }
+/* 휴일 날짜만 분홍. 막대는 모델 색이라 라벨에서만 구분한다.
+   굵기는 건드리지 않는다 — 같은 축 라벨끼리 무게가 달라 보인다 */
+.u-tick.u-holiday { fill: var(--u-holiday); }
 .u-grid { stroke: var(--line); stroke-width: 1; }
 .u-legend { display: flex; gap: 11px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .u-legend > span { display: inline-flex; align-items: center; gap: 5px; }
