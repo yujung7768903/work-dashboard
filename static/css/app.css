@@ -221,16 +221,19 @@ button:disabled { color: var(--line); cursor: default; }
 /* stretch: 같은 행의 두 카드를 더 긴 쪽 높이에 맞춰 아래선을 정렬 */
 #groups, #done-groups { display: grid; gap: var(--gap); align-items: stretch; margin: var(--gap) 0; }
 
-/* overflow hidden: 상단 색 배경이 카드 둥근 모서리를 넘지 않게 */
+/* overflow 를 걸지 않음: 마지막 항목의 케밥 메뉴가 카드 밖으로 펼쳐져야 함 */
 .group {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); overflow: hidden;
+  box-shadow: var(--shadow-card);
 }
 /* 카드 상단 배경은 그 워크스페이스의 카테고리 색 */
+/* 라운딩은 summary 가 직접 가짐. 접혀 있으면 아래 모서리까지 둥글게 */
 .group > summary {
   padding: 12px 14px; cursor: grab; display: flex; justify-content: space-between;
   gap: 8px; background: var(--cat-bg); font-weight: 600;
+  border-radius: var(--r-card);
 }
+.group[open] > summary { border-radius: var(--r-card) var(--r-card) 0 0; }
 .group > summary::marker, .group > summary::-webkit-details-marker { color: var(--muted); }
 .group.unassigned > summary { color: var(--muted); }
 .group-meta { color: var(--muted); font-size: 13px; font-weight: 500; }
@@ -247,7 +250,6 @@ button:disabled { color: var(--line); cursor: default; }
   border-radius: var(--r-pill); color: var(--muted);
 }
 .todo.doing > button:first-child { background: var(--softer); color: var(--accent); }
-.todo > button:not(:first-child) { font-size: 13px; padding: 5px 9px; color: var(--muted); }
 .subtasks { margin: 0; padding: 2px 14px 8px 42px; list-style: none; color: var(--muted); font-size: 14px; }
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
 
@@ -287,7 +289,9 @@ button:disabled { color: var(--line); cursor: default; }
   background: var(--surface); border-radius: var(--r-ctl);
   box-shadow: var(--shadow-pop); min-width: 6em;
 }
-.ws-menu-items button { display: block; width: 100%; text-align: left; background: none; }
+.ws-menu-items button {
+  display: block; width: 100%; text-align: left; background: none; white-space: nowrap;
+}
 
 /* ── 카테고리 ─────────────────────────────────────────────────────────────── */
 #category-list { list-style: none; padding: 0; margin: 0; }
