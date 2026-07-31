@@ -21,6 +21,7 @@
 - 주석은 결정 배경이 아니라 역할·특이사항만. 명사형 또는 음슴체, 한 문장, 마침표 생략 가능.
 - 매직넘버 금지. 상수로 뺀다.
 - 상수 값 (스펙에서 그대로 옮김):
+
   ```python
   DEFAULT_HOST = "127.0.0.1"
   DEFAULT_PORT = 9080
@@ -31,13 +32,14 @@
   WORKSPACE_STATUSES = ("active", "paused", "done")
   ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js")
   ```
+
 - 테스트는 `python3 -m tests` 한 방으로 전부 돈다. 프레임워크 없이 표준 `unittest`.
 - 각 테스트는 임시 DB를 새로 만들어 서로 간섭하지 않는다.
 
 ## File Structure
 
 | 파일 | 책임 |
-|------|------|
+| ------ | ------ |
 | `app/constants.py` | 위 상수 모음. 다른 모듈이 여기서만 가져간다 |
 | `app/db.py` | 연결, WAL·busy_timeout, 스키마 초기화, 시드, 트랜잭션 헬퍼 |
 | `app/errors.py` | `NotFound` / `Conflict` / `Validation` 도메인 예외 |
@@ -70,10 +72,12 @@
 ### Task 1: 기반 — 상수, 예외, DB 스키마, 테스트 러너
 
 **Files:**
+
 - Create: `app/__init__.py`, `app/constants.py`, `app/errors.py`, `app/db.py`
 - Create: `tests/__init__.py`, `tests/__main__.py`, `tests/support.py`, `tests/test_repositories.py`
 
 **Interfaces:**
+
 - Consumes: 없음 (첫 태스크)
 - Produces:
   - `app.db.connect(path: str | None = None) -> sqlite3.Connection` — 스키마 초기화와 시드까지 끝낸 연결
@@ -85,6 +89,7 @@
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/support.py`:
+
 ```python
 """테스트용 임시 DB 픽스처."""
 import os
@@ -102,6 +107,7 @@ def temp_db():
 ```
 
 `tests/test_repositories.py`:
+
 ```python
 import unittest
 
@@ -139,6 +145,7 @@ class SchemaTest(unittest.TestCase):
 ```
 
 `tests/__main__.py`:
+
 ```python
 """python3 -m tests 로 전체 테스트 실행."""
 import sys
@@ -162,6 +169,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app'`
 `app/__init__.py`: 빈 파일.
 
 `app/constants.py`:
+
 ```python
 """프로젝트 전역 상수. 매직넘버는 전부 여기로 모음"""
 import os
@@ -186,6 +194,7 @@ FIRST_SORT_ORDER = 1
 ```
 
 `app/errors.py`:
+
 ```python
 """도메인 예외. HTTP 계층이 타입만 보고 상태 코드를 정함"""
 
@@ -207,6 +216,7 @@ class Validation(DomainError):
 ```
 
 `app/db.py`:
+
 ```python
 """sqlite 연결과 스키마. 다른 모듈은 connect() 만 씀"""
 import os
@@ -333,10 +343,12 @@ git commit -m "feat: DB 스키마·상수·도메인 예외와 테스트 러너 
 ### Task 2: ordering.py — sort_order 계산과 재부여
 
 **Files:**
+
 - Create: `app/ordering.py`
 - Modify: `tests/test_repositories.py` (OrderingTest 추가)
 
 **Interfaces:**
+
 - Consumes: `app.db.transaction`, `app.errors.Validation`, `app.constants.FIRST_SORT_ORDER`
 - Produces:
   - `next_order(con, table: str, where: str, params: tuple) -> int` — 해당 범위의 마지막+1
@@ -345,6 +357,7 @@ git commit -m "feat: DB 스키마·상수·도메인 예외와 테스트 러너 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_repositories.py`에 추가:
+
 ```python
 from app import ordering
 from app.errors import Validation
@@ -401,6 +414,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.ordering'`
 - [ ] **Step 3: 최소 구현**
 
 `app/ordering.py`:
+
 ```python
 """sort_order 공통 처리. 재정렬은 범위 전체를 1..N 으로 통째 재부여"""
 from app.constants import FIRST_SORT_ORDER
@@ -448,10 +462,12 @@ git commit -m "feat: sort_order 계산·재부여 공통 모듈 추가"
 ### Task 3: categories repository
 
 **Files:**
+
 - Create: `app/repositories/__init__.py`, `app/repositories/categories.py`
 - Modify: `tests/test_repositories.py` (CategoryRepoTest 추가)
 
 **Interfaces:**
+
 - Consumes: `app.ordering`, `app.db`, `app.errors`
 - Produces:
   - `create(con, name: str) -> dict`
@@ -531,6 +547,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.repositories'`
 `app/repositories/__init__.py`: 빈 파일.
 
 `app/repositories/categories.py`:
+
 ```python
 """카테고리 저장·조회. 비어 있을 때만 삭제 허용"""
 from app import ordering
@@ -644,10 +661,12 @@ git commit -m "feat: 카테고리 repository 추가 (비어 있을 때만 삭제
 삭제와 카테고리 변경 동기화는 할일 repository가 필요하므로 Task 7로 분리한다.
 
 **Files:**
+
 - Create: `app/repositories/workspaces.py`
 - Modify: `tests/test_repositories.py` (WorkspaceRepoTest 추가)
 
 **Interfaces:**
+
 - Consumes: `app.repositories.categories.get`, `app.ordering`, `app.db`
 - Produces:
   - `create(con, category_id, name, **fields) -> dict` — fields: `background`, `purpose`, `goal`, `considerations`, `jira_id`
@@ -747,6 +766,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.repositories.works
 - [ ] **Step 3: 최소 구현**
 
 `app/repositories/workspaces.py`:
+
 ```python
 """워크스페이스 저장·조회. sort_order 는 카테고리를 가로지르는 전역 순위"""
 from app import ordering
@@ -867,10 +887,12 @@ git commit -m "feat: 워크스페이스 repository CRUD 추가"
 ### Task 5: todos repository
 
 **Files:**
+
 - Create: `app/repositories/todos.py`
 - Modify: `tests/test_repositories.py` (TodoRepoTest 추가)
 
 **Interfaces:**
+
 - Consumes: `app.repositories.categories.get`, `app.repositories.workspaces.get`, `app.ordering`
 - Produces:
   - `create(con, title, category_id=None, workspace_id=None, note=None) -> dict`
@@ -993,6 +1015,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.repositories.todos
 - [ ] **Step 3: 최소 구현**
 
 `app/repositories/todos.py`:
+
 ```python
 """할일 저장·조회. 워크스페이스 배정 시 카테고리 동기화가 여기서 강제됨"""
 from app import ordering
@@ -1175,10 +1198,12 @@ git commit -m "feat: 할일 repository 추가 (카테고리 동기화·completed
 ### Task 6: subtasks repository
 
 **Files:**
+
 - Create: `app/repositories/subtasks.py`
 - Modify: `tests/test_repositories.py` (SubtaskRepoTest 추가)
 
 **Interfaces:**
+
 - Consumes: `app.repositories.todos.get`, `app.ordering`
 - Produces:
   - `create(con, todo_id, title) -> dict`
@@ -1235,6 +1260,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.repositories.subta
 - [ ] **Step 3: 최소 구현**
 
 `app/repositories/subtasks.py`:
+
 ```python
 """하위할일 저장·조회. 할일에 종속"""
 from app import ordering
@@ -1337,10 +1363,12 @@ git commit -m "feat: 하위할일 repository 추가"
 ### Task 7: workspaces 삭제와 카테고리 변경 동기화
 
 **Files:**
+
 - Modify: `app/repositories/workspaces.py`
 - Modify: `tests/test_repositories.py` (WorkspaceLifecycleTest 추가)
 
 **Interfaces:**
+
 - Consumes: `app.repositories.todos.demote_by_workspace`, `app.repositories.todos.sync_category`
 - Produces:
   - `delete(con, workspace_id) -> None` — 소속 할일은 미분류로 강등
@@ -1392,11 +1420,13 @@ Expected: FAIL — `AttributeError: module 'app.repositories.workspaces' has no 
 - [ ] **Step 3: 최소 구현**
 
 `app/repositories/workspaces.py` 수정 — `EDITABLE_FIELDS`에 `category_id` 추가:
+
 ```python
 EDITABLE_FIELDS = ("name", "status", "category_id") + OPTIONAL_FIELDS
 ```
 
 `_validated_assignments`에 카테고리 존재 확인 추가:
+
 ```python
 def _validated_assignments(fields):
     assignments = {}
@@ -1414,6 +1444,7 @@ def _validated_assignments(fields):
 ```
 
 위 형태는 연결 객체를 못 받아 어색하므로, `_validated_assignments`가 `con`을 받도록 시그니처를 바꾼다. `update` 안의 호출부도 함께 고친다:
+
 ```python
 def update(con, workspace_id, **fields):
     get(con, workspace_id)
@@ -1448,6 +1479,7 @@ def _validated_assignments(con, fields):
 ```
 
 `delete`와 지연 import 헬퍼 추가:
+
 ```python
 def delete(con, workspace_id):
     """소속 할일은 미분류로 강등하고 워크스페이스만 지움. 데이터 손실 없음"""
@@ -1481,14 +1513,17 @@ git commit -m "feat: 워크스페이스 삭제 시 할일 강등, 카테고리 �
 ### Task 8: board service — 그룹핑 트리
 
 **Files:**
+
 - Create: `app/services/__init__.py`, `app/services/board.py`
 - Create: `tests/test_services.py`
 
 **Interfaces:**
+
 - Consumes: 모든 repository
 - Produces:
   - `GROUP_BY_WORKSPACE = "workspace"`, `GROUP_BY_CATEGORY = "category"`, `GROUP_BY_CHOICES`
   - `tree(con, group_by: str) -> dict`
+
     ```python
     {
       "group_by": "workspace",
@@ -1514,6 +1549,7 @@ git commit -m "feat: 워크스페이스 삭제 시 할일 강등, 카테고리 �
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_services.py`:
+
 ```python
 import unittest
 
@@ -1594,6 +1630,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.services'`
 `app/services/__init__.py`: 빈 파일.
 
 `app/services/board.py`:
+
 ```python
 """보드 그룹핑 트리 조립. 여러 엔티티에 걸치므로 service 계층"""
 from app.constants import STATUS_DONE, UNASSIGNED_LABEL
@@ -1708,10 +1745,12 @@ git commit -m "feat: 보드 그룹핑 트리 service 추가"
 ### Task 9: planning service — next, done_on
 
 **Files:**
+
 - Create: `app/services/planning.py`
 - Modify: `tests/test_services.py` (PlanningTest 추가)
 
 **Interfaces:**
+
 - Consumes: `app.repositories.workspaces.list_all`, `app.repositories.todos`
 - Produces:
   - `today_text() -> str` — 로컬 기준 `YYYY-MM-DD`
@@ -1795,6 +1834,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.services.planning'
 - [ ] **Step 3: 최소 구현**
 
 `app/services/planning.py`:
+
 ```python
 """다음에 할 일 선정과 완료분 집계"""
 from datetime import datetime, timezone
@@ -1871,14 +1911,17 @@ git commit -m "feat: next·done-today 계획 service 추가"
 ### Task 10: dash.py CLI 진입점
 
 **Files:**
+
 - Create: `dash.py`
 - Create: `tests/test_cli.py`
 
 **Interfaces:**
+
 - Consumes: 모든 repository와 service
 - Produces: `main(argv: list[str] | None = None) -> int` — 도메인 예외는 stderr + 종료코드 1
 
 **명령 목록 (스펙과 일치):**
+
 ```
 ls [--group-by workspace|category] [--json]
 next [--json]
@@ -1897,6 +1940,7 @@ done-today [--date YYYY-MM-DD] [--json]
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_cli.py`:
+
 ```python
 import io
 import json
@@ -1985,6 +2029,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'dash'`
 - [ ] **Step 3: 최소 구현**
 
 `dash.py`:
+
 ```python
 #!/usr/bin/env python3
 """작업 대시보드 CLI. 파싱·위임·출력만 하고 도메인 로직은 갖지 않음"""
@@ -2251,10 +2296,12 @@ git commit -m "feat: CLI 진입점 추가"
 ### Task 11: server.py HTTP 진입점
 
 **Files:**
+
 - Create: `server.py`
 - Create: `tests/test_static.py`
 
 **Interfaces:**
+
 - Consumes: 모든 repository와 service
 - Produces:
   - `status_for(error) -> int` — 도메인 예외 타입 → HTTP 상태 코드
@@ -2263,6 +2310,7 @@ git commit -m "feat: CLI 진입점 추가"
   - `Handler`, `main(argv=None)`
 
 **엔드포인트 (스펙과 일치):**
+
 ```
 GET    /api/tree?group_by=workspace|category
 GET    /api/next
@@ -2287,6 +2335,7 @@ POST   /api/reorder                   {kind, scope_id?, ids}
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_static.py`:
+
 ```python
 import os
 import tempfile
@@ -2363,6 +2412,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'server'`
 - [ ] **Step 3: 최소 구현**
 
 `server.py`:
+
 ```python
 #!/usr/bin/env python3
 """작업 대시보드 HTTP 진입점. 라우팅과 직렬화만 담당"""
@@ -2626,6 +2676,7 @@ curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"임시"}' \
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8099/../server.py
 kill %1
 ```
+
 Expected: 트리 JSON, 생성된 카테고리 JSON, traversal 요청은 404
 
 - [ ] **Step 6: 커밋**
@@ -2640,9 +2691,11 @@ git commit -m "feat: HTTP 진입점과 정적 파일 경로 방어 추가"
 ### Task 12: 프론트엔드 골격 — index.html, app.css, api.js, main.js
 
 **Files:**
+
 - Create: `static/index.html`, `static/css/app.css`, `static/js/api.js`, `static/js/main.js`
 
 **Interfaces:**
+
 - Consumes: `/api/*`
 - Produces:
   - `api.js`: `getTree(groupBy)`, `getNext()`, `getDoneToday(date)`, `getCategories()`, `getWorkspace(id)`, `createCategory(name)`, `renameCategory(id, name)`, `deleteCategory(id)`, `createWorkspace(fields)`, `updateWorkspace(id, fields)`, `deleteWorkspace(id)`, `createTodo(fields)`, `updateTodo(id, fields)`, `deleteTodo(id)`, `createSubtask(todoId, title)`, `updateSubtask(id, fields)`, `deleteSubtask(id)`, `reorder(kind, ids, scopeId)`
@@ -2651,6 +2704,7 @@ git commit -m "feat: HTTP 진입점과 정적 파일 경로 방어 추가"
 - [ ] **Step 1: 마크업 작성**
 
 `static/index.html`:
+
 ```html
 <!DOCTYPE html>
 <html lang="ko">
@@ -2712,6 +2766,7 @@ git commit -m "feat: HTTP 진입점과 정적 파일 경로 방어 추가"
 - [ ] **Step 2: 스타일 작성**
 
 `static/css/app.css`:
+
 ```css
 :root {
   --bg: #fbfbfa;
@@ -2776,6 +2831,7 @@ button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; b
 - [ ] **Step 3: API 래퍼 작성**
 
 `static/js/api.js`:
+
 ```javascript
 // 서버 통신 전담. 다른 모듈은 fetch 를 직접 부르지 않음
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -2825,6 +2881,7 @@ export const reorder = (kind, ids, scopeId) =>
 - [ ] **Step 4: 탭 전환과 초기 로드 작성**
 
 `static/js/main.js`:
+
 ```javascript
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
 import { renderBoard } from "./board.js";
@@ -2880,6 +2937,7 @@ curl -s -o /dev/null -w '%{http_code} ' http://127.0.0.1:8099/css/app.css
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8099/js/api.js
 kill %1
 ```
+
 Expected: `200 200 200`
 
 - [ ] **Step 6: 커밋**
@@ -2894,15 +2952,18 @@ git commit -m "feat: 프론트엔드 골격과 API 래퍼 추가"
 ### Task 13: board.js — 보드 렌더, 빠른 추가, 상태 토글, 오늘 완료
 
 **Files:**
+
 - Create: `static/js/dnd.js` (자리만), `static/js/board.js`
 
 **Interfaces:**
+
 - Consumes: `api.js`, `main.js`의 `run`, `dnd.js`의 `attachDragHandlers(refresh)`
 - Produces: `renderBoard()`, `currentGroupBy()`
 
 - [ ] **Step 1: dnd.js 자리 만들기**
 
 `static/js/dnd.js`:
+
 ```javascript
 // 드래그 재정렬·이동. Task 14 에서 구현
 export function attachDragHandlers() {}
@@ -3085,6 +3146,7 @@ WORK_DASHBOARD_DB=/tmp/smoke.db python3 dash.py add-workspace 개발 "KT 동시�
 WORK_DASHBOARD_DB=/tmp/smoke.db python3 dash.py add-todo "락 초안" --workspace 1
 WORK_DASHBOARD_DB=/tmp/smoke.db python3 server.py --port 8099
 ```
+
 브라우저에서 `http://127.0.0.1:8099` 확인: 다음에 할 일 한 줄, 그룹과 할일 표시, 상태 버튼 순환, 빠른 추가로 미분류 생성, 그룹핑 라디오 전환, 오늘 완료 건수.
 
 - [ ] **Step 4: 커밋**
@@ -3099,9 +3161,11 @@ git commit -m "feat: 보드 렌더·빠른추가·상태토글·오늘완료 추
 ### Task 14: dnd.js — 드래그 재정렬과 워크스페이스 이동
 
 **Files:**
+
 - Modify: `static/js/dnd.js`
 
 **Interfaces:**
+
 - Consumes: `api.reorder`, `api.updateTodo`, `board.js`의 `currentGroupBy`, `main.js`의 `run`
 - Produces: `attachDragHandlers(refresh)` — 렌더 후 호출되어 현재 DOM에 리스너를 붙인다
 
@@ -3227,12 +3291,14 @@ git commit -m "feat: 드래그 재정렬과 워크스페이스 이동 추가"
 Task 14에서 드러난 문제를 여기서 함께 해결한다. 보드 트리는 빈 워크스페이스를 숨기므로 워크스페이스 목록을 트리에서 뽑을 수 없다. 전용 엔드포인트를 추가한다.
 
 **Files:**
+
 - Modify: `server.py` (`GET /api/workspaces` 추가)
 - Modify: `tests/test_static.py` (RouteTest에 케이스 추가)
 - Create: `static/js/workspace.js`
 - Modify: `static/js/dnd.js` (전체 목록 기준 재정렬로 교체)
 
 **Interfaces:**
+
 - Produces:
   - `GET /api/workspaces` → `list[dict]` — 전역 sort_order 순 전체 목록
   - `api.js`의 `getWorkspaces()` (Task 12의 `api.js`에 한 줄 추가)
@@ -3241,6 +3307,7 @@ Task 14에서 드러난 문제를 여기서 함께 해결한다. 보드 트리�
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_static.py`의 `RouteTest`에 추가:
+
 ```python
     def test_workspaces_list_endpoint(self):
         from app.repositories import categories as category_repo
@@ -3260,6 +3327,7 @@ Expected: FAIL — `NotFound: 알 수 없는 엔드포인트`
 - [ ] **Step 3: 서버에 목록 엔드포인트 추가**
 
 `server.py`의 `_route_get` 안에서 `workspaces` 처리를 아래로 교체:
+
 ```python
     if head == "workspaces":
         if item_id:
@@ -3278,6 +3346,7 @@ Expected: PASS (91 tests)
 - [ ] **Step 5: api.js에 한 줄 추가**
 
 `static/js/api.js`의 `getWorkspace` 아래에 추가:
+
 ```javascript
 export const getWorkspaces = () => request("GET", "/workspaces");
 ```
@@ -3467,9 +3536,11 @@ git commit -m "feat: 워크스페이스 목록 API와 상세 편집 추가, 재�
 ### Task 16: categories.js — 카테고리 관리와 워크스페이스 생성
 
 **Files:**
+
 - Create: `static/js/categories.js`
 
 **Interfaces:**
+
 - Consumes: `api.js`, `main.js`의 `run`
 - Produces: `renderCategories()`
 
@@ -3584,6 +3655,7 @@ git commit -m "feat: 카테고리 관리와 워크스페이스 생성 추가"
 ### Task 17: README
 
 **Files:**
+
 - Create: `README.md`
 
 - [ ] **Step 1: README 작성**
@@ -3663,7 +3735,7 @@ git commit -m "docs: README 추가"
 **1. 스펙 커버리지**
 
 | 스펙 요구 | 담당 태스크 |
-|-----------|-------------|
+| ----------- | ------------- |
 | 4계층 CRUD | 3, 4, 5, 6, 7 |
 | 워크스페이스 기준 / 카테고리 기준 그룹핑 | 8 |
 | 배경·목적·목표·추가 고려사항 | 4, 15 |
