@@ -1,5 +1,6 @@
 /* 사용량 화면 전용. 토큰은 app.css 가 정의하고 여기서는 쓰기만 한다.
-   클래스는 모두 u- 접두어라 다른 탭과 섞이지 않는다 */
+   클래스는 모두 u- 접두어라 다른 탭과 섞이지 않는다.
+   app.css 와 같은 규칙: font-size·padding·margin·gap·border-radius 는 토큰만 */
 
 /* app.css 에 아직 없을 수 있는 토큰의 대체값. app.css 가 값을 주면 그쪽이 이긴다.
    accent·fg 에서 섞어 만들므로 팔레트를 바꿔도 같이 따라온다 */
@@ -10,24 +11,25 @@
   --u-good: var(--good, #1a9d6a);
   --u-warn: var(--warn, #d8931f);
   --u-holiday: var(--holiday, #e0629a);
-  /* 시안 기준 14px. app.css 본문 15px 을 그대로 쓰면 카드 안 위계가 눌린다 */
-  font-size: 14px;
+  /* 카드 제목이 --fs-body(15px) 이므로 이 화면 본문은 한 단 아래를 기본으로 쓴다.
+     15px 을 그대로 쓰면 카드 안 위계가 눌린다 */
+  font-size: var(--fs-sm);
 }
 
 /* ── 상단 스트립 ── */
 .u-top {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: var(--sp-12);
   margin-bottom: var(--gap); flex-wrap: wrap;
 }
 .u-plan {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: var(--sp-4);
+  font-size: var(--fs-micro); font-weight: 600;
   background: var(--u-softer); color: var(--accent);
-  padding: 5px 11px; border-radius: var(--r-pill);
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
 }
 .u-plan i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.u-stamp { font-size: 12px; color: var(--muted); }
-.u-stale { font-size: 12px; font-weight: 600; color: var(--u-warn); }
+.u-stamp { color: var(--muted); }
+.u-stale { font-weight: 600; color: var(--u-warn); }
 .u-top .u-caption { margin: 0; }
 
 /* ── 최상위: 본문 + 우측 레일 ──
@@ -57,35 +59,43 @@
 /* ── 카드 ── */
 .u-card {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); padding: 15px 17px;
+  box-shadow: var(--shadow-card); padding: var(--pad-card);
 }
 /* 값이 없는 창은 면을 한 단계 눌러 "빈 자리"임을 알린다 */
 .u-card.u-dim { background: color-mix(in srgb, var(--surface) 92%, var(--bg)); }
 .u-card-head {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; margin-bottom: 8px; flex-wrap: wrap;
+  gap: var(--sp-12); margin-bottom: var(--sp-12); flex-wrap: wrap;
 }
-.u-card-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
-.u-card-head h2 span { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 5px; }
+.u-card-head h2 {
+  margin: 0; font-size: var(--fs-body); line-height: var(--lh-heading);
+  font-weight: 700; letter-spacing: -0.02em;
+}
+.u-card-head h2 span {
+  font-size: var(--fs-sm); font-weight: 400; color: var(--muted); margin-left: var(--sp-4);
+}
 
 /* ── 한도 카드 ── */
-.u-lim-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.u-lim-label { font-size: 12px; font-weight: 500; letter-spacing: 0.01em; color: var(--muted); }
+.u-lim-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-8); }
+.u-lim-label { font-weight: 500; letter-spacing: 0.01em; color: var(--muted); }
 .u-round {
-  width: 26px; height: 26px; flex: none; border-radius: 50%;
+  width: var(--icon-box); height: var(--icon-box); flex: none; border-radius: 50%;
   background: var(--u-softer); display: grid; place-items: center; color: var(--accent);
 }
+/* 값은 왼쪽, 증감은 오른쪽 끝. 증감이 없는 카드도 이 줄을 그려 높이를 맞춘다 */
+.u-lim-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-8); }
+.u-lim-row .u-delta { margin: 0; display: inline-flex; align-items: baseline; gap: var(--sp-2); }
 .u-lim-value {
-  margin: 10px 0 0; font-size: 32px; font-weight: 700;
-  letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums;
+  margin: var(--sp-12) 0 0; font-size: var(--fs-display); font-weight: 700;
+  letter-spacing: -0.03em; line-height: var(--lh-tight); font-variant-numeric: tabular-nums;
 }
 .u-lim-value small {
-  font-size: 15px; font-weight: 600; color: var(--muted);
-  margin-left: 2px; letter-spacing: -0.01em;
+  font-size: var(--fs-body); font-weight: 600; color: var(--muted);
+  margin-left: var(--sp-2); letter-spacing: -0.01em;
 }
 .u-lim-value.u-lim-empty { color: var(--muted); font-weight: 600; }
 .u-track {
-  margin-top: 11px; height: 6px; border-radius: var(--r-pill);
+  margin-top: var(--sp-12); height: 6px; border-radius: var(--r-pill);
   background: var(--u-softer); overflow: hidden;
 }
 .u-track i { display: block; height: 100%; border-radius: var(--r-pill); background: var(--accent); }
@@ -93,53 +103,60 @@
 .u-track i.u-crit { background: var(--danger); }
 /* 초기화까지 남은 시간은 카드 안에 둔다 — 별도 패널을 없앴다 */
 .u-reset {
-  margin: 9px 0 0; display: flex; align-items: baseline; gap: 6px;
-  flex-wrap: wrap; font-size: 12px; color: var(--muted);
+  margin: var(--sp-8) 0 0; display: flex; align-items: baseline; gap: var(--sp-4);
+  flex-wrap: wrap; color: var(--muted);
 }
 .u-reset b { font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
 .u-flag {
-  display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px;
+  display: inline-block; font-size: var(--fs-micro); font-weight: 600;
+  padding: var(--sp-2) var(--sp-8);
   border-radius: var(--r-pill); background: var(--u-softer); color: var(--muted);
 }
 
 /* ── 오늘 토큰 ── */
 .u-today-value {
-  margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.03em;
-  line-height: 1.1; font-variant-numeric: tabular-nums;
+  margin: 0; font-size: var(--fs-display); font-weight: 700; letter-spacing: -0.03em;
+  line-height: var(--lh-tight); font-variant-numeric: tabular-nums;
 }
-.u-today-value small { font-size: 15px; font-weight: 600; color: var(--muted); margin-left: 2px; }
-.u-delta { margin: 5px 0 12px; font-size: 12px; color: var(--muted); }
+.u-today-value small {
+  font-size: var(--fs-body); font-weight: 600; color: var(--muted); margin-left: var(--sp-2);
+}
+.u-delta { margin: var(--sp-4) 0 var(--sp-12); color: var(--muted); }
 .u-delta b { font-weight: 700; }
 .u-delta.up b { color: var(--danger); }
 .u-delta.down b { color: var(--u-good); }
+/* 변화 없음. 값이 안 잡힌 것과 구분되게 자리는 채우고 색은 죽인다 */
+.u-delta.flat b { color: var(--muted); font-weight: 600; }
 .u-rows { display: flex; flex-direction: column; }
 .u-rows > div {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-  padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-12);
+  padding: var(--sp-8) 0; border-top: 1px solid var(--line);
 }
 .u-rows span { color: var(--muted); }
 .u-rows b { font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ── 차트 공통 ── */
+/* 눈금 글자 크기는 chart.js 의 AXIS_FONT 가 정한다 — 좌표 계산에 쓰이기 때문 */
 .u-chart svg { display: block; overflow: visible; }
 .u-tick { fill: var(--muted); }
-.u-end-label { fill: var(--fg); font-size: 10px; font-weight: 600; }
+/* 끝점 라벨도 눈금과 같은 --fs-micro. 굵기로만 구분한다 */
+.u-end-label { fill: var(--fg); font-size: var(--fs-micro); font-weight: 600; }
 /* 휴일 날짜만 분홍. 막대는 모델 색이라 라벨에서만 구분한다.
    굵기는 건드리지 않는다 — 같은 축 라벨끼리 무게가 달라 보인다 */
 .u-tick.u-holiday { fill: var(--u-holiday); }
 .u-grid { stroke: var(--line); stroke-width: 1; }
-.u-legend { display: flex; gap: 11px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
-.u-legend > span { display: inline-flex; align-items: center; gap: 5px; }
-.u-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
-.u-caption { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.u-legend { display: flex; gap: var(--sp-12); color: var(--muted); flex-wrap: wrap; }
+.u-legend > span { display: inline-flex; align-items: center; gap: var(--sp-4); }
+.u-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.u-caption { margin: var(--sp-8) 0 0; color: var(--muted); }
 .u-empty {
-  margin: 6px 0 0; font-size: 12px; color: var(--muted);
-  padding: 18px 0; text-align: center;
+  margin: var(--sp-8) 0 0; color: var(--muted);
+  padding: var(--sp-20) 0; text-align: center;
 }
 
 /* ── 차트 호버: 기준선 + 툴팁 ──
    숨김은 visibility 로만 한다 — display:none 이면 툴팁 폭을 못 재서 첫 호버에서
-   좌/우 뒤집기 판단이 틀린다. 토큰이 아직 없는 상태에서도 서게 fallback 을 둔다 */
+   좌/우 뒤집기 판단이 틀린다 */
 .u-chart { position: relative; }
 .u-hover, .u-tip { visibility: hidden; }
 .u-chart.u-hovering .u-hover, .u-chart.u-hovering .u-tip { visibility: visible; }
@@ -152,25 +169,25 @@
   min-width: 150px; max-width: 240px;
   background: var(--surface); border-radius: var(--r-ctl);
   box-shadow: var(--shadow-card), 0 6px 16px rgba(27, 29, 41, 0.1);
-  padding: var(--sp-8, 8px) var(--sp-12, 11px);
-  font-size: var(--fs-micro, 11px);
+  padding: var(--sp-8) var(--sp-12);
+  font-size: var(--fs-sm);
 }
 .u-tip-head {
-  margin: 0 0 var(--sp-4, 4px); color: var(--muted); font-variant-numeric: tabular-nums;
+  margin: 0 0 var(--sp-4); color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .u-tip-row {
   display: flex; align-items: baseline; justify-content: space-between;
-  gap: var(--sp-12, 12px); padding: var(--sp-2, 2px) 0;
+  gap: var(--sp-12); padding: var(--sp-2) 0;
 }
 .u-tip-row b { font-weight: 700; font-variant-numeric: tabular-nums; }
-.u-tip-name { display: inline-flex; align-items: center; gap: var(--sp-4, 5px); color: var(--muted); }
+.u-tip-name { display: inline-flex; align-items: center; gap: var(--sp-4); color: var(--muted); }
 /* 합계는 시리즈가 아니라 표본 전체라 선으로 가른다 */
 .u-tip-total {
   border-bottom: 1px solid var(--line);
-  padding-bottom: var(--sp-4, 4px); margin-bottom: var(--sp-2, 2px);
+  padding-bottom: var(--sp-4); margin-bottom: var(--sp-2);
 }
 .u-tip-total .u-tip-name { color: var(--fg); font-weight: 600; }
-.u-tip-foot { margin: var(--sp-4, 4px) 0 0; color: var(--muted); }
+.u-tip-foot { margin: var(--sp-4) 0 0; color: var(--muted); }
 
 /* 시리즈 색. SVG 속성이 아니라 클래스가 색을 정해야 테마 전환이 따라온다 */
 .u-c-opus, .u-c-five { --u-hue: var(--accent); }
@@ -184,84 +201,98 @@
 .u-swatch { background: var(--u-hue); }
 .u-donut-total { fill: var(--fg); }
 
-.u-donut-wrap { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.u-donut-legend { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
-.u-donut-legend > span { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+/* 도넛은 가운데, 범례는 오른쪽 끝. 카드가 좁아도 범례를 아래로 접지 않고
+   도넛(viewBox 를 가진 SVG)이 남는 폭만큼 줄어든다 */
+.u-donut-wrap {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--sp-12); flex-wrap: nowrap;
+}
+.u-donut-wrap > svg { flex: 0 1 auto; min-width: 0; height: auto; }
+.u-donut-legend { flex: none; display: flex; flex-direction: column; gap: var(--sp-8); }
+.u-donut-legend > span { display: flex; align-items: center; gap: var(--sp-8); color: var(--muted); }
 .u-donut-legend b { color: var(--fg); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* ── 표로 보기 ── */
-.u-table-box { overflow-x: auto; margin-top: 8px; }
-.u-table-box table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.u-table-box { overflow-x: auto; margin-top: var(--sp-8); }
+.u-table-box table { width: 100%; border-collapse: collapse; }
 .u-table-box th, .u-table-box td {
-  padding: 5px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line);
+  padding: var(--sp-4) var(--sp-8); text-align: right; white-space: nowrap;
+  border-bottom: 1px solid var(--line);
 }
 .u-table-box th { color: var(--muted); font-weight: 500; }
 .u-table-box th:first-child, .u-table-box td:first-child { text-align: left; }
 .u-table-box tr:last-child td { border-bottom: 0; }
 .u-table-box td.u-num { font-variant-numeric: tabular-nums; }
-.u-card details > summary { cursor: pointer; font-size: 12px; color: var(--muted); margin-top: 10px; }
-.u-card details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 초점 링은 app.css 의 전역 :focus-visible 이 그린다 — 여기서 따로 정의하지 않는다 */
+.u-card details > summary { cursor: pointer; color: var(--muted); margin-top: var(--sp-12); }
 
 /* ── 우측 레일 ──
    레일 전체를 회색 판으로 깔아 왼쪽 모니터링 영역과 분리한다.
    섹션 라벨은 판 위에 그냥 얹고, 항목만 흰 카드로 세운다 */
 .u-rail {
   background: var(--u-rail); border-radius: var(--r-card);
-  padding: 16px 14px; display: flex; flex-direction: column; gap: 20px;
+  padding: var(--pad-card); display: flex; flex-direction: column; gap: var(--sp-20);
 }
-.u-rail-section { display: flex; flex-direction: column; gap: 9px; }
-.u-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.u-rail-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
-.u-rail-head span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.u-rail-section { display: flex; flex-direction: column; gap: var(--sp-8); }
+.u-rail-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-8); }
+.u-rail-head h2 {
+  margin: 0; font-size: var(--fs-body); line-height: var(--lh-heading);
+  font-weight: 700; letter-spacing: -0.02em;
+}
+.u-rail-head span { color: var(--muted); font-weight: 600; }
 .u-rail-head button {
   background: none; box-shadow: none; padding: 0; cursor: pointer;
-  font-size: 12px; font-weight: 600; color: var(--accent);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--accent);
 }
 .u-rail-head button:hover { text-decoration: underline; }
-.u-rail-head button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 카드 안의 카드라 둥글기·여백을 한 단 낮춘다 */
 .u-rail-card {
   background: var(--surface); box-shadow: var(--shadow-card);
-  border-radius: 10px; padding: 11px 13px;
+  border-radius: var(--r-ctl); padding: var(--sp-12);
 }
 
 /* 다음 할일 — 시안의 날짜 배지 자리에 Jira 배지를 둔다 */
-.u-next-item { display: flex; gap: 11px; align-items: flex-start; }
+.u-next-item { display: flex; gap: var(--sp-12); align-items: flex-start; }
 .u-next-badge {
-  flex: none; padding: 6px 9px; border-radius: var(--r-ctl); text-align: center;
-  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; line-height: 1.25;
+  flex: none; padding: var(--sp-8); border-radius: var(--r-ctl); text-align: center;
+  background: var(--accent); color: #fff;
+  font-size: var(--fs-micro); font-weight: 700; line-height: var(--lh-heading);
 }
 .u-next-body { min-width: 0; }
-.u-next-body p { margin: 0; font-size: 14px; font-weight: 600; }
-.u-next-body small { font-size: 12px; color: var(--muted); }
-.u-next-meta { margin-top: 9px; display: flex; gap: 6px; flex-wrap: wrap; }
+.u-next-body p { margin: 0; font-size: var(--fs-body); font-weight: 600; }
+.u-next-body small { color: var(--muted); }
+.u-next-meta { margin-top: var(--sp-8); display: flex; gap: var(--sp-4); flex-wrap: wrap; }
 .u-chip {
-  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: var(--r-pill);
+  font-size: var(--fs-micro); font-weight: 600;
+  padding: var(--sp-4) var(--sp-8); border-radius: var(--r-pill);
   background: var(--u-softer); color: var(--accent);
 }
 .u-chip.plain { background: color-mix(in srgb, var(--fg) 7%, var(--surface)); color: var(--muted); }
 
 /* 돌고 있는 세션 — 구분선 대신 카드 사이 간격이 항목을 가른다 */
-.u-sess-item { display: flex; gap: 9px; align-items: flex-start; }
+/* 카드를 누르면 세션 상세 팝업이 열린다 */
+.u-sess-item { display: flex; gap: var(--sp-8); align-items: flex-start; cursor: pointer; }
 .u-sess-mark {
-  flex: none; width: 7px; height: 7px; border-radius: 50%;
-  margin-top: 6px; background: var(--muted);
+  flex: none; width: 8px; height: 8px; border-radius: 50%;
+  margin-top: var(--sp-4); background: var(--muted);
 }
 .u-sess-item.working .u-sess-mark { background: var(--u-good); }
 /* flex:1 이 없으면 지시가 짧은 카드는 본문이 내용 폭으로 줄어들고,
    그러면 오른쪽 끝에 붙어야 할 경과 시간이 이름 바로 뒤로 따라온다 */
 .u-sess-body { min-width: 0; flex: 1; }
-.u-sess-scope { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; font-size: 13px; font-weight: 600; }
-.u-sess-scope span { font-weight: 400; color: var(--muted); font-size: 12px; }
-/* 마지막 수행 시각까지의 경과. 오른쪽 끝에 붙여 이름과 섞이지 않게 한다 */
-.u-sess-ago { margin-left: auto; font-variant-numeric: tabular-nums; }
+.u-sess-scope { display: flex; align-items: baseline; gap: var(--sp-4); flex-wrap: wrap; font-weight: 600; }
+.u-sess-scope span { font-weight: 400; color: var(--muted); }
+/* 마지막 수행 시각까지의 경과. 오른쪽 끝에 붙여 이름과 섞이지 않게 한다.
+   보드 세션 목록의 .age 와 같은 표기 — --fs-micro + muted.
+   값이 없어도 폭을 잡아둬 줄마다 오른쪽 끝이 흔들리지 않게 한다 */
+.u-sess-ago {
+  margin-left: auto; font-size: var(--fs-micro); font-weight: 400;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+  min-width: 3.2em; text-align: right; flex: none;
+}
 /* 마지막 지시는 두 줄까지. 길면 잘라야 레일이 무너지지 않는다 */
 .u-sess-prompt {
-  margin: 2px 0 0; font-size: 12px; color: var(--muted);
+  margin: var(--sp-2) 0 0; color: var(--muted);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.u-sess-warn { margin: 2px 0 0; font-size: 12px; color: var(--u-warn); font-weight: 600; }
-
-/* 다크에서는 --accent 가 밝은 쪽으로 뒤집혀 흰 글자가 뜨지 않는다.
-   app.css 의 #quick-submit 과 같은 처리 */
-@media (prefers-color-scheme: dark) {
-}
+.u-sess-warn { margin: var(--sp-2) 0 0; color: var(--u-warn); font-weight: 600; }

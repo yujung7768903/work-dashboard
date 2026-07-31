@@ -2,6 +2,7 @@
 // 모든 숫자는 실측이며, 못 가져온 창은 값을 만들지 않고 "미수집"으로 남긴다.
 import * as api from "./api.js";
 import { compact, donutChart, percentLineChart, stackedColumnChart, thousands } from "./chart.js";
+import { openSessionDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 60_000; // 5시간 창은 전력으로 써도 분당 0.3%대로 움직인다
 const MIN_TREND_POINTS = 2;
@@ -122,13 +123,18 @@ function limitCard(spec, usage) {
   head.append(tag("span", "u-lim-label", found ? found.title : spec.label), arrowMark());
   card.appendChild(head);
 
+  // 값 줄 · 게이지 · 하단 줄 세 단으로 고정한다. 수집 안 된 창도 같은 세 단을
+  // 그리고 안을 비워야 카드 세 장의 각 요소가 같은 높이에 앉는다
   if (!found) {
-    const flagLine = tag("p", "u-reset");
-    flagLine.appendChild(tag("span", "u-flag", "미수집"));
+    const note = tag("p", "u-reset");
+    note.append(
+      tag("span", "u-flag", "미수집"),
+      document.createTextNode(" 사이드카에 이 창이 없음")
+    );
     card.append(
-      tag("p", "u-lim-value u-lim-empty", "―"),
-      flagLine,
-      tag("p", "u-caption", "사이드카에 이 창이 없음")
+      valueRow(tag("p", "u-lim-value u-lim-empty", "―"), null),
+      trackBar(0, null),
+      note
     );
     return card;
   }
@@ -136,19 +142,21 @@ function limitCard(spec, usage) {
   const pct = found.used_percentage;
   const value = tag("p", "u-lim-value", String(Math.round(pct)));
   value.appendChild(tag("small", null, "%"));
-  card.appendChild(value);
+  card.append(
+    valueRow(value, deltaOf(usage.pct_samples, spec.sample)),
+    trackBar(pct, LEVEL_CLASS[found.level]),
+    resetLine(found.resets_at)
+  );
+  return card;
+}
 
-  // 델타는 표본이 두 개 이상일 때만. 계산이 안 되면 줄 자체를 뺀다
-  const delta = deltaOf(usage.pct_samples, spec.sample);
-  if (delta) card.appendChild(deltaLine(delta, "이전 표본 대비"));
-
+// 게이지. 수집 전이면 빈 트랙만 남겨 자리를 지킨다
+function trackBar(pct, levelClass) {
   const track = tag("div", "u-track");
-  const fill = tag("i", LEVEL_CLASS[found.level] || null);
+  const fill = tag("i", levelClass || null);
   fill.style.width = `${Math.min(pct, PERCENT_FULL)}%`;
   track.appendChild(fill);
-  card.appendChild(track);
-  card.appendChild(resetLine(found.resets_at));
-  return card;
+  return track;
 }
 
 function deltaOf(samples, field) {
@@ -157,10 +165,32 @@ function deltaOf(samples, field) {
   const prev = samples[samples.length - 2][field];
   if (typeof last !== "number" || typeof prev !== "number") return null;
   const diff = Math.round(last - prev);
-  // 폴링이 1분 간격이라 직전 표본과 같은 값인 게 정상이다. 그때 "변화 없음" 한 줄을
-  // 띄우면 카드마다 의미 없는 문구가 남으므로 아예 뺀다
-  if (diff === 0) return null;
-  return { dir: diff > 0 ? "up" : "down", text: `${Math.abs(diff)}%p` };
+  // 주간 %는 5분 사이에 1% 넘게 움직이는 일이 드물다. 그때 자리를 비우면 값이 안 잡힌
+  // 건지 안 변한 건지 구분이 안 되므로, 변화 없음은 회색 – 로 남긴다
+  if (diff === 0) return { dir: "flat", text: "–" };
+  return { dir: diff > 0 ? "up" : "down", text: `${Math.abs(diff)}%` };
+}
+
+// 값과 델타를 한 줄에 놓는다. 델타가 없어도 자리를 남겨 카드 높이를 맞춘다
+function valueRow(value, delta) {
+  const row = tag("div", "u-lim-row");
+  row.append(value, deltaMark(delta));
+  return row;
+}
+
+// 값 오른쪽에 붙는 증감 표시. 방향 기호와 수치만 두고 설명 문구는 넣지 않는다
+function deltaMark(delta) {
+  const mark = tag("span", delta ? `u-delta ${delta.dir}` : "u-delta u-delta-empty");
+  // 빈 span 은 베이스라인이 없어 옆의 값을 1px 밀어올린다. 폭 없는 문자로 지표를 맞춤
+  if (!delta) {
+    mark.textContent = "​";
+    return mark;
+  }
+  if (delta.dir !== "flat") {
+    mark.appendChild(document.createTextNode(delta.dir === "up" ? "▲" : "▼"));
+  }
+  mark.appendChild(tag("b", null, delta.text));
+  return mark;
 }
 
 function deltaLine(delta, suffix) {
@@ -410,11 +440,14 @@ function renderSessions(payload) {
     item.appendChild(tag("div", "u-sess-mark"));
     const body = tag("div", "u-sess-body");
     const scope = tag("div", "u-sess-scope", session.workspace_name || UNCLASSIFIED_LABEL);
-    if (session.category_name) scope.appendChild(tag("span", null, session.category_name));
-    const ago = agoText(session.last_seen_at);
-    if (ago) scope.appendChild(tag("span", "u-sess-ago", ago));
+    // 카테고리·경과시간은 없어도 빈 칸으로 둔다. 조건부로 빼면 줄마다 열이 어긋난다
+    scope.append(
+      tag("span", "u-sess-cat", session.category_name || ""),
+      tag("span", "u-sess-ago", agoText(session.last_seen_at) || "")
+    );
     body.append(scope, tag("p", "u-sess-prompt", session.last_prompt || "지시 없음"));
     item.appendChild(body);
+    item.addEventListener("click", () => openSessionDetail(session));
     box.appendChild(item);
   });
   if (folded && !sessionsExpanded) {

@@ -1,4 +1,7 @@
-/* 색·둥글기·그림자 토큰. 인디고 액센트 + 연블루 페어(안 A 팔레트).
+/* 디자인 토큰. 색·간격·글자·둥글기 전부 여기서만 정한다.
+   규칙: font-size·padding·margin·gap·border-radius 에 생 px 을 쓰지 않는다.
+   (tests/test_css_tokens.py 가 어기면 실패시킨다. width·height·box-shadow 같은
+   그래픽 치수는 예외 — 점·바 두께는 격자와 무관하다)
    usage.css 가 같은 토큰을 참조하므로 이름을 바꾸면 사용량 화면이 같이 깨진다 */
 :root {
   --bg: #f5f5f7;
@@ -14,9 +17,38 @@
   --good: #1a9d6a;
   --warn: #d8931f;
 
-  --gap: 14px;
+  /* 간격: 4px 격자. --sp-2 만 반 칸(아이콘·글자 미세 보정용)이고 그 외 사이값
+     (6·9·10·11·14·17)은 쓰지 않는다 — 카드마다 여백이 달라지던 원인 */
+  --sp-2: 2px;
+  --sp-4: 4px;
+  --sp-8: 8px;
+  --sp-12: 12px;
+  --sp-16: 16px;
+  --sp-20: 20px;
+  --sp-24: 24px;
+  --sp-32: 32px;
+  --sp-40: 40px;
+  --sp-48: 48px;
+
+  --gap: var(--sp-16);       /* 카드·블록 사이 기본 간격 */
+  --pad-card: var(--sp-16);  /* 카드 내부 여백. 헤더·행은 --sp-12 */
+
+  /* 글자: 다섯 단만. 13↔11↔9 로 위계를 만들고 그 사이 값은 없앴다.
+     글로 읽는 것(캡션·메타·표)은 --fs-sm, 배지·칩·눈금은 --fs-micro */
+  --fs-display: 32px;  /* 카드 하나를 대표하는 큰 수치 */
+  --fs-title: 20px;    /* 화면 제목 */
+  --fs-body: 13px;     /* 본문. 카드 제목은 같은 크기에 700 */
+  --fs-sm: 11px;       /* 보조 본문·라벨·메타·컨트롤 */
+  --fs-micro: 9px;     /* 배지·칩·차트 눈금 */
+
+  --lh-tight: 1.1;     /* 큰 수치 */
+  --lh-heading: 1.3;   /* 제목·배지 */
+  --lh-body: 1.55;     /* 본문 */
+
+  /* 굵기는 400(본문)·500(보조)·600(강조)·700(제목) 네 단만 쓴다 */
+
   --r-card: 12px;
-  --r-ctl: 8px;
+  --r-ctl: 8px;   /* 컨트롤, 그리고 카드 안에 겹쳐 놓는 카드 */
   --r-pill: 999px;
 
   /* 카드는 선 대신 그림자로 띄운다. 두 번째 값이 1px 테두리 역할 */
@@ -28,6 +60,7 @@
   --cat-mix: 15%;
 
   --side-w: 208px;
+  --icon-box: var(--sp-24);  /* 16px 아이콘을 담는 정사각 면 */
 }
 
 * { box-sizing: border-box; }
@@ -41,11 +74,15 @@ body {
   font-family: Pretendard, "Pretendard Variable", "Apple SD Gothic Neo",
                "Malgun Gothic", "맑은 고딕", system-ui, sans-serif,
                "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
 }
+
+/* 키보드로 이동할 때만 보이는 초점 링. 요소마다 따로 그리지 않는다.
+   input 계열은 아래 :focus 규칙(0-1-1)이 더 구체적이라 자기 링을 유지한다 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* 개수·진행도는 자리수가 흔들리지 않게 고정폭 숫자 */
 .group-meta, .ws-meta, #next-line { font-variant-numeric: tabular-nums; }
@@ -56,32 +93,32 @@ body {
 .app-side {
   position: sticky; top: 0; flex: none;
   width: var(--side-w); height: 100vh;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 16px 10px;
+  display: flex; flex-direction: column; gap: var(--sp-8);
+  padding: var(--sp-16) var(--sp-8);
   background: var(--surface);
   box-shadow: 1px 0 0 var(--line);
 }
 
 .side-brand {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 8px 14px; min-width: 0;
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-4) var(--sp-8) var(--sp-16); min-width: 0;
 }
 .side-mark {
-  width: 26px; height: 26px; flex: none; border-radius: var(--r-ctl);
+  width: var(--icon-box); height: var(--icon-box); flex: none; border-radius: var(--r-ctl);
   display: grid; place-items: center;
   background: var(--softer); color: var(--accent);
 }
 .side-name {
-  font-size: 15px; font-weight: 700; letter-spacing: -0.02em;
+  font-size: var(--fs-body); font-weight: 700; letter-spacing: -0.02em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-.side-nav { display: flex; flex-direction: column; gap: 2px; }
+.side-nav { display: flex; flex-direction: column; gap: var(--sp-2); }
 /* 좌측 3px 강조 바는 선택될 때만 색이 든다. 자리는 항상 잡아둬야 글자가 안 밀림 */
 .side-nav button {
-  display: flex; align-items: center; gap: 9px;
+  display: flex; align-items: center; gap: var(--sp-8);
   width: 100%; text-align: left;
-  padding: 9px 11px; border-radius: var(--r-ctl);
+  padding: var(--sp-8) var(--sp-12); border-radius: var(--r-ctl);
   background: none; box-shadow: none; color: var(--muted);
   font-weight: 600; cursor: pointer;
   border-left: 3px solid transparent;
@@ -98,24 +135,27 @@ body {
 
 /* 상태 한 줄. 비어 있으면 아무 자리도 차지하지 않는다 */
 #rail-status {
-  margin-top: auto; padding: 8px 11px;
-  font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+  margin-top: auto; padding: var(--sp-8) var(--sp-12);
+  font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums;
 }
 #rail-status:empty { display: none; }
 
-.app-main { flex: 1; min-width: 0; padding: 0 18px 48px; }
+.app-main { flex: 1; min-width: 0; padding: 0 var(--sp-16) var(--sp-48); }
 
 .topbar {
   display: flex; align-items: center; gap: var(--gap);
-  flex-wrap: wrap; padding: 18px 0 var(--gap);
+  flex-wrap: wrap; padding: var(--sp-20) 0 var(--gap);
 }
-h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
+h1 {
+  font-size: var(--fs-title); line-height: var(--lh-heading);
+  font-weight: 700; margin: 0; letter-spacing: -0.02em;
+}
 
 #error {
   margin: 0 0 0 auto;
   background: color-mix(in srgb, var(--danger) 10%, var(--surface));
-  color: var(--danger); padding: 8px 12px;
-  border-radius: var(--r-ctl); font-weight: 500; font-size: 14px;
+  color: var(--danger); padding: var(--sp-8) var(--sp-12);
+  border-radius: var(--r-ctl); font-weight: 500; font-size: var(--fs-sm);
 }
 
 /* 좁은 화면: 레일을 상단 가로 스크롤 메뉴로 접는다 */
@@ -123,34 +163,35 @@ h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
   .app { display: block; }
   .app-side {
     width: auto; height: auto; flex-direction: row; align-items: center;
-    gap: 10px; padding: 10px 12px; z-index: 2;
+    gap: var(--sp-12); padding: var(--sp-8) var(--sp-12); z-index: 2;
     box-shadow: 0 1px 0 var(--line);
   }
   .side-brand { padding: 0; }
   .side-name { display: none; }
   .side-nav {
-    flex-direction: row; gap: 4px;
+    flex-direction: row; gap: var(--sp-4);
     overflow-x: auto; scrollbar-width: none;
   }
   .side-nav::-webkit-scrollbar { display: none; }
   .side-nav button { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
   .side-nav button.active { border-bottom-color: var(--accent); }
   #rail-status { display: none; }
-  .app-main { padding: 0 12px 40px; }
+  .app-main { padding: 0 var(--sp-12) var(--sp-40); }
 }
 
 /* ── 보드 ─────────────────────────────────────────────────────────────────── */
 /* p 기본 마진(1em)이 다른 블록의 gap 과 어긋나므로 명시 */
 #next-line {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); padding: 12px 14px; margin: 0 0 var(--gap);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-12) var(--pad-card); margin: 0 0 var(--gap);
   color: var(--muted);
 }
 #next-text { font-weight: 600; color: var(--fg); }
 
-form { display: flex; gap: 6px; margin: var(--gap) 0; flex-wrap: wrap; }
+form { display: flex; gap: var(--sp-8); margin: var(--gap) 0; flex-wrap: wrap; }
 input, select, textarea {
-  padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--r-ctl);
+  padding: var(--sp-8) var(--sp-12); border: 1px solid var(--line); border-radius: var(--r-ctl);
   background-color: var(--surface); color: inherit; font: inherit; letter-spacing: inherit;
 }
 input:focus, select:focus, textarea:focus {
@@ -159,15 +200,16 @@ input:focus, select:focus, textarea:focus {
 }
 /* 네이티브 화살표는 오른쪽 테두리에 붙어 여백이 없으므로 직접 그린다 */
 select {
-  appearance: none; padding-right: 34px;
+  appearance: none; padding-right: var(--sp-32);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23868ba0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 13px center;
+  background-position: right var(--sp-12) center;
 }
 #quick-title { flex: 1 1 200px; }
 /* 아이콘 하나뿐인 버튼은 정사각으로 만들어 누를 면적을 확보 */
 #quick-submit {
-  width: 41px; flex: none; padding: 0; font-size: 20px; line-height: 1;
+  width: var(--sp-40); flex: none; padding: 0;
+  font-size: var(--fs-title); line-height: 1;
   background-color: var(--accent); color: #fff; font-weight: 400;
 }
 #quick-submit:hover { background-color: color-mix(in srgb, var(--accent) 84%, #000); }
@@ -175,7 +217,7 @@ select {
 /* 기본 버튼은 옅은 면. 선 대신 면으로 눌리는 느낌을 준다.
    페이지 배경(--bg)과 같은 값을 쓰면 폼 위에서 버튼이 사라지므로 한 단 어둡게 섞는다 */
 button {
-  padding: 8px 12px; border: none; border-radius: var(--r-ctl);
+  padding: var(--sp-8) var(--sp-12); border: none; border-radius: var(--r-ctl);
   background: color-mix(in srgb, var(--fg) 7%, var(--surface));
   color: var(--fg); cursor: pointer; font: inherit;
   letter-spacing: inherit; font-weight: 500;
@@ -185,28 +227,31 @@ button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 13%, var(
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { color: var(--line); cursor: default; }
 
-#board-controls { display: flex; gap: var(--gap); color: var(--muted); flex-wrap: wrap; font-size: 14px; }
-#board-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#board-controls {
+  display: flex; gap: var(--gap); color: var(--muted);
+  flex-wrap: wrap; font-size: var(--fs-sm);
+}
+#board-controls label { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
-.group, .ws-card { --cat: #aab0c4; }        /* 분류 전 = 옅은 회색 */
+.group, .ws-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
 .cat-pill { --cat: #4e5468; }               /* 전체 라벨 = 중립 회색 */
-.group, .ws-card, .cat-pill {
+.group, .ws-card, .cat-pill, .session-cat {
   --cat-bg: color-mix(in srgb, var(--cat) var(--cat-mix), var(--surface));
   --cat-ink: color-mix(in srgb, var(--cat) 72%, var(--fg));
 }
 
 /* 카테고리 라벨 필터. 고른 라벨만 색이 채워지므로 한눈에 구분된다 */
-#category-filter { display: flex; gap: 7px; flex-wrap: wrap; margin: var(--gap) 0; }
+#category-filter { display: flex; gap: var(--sp-8); flex-wrap: wrap; margin: var(--gap) 0; }
 /* 배경은 롱핸드로. button 의 background 단축 속성과 섞이지 않게 한다 */
 /* --on-cat: 카테고리 색 위에 얹을 글자색. JS 가 색의 명도를 보고 흰·검 중
    대비가 큰 쪽을 인라인으로 넣으므로 어떤 색을 골라도 4.5:1 이상이 나온다.
    여기 기본값은 색이 없는 '전체' 라벨용 */
 .cat-pill {
   --on-cat: #fff;
-  padding: 7px 14px; border-radius: var(--r-pill);
+  padding: var(--sp-8) var(--sp-16); border-radius: var(--r-pill);
   background-color: var(--cat-bg); color: var(--cat-ink);
-  font-weight: 600; font-size: 14px;
+  font-weight: 600; font-size: var(--fs-sm);
 }
 .cat-pill:hover:not(.active) {
   background-color: color-mix(in srgb, var(--cat) 26%, var(--surface));
@@ -221,38 +266,48 @@ button:disabled { color: var(--line); cursor: default; }
 /* stretch: 같은 행의 두 카드를 더 긴 쪽 높이에 맞춰 아래선을 정렬 */
 #groups, #done-groups { display: grid; gap: var(--gap); align-items: stretch; margin: var(--gap) 0; }
 
-/* overflow hidden: 상단 색 배경이 카드 둥근 모서리를 넘지 않게 */
+/* overflow 를 걸지 않음: 마지막 항목의 케밥 메뉴가 카드 밖으로 펼쳐져야 함 */
 .group {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); overflow: hidden;
+  box-shadow: var(--shadow-card);
 }
 /* 카드 상단 배경은 그 워크스페이스의 카테고리 색 */
+/* 라운딩은 summary 가 직접 가짐. 접혀 있으면 아래 모서리까지 둥글게 */
 .group > summary {
-  padding: 12px 14px; cursor: grab; display: flex; justify-content: space-between;
-  gap: 8px; background: var(--cat-bg); font-weight: 600;
+  padding: var(--sp-12) var(--pad-card); cursor: grab;
+  display: flex; justify-content: space-between;
+  gap: var(--sp-8); background: var(--cat-bg); font-weight: 700;
+  border-radius: var(--r-card);
 }
+.group[open] > summary { border-radius: var(--r-card) var(--r-card) 0 0; }
 .group > summary::marker, .group > summary::-webkit-details-marker { color: var(--muted); }
 .group.unassigned > summary { color: var(--muted); }
-.group-meta { color: var(--muted); font-size: 13px; font-weight: 500; }
+.group-meta { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 
 .todo {
-  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-8) var(--pad-card);
   border-top: 1px solid var(--line);
 }
 .todo .title { flex: 1; }
 .todo.done .title { color: var(--muted); text-decoration: line-through; }
 /* 상태 배지처럼 보이게 좁고 둥글게 */
 .todo > button:first-child {
-  min-width: 4.2em; font-size: 12px; font-weight: 600; padding: 4px 8px;
+  min-width: 4.6em; font-size: var(--fs-micro); font-weight: 600;
+  padding: var(--sp-4) var(--sp-8);
   border-radius: var(--r-pill); color: var(--muted);
 }
 .todo.doing > button:first-child { background: var(--softer); color: var(--accent); }
-.todo > button:not(:first-child) { font-size: 13px; padding: 5px 9px; color: var(--muted); }
-.subtasks { margin: 0; padding: 2px 14px 8px 42px; list-style: none; color: var(--muted); font-size: 14px; }
+/* 들여쓰기는 격자 한 칸(40px) — 상태 배지 폭과 맞춰 제목 아래로 떨어진다 */
+.subtasks {
+  margin: 0; padding: var(--sp-2) var(--pad-card) var(--sp-8) var(--sp-40);
+  list-style: none; color: var(--muted); font-size: var(--fs-sm);
+}
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
 
 .field { margin-bottom: var(--gap); }
-.field label { display: block; color: var(--muted); font-size: 13px; }
+/* 라벨은 어디서든 --fs-sm + 500 + muted (사용량 한도 카드 라벨과 같은 값) */
+.field label { display: block; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 .field textarea { width: 100%; min-height: 60px; }
 
 /* ── 워크스페이스 ─────────────────────────────────────────────────────────── */
@@ -260,45 +315,54 @@ button:disabled { color: var(--line); cursor: default; }
 #workspace-list { display: grid; gap: var(--gap); align-items: stretch; }
 .ws-card {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); padding: 14px;
+  box-shadow: var(--shadow-card); padding: var(--pad-card);
 }
 .ws-card.focused { box-shadow: var(--shadow-card), 0 0 0 2px var(--accent); }
 /* 제목·메타와 본문을 구분선으로 나눔. 상단 배경은 보드 카드와 같은 카테고리 색 */
 /* 음수 마진: 카드 padding 을 넘어 좌우 끝까지 배경을 깔기 위함 */
 .ws-head {
-  display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
-  margin: -14px -14px 0; padding: 12px 14px;
+  display: flex; justify-content: space-between; gap: var(--sp-8); align-items: baseline;
+  margin: calc(var(--pad-card) * -1) calc(var(--pad-card) * -1) 0;
+  padding: var(--sp-12) var(--pad-card);
   border-radius: var(--r-card) var(--r-card) 0 0;
   background: var(--cat-bg); border-bottom: 1px solid var(--line);
 }
-.ws-head + .ws-row { margin-top: 12px; }
-.ws-title { font-weight: 600; }
-.ws-meta { color: var(--muted); font-size: 13px; }
-.ws-row { margin-top: 8px; }
-.ws-row .label { color: var(--muted); font-size: 13px; }
+.ws-head + .ws-row { margin-top: var(--sp-12); }
+/* 카드 제목은 화면을 가리지 않고 --fs-body + 700 로 통일 (사용량 카드 h2 와 같은 값) */
+.ws-title { font-weight: 700; }
+.ws-meta { color: var(--muted); font-size: var(--fs-sm); }
+.ws-row { margin-top: var(--sp-8); }
+.ws-row .label { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 .ws-row .value { white-space: pre-wrap; }
 .ws-row .value.empty { color: var(--muted); }
 .ws-row input, .ws-row select, .ws-row textarea { width: 100%; }
-.ws-actions { display: flex; gap: 6px; margin-top: var(--gap); }
+.ws-actions { display: flex; gap: var(--sp-8); margin-top: var(--gap); }
 .ws-menu { position: relative; flex: none; }
-.ws-menu > button { background: none; padding: 0 6px; font-size: 17px; line-height: 1; color: var(--muted); }
+.ws-menu > button {
+  background: none; padding: 0 var(--sp-8);
+  font-size: var(--fs-title); line-height: 1; color: var(--muted);
+}
 .ws-menu-items {
-  position: absolute; right: 0; top: 100%; z-index: 1; padding: 4px;
+  position: absolute; right: 0; top: 100%; z-index: 1; padding: var(--sp-4);
   background: var(--surface); border-radius: var(--r-ctl);
   box-shadow: var(--shadow-pop); min-width: 6em;
 }
-.ws-menu-items button { display: block; width: 100%; text-align: left; background: none; }
+.ws-menu-items button {
+  display: block; width: 100%; text-align: left; background: none; white-space: nowrap;
+}
 
 /* ── 카테고리 ─────────────────────────────────────────────────────────────── */
 #category-list { list-style: none; padding: 0; margin: 0; }
 #category-list li {
-  display: flex; gap: 8px; align-items: center; margin-bottom: 8px; padding: 10px 12px;
+  display: flex; gap: var(--sp-8); align-items: center;
+  margin-bottom: var(--sp-8); padding: var(--sp-12);
   background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
 }
 #category-list li > input:not([type="color"]) { flex: 1 1 8em; }
 /* 색 견본은 둥근 사각형으로. 브라우저 기본 여백을 없앤다 */
 #category-list input[type="color"] {
-  width: 34px; height: 34px; padding: 0; border: none; border-radius: var(--r-ctl);
+  width: var(--sp-32); height: var(--sp-32); padding: 0;
+  border: none; border-radius: var(--r-ctl);
   background: none; cursor: pointer; flex: none;
 }
 #category-list input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
@@ -309,11 +373,12 @@ button:disabled { color: var(--line); cursor: default; }
 /* ── 세션 패널 ────────────────────────────────────────────────────────────── */
 #session-panel {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); padding: 12px 14px; margin: var(--gap) 0;
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-12) var(--pad-card); margin: var(--gap) 0;
 }
 /* 기본 마커는 브라우저마다 위치가 달라 flex summary 에서 사라진다. 직접 그린다 */
 #session-panel > summary {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: var(--sp-8);
   cursor: pointer; list-style: none; font-weight: 600;
 }
 #session-panel > summary::-webkit-details-marker { display: none; }
@@ -323,23 +388,115 @@ button:disabled { color: var(--line); cursor: default; }
   transform: rotate(-45deg); transition: transform 0.12s;
 }
 #session-panel[open] > summary::before { transform: rotate(45deg); }
-#session-head { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 8px; }
-#session-warn { color: var(--warn); font-weight: 600; font-size: 13px; }
-#session-list { list-style: none; margin: 6px 0 0; padding: 0; }
+#session-head {
+  flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: var(--sp-8);
+}
+#session-warn { color: var(--warn); font-weight: 600; font-size: var(--fs-sm); }
+#session-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
 /* 돌고 있는 세션이 0 개면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
 #session-list:empty { display: none; }
-#session-list li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
-#session-list li.working { cursor: pointer; }
+/* 어느 줄이든 눌러서 상세 팝업을 연다 */
+#session-list li {
+  display: flex; gap: var(--sp-8); align-items: baseline; padding: var(--sp-4) 0;
+  cursor: pointer;
+}
 #session-list li.working > span:first-child { color: var(--good); }
 #session-list li.idle { color: var(--muted); }
-#session-list .scope { min-width: 12em; font-weight: 500; }
+#session-list .scope { min-width: 12em; font-weight: 600; }
 #session-list .prompt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 /* 마지막 수행 시각 경과. 눈에 띄지 않게 오른쪽 끝 */
-#session-list .age { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-#session-list li.more { padding-top: 6px; }
-#session-list li.more button { background: none; padding: 2px 0; color: var(--muted); font-size: 13px; }
+#session-list .age {
+  flex: none; color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+}
+#session-list li.more { padding-top: var(--sp-8); }
+#session-list li.more button {
+  background: none; padding: var(--sp-2) 0; color: var(--muted); font-size: var(--fs-sm);
+}
 
-#done-today > summary { cursor: pointer; color: var(--muted); font-weight: 600; padding: 4px 0; }
+#done-today > summary {
+  cursor: pointer; color: var(--muted); font-weight: 600; padding: var(--sp-4) 0;
+}
+
+/* ── 세션 상세 팝업 ────────────────────────────────────────────────────────── */
+/* 팝업도 카드다 — 카드와 같은 --pad-card·--r-card 를 쓰고 그림자만 --shadow-pop.
+   스크롤은 본문이 맡는다. 그래야 닫기 버튼이 제목과 같은 선에 고정된다 */
+#session-modal {
+  position: relative; display: flex; flex-direction: column;
+  width: min(620px, calc(100vw - var(--sp-24))); max-height: 84vh; overflow: hidden;
+  padding: 0; border: none; border-radius: var(--r-card);
+  background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
+}
+#session-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
+/* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
+#session-modal form { margin: 0; }
+.modal-close {
+  position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
+  background: none; color: var(--muted);
+  font-size: var(--fs-title); line-height: var(--lh-tight); padding: 0 var(--sp-4);
+}
+#session-modal-body { padding: var(--pad-card); overflow: auto; }
+
+.dlg-head { margin-bottom: var(--sp-12); }
+.dlg-title {
+  margin: 0; padding-right: var(--sp-32);
+  font-size: var(--fs-body); font-weight: 700;
+  line-height: var(--lh-heading); letter-spacing: -0.02em;
+}
+/* 제목 옆 카테고리 라벨. 보드 카드와 같은 --cat 규약을 쓴다 */
+.session-cat {
+  margin-left: var(--sp-8); padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
+  background-color: var(--cat-bg); color: var(--cat-ink);
+  font-size: var(--fs-micro); font-weight: 600; letter-spacing: 0;
+}
+.dlg-section { margin-top: var(--sp-16); }
+.dlg-section > .label {
+  margin: 0 0 var(--sp-4); color: var(--muted); font-size: var(--fs-sm); font-weight: 500;
+}
+.dlg-badge {
+  display: inline-block; min-width: 4.2em; text-align: center;
+  padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-micro); font-weight: 600; line-height: var(--lh-heading);
+  background: var(--bg); color: var(--muted);
+}
+#session-modal .muted { color: var(--muted); font-size: var(--fs-sm); }
+#session-modal button.copy {
+  padding: var(--sp-2) var(--sp-8); font-size: var(--fs-sm); color: var(--muted);
+}
+
+.session-id { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); }
+.session-id code {
+  flex: 1; overflow: hidden; text-overflow: ellipsis;
+  padding: var(--sp-2) var(--sp-8); border-radius: var(--r-ctl);
+  background: var(--bg); font-size: var(--fs-sm);
+}
+.session-meta {
+  margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 세션 id 줄과 같은 폭을 쓰도록 select 가 남는 자리를 전부 먹는다 */
+.session-classify { display: flex; flex-wrap: wrap; gap: var(--sp-8); align-items: center; }
+.session-classify select { flex: 1; min-width: 0; }
+.session-status {
+  flex-basis: 100%; margin: 0; color: var(--danger); font-size: var(--fs-sm);
+}
+.session-status:empty { display: none; }
+.session-log { list-style: none; margin: 0; padding: 0; }
+.session-log > li {
+  display: flex; gap: var(--sp-8); align-items: flex-start;
+  padding: var(--sp-8) 0; border-top: 1px solid var(--line);
+}
+.session-log > li:first-child { border-top: none; }
+.session-log .dlg-badge { flex: none; }
+/* 한 발화가 길어도 팝업이 벽 텍스트가 되지 않게. 전문은 툴팁으로 */
+.session-log .text {
+  flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* 내 말이 눈에 먼저 들어와야 흐름을 따라갈 수 있다 */
+.session-log > li.user .dlg-badge {
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent);
+}
+.session-log > li.assistant { color: var(--muted); }
 
 /* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음.
    레일이 208px 을 먹으므로 2컬럼 기준을 그만큼 올렸다 */
@@ -364,7 +521,7 @@ button:disabled { color: var(--line); cursor: default; }
   button { background-color: #2a2e3f; }
   button:hover:not(:disabled) { background-color: #343950; }
   button:disabled { color: #4a4b55; }
-  .side-nav button, .ws-menu > button, .ws-menu-items button {
+  .side-nav button, .ws-menu > button, .ws-menu-items button, .modal-close {
     background-color: transparent;
   }
   .side-nav button.active { background-color: var(--softer); }

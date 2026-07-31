@@ -6,6 +6,7 @@ from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
+from app.services import transcript
 
 BLOCK_OPEN = '<work-dashboard session="{session}" state="{state}">'
 BLOCK_CLOSE = "</work-dashboard>"
@@ -80,6 +81,15 @@ def active_payload(con):
     return {
         "unclassified_count": session_repo.count_unclassified(con),
         "sessions": session_repo.list_active(con),
+    }
+
+
+def detail(con, session_row_id):
+    """세션 팝업. 목록 한 줄로는 어느 세션인지 몰라서 id 와 최근 대화를 함께 준다"""
+    session = session_repo.get_by_row_id(con, session_row_id)
+    return {
+        "session": session,
+        "messages": transcript.recent(session["claude_session_id"]),
     }
 
 

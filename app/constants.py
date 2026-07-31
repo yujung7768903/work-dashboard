@@ -36,6 +36,13 @@ LAST_PROMPT_MAX_CHARS = 120
 POLL_INTERVAL_MS = 2000
 JIRA_PATTERN = r"[A-Za-z]+-[0-9]+"
 
+# 세션 팝업의 최근 대화. 원문은 DB 가 아니라 Claude Code 의 transcript jsonl 에만 있다
+TRANSCRIPT_ROOT = os.path.expanduser("~/.claude/projects")
+TRANSCRIPT_TAIL_BYTES = 512 * 1024
+TRANSCRIPT_MAX_TAIL_BYTES = 8 * 1024 * 1024  # 발화가 안 잡히면 여기까지 넓혀가며 다시 읽음
+TRANSCRIPT_MAX_MESSAGES = 10
+TRANSCRIPT_MAX_CHARS = 400
+
 # 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라 파일에서 주워온다
 # (훅 페이로드에는 rate_limits 가 없다). token-optimizer statusline 이 떨어뜨리는 사이드카.
 RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.json")
