@@ -4,13 +4,20 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from app.constants import BUSY_TIMEOUT_MS, DB_PATH_ENV, DEFAULT_DB_PATH, SEED_CATEGORIES
+from app.constants import (
+    BUSY_TIMEOUT_MS,
+    CATEGORY_PALETTE,
+    DB_PATH_ENV,
+    DEFAULT_DB_PATH,
+    SEED_CATEGORIES,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categories(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     sort_order INTEGER NOT NULL,
+    color TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS workspaces(
@@ -67,6 +74,17 @@ CREATE TABLE IF NOT EXISTS session_todos(
     created_at TEXT NOT NULL,
     PRIMARY KEY(session_id, todo_id)
 );
+-- 한도 %는 어디에도 이력이 남지 않는다(사이드카는 매번 덮어씀). 추이를 그리려면
+-- 우리가 스냅샷을 쌓아야 한다. source_ts 는 사이드카의 timestamp 라, 같은 스냅샷이
+-- 두 번 들어오는 걸 PK 가 그대로 막아준다
+CREATE TABLE IF NOT EXISTS usage_samples(
+    source_ts INTEGER PRIMARY KEY,
+    five_hour_pct REAL,
+    five_hour_resets_at INTEGER,
+    seven_day_pct REAL,
+    seven_day_resets_at INTEGER,
+    created_at TEXT NOT NULL
+);
 """
 
 SEEDED_FLAG = "categories_seeded"
@@ -75,6 +93,11 @@ SEEDED_FLAG = "categories_seeded"
 def now():
     """ISO8601 UTC 초 단위"""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def palette_color(sort_order):
+    """카테고리 기본 색. 팔레트를 다 쓰면 처음으로 돌아감"""
+    return CATEGORY_PALETTE[(sort_order - 1) % len(CATEGORY_PALETTE)]
 
 
 def resolve_path(path=None):
@@ -95,6 +118,7 @@ def connect(path=None):
     con.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
     con.executescript(SCHEMA)
     con.commit()
+    _add_category_style_columns(con)
     _seed_categories(con)
     return con
 
@@ -118,8 +142,25 @@ def _seed_categories(con):
     stamp = now()
     for order, name in enumerate(SEED_CATEGORIES, start=1):
         con.execute(
-            "INSERT INTO categories(name, sort_order, created_at) VALUES(?,?,?)",
-            (name, order, stamp),
+            "INSERT INTO categories(name, sort_order, color, created_at)"
+            " VALUES(?,?,?,?)",
+            (name, order, palette_color(order), stamp),
         )
     con.execute("INSERT INTO meta(key, value) VALUES(?,?)", (SEEDED_FLAG, stamp))
+    con.commit()
+
+
+def _add_category_style_columns(con):
+    """색 컬럼을 뒤늦게 붙이고 빈 값을 팔레트 색으로 채움"""
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(categories)")}
+    if "color" not in columns:
+        con.execute("ALTER TABLE categories ADD COLUMN color TEXT")
+    rows = con.execute(
+        "SELECT id, sort_order FROM categories WHERE color IS NULL OR color = ''"
+    ).fetchall()
+    for row in rows:
+        con.execute(
+            "UPDATE categories SET color=? WHERE id=?",
+            (palette_color(row["sort_order"]), row["id"]),
+        )
     con.commit()

@@ -17,17 +17,16 @@ async function request(method, path, body) {
 
 export const getTree = (groupBy) => request("GET", `/tree?group_by=${groupBy}`);
 export const getNext = () => request("GET", "/next");
-export const getDoneToday = (date) =>
-  request("GET", date ? `/done-today?date=${date}` : "/done-today");
 export const getCategories = () => request("GET", "/categories");
 export const getWorkspaces = () => request("GET", "/workspaces");
 export const getSessions = () => request("GET", "/sessions");
 export const getSession = (id) => request("GET", `/sessions/${id}`);
 export const classifySession = (id, fields) => request("PATCH", `/sessions/${id}`, fields);
+export const getUsage = () => request("GET", "/usage");
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });
-export const renameCategory = (id, name) => request("PATCH", `/categories/${id}`, { name });
+export const updateCategory = (id, fields) => request("PATCH", `/categories/${id}`, fields);
 export const deleteCategory = (id) => request("DELETE", `/categories/${id}`);
 
 export const createWorkspace = (fields) => request("POST", "/workspaces", fields);

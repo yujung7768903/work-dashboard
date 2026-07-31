@@ -10,12 +10,17 @@ const ROLE_LABELS = { user: "나", assistant: "클로드" };
 
 let timer = null;
 let pickWorkspace = null;
+// 사용자가 펼친 '대기 중'은 폴링이 접지 않도록 모듈에 남긴다
+let showIdle = false;
 
 export async function renderSessions(onPick) {
   if (onPick) pickWorkspace = onPick;
   const payload = await api.getSessions();
+  const working = payload.sessions.filter((s) => s.state === WORKING);
+  const idle = payload.sessions.filter((s) => s.state !== WORKING);
+
   document.getElementById("session-count").textContent =
-    `돌고 있는 세션 ${payload.sessions.length}`;
+    `돌고 있는 세션 ${working.length}`;
   const warn = document.getElementById("session-warn");
   warn.hidden = !payload.unclassified_count;
   warn.textContent = payload.unclassified_count
@@ -24,7 +29,35 @@ export async function renderSessions(onPick) {
 
   const list = document.getElementById("session-list");
   list.innerHTML = "";
-  payload.sessions.forEach((session) => list.appendChild(sessionRow(session)));
+  const shown = showIdle ? [...working, ...idle] : working;
+  shown.forEach((session) => list.appendChild(sessionRow(session)));
+  if (idle.length) list.appendChild(idleToggle(idle.length, onPick));
+}
+
+// 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다
+function formatAge(iso) {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86400)}d`;
+}
+
+function idleToggle(count, onPick) {
+  const item = document.createElement("li");
+  item.className = "more";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = showIdle ? "대기 중 숨기기" : `대기 중 ${count}개 보기`;
+  button.addEventListener("click", () => {
+    showIdle = !showIdle;
+    renderSessions(onPick).catch(() => {});
+  });
+  item.appendChild(button);
+  return item;
 }
 
 function sessionRow(session) {
@@ -36,7 +69,9 @@ function sessionRow(session) {
   const category = element("span", null, `(${session.category_name || UNCLASSIFIED_LABEL})`);
   const prompt = element("span", "prompt", session.last_prompt || "");
 
-  item.append(mark, scope, category, prompt);
+  const age = element("span", "age", formatAge(session.last_seen_at));
+
+  item.append(mark, scope, category, prompt, age);
   item.addEventListener("click", () => openDetail(session));
   return item;
 }
@@ -50,15 +85,32 @@ function openDetail(session) {
   Promise.all([api.getSession(session.id), api.getWorkspaces(), api.getCategories()])
     .then(([detail, workspaces, categories]) =>
       body.replaceChildren(
-        element("p", "session-id", detail.session.claude_session_id),
-        element("p", "session-meta", metaLine(detail.session)),
+        headBlock(detail.session),
         classifyRow(detail.session, workspaces, categories, dialog),
-        messageList(detail.messages)
+        logSection(detail.messages)
       )
     )
     .catch((error) => {
       body.textContent = error.message;
     });
+}
+
+function headBlock(session) {
+  const head = element("div", "dlg-head");
+  const title = element("p", "dlg-title", session.workspace_name || UNCLASSIFIED_LABEL);
+  title.append(element("span", "dlg-meta", ` ${session.category_name || ""}`.trimEnd()));
+
+  const idRow = element("div", "session-id");
+  const code = element("code", null, session.claude_session_id);
+  const copy = element("button", "copy", "복사");
+  copy.addEventListener("click", () => {
+    navigator.clipboard.writeText(session.claude_session_id);
+    copy.textContent = "복사됨";
+  });
+  idRow.append(code, copy);
+
+  head.append(title, idRow, element("p", "session-meta", metaLine(session)));
+  return head;
 }
 
 function metaLine(session) {
@@ -147,21 +199,24 @@ function targetSelect(session, workspaces, categories) {
   return select;
 }
 
-function messageList(messages) {
-  const list = element("ul", "session-log");
+function logSection(messages) {
+  const section = element("div", "dlg-section");
+  section.appendChild(element("p", "label", "최근 대화"));
   if (!messages.length) {
-    list.appendChild(element("li", "session-meta", "최근 대화를 찾지 못함"));
-    return list;
+    section.appendChild(element("p", "muted", "최근 대화를 찾지 못함"));
+    return section;
   }
+  const list = element("ul", "session-log");
   messages.forEach((message) => {
     const item = element("li", message.role);
     item.append(
-      element("span", "role", ROLE_LABELS[message.role] ?? message.role),
+      element("span", "dlg-badge", ROLE_LABELS[message.role] ?? message.role),
       element("span", "text", message.text)
     );
     list.appendChild(item);
   });
-  return list;
+  section.appendChild(list);
+  return section;
 }
 
 function optgroup(label) {

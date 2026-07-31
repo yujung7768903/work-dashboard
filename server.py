@@ -16,7 +16,7 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link
+from app.services import board, planning, session_link, usage
 
 STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
@@ -97,6 +97,8 @@ def _route_get(con, head, item_id, query):
         if item_id:
             return session_link.detail(con, item_id)
         return session_link.active_payload(con)
+    if head == "usage":
+        return usage.snapshot(con)
     raise NotFound("알 수 없는 엔드포인트")
 
 
@@ -127,7 +129,7 @@ def _route_patch(con, head, item_id, body):
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":
-        return category_repo.rename(con, item_id, body.get("name"))
+        return category_repo.update(con, item_id, **body)
     if head == "workspaces":
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":

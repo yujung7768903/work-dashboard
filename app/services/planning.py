@@ -1,5 +1,5 @@
 """다음에 할 일 선정과 완료분 집계"""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.constants import STATUS_DOING, STATUS_DONE, UNASSIGNED_LABEL, WORKSPACE_ACTIVE
 from app.repositories import todos as todo_repo
@@ -7,6 +7,8 @@ from app.repositories import workspaces as workspace_repo
 
 DOING_RANK = 0
 DEFAULT_RANK = 1
+# 세션이 끝나도 doing 은 되돌리지 않으므로, 오래 물려 있는 것만 따로 경고함
+STALE_DOING_HOURS = 24
 
 
 def today_text():
@@ -14,16 +16,32 @@ def today_text():
     return datetime.now(timezone.utc).date().isoformat()
 
 
-def next_todo(con):
-    """active 워크스페이스 순위대로 훑고, 없으면 미분류. doing 이 todo 보다 먼저"""
+def next_todo(con, workspace_id=None, claude_session_id=None):
+    """active 워크스페이스 순위대로 훑고, 없으면 미분류. doing 이 todo 보다 먼저
+
+    workspace_id 가 오면 그 워크스페이스 안에서만 뽑는다(워크스페이스 status 무관).
+    다른 활성 세션이 잡은 할일은 후보에서 뺀다. 내 세션이 잡은 것은 link-todo 로
+    doing 이 되어 있으므로 기존 doing 우선 규칙만으로 1순위가 된다.
+    """
+    claimed = todo_repo.ids_claimed_by_others(con, claude_session_id)
+    if workspace_id is not None:
+        workspace = workspace_repo.get(con, workspace_id)
+        picked = _first_open(todo_repo.list_by_workspace(con, workspace_id), claimed)
+        return {"todo": picked, "workspace": workspace} if picked else None
     for workspace in workspace_repo.list_all(con, status=WORKSPACE_ACTIVE):
-        picked = _first_open(todo_repo.list_by_workspace(con, workspace["id"]))
+        picked = _first_open(todo_repo.list_by_workspace(con, workspace["id"]), claimed)
         if picked:
             return {"todo": picked, "workspace": workspace}
-    picked = _first_open(todo_repo.list_by_workspace(con, None))
+    picked = _first_open(todo_repo.list_by_workspace(con, None), claimed)
     if picked:
         return {"todo": picked, "workspace": None}
     return None
+
+
+def stale_doing(con):
+    """24시간 넘게 doing 인 할일. 대시보드 경고용 판정만 하고 UI 연결은 아직 없음"""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=STALE_DOING_HOURS)
+    return todo_repo.list_doing_before(con, cutoff.isoformat(timespec="seconds"))
 
 
 def done_on(con, date_text=None):
@@ -37,9 +55,13 @@ def done_on(con, date_text=None):
     return rows
 
 
-def _first_open(todos):
-    """미완료 중 doing 우선, 그 다음 sort_order"""
-    open_todos = [todo for todo in todos if todo["status"] != STATUS_DONE]
+def _first_open(todos, claimed=()):
+    """미완료 중 doing 우선, 그 다음 sort_order. 남이 잡은 것은 제외"""
+    open_todos = [
+        todo
+        for todo in todos
+        if todo["status"] != STATUS_DONE and todo["id"] not in claimed
+    ]
     if not open_todos:
         return None
     return min(open_todos, key=_priority_key)

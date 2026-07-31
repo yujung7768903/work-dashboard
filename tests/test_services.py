@@ -1,8 +1,10 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 
-from app.constants import STATUS_DOING, STATUS_DONE, UNASSIGNED_LABEL
+from app.constants import STATE_ENDED, STATUS_DOING, STATUS_DONE, UNASSIGNED_LABEL
 from app.errors import Validation
 from app.repositories import categories as category_repo
+from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
@@ -10,6 +12,8 @@ from app.services import board, planning
 from tests.support import temp_db
 
 PAUSED = "paused"
+MINE = "sess-mine"
+OTHER = "sess-other"
 
 
 class BoardTreeTest(unittest.TestCase):
@@ -45,11 +49,26 @@ class BoardTreeTest(unittest.TestCase):
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         self.assertEqual(group["category_name"], "개발")
 
+    def test_workspace_group_carries_category_id_and_color(self):
+        """보드가 카드 상단 색과 카테고리 라벨 필터에 쓰는 값들"""
+        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
+        dev = category_repo.get_by_name(self.con, "개발")
+        self.assertEqual(group["category_id"], dev["id"])
+        self.assertEqual(group["category_color"], dev["color"])
+
+    def test_unassigned_group_has_no_category_color(self):
+        """미분류는 색을 받지 않고 화면에서 옅은 회색 기본값으로 그려짐"""
+        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][-1]
+        self.assertEqual(group["kind"], board.KIND_UNASSIGNED)
+        self.assertIsNone(group.get("category_color"))
+
     def test_todos_carry_subtasks(self):
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         self.assertEqual(group["todos"][0]["subtasks"][0]["title"], "k6 시나리오")
 
     def test_counts_reflect_done_state(self):
+        subtask = subtask_repo.list_by_todo(self.con, self.todo["id"])[0]
+        subtask_repo.update(self.con, subtask["id"], status=STATUS_DONE)
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         self.assertEqual((group["done_count"], group["total_count"]), (1, 1))
@@ -107,6 +126,62 @@ class PlanningTest(unittest.TestCase):
         picked = planning.next_todo(self.con)
         self.assertEqual(picked["todo"]["title"], "문의 회신")
         self.assertIsNone(picked["workspace"])
+
+    def test_workspace_scope_ignores_earlier_workspaces(self):
+        todo_repo.create(self.con, "락 재설계", workspace_id=self.first["id"])
+        todo_repo.create(self.con, "시나리오 정리", workspace_id=self.second["id"])
+        picked = planning.next_todo(self.con, self.second["id"])
+        self.assertEqual(picked["todo"]["title"], "시나리오 정리")
+        self.assertEqual(picked["workspace"]["name"], "헤르메스 테스트")
+
+    def test_workspace_scope_returns_none_when_scope_is_empty(self):
+        todo_repo.create(self.con, "락 재설계", workspace_id=self.first["id"])
+        self.assertIsNone(planning.next_todo(self.con, self.second["id"]))
+
+    def test_workspace_scope_ignores_paused_status(self):
+        todo_repo.create(self.con, "보류된 일", workspace_id=self.first["id"])
+        workspace_repo.update(self.con, self.first["id"], status=PAUSED)
+        picked = planning.next_todo(self.con, self.first["id"])
+        self.assertEqual(picked["todo"]["title"], "보류된 일")
+
+    def test_skips_todo_claimed_by_another_active_session(self):
+        theirs = todo_repo.create(self.con, "남이 잡은 것", workspace_id=self.first["id"])
+        mine = todo_repo.create(self.con, "내 것", workspace_id=self.first["id"])
+        session_repo.register(self.con, OTHER)
+        session_repo.link_todo(self.con, OTHER, theirs["id"])
+        picked = planning.next_todo(self.con, claude_session_id=MINE)
+        self.assertEqual(picked["todo"]["id"], mine["id"])
+
+    def test_own_claimed_todo_comes_first(self):
+        todo_repo.create(self.con, "먼저 등록", workspace_id=self.first["id"])
+        mine = todo_repo.create(self.con, "내가 잡은 것", workspace_id=self.first["id"])
+        session_repo.register(self.con, MINE)
+        session_repo.link_todo(self.con, MINE, mine["id"])
+        picked = planning.next_todo(self.con, claude_session_id=MINE)
+        self.assertEqual(picked["todo"]["id"], mine["id"])
+
+    def test_todo_of_ended_session_returns_to_pool(self):
+        todo = todo_repo.create(self.con, "남기고 끝난 것", workspace_id=self.first["id"])
+        session_repo.register(self.con, OTHER)
+        session_repo.link_todo(self.con, OTHER, todo["id"])
+        session_repo.set_state(self.con, OTHER, STATE_ENDED)
+        picked = planning.next_todo(self.con, claude_session_id=MINE)
+        self.assertEqual(picked["todo"]["id"], todo["id"])
+
+    def test_stale_doing_lists_only_old_ones(self):
+        old = todo_repo.create(self.con, "오래 붙잡은 것", workspace_id=self.first["id"])
+        fresh = todo_repo.create(self.con, "방금 시작", workspace_id=self.first["id"])
+        for todo in (old, fresh):
+            todo_repo.update(self.con, todo["id"], status=STATUS_DOING)
+        self._age(old["id"], planning.STALE_DOING_HOURS + 1)
+        self.assertEqual([row["id"] for row in planning.stale_doing(self.con)], [old["id"]])
+
+    def _age(self, todo_id, hours):
+        stamp = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(
+            timespec="seconds"
+        )
+        self.con.execute("UPDATE todos SET updated_at=? WHERE id=?", (stamp, todo_id))
+        self.con.commit()
 
     def test_done_on_attaches_workspace_name(self):
         finished = todo_repo.create(self.con, "락", workspace_id=self.first["id"])

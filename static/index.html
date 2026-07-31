@@ -5,61 +5,136 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>작업 대시보드</title>
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/usage.css">
 </head>
 <body>
-  <header>
-    <h1>작업 대시보드</h1>
-    <nav id="tabs">
-      <button data-tab="board" class="active">보드</button>
-      <button data-tab="workspace">워크스페이스</button>
-      <button data-tab="categories">카테고리</button>
-    </nav>
-  </header>
-
-  <p id="error" hidden></p>
-
-  <section id="tab-board" class="tab">
-    <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
-    <div id="session-panel">
-      <div id="session-head">
-        <span id="session-count">돌고 있는 세션 0</span>
-        <span id="session-warn" hidden></span>
+  <div class="app">
+    <!-- 좌측 레일. 좁은 화면에서는 상단 가로 메뉴로 접힘 -->
+    <aside class="app-side">
+      <div class="side-brand">
+        <span class="side-mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16">
+            <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
+                  fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="side-name">작업 대시보드</span>
       </div>
-      <ul id="session-list"></ul>
-    </div>
-    <form id="quick-add">
-      <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>
-      <select id="quick-category"></select>
-      <button type="submit">+</button>
-    </form>
-    <div id="board-controls">
-      <label><input type="radio" name="group-by" value="workspace" checked> 워크스페이스</label>
-      <label><input type="radio" name="group-by" value="category"> 카테고리</label>
-      <label><input type="checkbox" id="show-done"> 완료 항목 표시</label>
-    </div>
-    <div id="groups"></div>
-    <details id="done-today">
-      <summary>오늘 완료</summary>
-      <ul id="done-list"></ul>
-    </details>
-  </section>
 
-  <section id="tab-workspace" class="tab" hidden>
-    <form id="workspace-add">
-      <input id="workspace-new-name" placeholder="새 워크스페이스" required>
-      <select id="workspace-new-category"></select>
-      <button type="submit">추가</button>
-    </form>
-    <div id="workspace-list"></div>
-  </section>
+      <nav id="tabs" class="side-nav">
+        <button data-tab="usage">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M2.3 11.6a6 6 0 1 1 11.4 0" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M8 11.3l3-3.4" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          사용량
+        </button>
+        <button data-tab="board" class="active">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
+                  fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          보드
+        </button>
+        <button data-tab="workspace">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
+                  fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          워크스페이스
+        </button>
+        <button data-tab="categories">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M8.6 2.2H13a.8.8 0 0 1 .8.8v4.4L7.9 13.3a.8.8 0 0 1-1.2 0L2.7 9.3a.8.8 0 0 1 0-1.2z"
+                  fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="10.8" cy="5.2" r="1" fill="currentColor"/>
+          </svg>
+          카테고리
+        </button>
+      </nav>
 
-  <section id="tab-categories" class="tab" hidden>
-    <form id="category-add">
-      <input id="category-name" placeholder="새 카테고리" required>
-      <button type="submit">추가</button>
-    </form>
-    <ul id="category-list"></ul>
-  </section>
+      <!-- 현재 상태 한 줄 자리. 비어 있어도 무해 -->
+      <div id="rail-status"></div>
+    </aside>
+
+    <main class="app-main">
+      <header class="topbar">
+        <h1 id="page-title">보드</h1>
+        <p id="error" hidden></p>
+      </header>
+
+      <section id="tab-board" class="tab">
+        <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
+        <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
+        <details id="session-panel">
+          <summary>
+            <span id="session-head">
+              <span id="session-count">돌고 있는 세션 0</span>
+              <span id="session-warn" hidden></span>
+            </span>
+          </summary>
+          <ul id="session-list"></ul>
+        </details>
+        <form id="quick-add">
+          <select id="quick-category" title="카테고리"></select>
+          <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>
+          <button type="submit" id="quick-submit" title="할일 추가">+</button>
+        </form>
+        <div id="category-filter"></div>
+        <div id="board-controls">
+          <label><input type="checkbox" id="show-done"> 완료 항목 표시</label>
+        </div>
+        <div id="groups"></div>
+        <details id="done-today">
+          <summary>완료</summary>
+          <div id="done-groups"></div>
+        </details>
+      </section>
+
+      <section id="tab-workspace" class="tab" hidden>
+        <form id="workspace-add">
+          <input id="workspace-new-name" placeholder="새 워크스페이스" required>
+          <select id="workspace-new-category"></select>
+          <button type="submit">추가</button>
+        </form>
+        <div id="workspace-list"></div>
+      </section>
+
+      <section id="tab-categories" class="tab" hidden>
+        <form id="category-add">
+          <input id="category-name" placeholder="새 카테고리" required>
+          <button type="submit">추가</button>
+        </form>
+        <ul id="category-list"></ul>
+      </section>
+
+      <section id="tab-usage" class="tab" hidden>
+        <div class="u-shell">
+          <div class="u-main">
+            <div class="u-row3" id="u-limits"></div>
+            <div class="u-row2">
+              <div id="u-daily"></div>
+              <div id="u-today"></div>
+            </div>
+            <div class="u-row2">
+              <div id="u-trend"></div>
+              <div id="u-share"></div>
+            </div>
+          </div>
+          <aside class="u-rail">
+            <section class="u-rail-section" id="u-next"></section>
+            <section class="u-rail-section" id="u-sessions"></section>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <dialog id="session-modal">
     <form method="dialog"><button class="modal-close" aria-label="닫기">×</button></form>

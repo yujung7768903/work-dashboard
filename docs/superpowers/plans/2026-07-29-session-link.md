@@ -20,6 +20,7 @@
 - 파일이 300줄을 넘으면 나눌 자리를 찾는다.
 - 주석은 역할·특이사항만. 명사형 또는 음슴체, 한 문장, 마침표 생략 가능.
 - 매직넘버 금지. 아래 상수를 `app/constants.py`에 추가한다.
+
   ```python
   SESSION_STATES = ("working", "idle", "ended")
   STATE_WORKING, STATE_IDLE, STATE_ENDED = SESSION_STATES
@@ -30,13 +31,14 @@
   POLL_INTERVAL_MS = 2000
   JIRA_PATTERN = r"[A-Za-z]+-[0-9]+"
   ```
+
 - 테스트는 `python3 -m tests` 한 방으로 전부 돈다.
 - **용어**: 세션의 `category_id IS NULL` = "분류 전". 할일의 `workspace_id IS NULL` = "미분류". 섞지 않는다.
 
 ## File Structure
 
 | 파일 | 책임 |
-|------|------|
+| ------ | ------ |
 | `app/repositories/sessions.py` | 세션 등록·분류·상태 갱신·정리, `session_todos` 연결 |
 | `app/services/session_link.py` | 주입 컨텍스트 조립(분류됨/분류 전), 활성 목록 조립, scope-guard 블록 |
 | `hooks/dash_hook.py` | 훅 단일 진입점. 이벤트별 분기, 실패 시 조용히 종료 |
@@ -51,16 +53,19 @@
 ### Task 1: 스키마와 상수
 
 **Files:**
+
 - Modify: `app/constants.py`, `app/db.py`
 - Test: `tests/test_sessions.py` (신규)
 
 **Interfaces:**
+
 - Consumes: `app.db.connect`
 - Produces: `sessions`·`session_todos` 테이블, 위 Global Constraints의 상수 전부
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_sessions.py`:
+
 ```python
 import unittest
 
@@ -117,6 +122,7 @@ Expected: FAIL — `ImportError: cannot import name 'SESSION_STATES'`
 - [ ] **Step 3: 최소 구현**
 
 `app/constants.py` 끝에 추가:
+
 ```python
 SESSION_STATES = ("working", "idle", "ended")
 STATE_WORKING, STATE_IDLE, STATE_ENDED = SESSION_STATES
@@ -129,6 +135,7 @@ JIRA_PATTERN = r"[A-Za-z]+-[0-9]+"
 ```
 
 `app/db.py`의 `SCHEMA` 문자열 끝(`meta` 테이블 뒤)에 추가:
+
 ```sql
 CREATE TABLE IF NOT EXISTS sessions(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,10 +175,12 @@ git commit -m "feat: 세션 테이블과 상수 추가"
 ### Task 2: sessions repository — 등록·상태·마지막 지시
 
 **Files:**
+
 - Create: `app/repositories/sessions.py`
 - Modify: `tests/test_sessions.py`
 
 **Interfaces:**
+
 - Consumes: `app.db.now/transaction`, `app.errors`
 - Produces:
   - `register(con, claude_session_id, cwd=None, git_branch=None) -> dict` — 없으면 생성, 있으면 `cwd`·`git_branch`·`last_seen_at` 갱신하고 분류 유지
@@ -183,6 +192,7 @@ git commit -m "feat: 세션 테이블과 상수 추가"
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_sessions.py`에 추가:
+
 ```python
 from app.constants import LAST_PROMPT_MAX_CHARS, STATE_ENDED, STATE_WORKING
 from app.errors import NotFound, Validation
@@ -256,6 +266,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.repositories.sessi
 - [ ] **Step 3: 최소 구현**
 
 `app/repositories/sessions.py`:
+
 ```python
 """세션 저장·조회. 훅이 부르므로 없는 세션에는 예외 대신 None 을 돌려주는 함수를 따로 둠"""
 from app.constants import (
@@ -367,9 +378,11 @@ git commit -m "feat: 세션 등록·상태·마지막 지시 repository 추가"
 ### Task 3: 분류·할일 연결·정리
 
 **Files:**
+
 - Modify: `app/repositories/sessions.py`, `tests/test_sessions.py`
 
 **Interfaces:**
+
 - Consumes: `app.repositories.categories.get_by_name/get`, `app.repositories.workspaces.get`
 - Produces:
   - `classify(con, claude_session_id, category_name=None, workspace_id=None) -> dict` — 워크스페이스를 주면 카테고리는 그쪽 것으로 덮어씀. 둘 다 없으면 `Validation`
@@ -383,6 +396,7 @@ git commit -m "feat: 세션 등록·상태·마지막 지시 repository 추가"
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_sessions.py`에 추가:
+
 ```python
 from datetime import datetime, timedelta, timezone
 
@@ -510,6 +524,7 @@ Expected: FAIL — `AttributeError: module 'app.repositories.sessions' has no at
 - [ ] **Step 3: 최소 구현**
 
 `app/repositories/sessions.py` 상단 import 블록을 아래로 교체 (`STATE_WORKING`과 날짜·repository import 추가):
+
 ```python
 from datetime import datetime, timedelta, timezone
 
@@ -532,6 +547,7 @@ ACTIVE_STATES = (STATE_WORKING, STATE_IDLE)
 ```
 
 같은 파일 끝에 추가:
+
 ```python
 def classify(con, claude_session_id, category_name=None, workspace_id=None):
     """워크스페이스를 주면 카테고리는 그 워크스페이스의 것이 이김"""
@@ -671,10 +687,12 @@ git commit -m "feat: 세션 분류·할일 연결·정리 추가"
 ### Task 4: session_link service — 주입 컨텍스트
 
 **Files:**
+
 - Create: `app/services/session_link.py`
 - Modify: `tests/test_sessions.py`
 
 **Interfaces:**
+
 - Consumes: `app.repositories.sessions/categories/workspaces/todos`
 - Produces:
   - `jira_from_branch(branch) -> str | None`
@@ -685,6 +703,7 @@ git commit -m "feat: 세션 분류·할일 연결·정리 추가"
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_sessions.py`에 추가:
+
 ```python
 from app.services import session_link
 
@@ -747,6 +766,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'app.services.session_l
 - [ ] **Step 3: 최소 구현**
 
 `app/services/session_link.py`:
+
 ```python
 """세션에 주입할 컨텍스트 조립. 여러 엔티티에 걸치므로 service 계층"""
 import re
@@ -883,16 +903,18 @@ git commit -m "feat: 세션 주입 컨텍스트 조립 service 추가"
 ### Task 5: 훅 진입점
 
 **Files:**
+
 - Create: `hooks/dash_hook.py`, `tests/test_hook.py`
 
 **Interfaces:**
+
 - Consumes: `app.db.connect`, `app.repositories.sessions`, `app.services.session_link`
 - Produces: `main(argv=None, stdin=None) -> int` — 항상 `0`. 주입할 내용은 stdout
 
 **동작:** stdin JSON 에서 `session_id`·`cwd`·`prompt` 를 읽는다. 브랜치는 `cwd` 에서 `git branch --show-current` 로 얻는다(훅 입력에 브랜치가 없다).
 
 | 이벤트 | 동작 |
-|--------|------|
+| -------- | ------ |
 | `SessionStart` | 등록 → 브랜치로 자동 분류 시도 → 컨텍스트 출력 |
 | `UserPromptSubmit` | `working` 전환 + `last_prompt` 저장 → 분류 전이면 컨텍스트 출력 |
 | `Stop` | `idle` 전환, 출력 없음 |
@@ -901,6 +923,7 @@ git commit -m "feat: 세션 주입 컨텍스트 조립 service 추가"
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_hook.py`:
+
 ```python
 import json
 import os
@@ -1016,6 +1039,7 @@ Expected: FAIL — `can't open file '.../hooks/dash_hook.py'`
 - [ ] **Step 3: 최소 구현**
 
 `hooks/dash_hook.py`:
+
 ```python
 #!/usr/bin/env python3
 """작업 대시보드 훅 진입점. 어떤 실패에서도 exit 0 무출력 — 세션을 막지 않음"""
@@ -1127,15 +1151,18 @@ git commit -m "feat: 훅 진입점 추가 (등록·상태·자동분류·재주�
 ### Task 6: CLI 명령 3개
 
 **Files:**
+
 - Modify: `dash.py`, `tests/test_cli.py`
 
 **Interfaces:**
+
 - Consumes: `app.repositories.sessions`, `app.services.session_link`
 - Produces: `dash.py sessions [--json]`, `dash.py classify <session> --category NAME [--workspace ID]`, `dash.py link-todo <session> <todo-id>`
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_cli.py`의 `CliTest` 에 추가:
+
 ```python
     def test_sessions_empty(self):
         code, out, _ = self.run_cli("sessions")
@@ -1178,13 +1205,16 @@ Expected: FAIL — `SystemExit: 2` (argparse: invalid choice 'sessions')
 - [ ] **Step 3: 최소 구현**
 
 `dash.py` 의 import 두 줄을 교체:
+
 ```python
 from app.repositories import sessions as session_repo
 from app.services import board, planning, session_link
 ```
+
 (기존 `from app.services import board, planning` 를 위 두 줄로 바꾼다)
 
 `_build_parser()` 의 `done_today` 등록 뒤에 추가:
+
 ```python
     sessions = sub.add_parser("sessions", help="활성 세션 목록")
     _add_json_flag(sessions)
@@ -1203,6 +1233,7 @@ from app.services import board, planning, session_link
 ```
 
 `_cmd_done_today` 뒤에 추가:
+
 ```python
 def _cmd_sessions(con, args):
     payload = session_link.active_payload(con)
@@ -1248,15 +1279,18 @@ git commit -m "feat: sessions·classify·link-todo CLI 추가"
 ### Task 7: HTTP 엔드포인트 2개
 
 **Files:**
+
 - Modify: `server.py`, `tests/test_static.py`
 
 **Interfaces:**
+
 - Consumes: `app.repositories.sessions.classify_by_ids`, `app.services.session_link.active_payload`
 - Produces: `GET /api/sessions`, `PATCH /api/sessions/<id>`
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_static.py`의 `RouteTest` 에 추가:
+
 ```python
     def test_sessions_endpoint_shape(self):
         from app.repositories import sessions as session_repo
@@ -1290,18 +1324,21 @@ Expected: FAIL — `NotFound: 알 수 없는 엔드포인트`
 - [ ] **Step 3: 최소 구현**
 
 `server.py` 의 import 를 교체:
+
 ```python
 from app.repositories import sessions as session_repo
 from app.services import board, planning, session_link
 ```
 
 `_route_get` 의 `workspaces` 블록 뒤에 추가:
+
 ```python
     if head == "sessions":
         return session_link.active_payload(con)
 ```
 
 `_route_patch` 의 `subtasks` 블록 뒤에 추가:
+
 ```python
     if head == "sessions":
         return session_repo.classify_by_ids(
@@ -1329,16 +1366,19 @@ git commit -m "feat: 세션 조회·분류 수정 엔드포인트 추가"
 ### Task 8: 세션 영역 UI와 폴링
 
 **Files:**
+
 - Create: `static/js/sessions.js`
 - Modify: `static/index.html`, `static/js/api.js`, `static/js/board.js`, `static/css/app.css`
 
 **Interfaces:**
+
 - Consumes: `api.js`
 - Produces: `api.getSessions()`, `sessions.js` 의 `renderSessions(onPick)`·`startSessionPolling(onPick)`
 
 - [ ] **Step 1: index.html 에 세션 영역 추가**
 
 `<p id="next-line">…</p>` 바로 뒤에 삽입:
+
 ```html
     <div id="session-panel">
       <div id="session-head">
@@ -1352,6 +1392,7 @@ git commit -m "feat: 세션 조회·분류 수정 엔드포인트 추가"
 - [ ] **Step 2: api.js 에 한 줄 추가**
 
 `getWorkspaces` 아래에 추가:
+
 ```javascript
 export const getSessions = () => request("GET", "/sessions");
 ```
@@ -1441,16 +1482,19 @@ export function startSessionPolling(onPick) {
 - [ ] **Step 5: board.js 에서 폴링 시작**
 
 import 에 추가:
+
 ```javascript
 import { startSessionPolling } from "./sessions.js";
 ```
 
 `renderBoard()` 의 `attachDragHandlers(renderBoard);` 뒤에 추가:
+
 ```javascript
   startSessionPolling(openWorkspace);
 ```
 
 파일 끝에 추가:
+
 ```javascript
 function openWorkspace(workspaceId) {
   // 세션 줄 클릭 → 워크스페이스 탭으로 이동
@@ -1470,6 +1514,7 @@ curl -s -o /dev/null -w '%{http_code} ' http://127.0.0.1:8099/js/sessions.js
 curl -s 'http://127.0.0.1:8099/api/sessions'
 kill %1
 ```
+
 Expected: `200` 과 `{"unclassified_count": 0, "sessions": []}`
 
 - [ ] **Step 7: 브라우저 수동 확인**
@@ -1488,10 +1533,12 @@ git commit -m "feat: 활성 세션 영역과 2초 폴링 추가"
 ### Task 9: scope-guard 흡수와 훅 등록
 
 **Files:**
+
 - Modify: `app/services/session_link.py`, `tests/test_sessions.py`, `README.md`
 - Modify (저장소 밖): `~/.claude/skills/scope-guard/scope_db.py`, `~/.claude/settings.json`
 
 **Interfaces:**
+
 - Produces: `session_link.scope_guard_block(con, jira_id) -> str` — 기존 `<scope-guard>` 형식 유지
 
 **주의:** `scope_db.py` 와 `settings.json` 은 저장소 밖에 있다. 되돌릴 수 있도록 먼저 백업한다.
@@ -1499,6 +1546,7 @@ git commit -m "feat: 활성 세션 영역과 2초 폴링 추가"
 - [ ] **Step 1: 실패하는 테스트 작성**
 
 `tests/test_sessions.py` 에 추가:
+
 ```python
 class ScopeGuardRenderTest(unittest.TestCase):
     def test_scope_block_has_background_goal_and_steps(self):
@@ -1528,6 +1576,7 @@ Expected: FAIL — `AttributeError: module 'app.services.session_link' has no at
 - [ ] **Step 3: service 에 scope-guard 형식 렌더 추가**
 
 `app/services/session_link.py` 끝에 추가:
+
 ```python
 SCOPE_GUIDE = (
     "지침: 이 브랜치 작업은 위 하위단계 범위 내에서만 진행한다. "
@@ -1581,6 +1630,7 @@ cp ~/.claude/settings.json ~/.claude/settings.json.bak
 - [ ] **Step 6: scope_db.py 를 어댑터로 교체**
 
 `~/.claude/skills/scope-guard/scope_db.py` 전체를 아래로 교체:
+
 ```python
 #!/usr/bin/env python3
 """scope-guard: 작업 대시보드(dash.db)를 보는 얇은 어댑터.
@@ -1717,6 +1767,7 @@ if __name__ == "__main__":
 python3 ~/.claude/skills/scope-guard/scope_db.py get KT-1530
 python3 ~/.claude/skills/scope-guard/scope_db.py list
 ```
+
 Expected: `<scope-guard active="KT-1530" status="active">` 블록에 배경·목표와 할일 목록. `list` 에 `KT-1530` 한 줄.
 
 - [ ] **Step 8: settings.json 훅 등록과 scope-guard 훅 제거**
@@ -1732,9 +1783,11 @@ Expected: `<scope-guard active="KT-1530" status="active">` 블록에 배경·목
 - [ ] **Step 9: 훅 실제 동작 확인**
 
 새 터미널에서 Claude 세션을 열고 아무 질문을 한 뒤:
+
 ```bash
 python3 dash.py sessions
 ```
+
 Expected: 새 세션이 목록에 나타나고 `last_prompt` 에 첫 지시가 들어감. 세션 안에는 `<work-dashboard …>` 블록이 주입돼 있음.
 
 - [ ] **Step 10: README 갱신과 커밋**
@@ -1760,6 +1813,7 @@ python3 dash.py link-todo <session> 3
 1. `cp ~/.claude/settings.json.bak ~/.claude/settings.json`
 2. `cp ~/.claude/skills/scope-guard/scope_db.py.bak ~/.claude/skills/scope-guard/scope_db.py`
 3. `cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db`
+
 ```
 
 ```bash
@@ -1775,7 +1829,7 @@ git commit -m "feat: scope-guard 를 dash.db 어댑터로 교체, 훅 등록 절
 **1. 스펙 커버리지**
 
 | 스펙 요구 | 태스크 |
-|-----------|--------|
+| ----------- | -------- |
 | `sessions`·`session_todos` 테이블, 기존 4테이블 무변경 | 1 |
 | 상수 전부 | 1 |
 | 세션 등록·resume 시 분류 유지 | 2 |

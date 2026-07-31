@@ -103,7 +103,7 @@ tests/test_sessions.py
 `~/.claude/settings.json`의 `hooks`에 등록한다. 기존 `claude-office-hook` 항목과 공존한다.
 
 | 이벤트 | 하는 일 |
-|--------|---------|
+| -------- | --------- |
 | `SessionStart` | 세션 등록(`session_id`·`cwd`·브랜치) + 컨텍스트 주입 |
 | `UserPromptSubmit` | `working` 전환, `last_prompt` 저장, 분류 전이면 분류 지시 재주입 |
 | `Stop` | `idle` 전환, `last_seen_at` 갱신 |
@@ -157,6 +157,7 @@ tests/test_sessions.py
 3. 관련된 워크스페이스가 없으면 카테고리만 등록하고 넘어간다.
 
 등록은 CLI로 한다.
+
 ```
 python3 dash.py classify <session-id> --category 개발 [--workspace 1]
 ```
@@ -217,6 +218,7 @@ python3 dash.py link-todo <session-id> <todo-id>
 `classify`의 `<session-id>`는 `claude_session_id`(훅이 주는 값)를 받는다. Claude가 주입된 블록에서 그 값을 그대로 쓴다. `PATCH /api/sessions/<id>`의 `<id>`는 내부 정수 id다 — 대시보드가 목록에서 받은 값을 그대로 쓴다.
 
 `GET /api/sessions` 응답:
+
 ```json
 {
   "unclassified_count": 1,
@@ -240,6 +242,7 @@ python3 dash.py link-todo <session-id> <todo-id>
 - 정리는 `dash.py sessions`와 `GET /api/sessions` 호출 시 함께 수행한다. 크론을 새로 만들지 않는다.
 
 상수로 뺀다.
+
 ```python
 STALE_IDLE_HOURS = 24
 ENDED_RETENTION_DAYS = 7

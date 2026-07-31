@@ -3,6 +3,7 @@
 import argparse
 import json
 import sys
+from datetime import datetime
 
 from app.constants import UNASSIGNED_LABEL
 from app.db import connect
@@ -12,7 +13,7 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link
+from app.services import board, planning, session_link, usage
 
 NONE_LITERAL = "none"
 REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
@@ -26,6 +27,10 @@ DETAIL_LABELS = (
 )
 EXIT_OK = 0
 EXIT_ERROR = 1
+USAGE_CLI_DAYS = 7
+COMPACT_UNITS = ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K"))
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600
 
 
 def main(argv=None):
@@ -54,6 +59,9 @@ def _build_parser():
     listing.set_defaults(handler=_cmd_ls)
 
     upcoming = sub.add_parser("next", help="다음에 할 일 1건")
+    upcoming.add_argument("--workspace", type=int, default=None)
+    upcoming.add_argument("--session", default=None,
+                          help="이 세션이 잡은 할일은 후보로 남기고 남의 것은 뺌")
     _add_json_flag(upcoming)
     upcoming.set_defaults(handler=_cmd_next)
 
@@ -144,6 +152,10 @@ def _build_parser():
     link_todo.add_argument("todo_id", type=int)
     link_todo.set_defaults(handler=_cmd_link_todo)
 
+    usage_cmd = sub.add_parser("usage", help="한도 사용률과 토큰 추이")
+    _add_json_flag(usage_cmd)
+    usage_cmd.set_defaults(handler=_cmd_usage)
+
     return parser
 
 
@@ -167,7 +179,7 @@ def _cmd_ls(con, args):
 
 
 def _cmd_next(con, args):
-    picked = planning.next_todo(con)
+    picked = planning.next_todo(con, args.workspace, args.session)
     if args.as_json:
         _emit_json(picked)
         return
@@ -359,6 +371,48 @@ def _cmd_show_note(con, args):
 def _cmd_link_todo(con, args):
     session_repo.link_todo(con, args.session, args.todo_id)
     print(f"할일 {args.todo_id} 연결됨")
+
+
+def _cmd_usage(con, args):
+    """/usage 와 같은 창 + 최근 토큰. 낡은 값일 수 있다는 사실을 값과 같이 보여준다"""
+    payload = usage.snapshot(con)
+    if args.as_json:
+        _emit_json(payload)
+        return
+    print(f"플랜: {payload['plan'] or '알 수 없음'}")
+    if not payload["windows"]:
+        print(f"한도 정보 없음 — {payload['limit_source']} 를 읽을 수 없음")
+    for window in payload["windows"]:
+        reset = _reset_text(window["resets_at"])
+        print(f"{window['title']}: {window['used_percentage']}%  (초기화 {reset})")
+    if payload["windows"] and payload["stale"]:
+        print(f"※ {_age_text(payload['stale_seconds'])} 전 값 — statusline 이 그려질 때만 갱신됨")
+    print(f"※ 사이드카에 없는 창: {', '.join(payload['missing_windows'])}")
+    for day in payload["tokens"]["days"][-USAGE_CLI_DAYS:]:
+        print(f"{day['date']}  {_compact(day['total'])} 토큰  ${day['cost_usd']}")
+
+
+def _compact(value):
+    for size, suffix in COMPACT_UNITS:
+        if value >= size:
+            return f"{value / size:.1f}{suffix}"
+    return str(value)
+
+
+def _reset_text(epoch_seconds):
+    if not epoch_seconds:
+        return "시각 미확인"
+    return datetime.fromtimestamp(epoch_seconds).astimezone().strftime("%m/%d %H:%M")
+
+
+def _age_text(seconds):
+    if seconds is None:
+        return "시각 미확인"
+    if seconds < SECONDS_PER_MINUTE:
+        return f"{seconds}초"
+    if seconds < SECONDS_PER_HOUR:
+        return f"{seconds // SECONDS_PER_MINUTE}분"
+    return f"{seconds // SECONDS_PER_HOUR}시간"
 
 
 def _resolve_workspace(con, target):
