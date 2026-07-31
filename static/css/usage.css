@@ -9,7 +9,7 @@
   --u-rail: var(--rail, color-mix(in srgb, var(--fg) 6%, var(--bg)));
   --u-good: var(--good, #1a9d6a);
   --u-warn: var(--warn, #d8931f);
-  --u-holiday: var(--holiday, #eb9ab4);
+  --u-holiday: var(--holiday, #e0629a);
   /* 시안 기준 14px. app.css 본문 15px 을 그대로 쓰면 카드 안 위계가 눌린다 */
   font-size: 14px;
 }
