@@ -10,6 +10,8 @@ from app.constants import (
     STATE_ENDED,
     STATE_IDLE,
     STATE_WORKING,
+    STATUS_DOING,
+    STATUS_DONE,
 )
 from app.errors import NotFound, Validation
 from app.repositories import categories as category_repo
@@ -182,6 +184,18 @@ class SessionClassifyTest(unittest.TestCase):
         session_repo.link_todo(self.con, SID, todo["id"])
         session_repo.link_todo(self.con, SID, todo["id"])
         self.assertEqual(session_repo.linked_todo_ids(self.con, SID), [todo["id"]])
+
+    def test_link_todo_starts_the_todo(self):
+        """연결 = 착수 선언"""
+        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        session_repo.link_todo(self.con, SID, todo["id"])
+        self.assertEqual(todo_repo.get(self.con, todo["id"])["status"], STATUS_DOING)
+
+    def test_link_todo_keeps_done_todo_done(self):
+        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        todo_repo.update(self.con, todo["id"], status=STATUS_DONE)
+        session_repo.link_todo(self.con, SID, todo["id"])
+        self.assertEqual(todo_repo.get(self.con, todo["id"])["status"], STATUS_DONE)
 
     def test_link_todo_rejects_missing_todo(self):
         with self.assertRaises(NotFound):

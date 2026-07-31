@@ -308,6 +308,21 @@ class TodoRepoTest(unittest.TestCase):
         reopened = todo_repo.update(self.con, created["id"], status=STATUS_DOING)
         self.assertIsNone(reopened["completed_at"])
 
+    def test_done_rejected_while_subtasks_open(self):
+        created = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        subtask_repo.create(self.con, created["id"], "k6 시나리오")
+        with self.assertRaises(Validation) as caught:
+            todo_repo.update(self.con, created["id"], status=STATUS_DONE)
+        self.assertIn("k6 시나리오", str(caught.exception))
+        self.assertEqual(todo_repo.get(self.con, created["id"])["status"], STATUS_TODO)
+
+    def test_done_allowed_when_all_subtasks_done(self):
+        created = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        subtask = subtask_repo.create(self.con, created["id"], "k6 시나리오")
+        subtask_repo.update(self.con, subtask["id"], status=STATUS_DONE)
+        done = todo_repo.update(self.con, created["id"], status=STATUS_DONE)
+        self.assertEqual(done["status"], STATUS_DONE)
+
     def test_update_rejects_unknown_status(self):
         created = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
         with self.assertRaises(Validation):
