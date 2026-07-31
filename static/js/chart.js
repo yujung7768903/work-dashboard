@@ -3,9 +3,10 @@
 // 테마가 바뀔 때 갱신되지 않는다.
 const NS = "http://www.w3.org/2000/svg";
 const WIDTH = 620;
-const BAR = { height: 190, pad: { top: 12, right: 10, bottom: 22, left: 46 } };
+// 플롯 여백도 CSS 와 같은 4px 격자 위에 둔다. left 는 축 라벨 폭이 정하는 값
+const BAR = { height: 192, pad: { top: 12, right: 8, bottom: 24, left: 48 } };
 // 오른쪽 여백은 끝점 라벨 자리. 두 선이 같은 계열이라 색만으로는 어느 선인지 알 수 없다
-const LINE = { height: 178, pad: { top: 12, right: 88, bottom: 22, left: 40 } };
+const LINE = { height: 176, pad: { top: 12, right: 88, bottom: 24, left: 40 } };
 const COLUMN_MAX_WIDTH = 22;
 const COLUMN_RADIUS = 4;
 const SEGMENT_GAP = 2; // 세그먼트를 가르는 건 선이 아니라 표면색 간격
@@ -13,18 +14,18 @@ const MIN_SEGMENT = 0.8;
 const LINE_WIDTH = 2;
 const MARKER_RADIUS = 4;
 const RING_WIDTH = 2;
-const END_LABEL_GAP = 10;
+const END_LABEL_GAP = 8;
 const TICK_COUNT = 4;
 const TICK_STEPS = [1, 2, 2.5, 5, 10];
-const AXIS_FONT = 10;
+const AXIS_FONT = 9; // css --fs-micro. 좌표 계산에 쓰이므로 CSS 가 아니라 여기서 정한다
 const MAX_X_LABELS = 7;
 const PERCENT_MAX = 100;
 const PCT_TICKS = [0, 25, 50, 75, 100];
 const DONUT_SIZE = 128;
-const DONUT_THICKNESS = 17;
+const DONUT_THICKNESS = 16;
 const DONUT_ARC_GAP = 2; // 조각 사이도 선이 아니라 간격으로 가른다
 const DONUT_MIN_ARC = 0.5;
-const DONUT_TOTAL_FONT = 19;
+const DONUT_TOTAL_FONT = 20; // css --fs-title
 const COMPACT_UNITS = [
   [1e9, "B"],
   [1e6, "M"],
