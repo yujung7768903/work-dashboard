@@ -81,10 +81,15 @@ class WorktreeGuardTest(unittest.TestCase):
     def test_broken_json_exits_zero(self):
         self.assertEqual(self.guard.main(stdin=io.StringIO("{not json")), 0)
 
-    def test_real_hook_process_allows_this_worktree(self):
-        """실제 프로세스로도 exit 0 인지 확인 (WORK_ROOT 패치 없이)"""
+    def test_real_hook_process_matches_this_checkout(self):
+        """실제 프로세스 확인 (WORK_ROOT 패치 없이). 워크트리면 0, 메인 체크아웃이면 2"""
         payload = {"tool_input": {"file_path": os.path.join(ROOT, "hooks", "x.py")}}
         result = subprocess.run(
             ["python3", HOOK], input=json.dumps(payload), capture_output=True, text=True
         )
-        self.assertEqual(result.returncode, 0)
+        git_dir = subprocess.run(
+            ["git", "-C", ROOT, "rev-parse", "--absolute-git-dir"],
+            capture_output=True,
+            text=True,
+        ).stdout
+        self.assertEqual(result.returncode, 0 if "/worktrees/" in git_dir else 2)
