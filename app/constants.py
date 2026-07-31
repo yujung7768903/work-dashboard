@@ -39,6 +39,7 @@ JIRA_PATTERN = r"[A-Za-z]+-[0-9]+"
 # 세션 팝업의 최근 대화. 원문은 DB 가 아니라 Claude Code 의 transcript jsonl 에만 있다
 TRANSCRIPT_ROOT = os.path.expanduser("~/.claude/projects")
 TRANSCRIPT_TAIL_BYTES = 512 * 1024
+TRANSCRIPT_MAX_TAIL_BYTES = 8 * 1024 * 1024  # 발화가 안 잡히면 여기까지 넓혀가며 다시 읽음
 TRANSCRIPT_MAX_MESSAGES = 10
 TRANSCRIPT_MAX_CHARS = 400
 

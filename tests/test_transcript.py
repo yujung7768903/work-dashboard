@@ -77,6 +77,18 @@ class RecentTest(unittest.TestCase):
         self.assertEqual(len(messages), TRANSCRIPT_MAX_MESSAGES)
         self.assertEqual(messages[-1]["text"], f"질문 {TRANSCRIPT_MAX_MESSAGES + 4}")
 
+    def test_widens_window_past_tool_result_tail(self):
+        """꼬리가 전부 도구 결과여도 앞쪽 발화를 찾아낸다"""
+        entries = [{"type": "user", "message": {"content": "맨 앞 질문"}}]
+        entries += [
+            {"type": "user", "message": {"content": [{"type": "tool_result", "x": "y" * 400}]}}
+            for _ in range(2000)
+        ]
+        root = write_transcript(SID, entries)
+        self.assertEqual(
+            transcript.recent(SID, root=root), [{"role": "user", "text": "맨 앞 질문"}]
+        )
+
     def test_missing_transcript_is_empty(self):
         self.assertEqual(transcript.recent(SID, root=tempfile.mkdtemp()), [])
 

@@ -6,6 +6,7 @@ import os
 from app.constants import (
     TRANSCRIPT_MAX_CHARS,
     TRANSCRIPT_MAX_MESSAGES,
+    TRANSCRIPT_MAX_TAIL_BYTES,
     TRANSCRIPT_ROOT,
     TRANSCRIPT_TAIL_BYTES,
 )
@@ -17,12 +18,21 @@ SKIP_PREFIXES = ("<system-reminder>", "<local-command", "Caveat:")
 
 
 def recent(claude_session_id, root=None, limit=TRANSCRIPT_MAX_MESSAGES):
-    """최근 대화 [{role, text}]. transcript 가 없으면 빈 목록"""
+    """최근 대화 [{role, text}]. transcript 가 없으면 빈 목록.
+
+    도구 결과가 많은 세션은 꼬리 한 조각에 발화가 하나도 없다. 원하는 개수를
+    채울 때까지 창을 넓히되 상한에서 멈춘다
+    """
     path = find_path(claude_session_id, root)
     if not path:
         return []
-    messages = [message for message in map(parse_line, tail(path)) if message]
-    return messages[-limit:]
+    size = os.path.getsize(path)
+    window = TRANSCRIPT_TAIL_BYTES
+    while True:
+        messages = [message for message in map(parse_line, tail(path, window)) if message]
+        if len(messages) >= limit or window >= size or window >= TRANSCRIPT_MAX_TAIL_BYTES:
+            return messages[-limit:]
+        window *= 4
 
 
 def find_path(claude_session_id, root=None):
