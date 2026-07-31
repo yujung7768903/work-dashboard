@@ -139,7 +139,8 @@
 .u-chart { position: relative; }
 .u-hover, .u-tip { visibility: hidden; }
 .u-chart.u-hovering .u-hover, .u-chart.u-hovering .u-tip { visibility: visible; }
-.u-cursor { stroke: var(--muted); stroke-width: 1; }
+/* 기준선은 격자보다 조금만 진하면 된다 — 마크를 가려 읽기를 방해하지 않게 눌러 둔다 */
+.u-cursor { stroke: var(--muted); stroke-width: 1; opacity: 0.4; }
 .u-tip {
   position: absolute; top: 0; left: 0; z-index: 2;
   /* 툴팁이 포인터를 받으면 pointerleave 가 들어와 자기 자신을 껐다 켠다 */
