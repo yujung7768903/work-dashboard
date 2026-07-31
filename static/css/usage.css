@@ -114,6 +114,8 @@
 .u-delta b { font-weight: 700; }
 .u-delta.up b { color: var(--danger); }
 .u-delta.down b { color: var(--u-good); }
+/* 변화 없음. 값이 안 잡힌 것과 구분되게 자리는 채우고 색은 죽인다 */
+.u-delta.flat b { color: var(--muted); font-weight: 600; }
 .u-rows { display: flex; flex-direction: column; }
 .u-rows > div {
   display: flex; align-items: baseline; justify-content: space-between; gap: 10px;

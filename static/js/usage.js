@@ -156,10 +156,10 @@ function deltaOf(samples, field) {
   const prev = samples[samples.length - 2][field];
   if (typeof last !== "number" || typeof prev !== "number") return null;
   const diff = Math.round(last - prev);
-  // 폴링이 1분 간격이라 직전 표본과 같은 값인 게 정상이다. 그때 "변화 없음" 한 줄을
-  // 띄우면 카드마다 의미 없는 문구가 남으므로 아예 뺀다
-  if (diff === 0) return null;
-  return { dir: diff > 0 ? "up" : "down", text: `${Math.abs(diff)}%p` };
+  // 주간 %는 5분 사이에 1% 넘게 움직이는 일이 드물다. 그때 자리를 비우면 값이 안 잡힌
+  // 건지 안 변한 건지 구분이 안 되므로, 변화 없음은 회색 – 로 남긴다
+  if (diff === 0) return { dir: "flat", text: "–" };
+  return { dir: diff > 0 ? "up" : "down", text: `${Math.abs(diff)}%` };
 }
 
 // 값과 델타를 한 줄에 놓는다. 델타가 없어도 자리를 남겨 카드 높이를 맞춘다
@@ -177,10 +177,10 @@ function deltaMark(delta) {
     mark.textContent = "​";
     return mark;
   }
-  mark.append(
-    document.createTextNode(delta.dir === "up" ? "▲" : "▼"),
-    tag("b", null, delta.text)
-  );
+  if (delta.dir !== "flat") {
+    mark.appendChild(document.createTextNode(delta.dir === "up" ? "▲" : "▼"));
+  }
+  mark.appendChild(tag("b", null, delta.text));
   return mark;
 }
 
