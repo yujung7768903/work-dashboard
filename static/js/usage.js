@@ -24,9 +24,11 @@ const LIMIT_CARDS = [
   { key: "seven_day", label: "이번 주 · 전체 모델", sample: "seven_day_pct" },
   { key: "fable_session", label: "Fable 세션 창", sample: null },
 ];
+// tipName 은 툴팁 전용 긴 이름. 사이드카에는 이 두 창만 남아 모델별 %는 만들 수 없다 —
+// 주간 창이 전체 모델 합산이라 그게 사실상 총 사용률이다
 const PCT_SERIES = [
-  { key: "seven_day_pct", name: "주간", cls: "u-c-seven" },
-  { key: "five_hour_pct", name: "5시간", cls: "u-c-five" },
+  { key: "seven_day_pct", name: "주간", tipName: "주간 · 전체 모델", cls: "u-c-seven" },
+  { key: "five_hour_pct", name: "5시간", tipName: "현재 세션 · 5시간", cls: "u-c-five" },
 ];
 const MODEL_CLASS = { Opus: "u-c-opus", Sonnet: "u-c-sonnet", Haiku: "u-c-haiku" };
 const FALLBACK_CLASS = "u-c-haiku";
@@ -195,14 +197,15 @@ function renderDaily(tokens) {
     ])
   );
 
-  const series = models.map((model) => ({ key: model, cls: classOf(model) }));
+  // name 은 툴팁·범례에 쓰인다. 모델 이름 자체가 라벨이라 키와 같다
+  const series = models.map((model) => ({ key: model, name: model, cls: classOf(model) }));
   const points = tokens.days.map((day) => ({
     label: day.date.slice(DATE_SLICE),
     values: day.by_model || {},
-    // 요약은 압축 표기라 상세에 정확한 수를 둔다
-    detail: `${thousands(day.total)} 토큰 · 정가환산 $${day.cost_usd}`,
+    // 툴팁이 합계·모델별 토큰을 정확한 수로 보여주므로 여기 남는 건 비용뿐
+    detail: `정가환산 $${day.cost_usd}`,
   }));
-  box.appendChild(stackedColumnChart({ points, series }));
+  box.appendChild(stackedColumnChart({ points, series, label: "일별 토큰" }));
 
   const details = document.createElement("details");
   details.appendChild(tag("summary", null, "표로 보기"));
@@ -293,7 +296,7 @@ function renderTrend(usage) {
     values: { five_hour_pct: sample.five_hour_pct, seven_day_pct: sample.seven_day_pct },
   }));
   box.append(
-    percentLineChart({ points, series: PCT_SERIES }),
+    percentLineChart({ points, series: PCT_SERIES, label: "한도 사용률 추이" }),
     tag("p", "u-caption", `실측 ${samples.length}개 · 대시보드가 모으기 시작한 뒤부터 쌓임`)
   );
 }
