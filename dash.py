@@ -25,6 +25,11 @@ DETAIL_LABELS = (
     ("목표", "goal"),
     ("고려사항", "considerations"),
 )
+# 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다
+PRECONDITION_HELP = (
+    "착수 가능 조건. 참/거짓이 갈리는 한 문장으로 쓴다."
+    " 다른 할일이 조건이면 #id, 자동 확인이 되면 둘째 줄에 '확인: <명령>'"
+)
 EXIT_OK = 0
 EXIT_ERROR = 1
 USAGE_CLI_DAYS = 7
@@ -89,11 +94,13 @@ def _build_parser():
     add_todo.add_argument("--session", default=None,
                           help="이 세션이 붙은 워크스페이스에 추가")
     add_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
+    add_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
     add_todo.set_defaults(handler=_cmd_add_todo)
 
     add_subtask = sub.add_parser("add-subtask")
     add_subtask.add_argument("todo_id", type=int)
     add_subtask.add_argument("title")
+    add_subtask.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
     add_subtask.set_defaults(handler=_cmd_add_subtask)
 
     move_todo = sub.add_parser("move-todo")
@@ -235,6 +242,7 @@ def _cmd_add_todo(con, args):
         category_id=category_id,
         workspace_id=workspace_id,
         note=args.note,
+        precondition=args.precondition,
     )
     print(f"{created['id']}. {created['title']}")
 
@@ -248,7 +256,9 @@ def _scope_from_session(con, claude_session_id):
 
 
 def _cmd_add_subtask(con, args):
-    created = subtask_repo.create(con, args.todo_id, args.title)
+    created = subtask_repo.create(
+        con, args.todo_id, args.title, precondition=args.precondition
+    )
     print(f"{created['id']}. {created['title']}")
 
 
@@ -337,6 +347,8 @@ def _cmd_show_todo(con, args):
     for todo in todos:
         marker = " (컨텍스트)" if todo["note"] else ""
         print(f"{todo['id']}. [{todo['status']}] {todo['title']}{marker}")
+        if todo["precondition"]:
+            print(f"    조건: {_one_line(todo['precondition'])}")
 
 
 def _todos_in_scope(con, args):
@@ -363,9 +375,19 @@ def _cmd_show_note(con, args):
         _emit_json({"todo": todo, "subtasks": subtasks})
         return
     print(f"[{todo['status']}] {todo['id']}. {todo['title']}")
+    if todo["precondition"]:
+        print(f"착수 조건: {todo['precondition']}")
     print(f"컨텍스트: {todo['note'] or '(없음)'}")
     for subtask in subtasks:
         print(f"  - [{subtask['status']}] {subtask['title']}")
+        if subtask["precondition"]:
+            print(f"      조건: {subtask['precondition']}")
+
+
+def _one_line(text):
+    """목록에서는 조건 첫 줄만. '확인:' 명령줄까지 늘어놓으면 목록이 안 읽힌다"""
+    first = (text or "").strip().splitlines()
+    return first[0] if first else ""
 
 
 def _cmd_link_todo(con, args):
