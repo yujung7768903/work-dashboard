@@ -27,7 +27,9 @@ FRESHNESS_GUIDE = (
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
     "범위를 벗어나는 작업은 착수 전 사용자에게 확인받는다. "
-    "할일에 (컨텍스트) 표시가 있으면 착수 전 dash.py show-note <id> 로 읽는다."
+    "할일에 (컨텍스트) 표시가 있으면 착수 전 dash.py show-note <id> 로 읽는다. "
+    "'조건:' 이 붙은 할일은 그 조건이 충족됐는지 먼저 확인하고, "
+    "미충족이면 착수하지 않고 사용자에게 알린다."
 )
 UNCLASSIFIED_GUIDE = (
     "지침: 이번 세션을 한 번 분류한다. "
@@ -166,9 +168,20 @@ def _todo_lines(con, workspace_id):
     todos = todo_repo.list_by_workspace(con, workspace_id)
     if not todos:
         return ["  (없음)"]
-    # note 는 내용을 넣지 않고 존재만 표시 — 할일 12개 컨텍스트를 다 넣으면 세션이 오염됨
-    return [
-        f"  {todo['sort_order']}. [{todo['status']}] {todo['title']}"
-        + (f" (컨텍스트 #{todo['id']})" if todo["note"] else "")
-        for todo in todos
-    ]
+    # note 는 내용을 넣지 않고 존재만 표시 — 할일 12개 컨텍스트를 다 넣으면 세션이 오염됨.
+    # 조건은 반대로 내용을 넣는다. 착수 가능 여부를 보려고 show-note 를 또 불러야 하면
+    # 조건을 둔 의미가 없다. 대신 첫 줄만 — '확인:' 명령줄은 show-note 에서 본다
+    lines = []
+    for todo in todos:
+        marker = f" (컨텍스트 #{todo['id']})" if todo["note"] else ""
+        lines.append(
+            f"  {todo['sort_order']}. [{todo['status']}] {todo['title']}{marker}"
+        )
+        if todo["precondition"]:
+            lines.append(f"     조건: {_first_line(todo['precondition'])}")
+    return lines
+
+
+def _first_line(text):
+    parts = (text or "").strip().splitlines()
+    return parts[0] if parts else ""

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS todos(
     workspace_id INTEGER REFERENCES workspaces(id),
     title TEXT NOT NULL,
     note TEXT,
+    precondition TEXT,
     status TEXT NOT NULL DEFAULT 'todo',
     sort_order INTEGER NOT NULL,
     completed_at TEXT,
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS subtasks(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     todo_id INTEGER NOT NULL REFERENCES todos(id),
     title TEXT NOT NULL,
+    precondition TEXT,
     status TEXT NOT NULL DEFAULT 'todo',
     sort_order INTEGER NOT NULL,
     created_at TEXT NOT NULL
@@ -119,6 +121,7 @@ def connect(path=None):
     con.executescript(SCHEMA)
     con.commit()
     _add_category_style_columns(con)
+    _add_precondition_columns(con)
     _seed_categories(con)
     return con
 
@@ -147,6 +150,15 @@ def _seed_categories(con):
             (name, order, palette_color(order), stamp),
         )
     con.execute("INSERT INTO meta(key, value) VALUES(?,?)", (SEEDED_FLAG, stamp))
+    con.commit()
+
+
+def _add_precondition_columns(con):
+    """착수 가능 조건 컬럼을 뒤늦게 붙임. 이미 쓰던 DB 도 그냥 열리게"""
+    for table in ("todos", "subtasks"):
+        columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
+        if "precondition" not in columns:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN precondition TEXT")
     con.commit()
 
 

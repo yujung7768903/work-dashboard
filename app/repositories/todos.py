@@ -14,10 +14,12 @@ from app.repositories import categories as category_repo
 from app.repositories import workspaces as workspace_repo
 
 TABLE = "todos"
-EDITABLE_FIELDS = ("title", "note", "status", "workspace_id")
+EDITABLE_FIELDS = ("title", "note", "precondition", "status", "workspace_id")
 
 
-def create(con, title, category_id=None, workspace_id=None, note=None):
+def create(
+    con, title, category_id=None, workspace_id=None, note=None, precondition=None
+):
     """workspace_id 가 있으면 카테고리는 그 워크스페이스에서 가져옴"""
     cleaned = _clean_title(title)
     resolved_category = _resolve_category(con, category_id, workspace_id)
@@ -25,9 +27,19 @@ def create(con, title, category_id=None, workspace_id=None, note=None):
     stamp = now()
     with transaction(con):
         cursor = con.execute(
-            "INSERT INTO todos(category_id, workspace_id, title, note, status,"
-            " sort_order, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
-            (resolved_category, workspace_id, cleaned, note, STATUS_TODO, order, stamp, stamp),
+            "INSERT INTO todos(category_id, workspace_id, title, note, precondition,"
+            " status, sort_order, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                resolved_category,
+                workspace_id,
+                cleaned,
+                note,
+                precondition,
+                STATUS_TODO,
+                order,
+                stamp,
+                stamp,
+            ),
         )
     return get(con, cursor.lastrowid)
 

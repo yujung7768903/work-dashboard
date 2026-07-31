@@ -6,18 +6,18 @@ from app.errors import NotFound, Validation
 from app.repositories import todos as todo_repo
 
 TABLE = "subtasks"
-EDITABLE_FIELDS = ("title", "status")
+EDITABLE_FIELDS = ("title", "precondition", "status")
 
 
-def create(con, todo_id, title):
+def create(con, todo_id, title, precondition=None):
     todo_repo.get(con, todo_id)
     cleaned = _clean_title(title)
     order = ordering.next_order(con, TABLE, *_group_scope(todo_id))
     with transaction(con):
         cursor = con.execute(
-            "INSERT INTO subtasks(todo_id, title, status, sort_order, created_at)"
-            " VALUES(?,?,?,?,?)",
-            (todo_id, cleaned, STATUS_TODO, order, now()),
+            "INSERT INTO subtasks(todo_id, title, precondition, status, sort_order,"
+            " created_at) VALUES(?,?,?,?,?,?)",
+            (todo_id, cleaned, precondition, STATUS_TODO, order, now()),
         )
     return get(con, cursor.lastrowid)
 
