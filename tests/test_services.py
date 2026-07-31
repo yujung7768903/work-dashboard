@@ -108,6 +108,23 @@ class PlanningTest(unittest.TestCase):
         self.assertEqual(picked["todo"]["title"], "문의 회신")
         self.assertIsNone(picked["workspace"])
 
+    def test_workspace_scope_ignores_earlier_workspaces(self):
+        todo_repo.create(self.con, "락 재설계", workspace_id=self.first["id"])
+        todo_repo.create(self.con, "시나리오 정리", workspace_id=self.second["id"])
+        picked = planning.next_todo(self.con, self.second["id"])
+        self.assertEqual(picked["todo"]["title"], "시나리오 정리")
+        self.assertEqual(picked["workspace"]["name"], "헤르메스 테스트")
+
+    def test_workspace_scope_returns_none_when_scope_is_empty(self):
+        todo_repo.create(self.con, "락 재설계", workspace_id=self.first["id"])
+        self.assertIsNone(planning.next_todo(self.con, self.second["id"]))
+
+    def test_workspace_scope_ignores_paused_status(self):
+        todo_repo.create(self.con, "보류된 일", workspace_id=self.first["id"])
+        workspace_repo.update(self.con, self.first["id"], status=PAUSED)
+        picked = planning.next_todo(self.con, self.first["id"])
+        self.assertEqual(picked["todo"]["title"], "보류된 일")
+
     def test_done_on_attaches_workspace_name(self):
         finished = todo_repo.create(self.con, "락", workspace_id=self.first["id"])
         todo_repo.update(self.con, finished["id"], status=STATUS_DONE)

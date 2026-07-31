@@ -14,8 +14,15 @@ def today_text():
     return datetime.now(timezone.utc).date().isoformat()
 
 
-def next_todo(con):
-    """active 워크스페이스 순위대로 훑고, 없으면 미분류. doing 이 todo 보다 먼저"""
+def next_todo(con, workspace_id=None):
+    """active 워크스페이스 순위대로 훑고, 없으면 미분류. doing 이 todo 보다 먼저
+
+    workspace_id 가 오면 그 워크스페이스 안에서만 뽑는다(워크스페이스 status 무관).
+    """
+    if workspace_id is not None:
+        workspace = workspace_repo.get(con, workspace_id)
+        picked = _first_open(todo_repo.list_by_workspace(con, workspace_id))
+        return {"todo": picked, "workspace": workspace} if picked else None
     for workspace in workspace_repo.list_all(con, status=WORKSPACE_ACTIVE):
         picked = _first_open(todo_repo.list_by_workspace(con, workspace["id"]))
         if picked:

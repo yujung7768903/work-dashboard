@@ -54,6 +54,7 @@ def _build_parser():
     listing.set_defaults(handler=_cmd_ls)
 
     upcoming = sub.add_parser("next", help="다음에 할 일 1건")
+    upcoming.add_argument("--workspace", type=int, default=None)
     _add_json_flag(upcoming)
     upcoming.set_defaults(handler=_cmd_next)
 
@@ -167,7 +168,7 @@ def _cmd_ls(con, args):
 
 
 def _cmd_next(con, args):
-    picked = planning.next_todo(con)
+    picked = planning.next_todo(con, args.workspace)
     if args.as_json:
         _emit_json(picked)
         return
