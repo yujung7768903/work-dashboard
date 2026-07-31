@@ -39,18 +39,18 @@
   .u-shell { grid-template-columns: minmax(0, 1fr) clamp(290px, 28vw, 500px); }
 }
 
-.u-main { display: flex; flex-direction: column; gap: var(--gap); }
-.u-row3, .u-row2 { display: grid; grid-template-columns: 1fr; gap: var(--gap); }
-@media (min-width: 560px) {
-  .u-row3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (min-width: 720px) {
-  .u-row2 { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); }
-}
-/* 한도 카드는 "초기화까지 1일 20시간 · 08. 02. 오후 12:00" 한 줄이 들어가야 한다.
-   3열로 쪼갤 수 있는 최소 폭이 그 문장 길이로 결정된다 */
+/* 세 행이 같은 열 격자를 공유해야 카드 경계가 맞는다. 행마다 별도 그리드를 쓰면
+   1행 3등분과 2·3행 2:1 분할의 경계가 gap 만큼 어긋난다.
+   래퍼는 display:contents 로 자식을 부모 격자에 그대로 흘려보낸다 */
+.u-main { display: grid; grid-template-columns: 1fr; gap: var(--gap); }
+.u-row3, .u-row2 { display: contents; }
+/* 3열이 아니면 1열이다. 2열 단계를 두면 한도 카드 3장 중 하나가 홀로 남아
+   그 옆과 오늘 토큰·모델 구성 옆이 빈칸으로 뜬다.
+   3열 최소 폭은 "초기화까지 1일 20시간 · 08. 02. 오후 12:00" 한 줄이 결정한다 */
 @media (min-width: 880px) {
-  .u-row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .u-main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* 왼쪽 큰 카드는 두 칸 — 1행 앞 두 카드의 끝선까지 */
+  #u-daily, #u-trend { grid-column: span 2; }
 }
 
 /* ── 카드 ── */
