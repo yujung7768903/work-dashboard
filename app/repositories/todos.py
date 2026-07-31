@@ -1,6 +1,13 @@
 """할일 저장·조회. 워크스페이스 배정 시 카테고리 동기화가 여기서 강제됨"""
 from app import ordering
-from app.constants import STATUS_DONE, STATUS_TODO, TODO_STATUSES
+from app.constants import (
+    STATE_IDLE,
+    STATE_WORKING,
+    STATUS_DOING,
+    STATUS_DONE,
+    STATUS_TODO,
+    TODO_STATUSES,
+)
 from app.db import now, transaction
 from app.errors import NotFound, Validation
 from app.repositories import categories as category_repo
@@ -113,6 +120,46 @@ def list_completed_on(con, date_prefix):
     ]
 
 
+def ids_claimed_by_others(con, claude_session_id=None):
+    """다른 활성(working/idle) 세션이 session_todos 로 잡고 있는 할일 id 집합.
+
+    단계는 todos.status, 소유는 session_todos 로 나눠 봄. 세션을 안 주면 활성 세션이
+    잡은 것 전부가 남의 일
+    """
+    rows = con.execute(
+        """SELECT DISTINCT st.todo_id FROM session_todos st
+           JOIN sessions s ON s.id = st.session_id
+           WHERE s.state IN (?,?) AND s.claude_session_id IS NOT ?""",
+        (STATE_WORKING, STATE_IDLE, claude_session_id),
+    )
+    return {row["todo_id"] for row in rows}
+
+
+def list_doing_before(con, before_text):
+    """updated_at 이 기준 시각보다 오래된 doing. 오래 붙잡고 있는 할일 경고용"""
+    return [
+        dict(row)
+        for row in con.execute(
+            "SELECT * FROM todos WHERE status=? AND updated_at<? ORDER BY updated_at",
+            (STATUS_DOING, before_text),
+        )
+    ]
+
+
+def _require_subtasks_done(con, todo_id):
+    """하위할일이 남아 있으면 할일을 done 으로 올리지 못하게 막음"""
+    remaining = [
+        row["title"]
+        for row in con.execute(
+            "SELECT title FROM subtasks WHERE todo_id=? AND status<>?"
+            " ORDER BY sort_order, id",
+            (todo_id, STATUS_DONE),
+        )
+    ]
+    if remaining:
+        raise Validation("하위할일이 남아 완료할 수 없음: " + ", ".join(remaining))
+
+
 def _validated_assignments(con, current, fields):
     assignments = {}
     for key, value in fields.items():
@@ -123,6 +170,8 @@ def _validated_assignments(con, current, fields):
         assignments["title"] = _clean_title(assignments["title"])
     if "status" in assignments:
         _validate_status(assignments["status"])
+        if assignments["status"] == STATUS_DONE:
+            _require_subtasks_done(con, current["id"])
         assignments["completed_at"] = (
             now() if assignments["status"] == STATUS_DONE else None
         )

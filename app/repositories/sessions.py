@@ -9,6 +9,8 @@ from app.constants import (
     STATE_ENDED,
     STATE_IDLE,
     STATE_WORKING,
+    STATUS_DOING,
+    STATUS_TODO,
 )
 from app.db import now, transaction
 from app.errors import NotFound, Validation
@@ -113,14 +115,23 @@ def classify_by_ids(con, session_row_id, category_id=None, workspace_id=None):
 
 
 def link_todo(con, claude_session_id, todo_id):
-    """중복 연결은 무시. PK 가 (session_id, todo_id)"""
+    """중복 연결은 무시. PK 가 (session_id, todo_id).
+
+    연결은 착수 선언이므로 할일을 doing 으로 올림. status=todo 인 것만 바꿔서
+    이미 done 인 할일이 되살아나지 않게 함
+    """
     session = get(con, claude_session_id)
     _require_todo(con, todo_id)
+    stamp = now()
     with transaction(con):
         con.execute(
             "INSERT OR IGNORE INTO session_todos(session_id, todo_id, created_at)"
             " VALUES(?,?,?)",
-            (session["id"], todo_id, now()),
+            (session["id"], todo_id, stamp),
+        )
+        con.execute(
+            "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status=?",
+            (STATUS_DOING, stamp, todo_id, STATUS_TODO),
         )
 
 
