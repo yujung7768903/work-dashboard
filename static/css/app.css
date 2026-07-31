@@ -117,17 +117,12 @@ button:disabled { color: var(--line); cursor: default; }
 /* --on-cat: 카테고리 색 위에 얹을 글자색. JS 가 색의 명도를 보고 흰·검 중
    대비가 큰 쪽을 인라인으로 넣으므로 어떤 색을 골라도 4.5:1 이상이 나온다.
    여기 기본값은 색이 없는 '전체' 라벨용 */
-/* 이모지와 이름을 gap 으로 띄운다. 공백 문자로 띄우면 이모지 글리프 폭 때문에
-   왼쪽 여백이 더 넓어 보인다 */
 .cat-pill {
   --on-cat: #fff;
-  display: inline-flex; align-items: center; gap: 5px;
   padding: 7px 14px; border-radius: var(--r-pill);
   background-color: var(--cat-bg); color: var(--cat-ink);
   font-weight: 600; font-size: 14px;
 }
-/* 이모지는 글리프 자체의 좌우 여백이 있어 살짝 당겨줘야 좌우가 같아 보인다 */
-.cat-pill .emoji { margin-left: -2px; font-size: 13px; }
 .cat-pill:hover:not(.active) {
   background-color: color-mix(in srgb, var(--cat) 26%, var(--surface));
 }
@@ -223,19 +218,6 @@ button:disabled { color: var(--line); cursor: default; }
 #category-list input[type="color"]::-webkit-color-swatch {
   border: none; border-radius: var(--r-ctl); box-shadow: var(--shadow-card);
 }
-/* 이모지 선택 버튼과 그 아래 열리는 격자 */
-.emoji-pick { position: relative; flex: none; }
-.emoji-pick > button { width: 34px; height: 34px; padding: 0; font-size: 17px; line-height: 1; }
-.emoji-grid {
-  position: absolute; left: 0; top: calc(100% + 4px); z-index: 2; padding: 6px;
-  display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;
-  background: var(--surface); border-radius: var(--r-ctl); box-shadow: var(--shadow-pop);
-}
-.emoji-grid button {
-  background: none; padding: 5px; font-size: 17px; line-height: 1;
-  border-radius: 6px;
-}
-.emoji-grid button:hover { background: var(--bg); }
 
 #session-panel {
   background: var(--surface); border-radius: var(--r-card);
@@ -274,10 +256,9 @@ button:disabled { color: var(--line); cursor: default; }
   button { background-color: #2b2c34; }
   button:hover:not(:disabled) { background-color: #35363f; }
   button:disabled { color: #4a4b55; }
-  nav button, .ws-menu > button, .ws-menu-items button, .emoji-grid button {
+  nav button, .ws-menu > button, .ws-menu-items button {
     background-color: transparent;
   }
   nav button:hover { background-color: rgba(255, 255, 255, 0.07); }
-  .emoji-grid button:hover { background-color: #2b2c34; }
   #error { background-color: rgba(255, 107, 118, 0.12); }
 }

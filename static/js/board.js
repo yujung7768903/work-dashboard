@@ -66,7 +66,7 @@ function renderNext(next) {
 function renderQuickCategories(categories) {
   const select = document.getElementById("quick-category");
   const rendered = categories
-    .map((category) => `<option value="${category.id}">${label(category)}</option>`)
+    .map((category) => `<option value="${category.id}">${category.name}</option>`)
     .join("");
   if (select.innerHTML !== rendered) select.innerHTML = rendered;
 }
@@ -94,17 +94,7 @@ function inkOn(hex) {
 function filterPill(category) {
   const pill = document.createElement("button");
   pill.className = "cat-pill";
-  const name = document.createElement("span");
-  name.textContent = category.name;
-  if (category.emoji) {
-    const emoji = document.createElement("span");
-    emoji.className = "emoji";
-    emoji.textContent = category.emoji;
-    // 공백 텍스트 노드는 flex 에서 렌더되지 않지만 접근성 이름과 textContent 를 지켜준다
-    pill.append(emoji, " ", name);
-  } else {
-    pill.appendChild(name);
-  }
+  pill.textContent = category.name;
   // 색이 없으면 CSS 의 중립 회색 기본값을 씀 (전체 라벨)
   if (category.color) {
     pill.style.setProperty("--cat", category.color);
@@ -116,10 +106,6 @@ function filterPill(category) {
     run(renderBoard);
   });
   return pill;
-}
-
-function label({ emoji, name }) {
-  return [emoji, name].filter(Boolean).join(" ");
 }
 
 function renderGroups(groups) {
@@ -154,7 +140,7 @@ function groupElement(group, alwaysShowDone = false) {
     .filter(Boolean)
     .join("  ");
   const name = document.createElement("span");
-  name.textContent = label({ emoji: group.category_emoji, name: group.name });
+  name.textContent = group.name;
   const metaNode = document.createElement("span");
   metaNode.className = "group-meta";
   metaNode.textContent = meta;

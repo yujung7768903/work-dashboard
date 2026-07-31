@@ -1,16 +1,6 @@
-// 카테고리 관리. 색·이모지를 여기서 바꾸고, 각 줄에서 워크스페이스를 바로 만들 수 있음
+// 카테고리 관리. 색을 여기서 바꾸고, 각 줄에서 워크스페이스를 바로 만들 수 있음
 import * as api from "./api.js";
 import { run } from "./main.js";
-
-// 이모지 피커 격자. CSS 가 8열이므로 8의 배수로 두면 줄이 맞음
-const EMOJI_CHOICES = [
-  "💻", "🖥️", "⌨️", "📱", "🧩", "⚙️", "🛠️", "🔧",
-  "🚨", "⚠️", "🔥", "⚡", "🐛", "🩹", "🔍", "🧪",
-  "📋", "📝", "📄", "📊", "📈", "🗂️", "🗓️", "⏱️",
-  "🚀", "✅", "🎯", "📌", "🔖", "💡", "🧠", "🤖",
-  "🔐", "🌐", "🗄️", "☁️", "📦", "🔁", "📮", "💬",
-];
-let openPickerId = null;
 
 export async function renderCategories() {
   const categories = await api.getCategories();
@@ -35,7 +25,6 @@ function categoryRow(category, index, categories) {
   );
 
   item.append(
-    emojiPicker(category),
     colorInput(category),
     name,
     moveButton(index, categories, -1),
@@ -59,44 +48,6 @@ function colorInput(category) {
     })
   );
   return input;
-}
-
-function emojiPicker(category) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "emoji-pick";
-  const toggle = document.createElement("button");
-  toggle.textContent = category.emoji;
-  toggle.title = "이모지 선택";
-  toggle.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openPickerId = openPickerId === category.id ? null : category.id;
-    run(renderCategories);
-  });
-  wrapper.appendChild(toggle);
-  if (openPickerId === category.id) wrapper.appendChild(emojiGrid(category));
-  return wrapper;
-}
-
-// 지우기는 두지 않는다. 카테고리는 항상 이모지를 갖는다
-function emojiGrid(category) {
-  const grid = document.createElement("div");
-  grid.className = "emoji-grid";
-  EMOJI_CHOICES.forEach((emoji) => grid.appendChild(emojiCell(category, emoji)));
-  return grid;
-}
-
-function emojiCell(category, emoji) {
-  const button = document.createElement("button");
-  button.textContent = emoji;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    run(async () => {
-      openPickerId = null;
-      await api.updateCategory(category.id, { emoji });
-      await renderCategories();
-    });
-  });
-  return button;
 }
 
 function moveButton(index, categories, offset) {
@@ -141,13 +92,6 @@ function removeButton(category) {
   );
   return button;
 }
-
-// 격자 밖을 누르면 닫기
-document.addEventListener("click", () => {
-  if (openPickerId === null) return;
-  openPickerId = null;
-  run(renderCategories);
-});
 
 document.getElementById("category-add").addEventListener("submit", (event) => {
   event.preventDefault();

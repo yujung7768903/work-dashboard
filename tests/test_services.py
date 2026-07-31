@@ -45,13 +45,12 @@ class BoardTreeTest(unittest.TestCase):
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         self.assertEqual(group["category_name"], "개발")
 
-    def test_workspace_group_carries_category_id_color_emoji(self):
+    def test_workspace_group_carries_category_id_and_color(self):
         """보드가 카드 상단 색과 카테고리 라벨 필터에 쓰는 값들"""
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         dev = category_repo.get_by_name(self.con, "개발")
         self.assertEqual(group["category_id"], dev["id"])
         self.assertEqual(group["category_color"], dev["color"])
-        self.assertEqual(group["category_emoji"], dev["emoji"])
 
     def test_unassigned_group_has_no_category_color(self):
         """미분류는 색을 받지 않고 화면에서 옅은 회색 기본값으로 그려짐"""

@@ -68,7 +68,7 @@ function optionsHtml(items, selectedId) {
     .map(
       (item) =>
         `<option value="${item.id}"${item.id === selectedId ? " selected" : ""}>` +
-        `${[item.emoji, item.name].filter(Boolean).join(" ")}</option>`
+        `${item.name}</option>`
     )
     .join("");
 }
@@ -87,7 +87,7 @@ function readCard(workspace, categories, counts) {
   const title = document.createElement("div");
   const name = document.createElement("div");
   name.className = "ws-title";
-  name.textContent = [category?.emoji, workspace.name].filter(Boolean).join(" ");
+  name.textContent = workspace.name;
   const meta = document.createElement("div");
   meta.className = "ws-meta";
   meta.textContent = `${category?.name ?? "?"} · ${workspace.status}${jira}${progress}`;

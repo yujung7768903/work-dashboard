@@ -128,25 +128,18 @@ class CategoryRepoTest(unittest.TestCase):
         with self.assertRaises(Conflict):
             category_repo.rename(self.con, target["id"], "개발")
 
-    def test_seeded_category_gets_palette_color_and_emoji(self):
-        dev = category_repo.get_by_name(self.con, "개발")
-        self.assertEqual((dev["color"], dev["emoji"]), (CATEGORY_PALETTE[0], "💻"))
+    def test_seeded_category_gets_palette_color(self):
+        self.assertEqual(category_repo.get_by_name(self.con, "개발")["color"], CATEGORY_PALETTE[0])
 
-    def test_created_category_gets_next_palette_color_and_an_emoji(self):
+    def test_created_category_gets_next_palette_color(self):
         created = category_repo.create(self.con, "신규")
         expected = CATEGORY_PALETTE[len(SEED_CATEGORIES) % len(CATEGORY_PALETTE)]
         self.assertEqual(created["color"], expected)
-        self.assertTrue(created["emoji"], "새 카테고리도 이모지를 가져야 함")
 
-    def test_every_category_always_has_an_emoji(self):
-        category_repo.create(self.con, "신규")
-        blanks = [row["name"] for row in category_repo.list_all(self.con) if not row["emoji"]]
-        self.assertEqual(blanks, [])
-
-    def test_update_sets_color_and_emoji_without_touching_name(self):
+    def test_update_sets_color_without_touching_name(self):
         target = category_repo.get_by_name(self.con, "운영")
-        updated = category_repo.update(self.con, target["id"], color="#AABBCC", emoji="🚀")
-        self.assertEqual((updated["color"], updated["emoji"]), ("#aabbcc", "🚀"))
+        updated = category_repo.update(self.con, target["id"], color="#AABBCC")
+        self.assertEqual(updated["color"], "#aabbcc")
         self.assertEqual(updated["name"], "운영")
 
     def test_update_rejects_malformed_color(self):
@@ -154,18 +147,13 @@ class CategoryRepoTest(unittest.TestCase):
         with self.assertRaises(Validation):
             category_repo.update(self.con, target["id"], color="red")
 
-    def test_update_rejects_clearing_emoji(self):
-        target = category_repo.get_by_name(self.con, "개발")
-        with self.assertRaises(Validation):
-            category_repo.update(self.con, target["id"], emoji="")
-
     def test_update_without_fields_is_rejected(self):
         target = category_repo.get_by_name(self.con, "운영")
         with self.assertRaises(Validation):
             category_repo.update(self.con, target["id"])
 
     def test_style_columns_backfill_on_legacy_db(self):
-        """색·이모지 컬럼이 없던 DB 를 열면 팔레트 색과 시드 이모지로 채워짐"""
+        """색 컬럼이 없던 DB 를 열면 팔레트 색으로 채워짐"""
         path = temp_db_path()
         legacy = sqlite3.connect(path)
         legacy.executescript(
@@ -181,18 +169,8 @@ class CategoryRepoTest(unittest.TestCase):
         legacy.commit()
         legacy.close()
 
-        row = category_repo.get_by_name(temp_db(path), "개발")
-        self.assertEqual((row["color"], row["emoji"]), (CATEGORY_PALETTE[0], "💻"))
+        self.assertEqual(category_repo.get_by_name(temp_db(path), "개발")["color"], CATEGORY_PALETTE[0])
 
-    def test_backfill_fills_empty_emoji_of_unknown_category(self):
-        """이름을 모르는 카테고리의 빈 이모지도 열 때 자동으로 채워짐"""
-        path = temp_db_path()
-        first = temp_db(path)
-        created = category_repo.create(first, "새 분류")
-        first.execute("UPDATE categories SET emoji='' WHERE id=?", (created["id"],))
-        first.commit()
-        first.close()
-        self.assertTrue(category_repo.get(temp_db(path), created["id"])["emoji"])
 
     def test_delete_empty_category_succeeds(self):
         target = category_repo.get_by_name(self.con, "운영")

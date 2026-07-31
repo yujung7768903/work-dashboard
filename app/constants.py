@@ -17,15 +17,7 @@ CATEGORY_PALETTE = (
     "#7c6cf0", "#2aa77a", "#e0574a", "#2d8bdf",
     "#e08a2d", "#c85fb0", "#4aa3a3", "#8a9a2d",
 )
-SEED_CATEGORY_EMOJI = {
-    "개발": "💻", "운영": "🛠️", "장애 대응": "🚨",
-    "개발환경 개선": "⚙️", "스킬 개발": "🧩", "프로세스 개선": "📋",
-}
-# 이름을 모르는 새 카테고리에 붙일 기본 이모지. 카테고리는 항상 이모지를 갖는다
-EMOJI_FALLBACKS = ("📌", "🗂️", "🔖", "🧭", "🔔", "🧱", "🧾", "🪄")
 COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
-# ZWJ·변형선택자로 이어붙은 이모지가 10 코드포인트를 넘기도 해서 넉넉하게 잡음
-EMOJI_MAX_CHARS = 16
 
 TODO_STATUSES = ("todo", "doing", "done")
 WORKSPACE_STATUSES = ("active", "paused", "done")

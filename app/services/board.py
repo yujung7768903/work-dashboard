@@ -39,7 +39,6 @@ def _workspace_groups(con):
                 category_id=workspace["category_id"],
                 category_name=category.get("name"),
                 category_color=category.get("color"),
-                category_emoji=category.get("emoji"),
                 status=workspace["status"],
                 jira_id=workspace["jira_id"],
             )
