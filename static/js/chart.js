@@ -49,8 +49,9 @@ export function thousands(value) {
 }
 
 // 모델별 누적 세로 막대. point = { label, values: {키: 수}, detail }
-// 축은 압축 표기(format)로 읽히게 하고, 툴팁은 정확한 수(tipFormat)를 준다
-export function stackedColumnChart({ points, series, format = compact, tipFormat = thousands, label }) {
+// 툴팁도 축과 같은 압축 표기를 쓴다 — 억 단위 자릿수는 눈으로 읽히지 않는다.
+// 정확한 수가 필요하면 "표로 보기" 를 펼친다
+export function stackedColumnChart({ points, series, format = compact, label }) {
   const plot = plotOf(BAR);
   const totals = points.map((point) => sumOf(point.values, series));
   const ticks = niceTicks(Math.max(...totals, 0));
@@ -87,10 +88,10 @@ export function stackedColumnChart({ points, series, format = compact, tipFormat
     x: plot.x + band * index + band / 2,
     title: point.label,
     rows: [
-      { name: TOTAL_LABEL, value: tipFormat(sumOf(point.values, series)), total: true },
+      { name: TOTAL_LABEL, value: format(sumOf(point.values, series)), total: true },
       ...series
         .filter(({ key }) => (point.values[key] || 0) > 0)
-        .map(({ key, name, cls }) => ({ cls, name: name || key, value: tipFormat(point.values[key]) })),
+        .map(({ key, name, cls }) => ({ cls, name: name || key, value: format(point.values[key]) })),
     ],
     foot: point.detail,
   }));
