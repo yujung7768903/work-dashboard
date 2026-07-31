@@ -20,6 +20,7 @@ export const getNext = () => request("GET", "/next");
 export const getCategories = () => request("GET", "/categories");
 export const getWorkspaces = () => request("GET", "/workspaces");
 export const getSessions = () => request("GET", "/sessions");
+export const getUsage = () => request("GET", "/usage");
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });

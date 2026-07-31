@@ -74,6 +74,17 @@ CREATE TABLE IF NOT EXISTS session_todos(
     created_at TEXT NOT NULL,
     PRIMARY KEY(session_id, todo_id)
 );
+-- 한도 %는 어디에도 이력이 남지 않는다(사이드카는 매번 덮어씀). 추이를 그리려면
+-- 우리가 스냅샷을 쌓아야 한다. source_ts 는 사이드카의 timestamp 라, 같은 스냅샷이
+-- 두 번 들어오는 걸 PK 가 그대로 막아준다
+CREATE TABLE IF NOT EXISTS usage_samples(
+    source_ts INTEGER PRIMARY KEY,
+    five_hour_pct REAL,
+    five_hour_resets_at INTEGER,
+    seven_day_pct REAL,
+    seven_day_resets_at INTEGER,
+    created_at TEXT NOT NULL
+);
 """
 
 SEEDED_FLAG = "categories_seeded"

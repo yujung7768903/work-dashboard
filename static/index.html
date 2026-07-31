@@ -13,6 +13,7 @@
       <button data-tab="board" class="active">보드</button>
       <button data-tab="workspace">워크스페이스</button>
       <button data-tab="categories">카테고리</button>
+      <button data-tab="usage">사용량</button>
     </nav>
   </header>
 
@@ -58,6 +59,35 @@
       <button type="submit">추가</button>
     </form>
     <ul id="category-list"></ul>
+  </section>
+
+  <section id="tab-usage" class="tab" hidden>
+    <div class="usage-top">
+      <div class="usage-card usage-now">
+        <div class="usage-head">
+          <span id="usage-plan" class="usage-plan">플랜</span>
+          <span id="usage-updated" class="usage-meta">불러오는 중</span>
+          <span id="usage-stale" class="usage-warn" hidden></span>
+        </div>
+        <p id="usage-hero" class="usage-hero">―</p>
+        <p id="usage-hero-label" class="usage-meta">불러오는 중</p>
+        <div id="usage-meters"></div>
+        <p id="usage-note" class="usage-meta"></p>
+      </div>
+      <div class="usage-card">
+        <h2>한도 사용률 추이 <span class="usage-meta">최근 24시간</span></h2>
+        <div id="usage-pct-chart"></div>
+      </div>
+    </div>
+    <div class="usage-card">
+      <h2>일별 토큰 <span class="usage-meta">최근 14일 · 입력+출력+캐시 합계</span></h2>
+      <div id="usage-token-chart"></div>
+      <p class="usage-meta">정가환산은 API 정가 기준 금액이며, 구독제의 실제 청구액이 아님</p>
+      <details>
+        <summary>표로 보기</summary>
+        <div id="usage-table" class="usage-table-box"></div>
+      </details>
+    </div>
   </section>
 
   <script type="module" src="/js/main.js"></script>

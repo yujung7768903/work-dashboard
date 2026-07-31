@@ -1,12 +1,14 @@
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
 import { renderBoard } from "./board.js";
 import { renderCategories } from "./categories.js";
+import { renderUsage } from "./usage.js";
 import { renderWorkspaceTab } from "./workspace.js";
 
 const RENDERERS = {
   board: renderBoard,
   workspace: renderWorkspaceTab,
   categories: renderCategories,
+  usage: renderUsage,
 };
 
 export function showError(message) {
