@@ -311,7 +311,19 @@ button:disabled { color: var(--line); cursor: default; }
   background: var(--surface); border-radius: var(--r-card);
   box-shadow: var(--shadow-card); padding: 12px 14px; margin: var(--gap) 0;
 }
-#session-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+/* 기본 마커는 브라우저마다 위치가 달라 flex summary 에서 사라진다. 직접 그린다 */
+#session-panel > summary {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; list-style: none; font-weight: 600;
+}
+#session-panel > summary::-webkit-details-marker { display: none; }
+#session-panel > summary::before {
+  content: ""; flex: none; width: 6px; height: 6px;
+  border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
+  transform: rotate(-45deg); transition: transform 0.12s;
+}
+#session-panel[open] > summary::before { transform: rotate(45deg); }
+#session-head { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 8px; }
 #session-warn { color: var(--warn); font-weight: 600; font-size: 13px; }
 #session-list { list-style: none; margin: 6px 0 0; padding: 0; }
 /* 돌고 있는 세션이 0 개면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
@@ -322,6 +334,10 @@ button:disabled { color: var(--line); cursor: default; }
 #session-list li.idle { color: var(--muted); }
 #session-list .scope { min-width: 12em; font-weight: 500; }
 #session-list .prompt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+/* 마지막 수행 시각 경과. 눈에 띄지 않게 오른쪽 끝 */
+#session-list .age { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+#session-list li.more { padding-top: 6px; }
+#session-list li.more button { background: none; padding: 2px 0; color: var(--muted); font-size: 13px; }
 
 #done-today > summary { cursor: pointer; color: var(--muted); font-weight: 600; padding: 4px 0; }
 

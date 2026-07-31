@@ -51,4 +51,5 @@ document.getElementById("tabs").addEventListener("click", (event) => {
   if (tab) showTab(tab);
 });
 
-showTab("board");
+// 사이드바 최상단과 일치시킨다 — 한도부터 확인하고 들어오는 흐름
+showTab("usage");

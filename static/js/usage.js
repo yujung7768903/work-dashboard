@@ -39,6 +39,8 @@ const LEVEL_CLASS = { warn: "u-warn", critical: "u-crit" };
 const STATUS_LABEL = { todo: "대기", doing: "진행중", done: "완료" };
 
 let timer = null;
+// 전체보기로 펼친 상태. 모듈 변수라 60초 폴링이 다시 그려도 접히지 않는다
+let sessionsExpanded = false;
 
 export async function renderUsage() {
   paint(await load());
@@ -380,14 +382,14 @@ function renderSessions(payload) {
   const box = slot("u-sessions");
   if (!box) return;
   const all = payload?.sessions || [];
-  // 작업중이 먼저. 레일에는 앞의 몇 개만 세우고 나머지는 수만 알린다
+  // 작업중이 먼저. 접힌 상태에서는 앞의 몇 개만 세우고 나머지는 수만 알린다
   const ordered = [...all].sort(
     (a, b) => Number(b.state === WORKING) - Number(a.state === WORKING)
   );
-  const shown = ordered.slice(0, RAIL_SESSION_LIMIT);
-  const working = all.filter((session) => session.state === WORKING).length;
+  const folded = Math.max(0, ordered.length - RAIL_SESSION_LIMIT);
+  const shown = sessionsExpanded ? ordered : ordered.slice(0, RAIL_SESSION_LIMIT);
 
-  box.appendChild(railHead("돌고 있는 세션", tag("span", null, `${working} 작업중`)));
+  box.appendChild(railHead("돌고 있는 세션", folded ? expandToggle(payload) : null));
   if (!all.length) {
     box.appendChild(railCard(tag("p", "u-caption", "돌고 있는 세션이 없음")));
     return;
@@ -399,16 +401,32 @@ function renderSessions(payload) {
     const body = tag("div", "u-sess-body");
     const scope = tag("div", "u-sess-scope", session.workspace_name || UNCLASSIFIED_LABEL);
     if (session.category_name) scope.appendChild(tag("span", null, session.category_name));
+    const ago = agoText(session.last_seen_at);
+    if (ago) scope.appendChild(tag("span", "u-sess-ago", ago));
     body.append(scope, tag("p", "u-sess-prompt", session.last_prompt || "지시 없음"));
     item.appendChild(body);
     box.appendChild(item);
   });
-  if (ordered.length > shown.length) {
-    box.appendChild(tag("p", "u-caption", `그 외 ${ordered.length - shown.length}건`));
+  if (folded && !sessionsExpanded) {
+    box.appendChild(tag("p", "u-caption", `그 외 ${folded}건`));
   }
   if (payload.unclassified_count) {
     box.appendChild(tag("p", "u-sess-warn", `분류 전 ${payload.unclassified_count}건 ⚠`));
   }
+}
+
+// 접힌 세션을 그 자리에서 펼친다. 같은 payload 로 다시 그리므로 재조회는 없다
+function expandToggle(payload) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "u-rail-more";
+  button.textContent = sessionsExpanded ? "접기" : "전체보기";
+  button.setAttribute("aria-expanded", String(sessionsExpanded));
+  button.addEventListener("click", () => {
+    sessionsExpanded = !sessionsExpanded;
+    renderSessions(payload);
+  });
+  return button;
 }
 
 // ── 공통 조각 ──────────────────────────────────────────────────────────────
@@ -430,7 +448,8 @@ function headRow(title, sub, extras = []) {
 
 function railHead(title, extra) {
   const head = tag("div", "u-rail-head");
-  head.append(tag("h2", null, title), extra);
+  head.appendChild(tag("h2", null, title));
+  if (extra) head.appendChild(extra);
   return head;
 }
 
@@ -526,6 +545,21 @@ function durationText(seconds) {
   const hours = Math.floor(minutes / MINUTES_PER_HOUR);
   if (hours < HOURS_PER_DAY) return `${hours}시간 ${minutes % MINUTES_PER_HOUR}분`;
   return `${Math.floor(hours / HOURS_PER_DAY)}일 ${hours % HOURS_PER_DAY}시간`;
+}
+
+// ISO8601 UTC → "16s" / "5m" / "3h" / "2d". 세션 카드의 경과 시간 전용 표기라
+// durationText(한국어 "3시간 20분")와 규칙이 다르다. 값이 없거나 못 읽으면 null
+function agoText(isoText) {
+  if (!isoText) return null;
+  const stamp = Date.parse(isoText);
+  if (Number.isNaN(stamp)) return null;
+  const seconds = Math.max(0, Math.floor((Date.now() - stamp) / MS_PER_SECOND));
+  if (seconds < SECONDS_PER_MINUTE) return `${seconds}s`;
+  const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
+  if (minutes < MINUTES_PER_HOUR) return `${minutes}m`;
+  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+  if (hours < HOURS_PER_DAY) return `${hours}h`;
+  return `${Math.floor(hours / HOURS_PER_DAY)}d`;
 }
 
 function startPolling() {

@@ -23,6 +23,15 @@
       </div>
 
       <nav id="tabs" class="side-nav">
+        <button data-tab="usage">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M2.3 11.6a6 6 0 1 1 11.4 0" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M8 11.3l3-3.4" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          사용량
+        </button>
         <button data-tab="board" class="active">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
@@ -48,15 +57,6 @@
           </svg>
           카테고리
         </button>
-        <button data-tab="usage">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <path d="M2.3 11.6a6 6 0 1 1 11.4 0" fill="none" stroke="currentColor"
-                  stroke-width="1.5" stroke-linecap="round"/>
-            <path d="M8 11.3l3-3.4" fill="none" stroke="currentColor"
-                  stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-          사용량
-        </button>
       </nav>
 
       <!-- 현재 상태 한 줄 자리. 비어 있어도 무해 -->
@@ -71,13 +71,16 @@
 
       <section id="tab-board" class="tab">
         <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
-        <div id="session-panel">
-          <div id="session-head">
-            <span id="session-count">돌고 있는 세션 0</span>
-            <span id="session-warn" hidden></span>
-          </div>
+        <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
+        <details id="session-panel">
+          <summary>
+            <span id="session-head">
+              <span id="session-count">돌고 있는 세션 0</span>
+              <span id="session-warn" hidden></span>
+            </span>
+          </summary>
           <ul id="session-list"></ul>
-        </div>
+        </details>
         <form id="quick-add">
           <select id="quick-category" title="카테고리"></select>
           <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>

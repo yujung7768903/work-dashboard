@@ -7,11 +7,16 @@ const NO_WORKSPACE = "―";
 const UNCLASSIFIED_LABEL = "분류 전";
 
 let timer = null;
+// 사용자가 펼친 '대기 중'은 폴링이 접지 않도록 모듈에 남긴다
+let showIdle = false;
 
 export async function renderSessions(onPick) {
   const payload = await api.getSessions();
+  const working = payload.sessions.filter((s) => s.state === WORKING);
+  const idle = payload.sessions.filter((s) => s.state !== WORKING);
+
   document.getElementById("session-count").textContent =
-    `돌고 있는 세션 ${payload.sessions.length}`;
+    `돌고 있는 세션 ${working.length}`;
   const warn = document.getElementById("session-warn");
   warn.hidden = !payload.unclassified_count;
   warn.textContent = payload.unclassified_count
@@ -20,9 +25,35 @@ export async function renderSessions(onPick) {
 
   const list = document.getElementById("session-list");
   list.innerHTML = "";
-  payload.sessions.forEach((session) =>
-    list.appendChild(sessionRow(session, onPick))
-  );
+  const shown = showIdle ? [...working, ...idle] : working;
+  shown.forEach((session) => list.appendChild(sessionRow(session, onPick)));
+  if (idle.length) list.appendChild(idleToggle(idle.length, onPick));
+}
+
+// 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다
+function formatAge(iso) {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86400)}d`;
+}
+
+function idleToggle(count, onPick) {
+  const item = document.createElement("li");
+  item.className = "more";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = showIdle ? "대기 중 숨기기" : `대기 중 ${count}개 보기`;
+  button.addEventListener("click", () => {
+    showIdle = !showIdle;
+    renderSessions(onPick).catch(() => {});
+  });
+  item.appendChild(button);
+  return item;
 }
 
 function sessionRow(session, onPick) {
@@ -43,7 +74,11 @@ function sessionRow(session, onPick) {
   prompt.className = "prompt";
   prompt.textContent = session.last_prompt || "";
 
-  item.append(mark, scope, category, prompt);
+  const age = document.createElement("span");
+  age.className = "age";
+  age.textContent = formatAge(session.last_seen_at);
+
+  item.append(mark, scope, category, prompt, age);
   if (session.workspace_id && onPick) {
     item.addEventListener("click", () => onPick(session.workspace_id));
   }
