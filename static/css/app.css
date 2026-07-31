@@ -1,7 +1,7 @@
 /* 색·둥글기·그림자 토큰. 인디고 액센트 + 연블루 페어(안 A 팔레트).
    usage.css 가 같은 토큰을 참조하므로 이름을 바꾸면 사용량 화면이 같이 깨진다 */
 :root {
-  --bg: #f5f6fb;
+  --bg: #f5f5f7;
   --surface: #fff;
   --fg: #1b1d29;
   --muted: #868ba0;
@@ -9,7 +9,7 @@
   --accent: #4a5ae8;
   --soft: #7f8def;     /* 액센트와 짝 이루는 두 번째 시리즈 색 */
   --softer: #e6e9fb;   /* 액센트 틴트 면 (선택 배경·트랙) */
-  --rail: #e3e6f2;     /* 레일 판 배경 */
+  --rail: #e8e8ec;     /* 레일 판 배경 */
   --danger: #cf3f3f;
   --good: #1a9d6a;
   --warn: #d8931f;
