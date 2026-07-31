@@ -376,12 +376,21 @@ def _cmd_show_note(con, args):
         return
     print(f"[{todo['status']}] {todo['id']}. {todo['title']}")
     if todo["precondition"]:
-        print(f"착수 조건: {todo['precondition']}")
+        print(_indented("착수 조건: ", todo["precondition"]))
     print(f"컨텍스트: {todo['note'] or '(없음)'}")
     for subtask in subtasks:
         print(f"  - [{subtask['status']}] {subtask['title']}")
         if subtask["precondition"]:
-            print(f"      조건: {subtask['precondition']}")
+            print(_indented("      조건: ", subtask["precondition"]))
+
+
+def _indented(label, text):
+    """여러 줄 조건의 둘째 줄부터도 라벨 폭만큼 들여씀. 안 그러면 계층이 깨져 보인다"""
+    lines = (text or "").strip().splitlines()
+    pad = " " * len(label)
+    return "\n".join(
+        f"{label if index == 0 else pad}{line}" for index, line in enumerate(lines)
+    )
 
 
 def _one_line(text):
