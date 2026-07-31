@@ -18,7 +18,14 @@ const END_LABEL_GAP = 8;
 const TICK_COUNT = 4;
 const TICK_STEPS = [1, 2, 2.5, 5, 10];
 const AXIS_FONT = 9; // css --fs-micro. 좌표 계산에 쓰이므로 CSS 가 아니라 여기서 정한다
-const MAX_X_LABELS = 7;
+// 라벨 폭 어림값. 숫자·하이픈만 오는 축이라 자당 0.6em 이면 실제보다 조금 넉넉하다
+const LABEL_CHAR_EM = 0.6;
+const LABEL_MIN_GAP = 6;
+const CJK_START = 0x2e80; // 이보다 크면 전각으로 본다 (한글·한자·전각 기호)
+const END_LABEL_MIN_GAP = 12; // 끝점 라벨 두 줄이 겹치지 않는 최소 간격
+const CURSOR_DASH = "3 3";
+const TIP_GAP = 12; // 기준선과 툴팁 사이. 0 이면 툴팁이 선을 덮어 어디를 짚었는지 흐려진다
+const TOTAL_LABEL = "합계";
 const PERCENT_MAX = 100;
 const PCT_TICKS = [0, 25, 50, 75, 100];
 const DONUT_SIZE = 128;
@@ -47,12 +54,14 @@ export function thousands(value) {
 }
 
 // 모델별 누적 세로 막대. point = { label, values: {키: 수}, detail }
-export function stackedColumnChart({ points, series, format = compact }) {
+// 툴팁도 축과 같은 압축 표기를 쓴다 — 억 단위 자릿수는 눈으로 읽히지 않는다.
+// 정확한 수가 필요하면 "표로 보기" 를 펼친다
+export function stackedColumnChart({ points, series, format = compact, label }) {
   const plot = plotOf(BAR);
   const totals = points.map((point) => sumOf(point.values, series));
   const ticks = niceTicks(Math.max(...totals, 0));
   const top = ticks[ticks.length - 1] || 1;
-  const svg = frame(BAR.height);
+  const svg = frame(BAR.height, label);
   gridAndTicks(svg, plot, ticks, (value) => (value === 0 ? "0" : format(value)));
 
   const band = plot.width / Math.max(points.length, 1);
@@ -76,16 +85,34 @@ export function stackedColumnChart({ points, series, format = compact }) {
         })
       );
     });
-    svg.appendChild(hitArea(plot, plot.x + band * index, band, point.label, point.detail));
   });
-  xLabels(svg, points.map((point) => point.label), (i) => plot.x + band * i + band / 2, BAR);
-  return figure(svg);
+  // 휴일 라벨만 색을 달리 한다 — 막대 색은 모델 몫이라 건드리지 않는다
+  xLabels(
+    svg,
+    points.map((point) => ({ text: point.label, cls: point.holiday ? "u-holiday" : null })),
+    (i) => plot.x + band * i + band / 2,
+    BAR
+  );
+
+  // 막대 위에는 초점 마크를 찍지 않는다 — 기준선이 이미 어느 막대인지 가리킨다
+  const slots = points.map((point, index) => ({
+    x: plot.x + band * index + band / 2,
+    title: point.label,
+    rows: [
+      { name: TOTAL_LABEL, value: format(sumOf(point.values, series)), total: true },
+      ...series
+        .filter(({ key }) => (point.values[key] || 0) > 0)
+        .map(({ key, name, cls }) => ({ cls, name: name || key, value: format(point.values[key]) })),
+    ],
+    foot: point.detail,
+  }));
+  return figure(svg, { plot, slots });
 }
 
 // 여러 시리즈 꺾은선. y 를 0–100% 로 고정해 축이 표본마다 흔들리지 않게 한다
-export function percentLineChart({ points, series }) {
+export function percentLineChart({ points, series, label }) {
   const plot = plotOf(LINE);
-  const svg = frame(LINE.height);
+  const svg = frame(LINE.height, label);
   gridAndTicks(svg, plot, PCT_TICKS, (value) => `${value}%`);
   const step = points.length > 1 ? plot.width / (points.length - 1) : 0;
   const positionX = (index) =>
@@ -93,6 +120,7 @@ export function percentLineChart({ points, series }) {
   const positionY = (value) =>
     plot.y + plot.height - (Math.min(value, PERCENT_MAX) / PERCENT_MAX) * plot.height;
 
+  const ends = [];
   series.forEach(({ key, name, cls }) => {
     const drawable = points
       .map((point, index) => ({ index, value: point.values[key] }))
@@ -127,29 +155,40 @@ export function percentLineChart({ points, series }) {
         class: `u-dot ${cls}`,
       })
     );
-    // 끝점 직접 라벨. 글자는 시리즈 색을 입지 않고 잉크 토큰을 쓴다
-    svg.appendChild(
-      text(`${name} ${Math.round(last.value)}%`, {
-        x: positionX(last.index) + END_LABEL_GAP,
-        y: positionY(last.value) + 4,
-        class: "u-end-label",
-        "font-size": null,
-      })
-    );
+    // 끝점 직접 라벨. 글자는 시리즈 색을 입지 않고 잉크 토큰을 쓴다.
+    // 두 창의 %가 붙으면 라벨끼리 겹치므로 자리는 나중에 한꺼번에 벌린다
+    ends.push({
+      text: `${name} ${Math.round(last.value)}%`,
+      x: positionX(last.index) + END_LABEL_GAP,
+      y: positionY(last.value) + 4,
+    });
   });
 
-  points.forEach((point, index) => {
-    const parts = series
-      .filter(({ key }) => typeof point.values[key] === "number")
-      .map(({ key, name }) => `${name} ${point.values[key].toFixed(1)}%`);
-    if (!parts.length) return;
-    const band = step || plot.width;
+  spreadEnds(ends, plot).forEach((end) => {
     svg.appendChild(
-      hitArea(plot, positionX(index) - band / 2, band, point.label, parts.join(" · "))
+      text(end.text, { x: end.x, y: end.y, class: "u-end-label", "font-size": null })
     );
   });
-  xLabels(svg, points.map((point) => point.label), positionX, LINE);
-  return figure(svg);
+  xLabels(svg, points.map((point) => ({ text: point.label })), positionX, LINE);
+
+  // 값이 없는 표본은 슬롯을 만들지 않는다 — 빈 툴팁이 뜨는 자리가 생긴다
+  const slots = points
+    .map((point, index) => {
+      const filled = series.filter(({ key }) => typeof point.values[key] === "number");
+      return {
+        x: positionX(index),
+        title: point.label,
+        rows: filled.map(({ key, name, tipName, cls }) => ({
+          cls,
+          // 끝점 라벨은 좁아서 짧은 name 을 쓴다. 툴팁에는 자리가 있어 풀어 쓴다
+          name: tipName || name,
+          value: `${point.values[key].toFixed(1)}%`,
+        })),
+        marks: filled.map(({ key, cls }) => ({ y: positionY(point.values[key]), cls })),
+      };
+    })
+    .filter((slot) => slot.rows.length);
+  return figure(svg, { plot, slots });
 }
 
 // 도넛. slice = { value, cls }. 가운데에 합계를 둔다
@@ -211,8 +250,13 @@ function plotOf({ height, pad }) {
   };
 }
 
-function frame(height) {
-  return el("svg", { viewBox: `0 0 ${WIDTH} ${height}`, width: "100%", role: "img" });
+function frame(height, label) {
+  return el("svg", {
+    viewBox: `0 0 ${WIDTH} ${height}`,
+    width: "100%",
+    role: "img",
+    "aria-label": label ?? null,
+  });
 }
 
 function gridAndTicks(svg, plot, ticks, format) {
@@ -228,41 +272,145 @@ function gridAndTicks(svg, plot, ticks, format) {
   });
 }
 
+// labels = [{ text, cls }]. 자리가 되면 전부 찍고, 겹칠 때만 건너뛴다 —
+// 개수를 고정해 두면 14일치처럼 다 들어가는 축에서도 절반이 빈다
 function xLabels(svg, labels, centerX, spec) {
-  // 겹칠 만큼 촘촘하면 건너뛴다. 겹쳐 찍는 것보다 비는 편이 읽힌다
-  const stride = Math.ceil(labels.length / MAX_X_LABELS) || 1;
+  const stride = labelStride(labels, spec, centerX);
   labels.forEach((label, index) => {
     if (index % stride) return;
     svg.appendChild(
-      text(label, {
+      text(label.text, {
         x: centerX(index),
         y: spec.height - spec.pad.bottom + AXIS_FONT + 4,
         "text-anchor": "middle",
+        // null 을 넘기면 el 이 속성을 건너뛰어 text() 의 기본 class 까지 사라진다
+        class: label.cls ? `u-tick ${label.cls}` : "u-tick",
       })
     );
   });
 }
 
-function hitArea(plot, x, width, title, detail) {
-  // 마크보다 넉넉한 투명 사각형이 hover 대상. 얇은 선·작은 점은 그 자체로 집기 어렵다
-  const rect = el("rect", {
-    x,
-    y: plot.y,
-    width: Math.max(width, 1),
-    height: plot.height,
-    fill: "transparent",
-  });
-  const tip = el("title");
-  tip.textContent = detail ? `${title}\n${detail}` : title;
-  rect.appendChild(tip);
-  return rect;
+export function labelStride(labels, spec, centerX) {
+  if (labels.length < 2) return 1;
+  const widest = Math.max(...labels.map((label) => textEm(label.text)));
+  const need = widest * AXIS_FONT + LABEL_MIN_GAP;
+  const step = Math.abs(centerX(1) - centerX(0)) || need;
+  return Math.max(1, Math.ceil(need / step));
 }
 
-function figure(svg) {
+// 끝점 라벨을 위에서부터 최소 간격만큼 벌린다. 두 창의 %가 1~2%p 차이면
+// 라벨이 겹쳐 둘 다 못 읽는다 — 값에서 조금 밀려도 읽히는 쪽이 낫다.
+// 아래로만 밀고 플롯 바닥에 닿으면 그만큼 전체를 위로 당긴다
+export function spreadEnds(ends, plot) {
+  const sorted = [...ends].sort((a, b) => a.y - b.y);
+  sorted.forEach((end, index) => {
+    if (!index) return;
+    end.y = Math.max(end.y, sorted[index - 1].y + END_LABEL_MIN_GAP);
+  });
+  const bottom = plot.y + plot.height;
+  const over = sorted.length ? sorted[sorted.length - 1].y - bottom : 0;
+  if (over > 0) sorted.forEach((end) => (end.y -= over));
+  return sorted;
+}
+
+// 글자 폭 어림값(em). 한글은 전각이라 숫자와 같은 폭으로 세면 라벨이 서로 닿는다
+function textEm(text) {
+  return [...text].reduce(
+    (sum, char) => sum + (char.charCodeAt(0) > CJK_START ? 1 : LABEL_CHAR_EM),
+    0
+  );
+}
+
+function figure(svg, hover) {
   const box = document.createElement("div");
   box.className = "u-chart";
   box.appendChild(svg);
+  if (hover?.slots.length) attachHover(box, svg, hover);
   return box;
+}
+
+// 와탭식 호버. 표본마다 투명 사각형을 두는 대신 차트 전체가 pointermove 를 받아
+// 가장 가까운 표본으로 기준선·초점·툴팁을 옮긴다. 사각형을 나눠 두면 경계마다
+// leave/enter 가 번갈아 들어와 툴팁이 깜빡인다
+function attachHover(box, svg, { plot, slots }) {
+  const cursor = el("line", {
+    y1: plot.y,
+    y2: plot.y + plot.height,
+    "stroke-dasharray": CURSOR_DASH,
+    class: "u-cursor",
+  });
+  const marks = el("g");
+  const layer = el("g", { class: "u-hover", "aria-hidden": "true" });
+  layer.append(cursor, marks);
+  svg.appendChild(layer);
+
+  const tip = document.createElement("div");
+  tip.className = "u-tip";
+  box.appendChild(tip);
+
+  const move = (event) => {
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    // svg 는 width:100% 라 viewBox 단위와 화면 px 의 배율이 폭마다 다르다
+    const scale = rect.width / WIDTH;
+    const slot = nearestSlot(slots, (event.clientX - rect.left) / scale);
+    cursor.setAttribute("x1", slot.x);
+    cursor.setAttribute("x2", slot.x);
+    marks.replaceChildren(
+      ...(slot.marks || []).map(({ y, cls }) =>
+        el("circle", {
+          cx: slot.x,
+          cy: y,
+          r: MARKER_RADIUS,
+          "stroke-width": RING_WIDTH,
+          class: `u-dot ${cls}`,
+        })
+      )
+    );
+    fillTip(tip, slot);
+    box.classList.add("u-hovering");
+    placeTip(tip, box, slot.x * scale, event.clientY - rect.top);
+  };
+  const leave = () => box.classList.remove("u-hovering");
+  box.addEventListener("pointermove", move);
+  box.addEventListener("pointerleave", leave);
+  box.addEventListener("pointercancel", leave);
+}
+
+// 커서 x(화면 px)에 가장 가까운 슬롯. 표본이 촘촘해도 짚은 값은 하나여야 한다
+export function nearestSlot(slots, x) {
+  return slots.reduce((best, slot) => (Math.abs(slot.x - x) < Math.abs(best.x - x) ? slot : best));
+}
+
+function fillTip(tip, slot) {
+  const nodes = [htmlTag("p", "u-tip-head", slot.title)];
+  slot.rows.forEach((row) => {
+    const line = htmlTag("div", row.total ? "u-tip-row u-tip-total" : "u-tip-row");
+    const name = htmlTag("span", "u-tip-name", row.name);
+    // 합계는 시리즈가 아니라 그 표본 전체라 색 점을 달지 않는다
+    if (!row.total) name.prepend(htmlTag("i", `u-swatch ${row.cls}`));
+    line.append(name, htmlTag("b", null, row.value));
+    nodes.push(line);
+  });
+  if (slot.foot) nodes.push(htmlTag("p", "u-tip-foot", slot.foot));
+  tip.replaceChildren(...nodes);
+}
+
+// 툴팁은 기준선 오른쪽이 기본. 카드 밖으로 넘칠 자리에서는 왼쪽으로 넘긴다.
+// visibility 로만 숨기므로 offsetWidth 는 숨은 상태에서도 잰다
+export function placeTip(tip, box, x, y) {
+  const width = tip.offsetWidth;
+  const height = tip.offsetHeight;
+  const flipped = x + TIP_GAP + width > box.clientWidth;
+  tip.style.left = `${Math.max(0, flipped ? x - TIP_GAP - width : x + TIP_GAP)}px`;
+  tip.style.top = `${Math.max(0, Math.min(y - height / 2, box.clientHeight - height))}px`;
+}
+
+function htmlTag(name, className, textContent) {
+  const node = document.createElement(name);
+  if (className) node.className = className;
+  if (textContent !== undefined && textContent !== null) node.textContent = textContent;
+  return node;
 }
 
 function topRounded(x, y, width, height) {

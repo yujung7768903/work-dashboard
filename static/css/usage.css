@@ -10,6 +10,7 @@
   --u-rail: var(--rail, color-mix(in srgb, var(--fg) 6%, var(--bg)));
   --u-good: var(--good, #1a9d6a);
   --u-warn: var(--warn, #d8931f);
+  --u-holiday: var(--holiday, #e0629a);
   /* 카드 제목이 --fs-body(15px) 이므로 이 화면 본문은 한 단 아래를 기본으로 쓴다.
      15px 을 그대로 쓰면 카드 안 위계가 눌린다 */
   font-size: var(--fs-sm);
@@ -138,7 +139,11 @@
 /* 눈금 글자 크기는 chart.js 의 AXIS_FONT 가 정한다 — 좌표 계산에 쓰이기 때문 */
 .u-chart svg { display: block; overflow: visible; }
 .u-tick { fill: var(--muted); }
+/* 끝점 라벨도 눈금과 같은 --fs-micro. 굵기로만 구분한다 */
 .u-end-label { fill: var(--fg); font-size: var(--fs-micro); font-weight: 600; }
+/* 휴일 날짜만 분홍. 막대는 모델 색이라 라벨에서만 구분한다.
+   굵기는 건드리지 않는다 — 같은 축 라벨끼리 무게가 달라 보인다 */
+.u-tick.u-holiday { fill: var(--u-holiday); }
 .u-grid { stroke: var(--line); stroke-width: 1; }
 .u-legend { display: flex; gap: var(--sp-12); color: var(--muted); flex-wrap: wrap; }
 .u-legend > span { display: inline-flex; align-items: center; gap: var(--sp-4); }
@@ -148,6 +153,41 @@
   margin: var(--sp-8) 0 0; color: var(--muted);
   padding: var(--sp-20) 0; text-align: center;
 }
+
+/* ── 차트 호버: 기준선 + 툴팁 ──
+   숨김은 visibility 로만 한다 — display:none 이면 툴팁 폭을 못 재서 첫 호버에서
+   좌/우 뒤집기 판단이 틀린다 */
+.u-chart { position: relative; }
+.u-hover, .u-tip { visibility: hidden; }
+.u-chart.u-hovering .u-hover, .u-chart.u-hovering .u-tip { visibility: visible; }
+/* 기준선은 격자보다 조금만 진하면 된다 — 마크를 가려 읽기를 방해하지 않게 눌러 둔다 */
+.u-cursor { stroke: var(--muted); stroke-width: 1; opacity: 0.4; }
+.u-tip {
+  position: absolute; top: 0; left: 0; z-index: 2;
+  /* 툴팁이 포인터를 받으면 pointerleave 가 들어와 자기 자신을 껐다 켠다 */
+  pointer-events: none;
+  min-width: 150px; max-width: 240px;
+  background: var(--surface); border-radius: var(--r-ctl);
+  box-shadow: var(--shadow-card), 0 6px 16px rgba(27, 29, 41, 0.1);
+  padding: var(--sp-8) var(--sp-12);
+  font-size: var(--fs-sm);
+}
+.u-tip-head {
+  margin: 0 0 var(--sp-4); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.u-tip-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--sp-12); padding: var(--sp-2) 0;
+}
+.u-tip-row b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.u-tip-name { display: inline-flex; align-items: center; gap: var(--sp-4); color: var(--muted); }
+/* 합계는 시리즈가 아니라 표본 전체라 선으로 가른다 */
+.u-tip-total {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--sp-4); margin-bottom: var(--sp-2);
+}
+.u-tip-total .u-tip-name { color: var(--fg); font-weight: 600; }
+.u-tip-foot { margin: var(--sp-4) 0 0; color: var(--muted); }
 
 /* 시리즈 색. SVG 속성이 아니라 클래스가 색을 정해야 테마 전환이 따라온다 */
 .u-c-opus, .u-c-five { --u-hue: var(--accent); }
