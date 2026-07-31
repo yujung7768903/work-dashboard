@@ -38,6 +38,12 @@ const BREAKDOWN_ROWS = [
   ["cache_read_tokens", "캐시 읽기"],
 ];
 const LEVEL_CLASS = { warn: "u-warn", critical: "u-crit" };
+// 휴일 판정용. 음력 명절(설·추석)·부처님오신날·대체공휴일은 이 표로 잡히지 않는다 —
+// 달력 자료를 붙이지 않는 한 계산할 수 없어 양력 고정일과 주말만 본다
+const FIXED_HOLIDAYS = new Set([
+  "01-01", "03-01", "05-05", "06-06", "08-15", "10-03", "10-09", "12-25",
+]);
+const WEEKEND_DAYS = new Set([0, 6]);
 const STATUS_LABEL = { todo: "대기", doing: "진행중", done: "완료" };
 
 let timer = null;
@@ -201,6 +207,7 @@ function renderDaily(tokens) {
   const series = models.map((model) => ({ key: model, name: model, cls: classOf(model) }));
   const points = tokens.days.map((day) => ({
     label: day.date.slice(DATE_SLICE),
+    holiday: isHoliday(day.date),
     values: day.by_model || {},
     // 툴팁이 합계·모델별 토큰을 정확한 수로 보여주므로 여기 남는 건 비용뿐
     detail: `정가환산 $${day.cost_usd}`,
@@ -506,6 +513,14 @@ function activeModels(tokens) {
   return (tokens.models || []).filter((model) =>
     days.some((day) => (day.by_model?.[model] || 0) > 0)
   );
+}
+
+// "2026-07-31" → 주말·공휴일 여부. 로컬 자정으로 만들어 시간대에 따라 요일이 밀리는 걸 막는다
+export function isHoliday(isoDate) {
+  const [year, month, day] = String(isoDate).split("-").map(Number);
+  if (!year || !month || !day) return false;
+  if (FIXED_HOLIDAYS.has(String(isoDate).slice(DATE_SLICE))) return true;
+  return WEEKEND_DAYS.has(new Date(year, month - 1, day).getDay());
 }
 
 function classOf(model) {

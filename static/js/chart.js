@@ -16,8 +16,12 @@ const RING_WIDTH = 2;
 const END_LABEL_GAP = 10;
 const TICK_COUNT = 4;
 const TICK_STEPS = [1, 2, 2.5, 5, 10];
-const AXIS_FONT = 10;
-const MAX_X_LABELS = 7;
+const AXIS_FONT = 9;
+// 라벨 폭 어림값. 숫자·하이픈만 오는 축이라 자당 0.6em 이면 실제보다 조금 넉넉하다
+const LABEL_CHAR_EM = 0.6;
+const LABEL_MIN_GAP = 6;
+const CJK_START = 0x2e80; // 이보다 크면 전각으로 본다 (한글·한자·전각 기호)
+const END_LABEL_MIN_GAP = 12; // 끝점 라벨 두 줄이 겹치지 않는 최소 간격
 const CURSOR_DASH = "3 3";
 const TIP_GAP = 12; // 기준선과 툴팁 사이. 0 이면 툴팁이 선을 덮어 어디를 짚었는지 흐려진다
 const TOTAL_LABEL = "합계";
@@ -81,7 +85,13 @@ export function stackedColumnChart({ points, series, format = compact, label }) 
       );
     });
   });
-  xLabels(svg, points.map((point) => point.label), (i) => plot.x + band * i + band / 2, BAR);
+  // 휴일 라벨만 색을 달리 한다 — 막대 색은 모델 몫이라 건드리지 않는다
+  xLabels(
+    svg,
+    points.map((point) => ({ text: point.label, cls: point.holiday ? "u-holiday" : null })),
+    (i) => plot.x + band * i + band / 2,
+    BAR
+  );
 
   // 막대 위에는 초점 마크를 찍지 않는다 — 기준선이 이미 어느 막대인지 가리킨다
   const slots = points.map((point, index) => ({
@@ -109,6 +119,7 @@ export function percentLineChart({ points, series, label }) {
   const positionY = (value) =>
     plot.y + plot.height - (Math.min(value, PERCENT_MAX) / PERCENT_MAX) * plot.height;
 
+  const ends = [];
   series.forEach(({ key, name, cls }) => {
     const drawable = points
       .map((point, index) => ({ index, value: point.values[key] }))
@@ -143,18 +154,21 @@ export function percentLineChart({ points, series, label }) {
         class: `u-dot ${cls}`,
       })
     );
-    // 끝점 직접 라벨. 글자는 시리즈 색을 입지 않고 잉크 토큰을 쓴다
-    svg.appendChild(
-      text(`${name} ${Math.round(last.value)}%`, {
-        x: positionX(last.index) + END_LABEL_GAP,
-        y: positionY(last.value) + 4,
-        class: "u-end-label",
-        "font-size": null,
-      })
-    );
+    // 끝점 직접 라벨. 글자는 시리즈 색을 입지 않고 잉크 토큰을 쓴다.
+    // 두 창의 %가 붙으면 라벨끼리 겹치므로 자리는 나중에 한꺼번에 벌린다
+    ends.push({
+      text: `${name} ${Math.round(last.value)}%`,
+      x: positionX(last.index) + END_LABEL_GAP,
+      y: positionY(last.value) + 4,
+    });
   });
 
-  xLabels(svg, points.map((point) => point.label), positionX, LINE);
+  spreadEnds(ends, plot).forEach((end) => {
+    svg.appendChild(
+      text(end.text, { x: end.x, y: end.y, class: "u-end-label", "font-size": null })
+    );
+  });
+  xLabels(svg, points.map((point) => ({ text: point.label })), positionX, LINE);
 
   // 값이 없는 표본은 슬롯을 만들지 않는다 — 빈 툴팁이 뜨는 자리가 생긴다
   const slots = points
@@ -257,19 +271,53 @@ function gridAndTicks(svg, plot, ticks, format) {
   });
 }
 
+// labels = [{ text, cls }]. 자리가 되면 전부 찍고, 겹칠 때만 건너뛴다 —
+// 개수를 고정해 두면 14일치처럼 다 들어가는 축에서도 절반이 빈다
 function xLabels(svg, labels, centerX, spec) {
-  // 겹칠 만큼 촘촘하면 건너뛴다. 겹쳐 찍는 것보다 비는 편이 읽힌다
-  const stride = Math.ceil(labels.length / MAX_X_LABELS) || 1;
+  const stride = labelStride(labels, spec, centerX);
   labels.forEach((label, index) => {
     if (index % stride) return;
     svg.appendChild(
-      text(label, {
+      text(label.text, {
         x: centerX(index),
         y: spec.height - spec.pad.bottom + AXIS_FONT + 4,
         "text-anchor": "middle",
+        // null 을 넘기면 el 이 속성을 건너뛰어 text() 의 기본 class 까지 사라진다
+        class: label.cls ? `u-tick ${label.cls}` : "u-tick",
       })
     );
   });
+}
+
+export function labelStride(labels, spec, centerX) {
+  if (labels.length < 2) return 1;
+  const widest = Math.max(...labels.map((label) => textEm(label.text)));
+  const need = widest * AXIS_FONT + LABEL_MIN_GAP;
+  const step = Math.abs(centerX(1) - centerX(0)) || need;
+  return Math.max(1, Math.ceil(need / step));
+}
+
+// 끝점 라벨을 위에서부터 최소 간격만큼 벌린다. 두 창의 %가 1~2%p 차이면
+// 라벨이 겹쳐 둘 다 못 읽는다 — 값에서 조금 밀려도 읽히는 쪽이 낫다.
+// 아래로만 밀고 플롯 바닥에 닿으면 그만큼 전체를 위로 당긴다
+export function spreadEnds(ends, plot) {
+  const sorted = [...ends].sort((a, b) => a.y - b.y);
+  sorted.forEach((end, index) => {
+    if (!index) return;
+    end.y = Math.max(end.y, sorted[index - 1].y + END_LABEL_MIN_GAP);
+  });
+  const bottom = plot.y + plot.height;
+  const over = sorted.length ? sorted[sorted.length - 1].y - bottom : 0;
+  if (over > 0) sorted.forEach((end) => (end.y -= over));
+  return sorted;
+}
+
+// 글자 폭 어림값(em). 한글은 전각이라 숫자와 같은 폭으로 세면 라벨이 서로 닿는다
+function textEm(text) {
+  return [...text].reduce(
+    (sum, char) => sum + (char.charCodeAt(0) > CJK_START ? 1 : LABEL_CHAR_EM),
+    0
+  );
 }
 
 function figure(svg, hover) {

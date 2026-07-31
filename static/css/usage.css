@@ -9,6 +9,7 @@
   --u-rail: var(--rail, color-mix(in srgb, var(--fg) 6%, var(--bg)));
   --u-good: var(--good, #1a9d6a);
   --u-warn: var(--warn, #d8931f);
+  --u-holiday: var(--holiday, #e0629a);
   /* 시안 기준 14px. app.css 본문 15px 을 그대로 쓰면 카드 안 위계가 눌린다 */
   font-size: 14px;
 }
@@ -122,7 +123,9 @@
 /* ── 차트 공통 ── */
 .u-chart svg { display: block; overflow: visible; }
 .u-tick { fill: var(--muted); }
-.u-end-label { fill: var(--fg); font-size: 11px; font-weight: 600; }
+.u-end-label { fill: var(--fg); font-size: 10px; font-weight: 600; }
+/* 휴일 날짜만 분홍. 막대는 모델 색이라 라벨에서만 구분한다 */
+.u-tick.u-holiday { fill: var(--u-holiday); font-weight: 600; }
 .u-grid { stroke: var(--line); stroke-width: 1; }
 .u-legend { display: flex; gap: 11px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .u-legend > span { display: inline-flex; align-items: center; gap: 5px; }
