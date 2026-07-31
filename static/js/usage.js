@@ -419,7 +419,6 @@ function renderSessions(payload) {
 function expandToggle(payload) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "u-rail-more";
   button.textContent = sessionsExpanded ? "접기" : "전체보기";
   button.setAttribute("aria-expanded", String(sessionsExpanded));
   button.addEventListener("click", () => {
