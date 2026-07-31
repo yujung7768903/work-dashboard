@@ -22,6 +22,8 @@ export const getDoneToday = (date) =>
 export const getCategories = () => request("GET", "/categories");
 export const getWorkspaces = () => request("GET", "/workspaces");
 export const getSessions = () => request("GET", "/sessions");
+export const getSession = (id) => request("GET", `/sessions/${id}`);
+export const classifySession = (id, fields) => request("PATCH", `/sessions/${id}`, fields);
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });

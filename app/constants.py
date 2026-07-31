@@ -27,3 +27,9 @@ ENDED_RETENTION_DAYS = 7
 LAST_PROMPT_MAX_CHARS = 120
 POLL_INTERVAL_MS = 2000
 JIRA_PATTERN = r"[A-Za-z]+-[0-9]+"
+
+# 세션 팝업의 최근 대화. 원문은 DB 가 아니라 Claude Code 의 transcript jsonl 에만 있다
+TRANSCRIPT_ROOT = os.path.expanduser("~/.claude/projects")
+TRANSCRIPT_TAIL_BYTES = 512 * 1024
+TRANSCRIPT_MAX_MESSAGES = 10
+TRANSCRIPT_MAX_CHARS = 400

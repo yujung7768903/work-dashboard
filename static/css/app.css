@@ -88,11 +88,25 @@ button {
 #session-head { display: flex; justify-content: space-between; gap: 8px; }
 #session-warn { color: #a12222; }
 #session-list { list-style: none; margin: 6px 0 0; padding: 0; }
-#session-list li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
-#session-list li.working { cursor: pointer; }
+#session-list li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; cursor: pointer; }
 #session-list li.idle { color: var(--muted); }
 #session-list .scope { min-width: 12em; }
 #session-list .prompt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#session-modal { width: min(680px, 92vw); border: 1px solid var(--line); border-radius: 6px;
+  padding: 14px; background: #fff; color: var(--fg); }
+#session-modal::backdrop { background: rgba(0, 0, 0, 0.35); }
+.modal-close { float: right; border: none; background: none; color: var(--muted); cursor: pointer; }
+.session-id { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; margin: 0; }
+.session-meta { color: var(--muted); margin: 4px 0 10px; }
+.session-classify { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.session-status:empty { display: none; }
+.session-status { flex-basis: 100%; color: #a12222; margin: 0; }
+.session-log { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow-y: auto;
+  border-top: 1px solid var(--line); }
+.session-log li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.session-log .role { color: var(--muted); margin-right: 6px; }
+.session-log li.assistant { color: var(--muted); }
 
 /* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음 */
 @media (min-width: 1024px) {
@@ -102,6 +116,6 @@ button {
 @media (prefers-color-scheme: dark) {
   :root { --bg: #191919; --fg: #e9e9e7; --muted: #8f8f8f; --line: #333; }
   input, select, textarea, button, .group, #next-line, #session-panel,
-  .ws-card, .ws-menu-items { background: #222; }
+  #session-modal, .ws-card, .ws-menu-items { background: #222; }
   .ws-menu > button, .ws-menu-items button { background: none; }
 }

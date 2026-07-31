@@ -67,6 +67,8 @@ python3 dash.py classify <session> --category 개발 --workspace 2
 python3 dash.py link-todo <session> 3
 ```
 
+웹 대시보드의 세션 줄을 클릭하면 세션 id·위치·최근 대화 10건이 팝업으로 뜨고, 거기서 워크스페이스나 카테고리를 바로 지정할 수 있다. 최근 대화는 `~/.claude/projects/*/<세션id>.jsonl` 꼬리에서 읽는다.
+
 훅이 등록되면 세션이 열릴 때 자동 등록되고, 브랜치의 Jira ID가 워크스페이스와 맞으면 배경·목적·목표·할일이 주입된다. 아니면 세션이 스스로 카테고리를 정하고, 관련 워크스페이스가 추정되면 사용자 확인을 받아 붙는다.
 
 ### 훅 등록

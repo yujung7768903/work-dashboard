@@ -94,6 +94,8 @@ def _route_get(con, head, item_id, query):
             }
         return workspace_repo.list_all(con)
     if head == "sessions":
+        if item_id:
+            return session_link.detail(con, item_id)
         return session_link.active_payload(con)
     raise NotFound("알 수 없는 엔드포인트")
 

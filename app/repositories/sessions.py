@@ -17,6 +17,10 @@ from app.repositories import workspaces as workspace_repo
 
 TABLE = "sessions"
 ACTIVE_STATES = (STATE_WORKING, STATE_IDLE)
+WITH_NAMES = """SELECT s.*, c.name AS category_name, w.name AS workspace_name
+            FROM sessions s
+            LEFT JOIN categories c ON c.id = s.category_id
+            LEFT JOIN workspaces w ON w.id = s.workspace_id"""
 
 
 def register(con, claude_session_id, cwd=None, git_branch=None):
@@ -146,15 +150,20 @@ def count_unclassified(con):
 def list_active(con):
     """working/idle 만. 카테고리·워크스페이스 이름을 붙여 목록용으로 반환"""
     rows = con.execute(
-        f"""SELECT s.*, c.name AS category_name, w.name AS workspace_name
-            FROM sessions s
-            LEFT JOIN categories c ON c.id = s.category_id
-            LEFT JOIN workspaces w ON w.id = s.workspace_id
+        f"""{WITH_NAMES}
             WHERE s.state IN ({_placeholders(ACTIVE_STATES)})
             ORDER BY s.last_seen_at DESC""",
         ACTIVE_STATES,
     )
     return [dict(row) for row in rows]
+
+
+def get_by_row_id(con, session_row_id):
+    """대시보드 팝업용. 목록과 같은 모양(이름 포함)으로 한 건"""
+    row = con.execute(f"{WITH_NAMES} WHERE s.id=?", (session_row_id,)).fetchone()
+    if not row:
+        raise NotFound(f"세션 {session_row_id} 없음")
+    return dict(row)
 
 
 def sweep(con):
