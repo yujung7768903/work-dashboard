@@ -1,25 +1,33 @@
-/* 색·둥글기·그림자 토큰. 토스 디자인 시스템의 회색조와 단계를 참고했다 */
+/* 색·둥글기·그림자 토큰. 인디고 액센트 + 연블루 페어(안 A 팔레트).
+   usage.css 가 같은 토큰을 참조하므로 이름을 바꾸면 사용량 화면이 같이 깨진다 */
 :root {
-  --bg: #f2f4f6;
+  --bg: #f5f6fb;
   --surface: #fff;
-  --fg: #191f28;
-  --muted: #8b95a1;
-  --line: #e5e8eb;
-  --accent: #3182f6;
-  --danger: #f04452;
-  --gap: 12px;
+  --fg: #1b1d29;
+  --muted: #868ba0;
+  --line: #e8eaf3;
+  --accent: #4a5ae8;
+  --soft: #7f8def;     /* 액센트와 짝 이루는 두 번째 시리즈 색 */
+  --softer: #e6e9fb;   /* 액센트 틴트 면 (선택 배경·트랙) */
+  --rail: #e3e6f2;     /* 레일 판 배경 */
+  --danger: #cf3f3f;
+  --good: #1a9d6a;
+  --warn: #d8931f;
 
-  --r-card: 14px;
+  --gap: 14px;
+  --r-card: 12px;
   --r-ctl: 8px;
   --r-pill: 999px;
 
   /* 카드는 선 대신 그림자로 띄운다. 두 번째 값이 1px 테두리 역할 */
-  --shadow-card: 0 1px 3px rgba(0, 23, 51, 0.04), 0 0 0 1px rgba(0, 23, 51, 0.04);
-  --shadow-pop: 0 8px 24px rgba(0, 23, 51, 0.12), 0 0 0 1px rgba(0, 23, 51, 0.04);
-  --shadow-press: 0 1px 2px rgba(0, 23, 51, 0.08);
+  --shadow-card: 0 1px 2px rgba(27, 29, 41, 0.04), 0 0 0 1px rgba(27, 29, 41, 0.05);
+  --shadow-pop: 0 8px 24px rgba(27, 29, 41, 0.14), 0 0 0 1px rgba(27, 29, 41, 0.05);
+  --shadow-press: 0 1px 2px rgba(27, 29, 41, 0.1);
 
   /* 카테고리 색을 카드 배경으로 섞는 비율. 다크에서는 더 진해야 보임 */
   --cat-mix: 15%;
+
+  --side-w: 208px;
 }
 
 * { box-sizing: border-box; }
@@ -28,7 +36,6 @@
    이모지는 애플 팩 우선 — 맥·아이폰에서만 애플 모양이고 나머지는 OS 기본 팩 */
 body {
   margin: 0;
-  padding: var(--gap);
   background: var(--bg);
   color: var(--fg);
   font-family: Pretendard, "Pretendard Variable", "Apple SD Gothic Neo",
@@ -43,24 +50,100 @@ body {
 /* 개수·진행도는 자리수가 흔들리지 않게 고정폭 숫자 */
 .group-meta, .ws-meta, #next-line { font-variant-numeric: tabular-nums; }
 
-header { display: flex; align-items: baseline; gap: var(--gap); flex-wrap: wrap; }
-h1 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
-nav button {
-  background: none; box-shadow: none; color: var(--muted); cursor: pointer;
-  padding: 5px 10px; border-radius: var(--r-pill); font-weight: 600;
+/* ── 셸: 좌측 레일 + 본문 ─────────────────────────────────────────────────── */
+.app { display: flex; align-items: flex-start; min-height: 100vh; }
+
+.app-side {
+  position: sticky; top: 0; flex: none;
+  width: var(--side-w); height: 100vh;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 16px 10px;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--line);
 }
-nav button:hover { background: rgba(0, 23, 51, 0.05); }
-nav button.active { color: var(--accent); background: rgba(49, 130, 246, 0.1); }
+
+.side-brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px 14px; min-width: 0;
+}
+.side-mark {
+  width: 26px; height: 26px; flex: none; border-radius: var(--r-ctl);
+  display: grid; place-items: center;
+  background: var(--softer); color: var(--accent);
+}
+.side-name {
+  font-size: 15px; font-weight: 700; letter-spacing: -0.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.side-nav { display: flex; flex-direction: column; gap: 2px; }
+/* 좌측 3px 강조 바는 선택될 때만 색이 든다. 자리는 항상 잡아둬야 글자가 안 밀림 */
+.side-nav button {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; text-align: left;
+  padding: 9px 11px; border-radius: var(--r-ctl);
+  background: none; box-shadow: none; color: var(--muted);
+  font-weight: 600; cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.side-nav button svg { flex: none; }
+.side-nav button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+.side-nav button.active {
+  color: var(--accent); background-color: var(--softer);
+  border-left-color: var(--accent);
+}
+
+/* 상태 한 줄. 비어 있으면 아무 자리도 차지하지 않는다 */
+#rail-status {
+  margin-top: auto; padding: 8px 11px;
+  font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+#rail-status:empty { display: none; }
+
+.app-main { flex: 1; min-width: 0; padding: 0 18px 48px; }
+
+.topbar {
+  display: flex; align-items: center; gap: var(--gap);
+  flex-wrap: wrap; padding: 18px 0 var(--gap);
+}
+h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
 
 #error {
-  background: #fee; color: var(--danger); padding: 10px 12px;
-  border-radius: var(--r-ctl); font-weight: 500;
+  margin: 0 0 0 auto;
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger); padding: 8px 12px;
+  border-radius: var(--r-ctl); font-weight: 500; font-size: 14px;
 }
 
-/* p 기본 마진(1em)이 다른 블록의 12px 과 어긋나므로 명시 */
+/* 좁은 화면: 레일을 상단 가로 스크롤 메뉴로 접는다 */
+@media (max-width: 899px) {
+  .app { display: block; }
+  .app-side {
+    width: auto; height: auto; flex-direction: row; align-items: center;
+    gap: 10px; padding: 10px 12px; z-index: 2;
+    box-shadow: 0 1px 0 var(--line);
+  }
+  .side-brand { padding: 0; }
+  .side-name { display: none; }
+  .side-nav {
+    flex-direction: row; gap: 4px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .side-nav::-webkit-scrollbar { display: none; }
+  .side-nav button { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
+  .side-nav button.active { border-bottom-color: var(--accent); }
+  #rail-status { display: none; }
+  .app-main { padding: 0 12px 40px; }
+}
+
+/* ── 보드 ─────────────────────────────────────────────────────────────────── */
+/* p 기본 마진(1em)이 다른 블록의 gap 과 어긋나므로 명시 */
 #next-line {
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card); padding: 12px 14px; margin: var(--gap) 0;
+  box-shadow: var(--shadow-card); padding: 12px 14px; margin: 0 0 var(--gap);
   color: var(--muted);
 }
 #next-text { font-weight: 600; color: var(--fg); }
@@ -72,12 +155,12 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 /* 네이티브 화살표는 오른쪽 테두리에 붙어 여백이 없으므로 직접 그린다 */
 select {
   appearance: none; padding-right: 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%238b95a1' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23868ba0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 13px center;
 }
@@ -87,16 +170,18 @@ select {
   width: 41px; flex: none; padding: 0; font-size: 20px; line-height: 1;
   background-color: var(--accent); color: #fff; font-weight: 400;
 }
-#quick-submit:hover { background-color: #1b64da; }
+#quick-submit:hover { background-color: color-mix(in srgb, var(--accent) 84%, #000); }
 
-/* 기본 버튼은 회색 면. 선 대신 면으로 눌리는 느낌을 준다 */
+/* 기본 버튼은 옅은 면. 선 대신 면으로 눌리는 느낌을 준다.
+   페이지 배경(--bg)과 같은 값을 쓰면 폼 위에서 버튼이 사라지므로 한 단 어둡게 섞는다 */
 button {
   padding: 8px 12px; border: none; border-radius: var(--r-ctl);
-  background: var(--bg); color: var(--fg); cursor: pointer; font: inherit;
+  background: color-mix(in srgb, var(--fg) 7%, var(--surface));
+  color: var(--fg); cursor: pointer; font: inherit;
   letter-spacing: inherit; font-weight: 500;
   transition: background 0.12s, box-shadow 0.12s, transform 0.06s;
 }
-button:hover:not(:disabled) { background: #e8ebee; }
+button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 13%, var(--surface)); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { color: var(--line); cursor: default; }
 
@@ -104,8 +189,8 @@ button:disabled { color: var(--line); cursor: default; }
 #board-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
-.group, .ws-card { --cat: #b0b8c1; }        /* 분류 전 = 옅은 회색 */
-.cat-pill { --cat: #4e5968; }               /* 전체 라벨 = 중립 회색 */
+.group, .ws-card { --cat: #aab0c4; }        /* 분류 전 = 옅은 회색 */
+.cat-pill { --cat: #4e5468; }               /* 전체 라벨 = 중립 회색 */
 .group, .ws-card, .cat-pill {
   --cat-bg: color-mix(in srgb, var(--cat) var(--cat-mix), var(--surface));
   --cat-ink: color-mix(in srgb, var(--cat) 72%, var(--fg));
@@ -161,7 +246,7 @@ button:disabled { color: var(--line); cursor: default; }
   min-width: 4.2em; font-size: 12px; font-weight: 600; padding: 4px 8px;
   border-radius: var(--r-pill); color: var(--muted);
 }
-.todo.doing > button:first-child { background: rgba(49, 130, 246, 0.12); color: var(--accent); }
+.todo.doing > button:first-child { background: var(--softer); color: var(--accent); }
 .todo > button:not(:first-child) { font-size: 13px; padding: 5px 9px; color: var(--muted); }
 .subtasks { margin: 0; padding: 2px 14px 8px 42px; list-style: none; color: var(--muted); font-size: 14px; }
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
@@ -170,7 +255,8 @@ button:disabled { color: var(--line); cursor: default; }
 .field label { display: block; color: var(--muted); font-size: 13px; }
 .field textarea { width: 100%; min-height: 60px; }
 
-/* 워크스페이스 카드 그리드. 보드와 같은 기준으로 1↔2컬럼 */
+/* ── 워크스페이스 ─────────────────────────────────────────────────────────── */
+/* 카드 그리드. 보드와 같은 기준으로 1↔2컬럼 */
 #workspace-list { display: grid; gap: var(--gap); align-items: stretch; }
 .ws-card {
   background: var(--surface); border-radius: var(--r-card);
@@ -203,7 +289,8 @@ button:disabled { color: var(--line); cursor: default; }
 }
 .ws-menu-items button { display: block; width: 100%; text-align: left; background: none; }
 
-#category-list { list-style: none; padding: 0; }
+/* ── 카테고리 ─────────────────────────────────────────────────────────────── */
+#category-list { list-style: none; padding: 0; margin: 0; }
 #category-list li {
   display: flex; gap: 8px; align-items: center; margin-bottom: 8px; padding: 10px 12px;
   background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
@@ -219,32 +306,37 @@ button:disabled { color: var(--line); cursor: default; }
   border: none; border-radius: var(--r-ctl); box-shadow: var(--shadow-card);
 }
 
+/* ── 세션 패널 ────────────────────────────────────────────────────────────── */
 #session-panel {
   background: var(--surface); border-radius: var(--r-card);
   box-shadow: var(--shadow-card); padding: 12px 14px; margin: var(--gap) 0;
 }
 #session-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
-#session-warn { color: var(--danger); font-weight: 500; }
+#session-warn { color: var(--warn); font-weight: 600; font-size: 13px; }
 #session-list { list-style: none; margin: 6px 0 0; padding: 0; }
 /* 돌고 있는 세션이 0 개면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
 #session-list:empty { display: none; }
 #session-list li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
 #session-list li.working { cursor: pointer; }
+#session-list li.working > span:first-child { color: var(--good); }
 #session-list li.idle { color: var(--muted); }
 #session-list .scope { min-width: 12em; font-weight: 500; }
 #session-list .prompt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 
 #done-today > summary { cursor: pointer; color: var(--muted); font-weight: 600; padding: 4px 0; }
 
-/* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음 */
-@media (min-width: 1024px) {
+/* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음.
+   레일이 208px 을 먹으므로 2컬럼 기준을 그만큼 올렸다 */
+@media (min-width: 1240px) {
   #groups, #done-groups, #workspace-list { grid-template-columns: 1fr 1fr; }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17171c; --surface: #202027; --fg: #eaebee; --muted: #8b95a1;
-    --line: #2e2f37; --accent: #4d90f7; --danger: #ff6b76;
+    --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
+    --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
+    --rail: #14161f;
+    --danger: #e46b6b; --good: #3cbe86; --warn: #e5a838;
     /* 어두운 면에서는 그림자가 안 보이므로 옅은 링으로 카드 경계를 만든다 */
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
     --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
@@ -252,13 +344,16 @@ button:disabled { color: var(--line); cursor: default; }
     --cat-mix: 28%;
   }
   .cat-pill { --cat: #8b95a1; --on-cat: #14181d; }
-  .group, .ws-card { --cat: #4a4f57; }
-  button { background-color: #2b2c34; }
-  button:hover:not(:disabled) { background-color: #35363f; }
+  .group, .ws-card { --cat: #444a5c; }
+  button { background-color: #2a2e3f; }
+  button:hover:not(:disabled) { background-color: #343950; }
   button:disabled { color: #4a4b55; }
-  nav button, .ws-menu > button, .ws-menu-items button {
+  .side-nav button, .ws-menu > button, .ws-menu-items button {
     background-color: transparent;
   }
-  nav button:hover { background-color: rgba(255, 255, 255, 0.07); }
-  #error { background-color: rgba(255, 107, 118, 0.12); }
+  .side-nav button.active { background-color: var(--softer); }
+  #quick-submit { color: #14161f; }
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
 }
