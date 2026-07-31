@@ -189,9 +189,9 @@ button:disabled { color: var(--line); cursor: default; }
 #board-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
-.group, .ws-card { --cat: #aab0c4; }        /* 분류 전 = 옅은 회색 */
+.group, .ws-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
 .cat-pill { --cat: #4e5468; }               /* 전체 라벨 = 중립 회색 */
-.group, .ws-card, .cat-pill {
+.group, .ws-card, .cat-pill, .session-cat {
   --cat-bg: color-mix(in srgb, var(--cat) var(--cat-mix), var(--surface));
   --cat-ink: color-mix(in srgb, var(--cat) 72%, var(--fg));
 }
@@ -344,21 +344,30 @@ button:disabled { color: var(--line); cursor: default; }
 /* ── 팝업 ─────────────────────────────────────────────────────────────────── */
 /* dlg-* 는 상세 팝업 공용 어휘. feat/detail-popup 의 #detail 과 같은 규격이라
    두 팝업이 합쳐질 때 한쪽 정의만 남기면 된다 */
+/* 스크롤은 본문이 맡는다. 그래야 닫기 버튼이 제목과 같은 선에 고정된다 */
 #session-modal {
-  width: min(620px, calc(100vw - 24px)); max-height: 84vh; overflow: auto;
+  position: relative; display: flex; flex-direction: column;
+  width: min(620px, calc(100vw - 24px)); max-height: 84vh; overflow: hidden;
   padding: 0; border: none; border-radius: var(--r-card);
   background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
 }
 #session-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
-/* 스크롤해도 닫기 버튼은 오른쪽 위에 남는다. 아래 여백은 본문이 끌어올려 채움 */
+/* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
+#session-modal form { margin: 0; }
 .modal-close {
-  display: block; position: sticky; top: 8px; margin: 8px 8px -28px auto; z-index: 1;
-  background: none; color: var(--muted); font-size: 19px; line-height: 1; padding: 2px 8px;
+  position: absolute; top: 15px; right: 12px; z-index: 1;
+  background: none; color: var(--muted); font-size: 19px; line-height: 1; padding: 2px 6px;
 }
-#session-modal-body { padding: 16px 18px 18px; }
+#session-modal-body { padding: 14px 18px 18px; overflow: auto; }
 
 .dlg-head { margin-bottom: 12px; }
-.dlg-title { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; padding-right: 28px; margin: 0; }
+.dlg-title { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; padding-right: 32px; margin: 0; }
+/* 제목 옆 카테고리 라벨. 보드 카드와 같은 --cat 규약을 쓴다 */
+.session-cat {
+  margin-left: 8px; padding: 2px 9px; border-radius: var(--r-pill);
+  background-color: var(--cat-bg); color: var(--cat-ink);
+  font-size: 12px; font-weight: 600; letter-spacing: 0; vertical-align: 2px;
+}
 .dlg-meta { color: var(--muted); font-size: 13px; font-weight: 600; }
 .dlg-section { margin-top: 14px; }
 .dlg-section > .label { color: var(--muted); font-size: 12.5px; font-weight: 600; margin: 0 0 3px; }
@@ -379,7 +388,9 @@ button:disabled { color: var(--line); cursor: default; }
   color: var(--muted); font-size: 13px; margin: 4px 0 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* 세션 id 줄과 같은 폭을 쓰도록 select 가 남는 자리를 전부 먹는다 */
 .session-classify { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.session-classify select { flex: 1; min-width: 0; }
 .session-status { flex-basis: 100%; color: var(--danger); font-size: 13px; margin: 0; }
 .session-status:empty { display: none; }
 .session-log { list-style: none; margin: 0; padding: 0; }

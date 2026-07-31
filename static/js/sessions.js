@@ -1,6 +1,5 @@
 // 활성 세션 영역. 이 영역만 폴링해 편집 중인 입력을 건드리지 않음
 import * as api from "./api.js";
-import { focusWorkspace } from "./workspace.js";
 
 const POLL_INTERVAL_MS = 2000;
 const WORKING = "working";
@@ -85,7 +84,7 @@ export function openSessionDetail(session) {
   Promise.all([api.getSession(session.id), api.getWorkspaces(), api.getCategories()])
     .then(([detail, workspaces, categories]) =>
       body.replaceChildren(
-        headBlock(detail.session),
+        headBlock(detail.session, categories),
         classifyRow(detail.session, workspaces, categories, dialog),
         logSection(detail.messages)
       )
@@ -95,10 +94,16 @@ export function openSessionDetail(session) {
     });
 }
 
-function headBlock(session) {
+function headBlock(session, categories) {
   const head = element("div", "dlg-head");
   const title = element("p", "dlg-title", session.workspace_name || UNCLASSIFIED_LABEL);
-  title.append(element("span", "dlg-meta", ` ${session.category_name || ""}`.trimEnd()));
+  const category = categories.find((item) => item.id === session.category_id);
+  if (category) {
+    const pill = element("span", "session-cat", category.name);
+    // 색은 보드 라벨과 같은 --cat 규약. 없으면 CSS 기본 회색
+    if (category.color) pill.style.setProperty("--cat", category.color);
+    title.append(pill);
+  }
 
   const idRow = element("div", "session-id");
   const code = element("code", null, session.claude_session_id);
@@ -139,18 +144,7 @@ function classifyRow(session, workspaces, categories, dialog) {
       status.textContent = error.message;
     }
   });
-  row.append(select, save);
-
-  if (session.workspace_id) {
-    const open = element("button", null, "워크스페이스 열기");
-    open.addEventListener("click", () => {
-      dialog.close();
-      focusWorkspace(session.workspace_id);
-      document.querySelector('#tabs button[data-tab="workspace"]').click();
-    });
-    row.append(open);
-  }
-  row.append(status);
+  row.append(select, save, status);
   return row;
 }
 
