@@ -6,7 +6,9 @@ from unittest import mock
 
 from app.constants import TRANSCRIPT_MAX_CHARS, TRANSCRIPT_MAX_MESSAGES
 from app.errors import NotFound
+from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
+from app.repositories import todos as todo_repo
 from app.services import session_link, transcript
 from tests.support import temp_db
 
@@ -107,6 +109,17 @@ class DetailTest(unittest.TestCase):
             payload = session_link.detail(con, session["id"])
         self.assertEqual(payload["session"]["claude_session_id"], SID)
         self.assertEqual(payload["messages"], [{"role": "user", "text": "안녕"}])
+
+    def test_detail_carries_linked_todos(self):
+        """세션에서 팝업을 열어도 개요 탭에 보여줄 할일이 함께 와야 한다"""
+        con = temp_db()
+        session = session_repo.register(con, SID)
+        category = category_repo.get_by_name(con, "운영")["id"]
+        todo = todo_repo.create(con, "락 재설계", category_id=category, note="본문")
+        session_repo.link_todo(con, SID, todo["id"])
+        with mock.patch.object(transcript, "TRANSCRIPT_ROOT", "/nowhere"):
+            payload = session_link.detail(con, session["id"])
+        self.assertEqual([row["note"] for row in payload["todos"]], ["본문"])
 
     def test_unknown_session_raises(self):
         con = temp_db()

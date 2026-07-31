@@ -2,7 +2,7 @@
 // 모든 숫자는 실측이며, 못 가져온 창은 값을 만들지 않고 "미수집"으로 남긴다.
 import * as api from "./api.js";
 import { compact, donutChart, percentLineChart, stackedColumnChart, thousands } from "./chart.js";
-import { openSessionDetail } from "./sessions.js";
+import { openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 60_000; // 5시간 창은 전력으로 써도 분당 0.3%대로 움직인다
 const MIN_TREND_POINTS = 2;
@@ -437,7 +437,7 @@ function renderSessions(payload) {
     );
     body.append(scope, tag("p", "u-sess-prompt", session.last_prompt || "지시 없음"));
     item.appendChild(body);
-    item.addEventListener("click", () => openSessionDetail(session));
+    item.addEventListener("click", () => openDetail({ session }));
     box.appendChild(item);
   });
   if (folded && !sessionsExpanded) {

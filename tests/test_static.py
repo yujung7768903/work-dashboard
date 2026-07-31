@@ -91,6 +91,25 @@ class RouteTest(unittest.TestCase):
         self.assertEqual(payload["unclassified_count"], 1)
         self.assertEqual(len(payload["sessions"]), 1)
 
+    def test_todo_endpoint_carries_note_and_sessions(self):
+        from app.repositories import sessions as session_repo
+        from app.repositories import todos as todo_repo
+
+        ops = category_repo.get_by_name(self.con, "운영")["id"]
+        todo = todo_repo.create(self.con, "락 재설계", category_id=ops, note="컨텍스트 본문")
+        session_repo.register(self.con, "route-sess")
+        session_repo.link_todo(self.con, "route-sess", todo["id"])
+
+        payload = server.route(self.con, "GET", f"/api/todos/{todo['id']}", {}, {})
+        self.assertEqual(payload["todo"]["note"], "컨텍스트 본문")
+        self.assertEqual(
+            [row["claude_session_id"] for row in payload["sessions"]], ["route-sess"]
+        )
+
+    def test_todo_endpoint_requires_id(self):
+        with self.assertRaises(Validation):
+            server.route(self.con, "GET", "/api/todos", {}, {})
+
     def test_patch_session_classifies(self):
         from app.repositories import sessions as session_repo
 

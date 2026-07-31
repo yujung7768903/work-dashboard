@@ -169,6 +169,17 @@ def list_active(con):
     return [dict(row) for row in rows]
 
 
+def list_by_todo(con, todo_id):
+    """그 할일을 잡은 세션. 상태를 가리지 않는다 — 끝난 세션도 누가 했는지 남아야 함"""
+    rows = con.execute(
+        f"""{WITH_NAMES}
+            JOIN session_todos st ON st.session_id = s.id
+            WHERE st.todo_id=? ORDER BY s.last_seen_at DESC""",
+        (todo_id,),
+    )
+    return [dict(row) for row in rows]
+
+
 def get_by_row_id(con, session_row_id):
     """대시보드 팝업용. 목록과 같은 모양(이름 포함)으로 한 건"""
     row = con.execute(f"{WITH_NAMES} WHERE s.id=?", (session_row_id,)).fetchone()

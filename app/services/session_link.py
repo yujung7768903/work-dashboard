@@ -85,11 +85,24 @@ def active_payload(con):
 
 
 def detail(con, session_row_id):
-    """세션 팝업. 목록 한 줄로는 어느 세션인지 몰라서 id 와 최근 대화를 함께 준다"""
+    """세션 팝업. 목록 한 줄로는 어느 세션인지 몰라서 id 와 최근 대화를 함께 준다.
+
+    todos 는 같은 팝업의 개요 탭이 쓴다 — 이 세션이 잡은 할일의 시각·note
+    """
     session = session_repo.get_by_row_id(con, session_row_id)
+    todo_ids = session_repo.linked_todo_ids(con, session["claude_session_id"])
     return {
         "session": session,
         "messages": transcript.recent(session["claude_session_id"]),
+        "todos": [todo_repo.get(con, todo_id) for todo_id in todo_ids],
+    }
+
+
+def todo_detail(con, todo_id):
+    """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다"""
+    return {
+        "todo": todo_repo.get(con, todo_id),
+        "sessions": session_repo.list_by_todo(con, todo_id),
     }
 
 
