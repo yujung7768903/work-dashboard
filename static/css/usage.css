@@ -74,6 +74,9 @@
   width: 26px; height: 26px; flex: none; border-radius: 50%;
   background: var(--u-softer); display: grid; place-items: center; color: var(--accent);
 }
+/* 값은 왼쪽, 증감은 오른쪽 끝. 증감이 없는 카드도 이 줄을 그려 높이를 맞춘다 */
+.u-lim-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.u-lim-row .u-delta { margin: 0; display: inline-flex; align-items: baseline; gap: 2px; }
 .u-lim-value {
   margin: 10px 0 0; font-size: 32px; font-weight: 700;
   letter-spacing: -0.03em; line-height: 1.05; font-variant-numeric: tabular-nums;
@@ -214,7 +217,11 @@
 .u-sess-scope { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; font-size: 13px; font-weight: 600; }
 .u-sess-scope span { font-weight: 400; color: var(--muted); font-size: 12px; }
 /* 마지막 수행 시각까지의 경과. 오른쪽 끝에 붙여 이름과 섞이지 않게 한다 */
-.u-sess-ago { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* 경과시간은 값이 없어도 폭을 잡아둬 줄마다 오른쪽 끝이 흔들리지 않게 한다 */
+.u-sess-ago {
+  margin-left: auto; font-variant-numeric: tabular-nums;
+  min-width: 3.2em; text-align: right; flex: none;
+}
 /* 마지막 지시는 두 줄까지. 길면 잘라야 레일이 무너지지 않는다 */
 .u-sess-prompt {
   margin: 2px 0 0; font-size: 12px; color: var(--muted);
