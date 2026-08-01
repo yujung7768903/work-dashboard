@@ -42,6 +42,7 @@ def overview(con):
             {
                 "id": workspace["id"],
                 "name": workspace["name"],
+                "category_id": workspace["category_id"],
                 "category_name": category.get("name"),
                 "category_color": category.get("color"),
                 "repo": root,

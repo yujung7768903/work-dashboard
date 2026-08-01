@@ -70,7 +70,26 @@
       </header>
 
       <section id="tab-board" class="tab">
-        <!-- 보드 안의 하위 탭. 레일 메뉴와 달리 밑줄로만 고른 것을 표시한다 -->
+        <!-- 여기부터 카테고리 라벨까지는 두 하위 탭이 함께 쓴다 -->
+        <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
+        <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
+        <details id="session-panel">
+          <summary>
+            <span id="session-head">
+              <span id="session-count">돌고 있는 세션 0</span>
+              <span id="session-warn" hidden></span>
+            </span>
+          </summary>
+          <ul id="session-list"></ul>
+        </details>
+        <form id="quick-add">
+          <select id="quick-category" title="카테고리"></select>
+          <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>
+          <button type="submit" id="quick-submit" title="할일 추가">+</button>
+        </form>
+        <div id="category-filter"></div>
+
+        <!-- 공통 영역 바로 아래. 레일 메뉴와 달리 밑줄로만 고른 것을 표시한다 -->
         <nav id="board-tabs" class="subtabs">
           <button data-subtab="todos" class="active">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -93,23 +112,6 @@
         </nav>
 
         <div id="board-todos">
-        <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
-        <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
-        <details id="session-panel">
-          <summary>
-            <span id="session-head">
-              <span id="session-count">돌고 있는 세션 0</span>
-              <span id="session-warn" hidden></span>
-            </span>
-          </summary>
-          <ul id="session-list"></ul>
-        </details>
-        <form id="quick-add">
-          <select id="quick-category" title="카테고리"></select>
-          <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>
-          <button type="submit" id="quick-submit" title="할일 추가">+</button>
-        </form>
-        <div id="category-filter"></div>
         <div id="board-controls">
           <label><input type="checkbox" id="show-done"> 완료 항목 표시</label>
         </div>

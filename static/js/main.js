@@ -1,16 +1,22 @@
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
-import { renderBoard } from "./board.js";
+import { renderBoard, renderShared } from "./board.js";
 import { renderCategories } from "./categories.js";
 import { renderUsage } from "./usage.js";
 import { renderWorkspaceTab } from "./workspace.js";
 import { renderWorktrees } from "./worktrees.js";
 
 // 보드 안의 하위 탭. 할일과 워크트리는 같은 워크스페이스를 다른 눈으로 보는 화면이라
-// 레일 항목을 늘리지 않고 보드 안에서 가른다
-const SUBRENDERERS = { todos: renderBoard, worktrees: renderWorktrees };
+// 레일 항목을 늘리지 않고 보드 안에서 가른다. 카테고리 라벨까지의 위쪽은 둘이 함께 쓴다
+// (renderBoard 는 자기가 renderShared 를 부르므로 여기서 또 부르지 않는다)
+const SUBRENDERERS = { todos: renderBoard, worktrees: renderWorktreeSubtab };
 let activeSubtab = "todos";
 
-function renderBoardTab() {
+async function renderWorktreeSubtab() {
+  await renderShared();
+  await renderWorktrees();
+}
+
+export function renderBoardTab() {
   document.querySelectorAll("#board-tabs button").forEach((button) => {
     button.classList.toggle("active", button.dataset.subtab === activeSubtab);
   });

@@ -1,7 +1,7 @@
 // 보드 탭 렌더. 카테고리 라벨 필터, 빠른 추가, 상태 토글, 완료 워크스페이스 이동
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
-import { run } from "./main.js";
+import { renderBoardTab, run } from "./main.js";
 import { openDetail, startSessionPolling } from "./sessions.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
@@ -25,20 +25,27 @@ function showDone() {
   return document.getElementById("show-done").checked;
 }
 
-export async function renderBoard() {
-  const [tree, next, categories] = await Promise.all([
-    api.getTree(GROUP_BY_WORKSPACE),
-    api.getNext(),
-    api.getCategories(),
-  ]);
+// 두 하위 탭이 함께 쓰는 위쪽 — 다음에 할 일·세션 패널·빠른 추가·카테고리 라벨.
+// 하위 탭을 바꿔도 이 영역은 그대로 남아야 하므로 목록 렌더와 따로 둔다
+export async function renderShared() {
+  const [next, categories] = await Promise.all([api.getNext(), api.getCategories()]);
   renderNext(next);
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
+  startSessionPolling();
+}
+
+// 고른 카테고리 라벨. 워크트리 탭도 같은 필터를 따른다
+export function currentCategoryId() {
+  return activeCategoryId;
+}
+
+export async function renderBoard() {
+  const [tree] = await Promise.all([api.getTree(GROUP_BY_WORKSPACE), renderShared()]);
   const visible = tree.groups.filter(inActiveCategory);
   renderGroups(visible.filter((group) => !isComplete(group)));
   renderCompleted(visible.filter(isComplete));
   attachDragHandlers(renderBoard);
-  startSessionPolling();
 }
 
 // 할일이 하나라도 있고 전부 done 이면 카드째 완료 영역으로 내려감
@@ -104,7 +111,8 @@ function filterPill(category) {
   pill.addEventListener("click", () => {
     activeCategoryId = category.id;
     syncActivePills(pill.parentElement);
-    run(renderBoard);
+    // 라벨은 공통 영역이라 지금 열려 있는 하위 탭을 다시 그린다
+    run(renderBoardTab);
   });
   return pill;
 }
