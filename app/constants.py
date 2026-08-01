@@ -43,6 +43,17 @@ TRANSCRIPT_MAX_TAIL_BYTES = 8 * 1024 * 1024  # 발화가 안 잡히면 여기까
 TRANSCRIPT_MAX_MESSAGES = 10
 TRANSCRIPT_MAX_CHARS = 400
 
+# 초기 설정(온보딩). 히스토리 전문은 수백 MB 라 세션에 넣을 수 없으므로 CLI 가 먼저 압축한다.
+# 세션이 무엇에 관한 것인지는 첫 지시에 거의 다 들어 있어 앞 조각만 읽으면 된다
+HISTORY_HEAD_BYTES = 64 * 1024
+HISTORY_FIRST_PROMPT_CHARS = 200
+HISTORY_DAY_CHOICES = (7, 14)
+# 세션 2건 이하 묶음은 워크스페이스로 만들지 않는다 — 확인 트리가 검수 가능한 크기를 넘으면
+# 사용자는 읽지 않고 승인하게 되고, 그때부터 이 기능은 쓰레기를 만드는 장치가 된다.
+# 묶는 것도 하한선을 적용하는 것도 주입 블록을 받은 Claude 가 한다 (의미 판단이라 코드가 못 함)
+ONBOARDING_MIN_SESSIONS = 3
+ONBOARDING_DECLINED_FLAG = "onboarding_declined"
+
 # 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라 파일에서 주워온다
 # (훅 페이로드에는 rate_limits 가 없다). token-optimizer statusline 이 떨어뜨리는 사이드카.
 RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.json")

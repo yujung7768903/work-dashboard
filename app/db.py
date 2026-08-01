@@ -137,10 +137,25 @@ def transaction(con):
         raise
 
 
+def meta_get(con, key):
+    """내부 플래그. 없으면 None"""
+    row = con.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def meta_set(con, key, value=None):
+    """내부 플래그. 값을 안 주면 기록 시각을 값으로 쓴다 (플래그 용도)"""
+    con.execute(
+        "INSERT INTO meta(key, value) VALUES(?,?)"
+        " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value if value is not None else now()),
+    )
+    con.commit()
+
+
 def _seed_categories(con):
     """최초 1회만 삽입. 사용자가 지운 카테고리가 되살아나면 안 되므로 meta 플래그로 판단"""
-    done = con.execute("SELECT value FROM meta WHERE key=?", (SEEDED_FLAG,)).fetchone()
-    if done:
+    if meta_get(con, SEEDED_FLAG):
         return
     stamp = now()
     for order, name in enumerate(SEED_CATEGORIES, start=1):
@@ -149,8 +164,7 @@ def _seed_categories(con):
             " VALUES(?,?,?,?)",
             (name, order, palette_color(order), stamp),
         )
-    con.execute("INSERT INTO meta(key, value) VALUES(?,?)", (SEEDED_FLAG, stamp))
-    con.commit()
+    meta_set(con, SEEDED_FLAG, stamp)
 
 
 def _add_precondition_columns(con):

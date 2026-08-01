@@ -5,7 +5,7 @@ import json
 import sys
 from datetime import datetime
 
-from app.constants import UNASSIGNED_LABEL
+from app.constants import HISTORY_DAY_CHOICES, UNASSIGNED_LABEL
 from app.db import connect
 from app.errors import DomainError, NotFound, Validation
 from app.repositories import categories as category_repo
@@ -13,7 +13,7 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link, usage
+from app.services import board, history, planning, session_link, usage
 
 NONE_LITERAL = "none"
 REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
@@ -158,6 +158,15 @@ def _build_parser():
     link_todo.add_argument("session")
     link_todo.add_argument("todo_id", type=int)
     link_todo.set_defaults(handler=_cmd_link_todo)
+
+    scan = sub.add_parser("scan-history", help="초기 설정용 히스토리 요약 (세션당 한 줄)")
+    scan.add_argument("--days", type=int, default=HISTORY_DAY_CHOICES[0])
+    _add_json_flag(scan)
+    scan.set_defaults(handler=_cmd_scan_history)
+
+    onboard = sub.add_parser("onboard", help="초기 설정 상태")
+    onboard.add_argument("--skip", action="store_true", help="자동 분류 거절. 다시 묻지 않음")
+    onboard.set_defaults(handler=_cmd_onboard)
 
     usage_cmd = sub.add_parser("usage", help="한도 사용률과 토큰 추이")
     _add_json_flag(usage_cmd)
@@ -402,6 +411,22 @@ def _one_line(text):
 def _cmd_link_todo(con, args):
     session_repo.link_todo(con, args.session, args.todo_id)
     print(f"할일 {args.todo_id} 연결됨")
+
+
+def _cmd_scan_history(con, args):
+    groups = history.scan(args.days)
+    if args.as_json:
+        _emit_json(groups)
+        return
+    print(history.render(groups, args.days))
+
+
+def _cmd_onboard(con, args):
+    if args.skip:
+        session_link.decline(con)
+        print("자동 분류를 하지 않습니다. 초기 설정 안내가 다시 뜨지 않습니다.")
+        return
+    print("초기 설정 필요" if session_link.needs_onboarding(con) else "초기 설정 완료 또는 거절됨")
 
 
 def _cmd_usage(con, args):

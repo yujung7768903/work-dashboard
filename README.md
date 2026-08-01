@@ -41,6 +41,8 @@ work-dashboard/
 │       ├── board.py                 # 보드 트리 조립
 │       ├── planning.py              # 다음에 할 일 선정
 │       ├── session_link.py          # 세션 주입 블록 조립
+│       ├── transcript.py            # Claude Code jsonl 읽기 (앞·꼬리 조각)
+│       ├── history.py               # 초기 설정용 히스토리 스캔·요약
 │       └── usage.py                 # 한도 사용률·토큰 추이
 │
 ├── hooks/
@@ -83,14 +85,15 @@ work-dashboard/
 | 응답이 끝날 때 | `Stop` | 상태를 `idle` 로 | 없음 |
 | 세션이 닫힐 때 | `SessionEnd` | 상태를 `ended` 로, 종료 시각 기록 | 없음 |
 
-주입 블록은 두 갈래다.
+주입 블록은 세 갈래다.
 
 | 상황 | 블록 | 내용 |
 | --- | --- | --- |
 | 브랜치의 Jira ID = 워크스페이스의 `jira_id` | `<work-dashboard state="classified">` | 배경·목적·목표·고려사항 + 할일 목록(컨텍스트 노트 유무 표시) + 범위 준수 지침 |
+| 워크스페이스가 0개이고 사용자가 거절한 적 없음 | `<work-dashboard state="onboarding">` | 초기 설정 절차 7단계 (아래 참고) |
 | 그 외 | `<work-dashboard state="unclassified">` | 현재 위치·브랜치, 카테고리 6개, 진행 중 워크스페이스 목록, 분류 절차 지시 |
 
-두 블록 모두 꼬리에 공통 규칙이 붙는다 — 다른 세션이 같은 코드·문서를 고칠 수 있으니 착수 전에 최신 상태를 다시 읽으라는 것.
+세 블록 모두 꼬리에 공통 규칙이 붙는다 — 다른 세션이 같은 코드·문서를 고칠 수 있으니 착수 전에 최신 상태를 다시 읽으라는 것.
 
 분류는 훅이 못 한다(셸은 질문 내용을 이해할 수 없다). 훅이 넘긴 지시를 받아 Claude 가 아래 명령으로 직접 등록하고, 분류 전이면 매 프롬프트마다 지시가 다시 들어간다.
 
@@ -99,6 +102,22 @@ python3 dash.py sessions                                  # 돌고 있는 세션
 python3 dash.py classify <session> --category 개발 --workspace 2
 python3 dash.py link-todo <session> 3                     # 세션이 잡은 할일 연결
 ```
+
+### 초기 설정 (⑤)
+
+워크스페이스가 하나도 없는 상태에서 세션을 열면 분류 대신 **초기 설정 블록**이 주입된다. Claude 가 사용자에게 최근 며칠 치 히스토리를 볼지(7일 / 14일 / 안 함) 묻고, 스캔 결과로 카테고리·워크스페이스를 제안한 뒤 확인받아 등록한다.
+
+```bash
+python3 dash.py scan-history --days 7     # 세션당 한 줄 요약 (Claude 가 읽는 입력)
+python3 dash.py onboard                   # 초기 설정이 필요한 상태인지
+python3 dash.py onboard --skip            # 자동 분류 거절. 이후 다시 묻지 않음
+```
+
+`scan-history` 는 `~/.claude/projects/*/*.jsonl` **전체**에서 mtime 이 기간 안인 파일만 골라 **앞 64KB** 만 읽고, 프로젝트 위치별로 묶어 세션당 한 줄(시작~최근 날짜 + 첫 지시 200자)로 뱉는다. 전문은 수백 MB 라 세션에 넣을 수 없기 때문이다. 슬래시 명령·자동 압축 요청은 첫 지시에서 걸러낸다.
+
+**묶는 것과 하한선 적용은 코드가 아니라 Claude 가 한다** — 의미 판단이라 셸이 못 한다. 세션 `ONBOARDING_MIN_SESSIONS`건 미만인 묶음은 워크스페이스로 만들지 않고 "기타" 한 줄로만 표시한다. 확인 트리가 검수 가능한 크기를 넘으면 사용자가 읽지 않고 승인하게 되기 때문이다.
+
+완료 플래그는 두지 않는다 — 워크스페이스가 하나라도 생기면 트리거 조건이 저절로 깨진다. 거절만 `meta.onboarding_declined` 에 남는다. 따라서 **워크스페이스를 전부 지우면 초기 설정이 다시 뜬다**(의도된 동작).
 
 `link-todo` 는 `session_todos` 에 연결만 하고 할일 상태는 바꾸지 않는다 — 착수 시 `doing` 전환은 아직 없다(할일 32).
 
@@ -131,7 +150,7 @@ python3 dash.py link-todo <session> 3                     # 세션이 잡은 할
 | `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (둘 다 nullable = 미분류) |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
-| `meta` | 내부 플래그 저장소. 현재는 `categories_seeded` 하나 | `key`(PK), `value` | — |
+| `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined` | `key`(PK), `value` | — |
 
 ## 규칙 몇 가지
 
@@ -217,6 +236,7 @@ cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db
 | ② 세션 매핑 | `specs/2026-07-29-session-link-design.md` (설계) + `specs/2026-07-30-session-mapping-spec.md` (확정 결정) | 대부분 구현, 잔여 2건 |
 | ③ 결정 대기 큐 | `specs/2026-07-30-decision-queue-spec.md` | 결정 확정, 미구현 |
 | ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 결정 확정, 미구현 |
+| ⑤ 초기 설정(온보딩) | `specs/2026-08-01-onboarding-spec.md` | 구현 완료 |
 
 경로는 모두 `docs/superpowers/` 기준. ②③④ 문서는 각각 (a) 문제 (b) 확정 결정과 근거 (c) 안 하는 것 (d) 파일 경계를 담고 있어 그대로 착수할 수 있다.
 
