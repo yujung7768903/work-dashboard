@@ -244,9 +244,8 @@ button:disabled { color: var(--line); cursor: default; }
 /* 카테고리 라벨 필터. 고른 라벨만 색이 채워지므로 한눈에 구분된다 */
 #category-filter { display: flex; gap: var(--sp-8); flex-wrap: wrap; margin: var(--gap) 0; }
 /* 배경은 롱핸드로. button 의 background 단축 속성과 섞이지 않게 한다 */
-/* --on-cat: 카테고리 색 위에 얹을 글자색. JS 가 색의 명도를 보고 흰·검 중
-   대비가 큰 쪽을 인라인으로 넣으므로 어떤 색을 골라도 4.5:1 이상이 나온다.
-   여기 기본값은 색이 없는 '전체' 라벨용 */
+/* --on-cat: 카테고리 색 위에 얹을 글자색. 고른 라벨은 색이 진해지므로
+   '전체' 라벨과 똑같이 전부 흰 글씨로 통일한다 */
 .cat-pill {
   --on-cat: #fff;
   padding: var(--sp-8) var(--sp-16); border-radius: var(--r-pill);
