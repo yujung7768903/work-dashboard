@@ -16,7 +16,7 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link, usage
+from app.services import board, planning, session_link, session_todo, usage
 
 STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
@@ -141,12 +141,14 @@ def _route_patch(con, head, item_id, body):
     if head == "subtasks":
         return subtask_repo.update(con, item_id, **body)
     if head == "sessions":
-        return session_repo.classify_by_ids(
+        session = session_repo.classify_by_ids(
             con,
             item_id,
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
         )
+        # 워크스페이스로 분류한 세션은 할일까지 만들어 붙인다. 카테고리만이면 None
+        return {**session, "created_todo": session_todo.ensure_from_session(con, item_id)}
     raise NotFound("알 수 없는 엔드포인트")
 
 

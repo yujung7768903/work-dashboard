@@ -12,6 +12,7 @@ from app.constants import (
 from app.db import meta_get, meta_set
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
+from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import transcript
@@ -210,7 +211,11 @@ def detail(con, session_row_id):
     return {
         "session": session,
         "messages": transcript.recent(session["claude_session_id"]),
-        "todos": [todo_repo.get(con, todo_id) for todo_id in todo_ids],
+        # 하위할일까지 실어준다 — 분류 직후 자동 생성된 것을 팝업에서 바로 확인해야 함
+        "todos": [
+            {**todo_repo.get(con, todo_id), "subtasks": subtask_repo.list_by_todo(con, todo_id)}
+            for todo_id in todo_ids
+        ],
     }
 
 

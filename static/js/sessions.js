@@ -110,7 +110,8 @@ async function loadContext(target) {
   const common = { workspaces, categories };
   if (target.session) {
     const detail = await api.getSession(target.session.id);
-    return { ...detail, ...common, tab: SESSION_TAB };
+    // 분류 직후처럼 방금 만들어진 할일을 보여줘야 할 때만 개요로 열린다
+    return { ...detail, ...common, tab: target.tab ?? SESSION_TAB };
   }
   const { todo, sessions } = await api.getTodo(target.todo.id);
   // 할일에서 열면 세션 탭은 그 할일을 마지막으로 잡은 세션을 보여준다
@@ -165,13 +166,28 @@ function overviewPane(todos) {
 
 function todoBlock(todo) {
   const block = element("div", "dlg-section");
+  block.append(element("p", "dlg-title", todo.title), timeList(todo));
+  if (todo.subtasks?.length) {
+    block.append(element("p", "label", "하위 할일"), subtaskList(todo.subtasks));
+  }
   block.append(
-    element("p", "dlg-title", todo.title),
-    timeList(todo),
     element("p", "label", "note"),
     element("p", todo.note ? "note-body" : "muted", todo.note || "(없음)")
   );
   return block;
+}
+
+function subtaskList(subtasks) {
+  const list = element("ul", "dlg-subtasks");
+  subtasks.forEach((subtask) => {
+    const item = document.createElement("li");
+    item.append(
+      element("span", "dlg-badge", subtask.status),
+      element("span", "text", subtask.title)
+    );
+    list.appendChild(item);
+  });
+  return list;
 }
 
 // 완료 시각이 없는 할일도 있어 빈 값은 빼고, 남은 것만 최근 순으로 세운다
@@ -255,10 +271,20 @@ function classifyRow(session, workspaces, categories, dialog) {
       return;
     }
     try {
-      await api.classifySession(session.id, fields);
-      dialog.close();
+      // 워크스페이스로 분류하면 서버가 제목 요약(claude CLI)을 기다린다 — 10초 가까이 걸린다
+      status.textContent = "분류하고 할일 만드는 중…";
+      save.disabled = true;
+      const result = await api.classifySession(session.id, fields);
+      save.disabled = false;
       await renderSessions();
+      // 할일이 자동으로 생겼으면 닫지 않고 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
+      if (result?.created_todo) {
+        openDetail({ session, tab: OVERVIEW_TAB });
+        return;
+      }
+      dialog.close();
     } catch (error) {
+      save.disabled = false;
       status.textContent = error.message;
     }
   });
