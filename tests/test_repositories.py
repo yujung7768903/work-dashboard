@@ -13,6 +13,7 @@ from app.constants import (
 from app.db import connect
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
+from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
@@ -151,6 +152,16 @@ class CategoryRepoTest(unittest.TestCase):
         target = category_repo.get_by_name(self.con, "운영")
         with self.assertRaises(Validation):
             category_repo.update(self.con, target["id"])
+
+    def test_delete_unclassifies_sessions_that_used_it(self):
+        """분류된 세션이 남아 있어도 삭제된다 — 세션은 미분류로 되돌아간다"""
+        target = category_repo.get_by_name(self.con, "운영")
+        session_repo.register(self.con, "sess-1")
+        session_repo.classify(self.con, "sess-1", category_name="운영")
+        category_repo.delete(self.con, target["id"])
+        self.assertIsNone(session_repo.get(self.con, "sess-1")["category_id"])
+        with self.assertRaises(NotFound):
+            category_repo.get(self.con, target["id"])
 
     def test_style_columns_backfill_on_legacy_db(self):
         """색 컬럼이 없던 DB 를 열면 팔레트 색으로 채워짐"""

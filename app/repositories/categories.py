@@ -74,10 +74,17 @@ def update(con, category_id, **fields):
 
 
 def delete(con, category_id):
-    """워크스페이스나 할일이 남아 있으면 거부. cascade 미지원"""
+    """워크스페이스나 할일이 남아 있으면 거부. cascade 미지원
+
+    세션은 옮길 대상이 아니라 분류 기록일 뿐이고 category_id 가 nullable 이라
+    미분류로 되돌리고 지운다. 안 그러면 sessions FK 에 걸려 IntegrityError 가 난다
+    """
     get(con, category_id)
     _reject_if_occupied(con, category_id)
     with transaction(con):
+        con.execute(
+            "UPDATE sessions SET category_id=NULL WHERE category_id=?", (category_id,)
+        )
         con.execute("DELETE FROM categories WHERE id=?", (category_id,))
 
 
