@@ -9,6 +9,8 @@
   --u-softer: var(--softer, color-mix(in srgb, var(--accent) 12%, var(--surface)));
   --u-rail: var(--rail, color-mix(in srgb, var(--fg) 6%, var(--bg)));
   --u-good: var(--good, #1a9d6a);
+  /* 이름을 모르는 모델("기타") 몫. Haiku 회색보다 한 단 흐려 둘이 구분된다 */
+  --u-other: color-mix(in srgb, var(--muted) 50%, var(--surface));
   --u-warn: var(--warn, #d8931f);
   --u-holiday: var(--holiday, #e0629a);
   /* 카드 제목이 --fs-body(15px) 이므로 이 화면 본문은 한 단 아래를 기본으로 쓴다.
@@ -205,6 +207,10 @@
 .u-c-opus, .u-c-five { --u-hue: var(--accent); }
 .u-c-sonnet, .u-c-seven { --u-hue: var(--u-soft); }
 .u-c-haiku { --u-hue: var(--muted); }
+/* Fable 은 보라 계열 밖으로 빼야 Haiku 회색과 구분된다. warn·danger 는 화면에서 이미
+   경고 뜻으로 쓰고 있어 시리즈 색으로 쓰지 않는다 */
+.u-c-fable { --u-hue: var(--u-good); }
+.u-c-other { --u-hue: var(--u-other); }
 .u-bar { fill: var(--u-hue); }
 .u-line { fill: none; stroke: var(--u-hue); }
 .u-area { fill: var(--u-hue); opacity: 0.11; }

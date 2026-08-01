@@ -44,8 +44,15 @@ const WEEK_PCT_SERIES = [{ key: "peak_pct", name: "최고 사용률", cls: "u-c-
 const WEEK_NAMES = [null, "지난주"];
 const WEEK_CURRENT = "이번 주";
 const PLAN_UNKNOWN = "플랜 미확인";
-const MODEL_CLASS = { Opus: "u-c-opus", Sonnet: "u-c-sonnet", Haiku: "u-c-haiku" };
-const FALLBACK_CLASS = "u-c-haiku";
+// Fable 이 빠져 있어 폴백(=Haiku)으로 떨어지면서 두 모델이 같은 회색이 되던 것을 갈랐다.
+// 폴백은 "기타" 몫으로 남긴다 — 이름을 모르는 모델까지 색을 배정할 수는 없다
+const MODEL_CLASS = {
+  Opus: "u-c-opus",
+  Sonnet: "u-c-sonnet",
+  Haiku: "u-c-haiku",
+  Fable: "u-c-fable",
+};
+const FALLBACK_CLASS = "u-c-other";
 const BREAKDOWN_ROWS = [
   ["output_tokens", "출력"],
   ["cache_write_tokens", "캐시 쓰기"],
@@ -232,7 +239,7 @@ function resetLine(epochSeconds) {
   return line;
 }
 
-// ── 2행: 일별 토큰 ─────────────────────────────────────────────────────────
+// ── 3행: 일별 토큰 ─────────────────────────────────────────────────────────
 function renderDaily(tokens) {
   const box = slot("u-daily", "u-card");
   if (!box) return;
@@ -287,7 +294,7 @@ function dayTable(tokens, models) {
   return box;
 }
 
-// ── 2행: 오늘 토큰 ─────────────────────────────────────────────────────────
+// ── 3행: 오늘 토큰 ─────────────────────────────────────────────────────────
 function renderToday(tokens) {
   const box = slot("u-today", "u-card");
   if (!box) return;
@@ -329,7 +336,7 @@ function dayOverDay(days) {
   return { dir: ratio > 0 ? "up" : "down", text: `${Math.abs(ratio)}%` };
 }
 
-// ── 3행: 한도 사용률 추이 ──────────────────────────────────────────────────
+// ── 2행: 5시간 세션 추이 ──────────────────────────────────────────────────
 function renderTrend(usage) {
   const box = slot("u-trend", "u-card");
   if (!box) return;
@@ -337,18 +344,18 @@ function renderTrend(usage) {
   if (samples.length < MIN_TREND_POINTS) {
     // 한도 %는 어디에도 이력이 남지 않아 이 대시보드가 모으기 시작한 시점부터 그려진다
     box.append(
-      headRow("5시간 창 추이"),
+      headRow("5시간 세션 추이"),
       emptyState("한도 %는 이력이 남지 않아 지금부터 모읍니다. 몇 분 뒤 추이가 그려집니다.")
     );
     return;
   }
-  box.appendChild(headRow("5시간 창 추이", `최근 ${TREND_HOURS}시간`, [legendRow(PCT_SERIES)]));
+  box.appendChild(headRow("5시간 세션 추이", `최근 ${TREND_HOURS}시간`, [legendRow(PCT_SERIES)]));
   const points = samples.map((sample) => ({
     label: clockText(sample.bucket_ts),
     values: { five_hour_pct: sample.five_hour_pct, seven_day_pct: sample.seven_day_pct },
   }));
   box.append(
-    percentLineChart({ points, series: PCT_SERIES, label: "5시간 창 사용률 추이" }),
+    percentLineChart({ points, series: PCT_SERIES, label: "5시간 세션 사용률 추이" }),
     tag("p", "u-caption", `실측 ${samples.length}개 · 대시보드가 모으기 시작한 뒤부터 쌓임`)
   );
 }
@@ -530,7 +537,7 @@ function trackLabel(epochSeconds) {
     .trim();
 }
 
-// ── 3행: 모델 구성 ─────────────────────────────────────────────────────────
+// ── 2행: 모델 구성 ─────────────────────────────────────────────────────────
 function renderShare(tokens) {
   const box = slot("u-share", "u-card");
   if (!box) return;
