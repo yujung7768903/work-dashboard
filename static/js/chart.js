@@ -27,7 +27,8 @@ const CURSOR_DASH = "3 3";
 const TIP_GAP = 12; // 기준선과 툴팁 사이. 0 이면 툴팁이 선을 덮어 어디를 짚었는지 흐려진다
 const TOTAL_LABEL = "합계";
 const PERCENT_MAX = 100;
-const PCT_TICKS = [0, 25, 50, 75, 100];
+// 한도 %는 축 상한이 100 이어야 한다. 최대값에 맞춰 늘리면 87% 막대가 꽉 찬 것처럼 보인다
+export const PCT_TICKS = [0, 25, 50, 75, 100];
 const DONUT_SIZE = 128;
 const DONUT_THICKNESS = 16;
 const DONUT_ARC_GAP = 2; // 조각 사이도 선이 아니라 간격으로 가른다
@@ -56,10 +57,11 @@ export function thousands(value) {
 // 모델별 누적 세로 막대. point = { label, values: {키: 수}, detail }
 // 툴팁도 축과 같은 압축 표기를 쓴다 — 억 단위 자릿수는 눈으로 읽히지 않는다.
 // 정확한 수가 필요하면 "표로 보기" 를 펼친다
-export function stackedColumnChart({ points, series, format = compact, label }) {
+// ticks 를 주면 축을 그 눈금에 고정한다 — 상한이 정해진 값(%)에 필요하다
+export function stackedColumnChart({ points, series, format = compact, label, ticks: fixed }) {
   const plot = plotOf(BAR);
   const totals = points.map((point) => sumOf(point.values, series));
-  const ticks = niceTicks(Math.max(...totals, 0));
+  const ticks = fixed || niceTicks(Math.max(...totals, 0));
   const top = ticks[ticks.length - 1] || 1;
   const svg = frame(BAR.height, label);
   gridAndTicks(svg, plot, ticks, (value) => (value === 0 ? "0" : format(value)));
