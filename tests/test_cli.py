@@ -97,7 +97,9 @@ class CliTest(unittest.TestCase):
         from app.db import connect
         from app.repositories import sessions as session_repo
 
-        session_repo.register(connect(), "cli-sess", cwd="/tmp")
+        con = connect()
+        session_repo.register(con, "cli-sess", cwd="/tmp")
+        session_repo.set_last_prompt(con, "cli-sess", "무엇을 하나")
         code, _, _ = self.run_cli("classify", "cli-sess", "--category", "운영")
         self.assertEqual(code, 0)
         code, out, _ = self.run_cli("sessions", "--json")

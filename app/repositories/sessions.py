@@ -23,6 +23,9 @@ WITH_NAMES = """SELECT s.*, c.name AS category_name, w.name AS workspace_name
             FROM sessions s
             LEFT JOIN categories c ON c.id = s.category_id
             LEFT JOIN workspaces w ON w.id = s.workspace_id"""
+# 데몬이 미리 띄우는 spare 프로세스도 SessionStart 로 등록된다. 프롬프트가 한 번도
+# 없던 세션은 목록·미분류 집계 양쪽에서 같이 빠져야 개수와 목록이 어긋나지 않는다.
+PROMPTED = "COALESCE(last_prompt,'') <> ''"
 
 
 def register(con, claude_session_id, cwd=None, git_branch=None):
@@ -157,16 +160,19 @@ def linked_todo_ids(con, claude_session_id):
 def count_unclassified(con):
     return con.execute(
         "SELECT COUNT(*) AS n FROM sessions WHERE category_id IS NULL"
+        f" AND {PROMPTED}"
         f" AND state IN ({_placeholders(ACTIVE_STATES)})",
         ACTIVE_STATES,
     ).fetchone()["n"]
 
 
 def list_active(con):
-    """working/idle 만. 카테고리·워크스페이스 이름을 붙여 목록용으로 반환"""
+    """working/idle 중 프롬프트가 한 번이라도 있던 세션만.
+    카테고리·워크스페이스 이름을 붙여 목록용으로 반환"""
     rows = con.execute(
         f"""{WITH_NAMES}
             WHERE s.state IN ({_placeholders(ACTIVE_STATES)})
+              AND {PROMPTED}
             ORDER BY s.last_seen_at DESC""",
         ACTIVE_STATES,
     )
