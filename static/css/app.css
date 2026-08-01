@@ -256,8 +256,11 @@ button:disabled { color: var(--line); cursor: default; }
 .cat-pill:hover:not(.active) {
   background-color: color-mix(in srgb, var(--cat) 26%, var(--surface));
 }
-/* 선택된 라벨만 카테고리 색을 그대로 채운다 */
-.cat-pill.active {
+/* 선택된 라벨만 카테고리 색을 그대로 채운다. hover 해도 그대로 둔다 —
+   :hover 를 같이 적어야 일반 button:hover 규칙(0,2,1)을 명시도(0,3,0)로 이긴다.
+   안 그러면 고른 라벨에 마우스를 얹었을 때 회색으로 덮여 선택이 안 보인다 */
+.cat-pill.active,
+.cat-pill.active:hover {
   background-color: var(--cat); color: var(--on-cat);
   box-shadow: var(--shadow-press);
 }
