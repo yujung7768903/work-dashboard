@@ -67,13 +67,28 @@ function renderQuickCategories(categories) {
   if (select.innerHTML !== rendered) select.innerHTML = rendered;
 }
 
+// 목록이 그대로면 라벨을 다시 만들지 않는다. 통째로 새로 그리면 누른 라벨이
+// 지워졌다 되살아나면서 한 번 깜빡인다
 function renderCategoryFilter(categories) {
   const container = document.getElementById("category-filter");
-  container.innerHTML = "";
-  container.append(
-    filterPill(ALL_CATEGORIES),
-    ...categories.map((category) => filterPill(category))
-  );
+  const signature = categories.map((c) => `${c.id}:${c.name}:${c.color}`).join("|");
+  if (container.dataset.signature !== signature) {
+    container.dataset.signature = signature;
+    container.innerHTML = "";
+    container.append(
+      filterPill(ALL_CATEGORIES),
+      ...categories.map((category) => filterPill(category))
+    );
+  }
+  syncActivePills(container);
+}
+
+// 선택 표시만 다시 칠한다. 라벨을 누른 즉시 부르므로 보드 새로고침을 기다리지 않는다
+function syncActivePills(container) {
+  const active = String(activeCategoryId ?? "");
+  container.querySelectorAll(".cat-pill").forEach((pill) => {
+    pill.classList.toggle("active", pill.dataset.categoryId === active);
+  });
 }
 
 // 선택된 라벨은 카테고리 색을 그대로 채우므로 글자를 흰·검 중 대비가 큰 쪽으로 고른다.
@@ -96,9 +111,10 @@ function filterPill(category) {
     pill.style.setProperty("--cat", category.color);
     pill.style.setProperty("--on-cat", inkOn(category.color));
   }
-  pill.classList.toggle("active", activeCategoryId === category.id);
+  pill.dataset.categoryId = category.id ?? "";
   pill.addEventListener("click", () => {
     activeCategoryId = category.id;
+    syncActivePills(pill.parentElement);
     run(renderBoard);
   });
   return pill;

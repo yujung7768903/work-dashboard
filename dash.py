@@ -13,7 +13,7 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, history, planning, session_link, usage
+from app.services import board, history, planning, release, session_link, usage
 
 NONE_LITERAL = "none"
 REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
@@ -157,7 +157,18 @@ def _build_parser():
     link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
     link_todo.add_argument("session")
     link_todo.add_argument("todo_id", type=int)
+    link_todo.add_argument(
+        "--past",
+        action="store_true",
+        help="끝난 히스토리 세션. scan-history 가 찍은 앞머리로 지정할 수 있고,"
+        " 없으면 ended 로 등록한다. 할일 상태는 바꾸지 않는다",
+    )
     link_todo.set_defaults(handler=_cmd_link_todo)
+
+    finish = sub.add_parser("finish", help="병합 후 리소스 해제 (할일 done·서버 종료)")
+    finish.add_argument("session")
+    finish.add_argument("--worktree", default=None, help="기본값은 세션의 작업 위치")
+    finish.set_defaults(handler=_cmd_finish)
 
     scan = sub.add_parser("scan-history", help="초기 설정용 히스토리 요약 (세션당 한 줄)")
     scan.add_argument("--days", type=int, default=HISTORY_DAY_CHOICES[0])
@@ -377,6 +388,18 @@ def _todos_in_scope(con, args):
     ]
 
 
+def _cmd_finish(con, args):
+    """병합으로 끝난 작업의 뒷정리. 워크트리 제거는 ExitWorktree 몫이라 안내만 한다"""
+    result = release.finish(con, args.session, worktree=args.worktree)
+    print("완료한 할일: " + (", ".join(str(i) for i in result["todos"]) or "(없음)"))
+    for pid, command in result["killed"]:
+        print(f"종료한 프로세스: {pid} {command}")
+    if not result["killed"]:
+        print("종료한 프로세스: (없음)")
+    if release.WORKTREE_MARK in result["worktree"]:
+        print(f"남은 정리: ExitWorktree 로 워크트리 제거 — {result['worktree']}")
+
+
 def _cmd_show_note(con, args):
     todo = todo_repo.get(con, args.todo_id)
     subtasks = subtask_repo.list_by_todo(con, args.todo_id)
@@ -409,7 +432,10 @@ def _one_line(text):
 
 
 def _cmd_link_todo(con, args):
-    session_repo.link_todo(con, args.session, args.todo_id)
+    session = args.session
+    if args.past:
+        session = history.ensure_past_session(con, session)
+    session_repo.link_todo(con, session, args.todo_id, claim=not args.past)
     print(f"할일 {args.todo_id} 연결됨")
 
 

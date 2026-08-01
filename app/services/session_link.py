@@ -6,6 +6,7 @@ from app.constants import (
     JIRA_PATTERN,
     ONBOARDING_DECLINED_FLAG,
     ONBOARDING_MIN_SESSIONS,
+    STATUS_DONE,
     WORKSPACE_ACTIVE,
 )
 from app.db import meta_get, meta_set
@@ -20,6 +21,7 @@ BLOCK_CLOSE = "</work-dashboard>"
 STATE_CLASSIFIED = "classified"
 STATE_UNCLASSIFIED = "unclassified"
 STATE_ONBOARDING = "onboarding"
+STATE_RELEASED = "released"
 CONTEXT_LABELS = (
     ("배경", "background"),
     ("목적", "purpose"),
@@ -31,6 +33,20 @@ FRESHNESS_GUIDE = (
     "공통: 다른 세션이 같은 코드·문서를 고칠 수 있다. 착수 전에 최신 상태를 다시 읽는다 "
     "— git status/log 로 브랜치 상태를 확인하고, 고칠 파일과 관련 문서를 그때 읽는다. "
     "컨텍스트에 남아 있는 예전 내용을 근거로 수정하지 않는다."
+)
+# 끝난 작업의 리소스(할일·서버·워크트리)가 남으면 다음 세션이 그걸 진행 중으로 오해한다
+RELEASE_GUIDE = (
+    "완료: master 에 병합해 이 작업이 끝나면 리소스를 해제한다 — "
+    "python3 dash.py finish <session> 으로 연결된 할일을 done 으로 내리고 "
+    "그 워크트리를 쓰던 서버를 종료한 뒤, ExitWorktree 로 워크트리를 제거한다."
+)
+# 해제 뒤 같은 세션이 이어질 때. 끝난 할일에 새 작업을 얹으면 무엇이 끝났는지 알 수 없어진다
+RELEASED_GUIDE = (
+    "지침: 이 세션이 잡았던 할일은 모두 끝났다(done). "
+    "사용자가 새 요청을 하면 끝난 할일에 얹지 말고 새 할일로 진행한다 — "
+    "dash.py add-todo <제목> --session <session> 으로 만들고 "
+    "dash.py link-todo <session> <todo-id> 로 연결한다. "
+    "단발 조회·설명 질문이면 만들지 않는다."
 )
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
@@ -80,7 +96,16 @@ ONBOARDING_GUIDE = (
     "할일을 반드시 만드는 이유 — 보드는 할일이 0개인 워크스페이스를 통째로 감춘다. "
     "워크스페이스만 만들면 사용자 화면에는 아무것도 안 나타나 초기 설정이 실패한 것처럼 보인다. "
     "상태 추정이 틀려도 사용자가 보드에서 바로 고칠 수 있으므로 비워두는 것보다 낫다. "
-    "(8) 마지막으로 배경·목적·고려사항도 채울지 묻는다 — "
+    "(8) 할일마다 그 할일을 뽑아낸 근거 세션을 "
+    "dash.py link-todo <세션앞머리> <todo-id> --past 로 연결한다. "
+    "앞머리는 scan-history 출력 각 줄 맨 앞에 찍혀 있다. --past 는 없는 세션을 ended 로 "
+    "등록하고 할일 상태를 건드리지 않는다(끝난 세션 연결은 착수 선언이 아니다). "
+    "이어서 그 세션들에서 이 할일을 착수할 때 필요한 구체 정보를 뽑아 "
+    "dash.py add-todo 의 --note 또는 웹에서 note 에 적는다 — "
+    "실패한 명령과 오류 문구, 확정된 수치·기준, 제외하기로 한 범위, 참고 경로·주소처럼 "
+    "다시 찾으려면 시간이 드는 것들이다. 근거 세션이 없는 할일은 연결하지 말고 "
+    "note 에 아직 착수 세션이 없다는 사실과 선행 조건을 적는다. "
+    "(9) 마지막으로 배경·목적·고려사항도 채울지 묻는다 — "
     "1 아니요(기본) / 2 순차: 워크스페이스 하나를 채우고 확인받고 다음으로 / "
     "3 병렬: 전부 추정해 한 번에 보여주고 한 번만 확인. "
     "추정으로 채운 내용은 이후 매 세션 주입되므로 2 가 기본 동작이고, "
@@ -125,6 +150,29 @@ def render_context(con, claude_session_id):
     if needs_onboarding(con):
         return _onboarding_block(con, session)
     return _unclassified_block(con, session)
+
+
+def released_context(con, claude_session_id):
+    """잡은 할일이 전부 done 인 세션에만 주입. 새 할일을 연결하면 저절로 조용해진다.
+
+    별도 플래그를 두지 않는 이유 — 플래그와 실제 할일 상태가 어긋나면 믿을 것은 할일 쪽이다
+    """
+    session = session_repo.find(con, claude_session_id)
+    if not session:
+        return ""
+    todo_ids = session_repo.linked_todo_ids(con, claude_session_id)
+    if not todo_ids:
+        return ""
+    if any(todo_repo.get(con, todo_id)["status"] != STATUS_DONE for todo_id in todo_ids):
+        return ""
+    return "\n".join(
+        [
+            BLOCK_OPEN.format(session=claude_session_id, state=STATE_RELEASED),
+            RELEASED_GUIDE,
+            FRESHNESS_GUIDE,
+            BLOCK_CLOSE,
+        ]
+    )
 
 
 def needs_onboarding(con):
@@ -212,6 +260,7 @@ def _classified_block(con, session):
     lines.append("할일:")
     lines.extend(_todo_lines(con, workspace["id"]))
     lines.append(CLASSIFIED_GUIDE)
+    lines.append(RELEASE_GUIDE)
     lines.append(FRESHNESS_GUIDE)
     lines.append(BLOCK_CLOSE)
     return "\n".join(lines)
@@ -252,6 +301,7 @@ def _unclassified_block(con, session):
     else:
         lines.append("  (없음)")
     lines.append(UNCLASSIFIED_GUIDE)
+    lines.append(RELEASE_GUIDE)
     lines.append(FRESHNESS_GUIDE)
     lines.append(BLOCK_CLOSE)
     return "\n".join(lines)
