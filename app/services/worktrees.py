@@ -6,6 +6,7 @@ cwd 로 유추한다. git·lsof 는 읽기 전용으로만 부르고 실패하�
 """
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 from app.constants import WORKSPACE_ACTIVE
 from app.repositories import categories as category_repo
@@ -17,6 +18,8 @@ GIT_TIMEOUT_SEC = 5
 # 최근 커밋 순 상위 30 개만 보고, 잘라낸 개수는 응답에 실어 화면에 알린다
 BRANCH_LIMIT = 30
 COMMIT_LIMIT = 20
+# 브랜치별 git 을 겹쳐 부르는 폭. 저장소 하나가 CPU 를 다 먹지 않을 만큼만
+GIT_WORKERS = 8
 # 명령줄 앞 두 토큰만 이름으로 줄여 보여준다 (`python3 server.py`)
 COMMAND_TOKENS = 2
 # git log 필드 구분자. 커밋 제목에 들어갈 일이 없어 split 이 안전하다
@@ -58,13 +61,19 @@ def _repo_state(root, summaries, ports):
     shown = _base_first(branches, base)[:BRANCH_LIMIT]
     worktrees = _worktrees(root)
     processes = _process_map(sorted(set(worktrees.values())), ports)
+    # 브랜치마다 git 을 두 번 부른다. 순서대로 돌면 브랜치 수만큼 곱해져 눈에 띄게
+    # 느려지므로 한꺼번에 띄운다 — subprocess 대기라 스레드로 충분히 겹친다
+    with ThreadPoolExecutor(max_workers=GIT_WORKERS) as pool:
+        rows = list(
+            pool.map(
+                lambda name: _row(root, base, name, worktrees.get(name), summaries, processes),
+                shown,
+            )
+        )
     return {
         "base": base,
         "hidden_branches": max(0, len(branches) - len(shown)),
-        "rows": [
-            _row(root, base, name, worktrees.get(name), summaries, processes)
-            for name in shown
-        ],
+        "rows": rows,
     }
 
 
