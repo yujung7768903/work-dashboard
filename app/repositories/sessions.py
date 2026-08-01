@@ -118,11 +118,14 @@ def classify_by_ids(con, session_row_id, category_id=None, workspace_id=None):
     return _row_by_id(con, session_row_id)
 
 
-def link_todo(con, claude_session_id, todo_id):
+def link_todo(con, claude_session_id, todo_id, claim=True):
     """중복 연결은 무시. PK 가 (session_id, todo_id).
 
     연결은 착수 선언이므로 할일을 doing 으로 올림. status=todo 인 것만 바꿔서
-    이미 done 인 할일이 되살아나지 않게 함
+    이미 done 인 할일이 되살아나지 않게 함.
+
+    claim=False 는 끝난 히스토리 세션을 소급 연결할 때 쓴다 — 그건 착수 선언이 아니라
+    기록이므로 상태를 건드리면 안 된다 (온보딩이 추정해 넣은 상태가 뒤집힌다)
     """
     session = get(con, claude_session_id)
     _require_todo(con, todo_id)
@@ -133,10 +136,11 @@ def link_todo(con, claude_session_id, todo_id):
             " VALUES(?,?,?)",
             (session["id"], todo_id, stamp),
         )
-        con.execute(
-            "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status=?",
-            (STATUS_DOING, stamp, todo_id, STATUS_TODO),
-        )
+        if claim:
+            con.execute(
+                "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status=?",
+                (STATUS_DOING, stamp, todo_id, STATUS_TODO),
+            )
 
 
 def linked_todo_ids(con, claude_session_id):

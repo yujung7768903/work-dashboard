@@ -157,6 +157,12 @@ def _build_parser():
     link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
     link_todo.add_argument("session")
     link_todo.add_argument("todo_id", type=int)
+    link_todo.add_argument(
+        "--past",
+        action="store_true",
+        help="끝난 히스토리 세션. scan-history 가 찍은 앞머리로 지정할 수 있고,"
+        " 없으면 ended 로 등록한다. 할일 상태는 바꾸지 않는다",
+    )
     link_todo.set_defaults(handler=_cmd_link_todo)
 
     scan = sub.add_parser("scan-history", help="초기 설정용 히스토리 요약 (세션당 한 줄)")
@@ -409,7 +415,10 @@ def _one_line(text):
 
 
 def _cmd_link_todo(con, args):
-    session_repo.link_todo(con, args.session, args.todo_id)
+    session = args.session
+    if args.past:
+        session = history.ensure_past_session(con, session)
+    session_repo.link_todo(con, session, args.todo_id, claim=not args.past)
     print(f"할일 {args.todo_id} 연결됨")
 
 
