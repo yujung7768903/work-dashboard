@@ -209,7 +209,7 @@ select {
 /* 아이콘 하나뿐인 버튼은 정사각으로 만들어 누를 면적을 확보 */
 #quick-submit {
   width: var(--sp-40); flex: none; padding: 0;
-  font-size: var(--fs-title); line-height: 1;
+  display: flex; align-items: center; justify-content: center;
   background-color: var(--accent); color: #fff; font-weight: 400;
 }
 #quick-submit:hover { background-color: color-mix(in srgb, var(--accent) 84%, #000); }
@@ -291,9 +291,10 @@ button:disabled { color: var(--line); cursor: default; }
 /* 이름이 남는 폭을 먹어 진행 수·추가 버튼이 오른쪽에 붙는다 */
 .group-name { flex: 1; }
 .group-add {
-  flex: none; background: none; padding: 0 var(--sp-4);
-  font-size: var(--fs-title); line-height: 1; color: var(--muted);
+  flex: none; justify-content: center; background: none;
+  padding: 0 var(--sp-4); color: var(--muted);
 }
+.group-add:hover { color: var(--fg); }
 
 .todo {
   display: flex; align-items: center; gap: var(--sp-8);

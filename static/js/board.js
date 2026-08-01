@@ -164,7 +164,7 @@ function groupElement(group, alwaysShowDone = false) {
 function groupAddButton(group) {
   const button = document.createElement("button");
   button.className = "group-add";
-  button.textContent = "+";
+  button.innerHTML = PLUS_SVG;
   button.title = `${group.name} 에 할일 추가`;
   button.addEventListener("click", (event) => {
     // summary 클릭은 카드를 접으므로 기본 동작까지 막는다
@@ -213,6 +213,13 @@ function todoElement(todo) {
 const CHEVRON_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
   <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor"
         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+// 사이드바 아이콘과 같은 격자·스트로크. 글자 + 는 폰트마다 글리프가 위아래로 치우쳐
+// 세로 가운데를 맞춰도 어긋나 보이므로 도형으로 그린다
+const PLUS_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+  <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round"/>
 </svg>`;
 
 // 상태 배지와 제목 사이의 펼침 아이콘. 하위가 없는 줄도 빈 자리를 남겨 제목 세로줄을 맞춘다
