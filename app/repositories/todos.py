@@ -1,6 +1,7 @@
 """할일 저장·조회. 워크스페이스 배정 시 카테고리 동기화가 여기서 강제됨"""
 from app import ordering
 from app.constants import (
+    AUTO_TODO_NOTE_RAW_TITLE,
     STATE_IDLE,
     STATE_WORKING,
     STATUS_DOING,
@@ -48,14 +49,14 @@ def get(con, todo_id):
     row = con.execute("SELECT * FROM todos WHERE id=?", (todo_id,)).fetchone()
     if not row:
         raise NotFound(f"할일 {todo_id} 없음")
-    return dict(row)
+    return _shaped(row)
 
 
 def list_by_workspace(con, workspace_id):
     """workspace_id 가 None 이면 미분류 목록"""
     where, params = _group_scope(workspace_id)
     return [
-        dict(row)
+        _shaped(row)
         for row in con.execute(
             f"SELECT * FROM todos WHERE {where} ORDER BY sort_order, id", params
         )
@@ -64,7 +65,7 @@ def list_by_workspace(con, workspace_id):
 
 def list_by_category(con, category_id):
     return [
-        dict(row)
+        _shaped(row)
         for row in con.execute(
             "SELECT * FROM todos WHERE category_id=? ORDER BY sort_order, id",
             (category_id,),
@@ -124,7 +125,7 @@ def sync_category(con, workspace_id, category_id):
 def list_completed_on(con, date_prefix):
     """completed_at 날짜 부분이 일치하는 할일. daily-todo 집계용"""
     return [
-        dict(row)
+        _shaped(row)
         for row in con.execute(
             "SELECT * FROM todos WHERE completed_at LIKE ? ORDER BY completed_at",
             (f"{date_prefix}%",),
@@ -150,7 +151,7 @@ def ids_claimed_by_others(con, claude_session_id=None):
 def list_doing_before(con, before_text):
     """updated_at 이 기준 시각보다 오래된 doing. 오래 붙잡고 있는 할일 경고용"""
     return [
-        dict(row)
+        _shaped(row)
         for row in con.execute(
             "SELECT * FROM todos WHERE status=? AND updated_at<? ORDER BY updated_at",
             (STATUS_DOING, before_text),
@@ -209,6 +210,17 @@ def _resolve_category(con, category_id, workspace_id):
         raise Validation("카테고리나 워크스페이스 중 하나는 필요함")
     category_repo.get(con, category_id)
     return category_id
+
+
+def _shaped(row):
+    """조회 결과에 needs_title 을 얹는다 — 제목이 요약 안 된 자동 생성 할일.
+
+    컬럼을 늘리지 않고 note 표시 한 줄로 판단한다. 여기서 한 번 계산해 보드·팝업이
+    같은 답을 쓰게 한다 (사용자가 note 를 정리하면 표시도 함께 사라진다)
+    """
+    todo = dict(row)
+    todo["needs_title"] = AUTO_TODO_NOTE_RAW_TITLE in (todo.get("note") or "")
+    return todo
 
 
 def _clean_title(title):

@@ -32,22 +32,45 @@ FLAGS = (
 
 
 def one_line(text, model=SUMMARY_MODEL, timeout=SUMMARY_TIMEOUT_SEC):
-    """제목 한 줄. CLI 가 없거나 실패·타임아웃·이상한 응답이면 None"""
+    """제목 한 줄. CLI 가 없거나 실패·타임아웃·이상한 응답이면 None.
+
+    실패는 이유를 로그로 남긴다 — 조용히 None 을 돌려주면 제목이 왜 안 붙었는지
+    알 방법이 없다(화면에는 '요약 안 됨' 배지만 뜬다)
+    """
     binary = shutil.which(BINARY)
-    if not binary or not (text or "").strip():
-        return None
+    if not binary:
+        return _failed(f"{BINARY} 를 PATH 에서 찾지 못함")
+    if not (text or "").strip():
+        return None  # 요약할 글이 없는 건 실패가 아니다
     try:
         result = subprocess.run(
             [binary, *FLAGS, "--model", model, text],
             capture_output=True,
             text=True,
             timeout=timeout,
+            stdin=subprocess.DEVNULL,  # 붙잡을 입력이 없어야 CLI 가 기다리지 않는다
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
+    except subprocess.TimeoutExpired:
+        return _failed(f"{timeout}초 안에 응답 없음")
+    except (OSError, subprocess.SubprocessError) as error:
+        return _failed(f"실행 실패 — {type(error).__name__}: {error}")
     if result.returncode != 0:
-        return None
-    return clean(result.stdout)
+        return _failed(f"종료코드 {result.returncode} — {_tail(result.stderr)}")
+    cleaned = clean(result.stdout)
+    if not cleaned:
+        return _failed(f"제목으로 쓸 수 없는 응답 — {_tail(result.stdout)}")
+    return cleaned
+
+
+def _failed(reason):
+    print(f"제목 요약 실패: {reason}", flush=True)
+    return None
+
+
+def _tail(output):
+    """로그 한 줄로 줄인다. CLI 는 경고를 여러 줄 뱉을 수 있다"""
+    lines = [row.strip() for row in (output or "").splitlines() if row.strip()]
+    return lines[-1][:200] if lines else "(출력 없음)"
 
 
 def clean(output):

@@ -2,7 +2,7 @@
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { run } from "./main.js";
-import { openDetail, startSessionPolling } from "./sessions.js";
+import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
@@ -178,6 +178,7 @@ function todoElement(todo) {
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = todo.title;
+  if (todo.needs_title) title.append(rawTitleMark());
 
   row.append(statusButton, subtaskToggle(todo), title, todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
