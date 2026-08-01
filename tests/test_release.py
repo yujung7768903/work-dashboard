@@ -46,6 +46,26 @@ def _serve(root, case, *flags):
     case.fail(f"워크트리에서 도는 서버를 찾지 못함: {flags}")
 
 
+def _listen(root, case):
+    """그 디렉토리를 cwd 로 실제 포트를 듣는 프로세스. (프로세스, 포트) 를 돌려준다"""
+    with open(os.path.join(root, "server.py"), "w") as handle:
+        handle.write(
+            "import socket, time\n"
+            "sock = socket.socket()\n"
+            "sock.bind(('127.0.0.1', 0))\n"
+            "sock.listen(1)\n"
+            "print(sock.getsockname()[1], flush=True)\n"
+            "time.sleep(30)\n"
+        )
+    proc = subprocess.Popen(
+        [sys.executable, "server.py"], cwd=root, stdout=subprocess.PIPE, text=True
+    )
+    case.addCleanup(proc.stdout.close)
+    case.addCleanup(_stop, proc)
+    # 포트를 찍기 전에 이미 bind·listen 이 끝나 있으므로 이 줄만 읽으면 탐지 가능한 상태다
+    return proc, int(proc.stdout.readline().strip())
+
+
 class FinishTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
@@ -176,6 +196,32 @@ class ServingProcessTest(unittest.TestCase):
         root = _worktree_dir()
         proc = _serve(root, self, "-u")
         self.assertIn(proc.pid, [pid for pid, _ in release.serving_processes(root)])
+
+
+class ServingPortTest(unittest.TestCase):
+    """상태줄이 쓰는 포트 조회. 죽이는 쪽과 달리 워크트리 밖도 읽어야 한다"""
+
+    def test_port_of_the_process_serving_that_directory(self):
+        root = _worktree_dir()
+        _, port = _listen(root, self)
+        self.assertEqual(port, release.serving_port(root))
+
+    def test_main_checkout_port_is_reported_too(self):
+        plain = tempfile.mkdtemp()
+        _, port = _listen(plain, self)
+        self.assertEqual(port, release.serving_port(plain))
+
+    def test_directory_without_a_listener_is_zero(self):
+        self.assertEqual(0, release.serving_port(tempfile.mkdtemp()))
+
+    def test_missing_directory_is_zero(self):
+        self.assertEqual(0, release.serving_port("/nope/.claude/worktrees/gone"))
+
+    def test_port_is_read_from_every_address_shape(self):
+        self.assertEqual(9081, release._port_of("127.0.0.1:9081"))
+        self.assertEqual(7000, release._port_of("*:7000"))
+        self.assertEqual(6379, release._port_of("[::1]:6379"))
+        self.assertEqual(0, release._port_of("/tmp/sock"))
 
 
 class ReleasedContextTest(unittest.TestCase):

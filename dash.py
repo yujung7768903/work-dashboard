@@ -5,7 +5,7 @@ import json
 import sys
 from datetime import datetime
 
-from app.constants import HISTORY_DAY_CHOICES, UNASSIGNED_LABEL
+from app.constants import HISTORY_DAY_CHOICES, STATUS_DONE, UNASSIGNED_LABEL
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
@@ -32,6 +32,8 @@ PRECONDITION_HELP = (
 )
 EXIT_OK = 0
 EXIT_ERROR = 1
+# 상태줄에는 사용률 막대 세 개가 이미 있다. 한글은 두 칸을 먹으므로 짧게 자른다
+STATUSLINE_TITLE_MAX = 18
 USAGE_CLI_DAYS = 7
 COMPACT_UNITS = ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K"))
 SECONDS_PER_MINUTE = 60
@@ -174,6 +176,15 @@ def _build_parser():
     finish.add_argument("session")
     finish.add_argument("--worktree", default=None, help="기본값은 세션의 작업 위치")
     finish.set_defaults(handler=_cmd_finish)
+
+    status_line = sub.add_parser(
+        "statusline", help="상태줄 한 줄 (연결된 할일·상태·워크트리 서버 포트)"
+    )
+    status_line.add_argument("session")
+    status_line.add_argument(
+        "--cwd", default=None, help="세션의 현재 위치. 상태줄이 넘겨주는 값이 가장 정확하다"
+    )
+    status_line.set_defaults(handler=_cmd_statusline)
 
     scan = sub.add_parser("scan-history", help="초기 설정용 히스토리 요약 (세션당 한 줄)")
     scan.add_argument("--days", type=int, default=HISTORY_DAY_CHOICES[0])
@@ -407,6 +418,44 @@ def _cmd_finish(con, args):
         print(f"종료한 프로세스: (없음) — {_why_nothing_killed(result)}")
     if result["worktree"]:
         print(f"남은 정리: ExitWorktree 로 워크트리 제거 — {result['worktree']}")
+
+
+def _cmd_statusline(con, args):
+    """상태줄용 한 줄. 보여줄 게 없으면 아무것도 찍지 않는다 — 빈 라벨이 폭만 잡아먹는다.
+
+    등록되지 않은 세션(훅이 아직 안 돌았거나 다른 프로젝트)에서도 조용히 끝난다
+    """
+    session = session_repo.find(con, args.session)
+    if not session:
+        return
+    parts = _linked_todo_brief(con, args.session)
+    # 워크트리에서 작업 중이면 그 서버, 메인 체크아웃이면 거기서 도는 서버
+    worktree = release.worktree_of(args.session, session["cwd"], worktree=args.cwd)
+    port = release.serving_port(worktree or args.cwd or session["cwd"])
+    if port:
+        parts.append(f":{port}")
+    if parts:
+        print(" ".join(parts))
+
+
+def _linked_todo_brief(con, claude_session_id):
+    """할일 하나만 상태·제목으로, 나머지는 개수로. 상태줄에 목록을 늘어놓을 수 없다.
+
+    끝난 할일을 앞세우면 지금 뭘 하는지가 가려지므로 안 끝난 것부터 고른다
+    """
+    todo_ids = session_repo.linked_todo_ids(con, claude_session_id)
+    if not todo_ids:
+        return []
+    todos = [todo_repo.get(con, todo_id) for todo_id in todo_ids]
+    shown = next((todo for todo in todos if todo["status"] != STATUS_DONE), todos[0])
+    brief = [f"[{shown['status']}] {_clipped(shown['title'], STATUSLINE_TITLE_MAX)}"]
+    if len(todos) > 1:
+        brief.append(f"+{len(todos) - 1}")
+    return brief
+
+
+def _clipped(text, limit):
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _why_nothing_killed(result):
