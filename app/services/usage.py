@@ -27,9 +27,12 @@ from app.constants import (
     USAGE_SAMPLE_RETENTION_DAYS,
     USAGE_SAMPLE_WINDOW_HOURS,
     USAGE_STALE_SECONDS,
+    USAGE_TRACK_MIN_SAMPLES,
     USAGE_TREND_DAYS,
     USAGE_WARN_PCT,
+    USAGE_WEEK_LIMIT,
     USAGE_WINDOWS,
+    WEEK_SECONDS,
 )
 from app.db import now, transaction
 
@@ -66,7 +69,122 @@ def snapshot(con, limits_path=RATE_LIMITS_PATH, cost_path=COST_LOG_PATH):
         "missing_windows": list(MISSING_WINDOW_LABELS),
         "pct_samples": pct_samples(con),
         "tokens": daily_tokens(cost_path=cost_path),
+        "weekly": weekly_windows(con, cost_path=cost_path),
     }
+
+
+def weekly_windows(con, cost_path=COST_LOG_PATH, limit=USAGE_WEEK_LIMIT):
+    """닫힌 주간 창을 주차별로 모아 비교 가능한 형태로 돌려준다
+
+    주간 %는 7일 내내 쌓이기만 하다 초기화되므로 시각 축에 올려두면 거의 평평한 선이
+    된다. 의미가 있는 건 "이번 주차가 지난 주차보다 빨리 찼는지"라, 창 하나를 한 칸으로
+    접어 세운다. 칸의 값은 그 주차가 초기화 직전에 도달한 최고치다.
+
+    창은 resets_at 으로 가른다. 계정이 여럿이면 주간 창도 여럿이 동시에 도는데, 같은
+    계정의 다음 창은 정확히 7일 뒤에 열리므로 resets_at 을 7일로 나눈 나머지가 계정별
+    트랙이 된다.
+
+    토큰은 트랙에 붙이지 않는다 — cost 로그에 계정 정보가 없어 계정별로 나눌 수 없고,
+    같은 합계를 트랙마다 되풀이하면 계정별 사용량으로 오해된다. 대신 주 트랙의 경계로만
+    잘라 token_weeks 로 한 번 내려보낸다. 그쪽은 %가 없는 지난 주차도 채우므로,
+    한도 %를 모으기 시작하기 전의 과거도 토큰으로는 볼 수 있다.
+    """
+    current = _epoch_ms() // MS_PER_SECOND
+    tracks = _pct_tracks(con, current, limit)
+    events = _spend_events(cost_path)
+    return {
+        "tracks": tracks,
+        "multi_account": len(tracks) > 1,
+        # 주 경계는 %에서만 알 수 있다. 트랙이 없으면 어디서 주가 끊기는지도 모른다
+        "token_weeks": _token_weeks(tracks, events, current, limit),
+        "token_shared": len(tracks) > 1,
+        "token_source": cost_path,
+        "token_available": bool(events),
+    }
+
+
+def _pct_tracks(con, current, limit):
+    """계정별 주차 %. 지금 쓰는 계정이 위로 온다 — 마지막 실측이 늦은 트랙이 앞"""
+    rows = con.execute(
+        "SELECT seven_day_resets_at AS reset_at,"
+        "       MAX(seven_day_pct) AS peak_pct,"
+        "       COUNT(*) AS samples,"
+        "       MIN(source_ts) AS first_ts,"
+        "       MAX(source_ts) AS last_ts"
+        "  FROM usage_samples"
+        " WHERE seven_day_resets_at IS NOT NULL AND seven_day_pct IS NOT NULL"
+        " GROUP BY seven_day_resets_at ORDER BY seven_day_resets_at",
+    ).fetchall()
+    tracks = {}
+    for row in rows:
+        track = int(row["reset_at"]) % WEEK_SECONDS
+        tracks.setdefault(track, []).append(_week_row(row, current))
+    return sorted(
+        (
+            {"track": track, "weeks": weeks[-limit:]}
+            for track, weeks in tracks.items()
+            if sum(week["samples"] for week in weeks) >= USAGE_TRACK_MIN_SAMPLES
+        ),
+        key=lambda item: item["weeks"][-1]["last_ts"],
+        reverse=True,
+    )
+
+
+def _week_row(row, current):
+    """주차 한 칸. 기간은 초기화 시각에서 7일을 되짚어 잡는다"""
+    reset_at = int(row["reset_at"])
+    return {
+        "reset_at": reset_at,
+        "starts_at": reset_at - WEEK_SECONDS,
+        "peak_pct": round(float(row["peak_pct"]), PCT_DECIMALS),
+        "samples": row["samples"],
+        "first_ts": row["first_ts"],
+        "last_ts": row["last_ts"],
+        "in_progress": reset_at > current,
+    }
+
+
+def _token_weeks(tracks, events, current, limit):
+    """주 트랙의 초기화 시각을 기준으로 7일씩 되짚어 자른 토큰·비용
+
+    로그가 시작된 주차까지 채운다. %는 소급되지 않지만 토큰은 로그에 남아 있어,
+    한도 %를 모으기 전의 주차도 여기서는 값이 나온다.
+    """
+    if not tracks or not events:
+        return []
+    oldest = min(event[0] for event in events)
+    weeks = []
+    reset_at = tracks[0]["weeks"][-1]["reset_at"]
+    while len(weeks) < limit:
+        starts_at = reset_at - WEEK_SECONDS
+        spent = [event for event in events if starts_at <= event[0] < reset_at]
+        # 값이 없는 주차도 자리를 남긴다 — 일별 토큰과 같은 규칙
+        weeks.append(
+            {
+                "reset_at": reset_at,
+                "starts_at": starts_at,
+                "tokens": sum(event[1] for event in spent),
+                "cost_usd": round(sum(event[2] for event in spent), COST_DECIMALS),
+                "in_progress": reset_at > current,
+            }
+        )
+        if starts_at <= oldest:
+            break
+        reset_at = starts_at
+    return list(reversed(weeks))
+
+
+def _spend_events(cost_path):
+    """(초 단위 epoch, 토큰 합, 비용). 주 경계로 자르는 데 필요한 최소 형태만 남긴다"""
+    events = []
+    for row, delta in _deltas(_read_cost_log(cost_path)):
+        stamp = _parse_stamp(row.get("timestamp"))
+        if stamp is None:
+            continue
+        events.append(
+            (int(stamp.timestamp()), sum(delta[field] for field in TOKEN_FIELDS), delta[COST_FIELD])
+        )
+    return events
 
 
 def pct_samples(con, hours=USAGE_SAMPLE_WINDOW_HOURS):
@@ -251,10 +369,16 @@ def _ordered_families(present):
 
 def _local_date(text):
     """로그는 UTC(Z)로 적힌다. 사용자가 보는 하루 경계는 로컬이라 로컬 날짜로 버킷팅한다"""
+    stamp = _parse_stamp(text)
+    return None if stamp is None else stamp.astimezone().date()
+
+
+def _parse_stamp(text):
+    """ISO8601(Z 표기 포함) → tz 를 가진 datetime. 못 읽으면 None"""
     if not isinstance(text, str):
         return None
     try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone().date()
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
 

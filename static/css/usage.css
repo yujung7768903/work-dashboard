@@ -53,7 +53,16 @@
 @media (min-width: 880px) {
   .u-main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   /* 왼쪽 큰 카드는 두 칸 — 1행 앞 두 카드의 끝선까지 */
-  #u-daily, #u-trend { grid-column: span 2; }
+  #u-daily, #u-trend, #u-weekly { grid-column: span 2; }
+}
+
+/* ── 주차 비교 ──
+   계정이 둘이면 트랙이 둘이라 같은 카드 안에 차트가 겹쳐 쌓인다. 소제목이 어느 창의
+   막대인지 가르는 유일한 표시라, 차트와 붙여 두고 트랙 사이만 벌린다 */
+.u-week-track + .u-week-track { margin-top: var(--sp-16); }
+.u-week-title {
+  margin: 0 0 var(--sp-4); font-size: var(--fs-micro);
+  font-weight: 600; color: var(--muted);
 }
 
 /* ── 카드 ── */

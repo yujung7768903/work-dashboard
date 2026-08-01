@@ -1,7 +1,14 @@
 // 사용량 탭. 왼쪽은 한도·토큰 모니터링, 오른쪽 레일은 지금 무엇을 하고 있는지.
 // 모든 숫자는 실측이며, 못 가져온 창은 값을 만들지 않고 "미수집"으로 남긴다.
 import * as api from "./api.js";
-import { compact, donutChart, percentLineChart, stackedColumnChart, thousands } from "./chart.js";
+import {
+  PCT_TICKS,
+  compact,
+  donutChart,
+  percentLineChart,
+  stackedColumnChart,
+  thousands,
+} from "./chart.js";
 import { openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 60_000; // 5시간 창은 전력으로 써도 분당 0.3%대로 움직인다
@@ -25,12 +32,17 @@ const LIMIT_CARDS = [
   { key: "seven_day", label: "이번 주 · 전체 모델", sample: "seven_day_pct" },
   { key: "fable_session", label: "Fable 세션 창", sample: null },
 ];
-// tipName 은 툴팁 전용 긴 이름. 사이드카에는 이 두 창만 남아 모델별 %는 만들 수 없다 —
-// 주간 창이 전체 모델 합산이라 그게 사실상 총 사용률이다
+// 5시간 창만 시각 축에 올린다. 주간 창은 7일 내내 쌓이기만 해서 24시간 구간에서는
+// 거의 평평한 선이 되고, 5시간 톱니와 축을 나눠 쓰면 둘 다 읽히지 않는다 —
+// 주간은 주차끼리 견주는 게 맞아 renderWeekly 로 뺐다
 const PCT_SERIES = [
-  { key: "seven_day_pct", name: "주간", tipName: "주간 · 전체 모델", cls: "u-c-seven" },
   { key: "five_hour_pct", name: "5시간", tipName: "현재 세션 · 5시간", cls: "u-c-five" },
 ];
+// 주차 막대. 시리즈 하나뿐이라 쌓이지 않고 그냥 막대가 된다
+const WEEK_PCT_SERIES = [{ key: "peak_pct", name: "최고 사용률", cls: "u-c-seven" }];
+// 닫힌 주차를 최근부터 부르는 이름. 표에서 밀려나면 "N주 전"
+const WEEK_NAMES = [null, "지난주"];
+const WEEK_CURRENT = "이번 주";
 const MODEL_CLASS = { Opus: "u-c-opus", Sonnet: "u-c-sonnet", Haiku: "u-c-haiku" };
 const FALLBACK_CLASS = "u-c-haiku";
 const BREAKDOWN_ROWS = [
@@ -73,6 +85,8 @@ function paint({ usage, next, sessions, categories }) {
   renderToday(usage.tokens);
   renderTrend(usage);
   renderShare(usage.tokens);
+  renderWeekly(usage.weekly);
+  renderWeeklyTokens(usage.weekly);
   renderNext(next, categories);
   renderSessions(sessions);
 }
@@ -322,20 +336,190 @@ function renderTrend(usage) {
   if (samples.length < MIN_TREND_POINTS) {
     // 한도 %는 어디에도 이력이 남지 않아 이 대시보드가 모으기 시작한 시점부터 그려진다
     box.append(
-      headRow("한도 사용률 추이"),
+      headRow("5시간 창 추이"),
       emptyState("한도 %는 이력이 남지 않아 지금부터 모읍니다. 몇 분 뒤 추이가 그려집니다.")
     );
     return;
   }
-  box.appendChild(headRow("한도 사용률 추이", `최근 ${TREND_HOURS}시간`, [legendRow(PCT_SERIES)]));
+  box.appendChild(headRow("5시간 창 추이", `최근 ${TREND_HOURS}시간`, [legendRow(PCT_SERIES)]));
   const points = samples.map((sample) => ({
     label: clockText(sample.bucket_ts),
     values: { five_hour_pct: sample.five_hour_pct, seven_day_pct: sample.seven_day_pct },
   }));
   box.append(
-    percentLineChart({ points, series: PCT_SERIES, label: "한도 사용률 추이" }),
+    percentLineChart({ points, series: PCT_SERIES, label: "5시간 창 사용률 추이" }),
     tag("p", "u-caption", `실측 ${samples.length}개 · 대시보드가 모으기 시작한 뒤부터 쌓임`)
   );
+}
+
+// ── 4행: 주간 한도 주차 비교 ───────────────────────────────────────────────
+// 주간 창은 7일 내내 누적만 하다 초기화되므로 시각 축에서는 읽을 게 없다. 창 하나를
+// 한 칸으로 접어 주차끼리 견준다 — 값은 초기화 직전에 도달한 최고 사용률이다
+function renderWeekly(weekly) {
+  const box = slot("u-weekly", "u-card");
+  if (!box) return;
+  const tracks = weekly?.tracks || [];
+  if (!tracks.length) {
+    box.append(
+      headRow("주간 한도 · 주차 비교"),
+      emptyState("주간 창 실측이 아직 없습니다. 한도 %는 이력이 남지 않아 지금부터 모읍니다.")
+    );
+    return;
+  }
+  box.appendChild(
+    headRow("주간 한도 · 주차 비교", "초기화 직전 도달치", [legendRow(WEEK_PCT_SERIES)])
+  );
+  tracks.forEach((track) => box.appendChild(weekTrack(track)));
+  if (weekly.multi_account) {
+    // 계정 이름은 어디에도 없다. 초기화 시각이 유일한 식별자라 그걸로 가른다
+    box.appendChild(
+      tag("p", "u-caption", "초기화 시각이 다른 창은 서로 다른 계정 — 창끼리는 합산되지 않음")
+    );
+  }
+  const details = document.createElement("details");
+  details.appendChild(tag("summary", null, "표로 보기"));
+  details.appendChild(weekTable(tracks));
+  box.appendChild(details);
+}
+
+function weekTrack(track) {
+  const wrap = tag("div", "u-week-track");
+  const weeks = track.weeks;
+  const labels = weekLabels(weeks);
+  const title = `${trackLabel(weeks[weeks.length - 1].reset_at)} 초기화`;
+  wrap.appendChild(tag("h3", "u-week-title", title));
+  wrap.appendChild(
+    stackedColumnChart({
+      points: weeks.map((week, index) => ({
+        label: labels[index],
+        values: { peak_pct: week.peak_pct },
+        detail: weekFoot(week),
+      })),
+      series: WEEK_PCT_SERIES,
+      ticks: PCT_TICKS,
+      format: (value) => `${Math.round(value)}%`,
+      label: `주차별 최고 사용률 · ${title}`,
+    })
+  );
+  return wrap;
+}
+
+// 창 열이 첫 칸이다. 계정이 둘이면 "이번 주" 행이 둘 나오는데, 그 열이 없으면
+// 어느 계정의 주차인지 표에서 가릴 수 없다
+function weekTable(tracks) {
+  const table = document.createElement("table");
+  table.appendChild(tableRow("th", ["창", "주차", "기간", "최고", "실측"]));
+  tracks.forEach((track) => {
+    const labels = weekLabels(track.weeks);
+    const window = trackLabel(track.weeks[track.weeks.length - 1].reset_at);
+    track.weeks
+      .map((week, index) => ({ week, label: labels[index] }))
+      .reverse()
+      .forEach(({ week, label }) => {
+        table.appendChild(
+          tableRow("td", [
+            window,
+            label,
+            weekSpan(week),
+            `${Math.round(week.peak_pct)}%`,
+            `${week.samples}개`,
+          ])
+        );
+      });
+  });
+  const box = tag("div", "u-table-box");
+  box.appendChild(table);
+  return box;
+}
+
+// ── 4행: 주차별 토큰 ───────────────────────────────────────────────────────
+// %는 소급되지 않지만 토큰은 cost 로그에 남아 있어, 한도 %를 모으기 전 주차도 값이 나온다
+function renderWeeklyTokens(weekly) {
+  const box = slot("u-weekly-tokens", "u-card");
+  if (!box) return;
+  const weeks = weekly?.token_weeks || [];
+  if (!weeks.length) {
+    box.append(
+      headRow("주차별 토큰"),
+      emptyState(
+        weekly?.token_available
+          ? "주 경계를 알 수 없음 — 주간 창 실측이 쌓이면 그려집니다"
+          : `토큰 기록이 없음 — ${weekly?.token_source || ""}`
+      )
+    );
+    return;
+  }
+  // 1칸 카드라 막대를 세우면 620 폭 viewBox 가 절반으로 줄어 축 라벨이 읽히지 않는다.
+  // 이 자리의 문법은 오늘 토큰과 같은 큰 수 + 행 목록이다
+  const labels = weekLabels(weeks);
+  const rows = weeks.map((week, index) => ({ week, label: labels[index] }));
+  const latest = rows[rows.length - 1];
+  box.appendChild(headRow("주차별 토큰", latest.label));
+  box.appendChild(bigNumber(latest.week.tokens));
+  const change = weekOverWeek(weeks);
+  if (change) box.appendChild(deltaLine(change, "지난주 대비"));
+
+  const list = tag("div", "u-rows");
+  rows
+    .slice(0, -1)
+    .reverse()
+    .forEach(({ week, label }) => list.appendChild(labelledRow(label, compact(week.tokens))));
+  list.appendChild(labelledRow("정가환산", `$${latest.week.cost_usd}`));
+  box.appendChild(list);
+  box.appendChild(
+    tag(
+      "p",
+      "u-caption",
+      weekly.token_shared
+        ? "주 경계는 주 창 기준 · 계정별로 나눌 수 없어 전 계정 합산"
+        : "주 경계는 한도 창 초기화 시각 기준"
+    )
+  );
+}
+
+// 진행 중 주차와 바로 앞 주차의 비율. 일별과 같은 규칙 — 0 이면 줄을 빼고 분모가 0 이면 만들지 않는다
+function weekOverWeek(weeks) {
+  if (weeks.length < MIN_TREND_POINTS) return null;
+  const current = weeks[weeks.length - 1].tokens;
+  const previous = weeks[weeks.length - 2].tokens;
+  if (!previous) return null;
+  const ratio = Math.round(((current - previous) / previous) * PERCENT_FULL);
+  if (ratio === 0) return null;
+  return { dir: ratio > 0 ? "up" : "down", text: `${Math.abs(ratio)}%` };
+}
+
+// 진행 중인 주차는 "이번 주", 닫힌 주차는 최근에서 거슬러 "지난주 / 2주 전"
+export function weekLabels(weeks) {
+  let back = 0;
+  return weeks
+    .slice()
+    .reverse()
+    .map((week) => (week.in_progress ? WEEK_CURRENT : WEEK_NAMES[++back] || `${back}주 전`))
+    .reverse();
+}
+
+// 툴팁 꼬리말. 진행 중 주차는 값이 아직 자라는 중이라 그 사실을 붙인다
+function weekFoot(week) {
+  return `${weekSpan(week)}${week.in_progress ? " · 진행 중" : ""}`;
+}
+
+// 주 경계는 자정이 아니라 초기화 시각이다. 날짜만 적으면 하루가 겹쳐 보인다
+function weekSpan(week) {
+  return `${resetStamp(week.starts_at)} → ${resetStamp(week.reset_at)}`;
+}
+
+// 계정 식별자 겸 주 경계. "화 04:00"
+// ko-KR 은 요일만 뽑으면 "(화)" 로 괄호를 붙인다 — 뒤에 시각이 이어지므로 괄호를 뗀다
+function trackLabel(epochSeconds) {
+  return new Date(epochSeconds * MS_PER_SECOND)
+    .toLocaleString("ko-KR", {
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(/[()]/g, "")
+    .trim();
 }
 
 // ── 3행: 모델 구성 ─────────────────────────────────────────────────────────

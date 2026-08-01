@@ -6,7 +6,7 @@ import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from app.constants import USAGE_SAMPLE_MIN_GAP_MS, USAGE_TREND_DAYS
+from app.constants import USAGE_SAMPLE_MIN_GAP_MS, USAGE_TREND_DAYS, WEEK_SECONDS
 from app.services import usage
 from tests.support import temp_db
 
@@ -158,6 +158,94 @@ class DailyTokenTest(unittest.TestCase):
         )
         result = usage.daily_tokens(cost_path=path)
         self.assertEqual(result["days"][-1]["total"], 7)
+
+
+def _sample(con, source_ts, seven_pct, seven_reset):
+    con.execute(
+        "INSERT INTO usage_samples(source_ts, seven_day_pct, seven_day_resets_at, created_at)"
+        " VALUES(?,?,?,?)",
+        (source_ts, seven_pct, seven_reset, "2026-08-01T00:00:00+00:00"),
+    )
+    con.commit()
+
+
+class WeeklyWindowTest(unittest.TestCase):
+    """주차 비교. 계정이 여럿이면 주간 창도 여럿이 동시에 돈다"""
+
+    def test_same_account_windows_land_in_one_track(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        _sample(con, 1, 40.0, reset - WEEK_SECONDS)  # 지난 주차
+        _sample(con, 2, 41.0, reset - WEEK_SECONDS)
+        _sample(con, 3, 42.0, reset - WEEK_SECONDS)
+        _sample(con, 4, 12.0, reset)  # 이번 주차
+        _sample(con, 5, 15.0, reset)
+        _sample(con, 6, 13.0, reset)
+        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        self.assertEqual(len(result["tracks"]), 1)
+        self.assertFalse(result["multi_account"])
+        weeks = result["tracks"][0]["weeks"]
+        self.assertEqual([week["peak_pct"] for week in weeks], [42.0, 15.0])
+        self.assertEqual([week["in_progress"] for week in weeks], [False, True])
+
+    def test_windows_off_the_seven_day_grid_are_separate_accounts(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+            _sample(con, 20 + offset, 70.0, reset + 40 * 3600)  # 7일 배수가 아닌 경계
+        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        self.assertEqual(len(result["tracks"]), 2)
+        self.assertTrue(result["multi_account"])
+
+    def test_track_below_sample_floor_is_dropped(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+        _sample(con, 99, 43.0, reset + 17321)  # 정시가 아닌 한 줄짜리 잔여 기록
+        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        self.assertEqual(len(result["tracks"]), 1)
+        self.assertFalse(result["multi_account"])
+
+    def test_tokens_are_cut_on_the_reset_boundary(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+        rows = [
+            _cost_row(_stamp_at(reset - WEEK_SECONDS - 60), session="old", output_tokens=5),
+            _cost_row(_stamp_at(reset - WEEK_SECONDS + 60), session="a", output_tokens=11),
+            _cost_row(_stamp_at(reset - 60), session="b", output_tokens=13),
+        ]
+        result = usage.weekly_windows(con, cost_path=_cost_file(rows))
+        weeks = result["token_weeks"]
+        self.assertEqual(weeks[-1]["tokens"], 24)  # 이번 주차 안의 두 줄만
+        self.assertEqual(weeks[-2]["tokens"], 5)  # 경계 앞은 지난 주차로
+        self.assertTrue(weeks[-1]["in_progress"])
+
+    def test_tokens_are_not_repeated_per_account(self):
+        """cost 로그에는 계정이 없다. 트랙마다 같은 합계를 붙이면 계정별 사용량으로 읽힌다"""
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+            _sample(con, 20 + offset, 70.0, reset + 40 * 3600)
+        result = usage.weekly_windows(con, cost_path=_cost_file([_cost_row(_stamp_at(reset - 60))]))
+        self.assertTrue(result["token_shared"])
+        for track in result["tracks"]:
+            for week in track["weeks"]:
+                self.assertNotIn("tokens", week)
+
+    def test_no_samples_means_no_week_boundary(self):
+        con = temp_db()
+        result = usage.weekly_windows(con, cost_path=_cost_file([_cost_row(_today_stamp())]))
+        self.assertEqual(result["tracks"], [])
+        self.assertEqual(result["token_weeks"], [])
+
+
+def _stamp_at(epoch_seconds):
+    return datetime.fromtimestamp(epoch_seconds, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 if __name__ == "__main__":
