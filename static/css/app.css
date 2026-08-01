@@ -294,7 +294,13 @@ button:disabled { color: var(--line); cursor: default; }
   flex: none; justify-content: center; background: none;
   padding: 0 var(--sp-4); color: var(--muted);
 }
-.group-add:hover { color: var(--fg); }
+/* 카드 상단은 카테고리 색이라 기본 hover 면(어두운 회색)이 다크모드에서 묻힌다.
+   글자색을 섞은 반투명 면이라 밝은 테마에선 옅은 회색, 어두운 테마에선 옅은 흰빛으로 뜬다.
+   :not(:disabled) 는 같은 조건의 기본 button:hover 규칙을 이기기 위한 것 */
+.group-add:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  color: var(--fg);
+}
 
 .todo {
   display: flex; align-items: center; gap: var(--sp-8);
