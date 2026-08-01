@@ -179,6 +179,29 @@ h1 {
   .app-main { padding: 0 var(--sp-12) var(--sp-40); }
 }
 
+/* ── 보드 하위 탭 ─────────────────────────────────────────────────────────── */
+/* 아래 1px 선은 nav 의 inset 그림자. 고른 탭의 2px 밑줄이 그 위에 겹쳐 칠해진다 —
+   음수 margin 으로 끌어올리면 간격 토큰을 벗어나므로 그림자로 긋는다 */
+.subtabs {
+  display: flex; gap: var(--sp-4);
+  margin: 0 0 var(--gap);
+  box-shadow: inset 0 -1px var(--line);
+}
+.subtabs button {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-12) var(--sp-16);
+  background: none; box-shadow: none; color: var(--muted);
+  font-weight: 600; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--r-ctl) var(--r-ctl) 0 0;
+}
+.subtabs button svg { flex: none; }
+.subtabs button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+.subtabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
 /* ── 보드 ─────────────────────────────────────────────────────────────────── */
 /* p 기본 마진(1em)이 다른 블록의 gap 과 어긋나므로 명시 */
 #next-line {
@@ -321,6 +344,48 @@ button:disabled { color: var(--line); cursor: default; }
 .subtask-toggle.open svg { transform: rotate(90deg); }
 .subtask-toggle.empty { visibility: hidden; }
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
+
+/* ── 워크트리 ─────────────────────────────────────────────────────────────── */
+/* 할일 줄과 같은 격자 — 배지·셰브런·제목 순서가 두 하위 탭에서 어긋나지 않는다 */
+.wt-row {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-8) var(--pad-card);
+  border-top: 1px solid var(--line);
+}
+.wt-row .title { flex: none; font-weight: 600; white-space: nowrap; }
+/* 워크트리로 꺼내 놓지 않은 브랜치는 한 단 죽여 목록에서 뒤로 물러나게 한다 */
+.wt-row:not(.checked-out) .title { font-weight: 400; color: var(--muted); }
+/* 상태 배지와 같은 폭 — 커밋 목록 들여쓰기(.subtasks)가 그대로 맞는다 */
+.wt-kind {
+  min-width: 4.6em; text-align: center;
+  font-size: var(--fs-micro); font-weight: 600;
+  padding: var(--sp-4) var(--sp-8);
+  border-radius: var(--r-pill); color: var(--muted);
+}
+.wt-row.checked-out .wt-kind { background: var(--softer); color: var(--accent); }
+/* 남는 폭은 요약이 다 먹고, 길면 말줄임 */
+.wt-summary {
+  flex: 1; min-width: 0; color: var(--muted); font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* lazygit 의 ↑↓ 와 같은 뜻. 앞선 건 초록, 뒤처진 건 주황 */
+.wt-div {
+  display: flex; gap: var(--sp-4);
+  font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.wt-div .ahead { color: var(--good); }
+.wt-div .behind { color: var(--warn); }
+.wt-div .even { color: var(--muted); font-weight: 400; }
+.wt-port {
+  padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent); font-size: var(--fs-sm); font-weight: 600;
+  font-variant-numeric: tabular-nums; text-decoration: none;
+}
+.wt-port:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
+/* 커밋 목록은 하위 할일과 같은 들여쓰기(.subtasks)를 그대로 쓴다 */
+.wt-commits code { color: var(--fg); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.wt-when { color: var(--muted); font-size: var(--fs-micro); }
 
 .field { margin-bottom: var(--gap); }
 /* 라벨은 어디서든 --fs-sm + 500 + muted (사용량 한도 카드 라벨과 같은 값) */

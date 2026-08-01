@@ -16,7 +16,7 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link, session_todo, usage
+from app.services import board, planning, session_link, session_todo, usage, worktrees
 
 STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
@@ -103,6 +103,8 @@ def _route_get(con, head, item_id, query):
         return session_link.active_payload(con)
     if head == "usage":
         return usage.snapshot(con)
+    if head == "worktrees":
+        return worktrees.overview(con)
     raise NotFound("알 수 없는 엔드포인트")
 
 
