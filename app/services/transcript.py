@@ -4,6 +4,7 @@ import json
 import os
 
 from app.constants import (
+    HISTORY_HEAD_BYTES,
     TRANSCRIPT_MAX_CHARS,
     TRANSCRIPT_MAX_MESSAGES,
     TRANSCRIPT_MAX_TAIL_BYTES,
@@ -12,9 +13,17 @@ from app.constants import (
 )
 
 ROLES = ("user", "assistant")
+USER_ROLE = ROLES[0]
 TEXT_BLOCK = "text"
 # 훅 주입·리마인더는 사람이 쓴 말이 아니라 목록에서 걸러낸다
 SKIP_PREFIXES = ("<system-reminder>", "<local-command", "Caveat:")
+# 사람이 친 지시처럼 보이지만 아닌 것들. 이게 첫 발화로 잡히면 세션의 주제를 가린다.
+# SKIP_PREFIXES 를 늘리지 않는 이유 — 세션 팝업은 슬래시 명령도 보여주는 게 맞다
+NOISE_PREFIXES = (
+    "<",  # <command-name>/model</command-name> 같은 슬래시 명령·주입 블록
+    "Below is a conversation log",  # 자동 압축이 만드는 요약 요청
+    "Please write a 5-10 word title",  # 세션 제목 생성 요청
+)
 
 
 def recent(claude_session_id, root=None, limit=TRANSCRIPT_MAX_MESSAGES):
@@ -33,6 +42,24 @@ def recent(claude_session_id, root=None, limit=TRANSCRIPT_MAX_MESSAGES):
         if len(messages) >= limit or window >= size or window >= TRANSCRIPT_MAX_TAIL_BYTES:
             return messages[-limit:]
         window *= 4
+
+
+def user_prompts(claude_session_id, root=None, max_bytes=HISTORY_HEAD_BYTES):
+    """사람이 친 지시만 순서대로 [str]. transcript 가 없으면 빈 목록.
+
+    꼬리가 아니라 앞 조각을 읽는다 — 무엇을 하려는 세션인지는 첫 지시들에 들어 있고,
+    뒤로 갈수록 곁가지·수정 지시라 할일 제목으로 쓰면 주제가 어긋난다
+    """
+    path = find_path(claude_session_id, root)
+    if not path:
+        return []
+    return [
+        entry["text"]
+        for entry in (parse_line(line, collapse=False) for line in head(path, max_bytes))
+        if entry
+        and entry["role"] == USER_ROLE
+        and not entry["text"].startswith(NOISE_PREFIXES)
+    ]
 
 
 def find_path(claude_session_id, root=None):
@@ -62,8 +89,10 @@ def head(path, max_bytes):
     return lines[:-1] if len(chunk) == max_bytes else lines
 
 
-def parse_line(line):
+def parse_line(line, collapse=True):
     """대화 한 줄. 사람이 읽을 발화가 아니면 None.
+
+    collapse=False 면 줄바꿈을 살린다 — 지시 안의 목록 표기를 봐야 하는 쪽(user_prompts)용.
 
     stamp·cwd 는 온보딩 히스토리 스캔이 쓴다 — 어느 세션이 언제 어디서 돌았는지는
     같은 줄에 있고, 발화를 골라내는 규칙을 두 곳에 두지 않기 위해 여기서 함께 돌려준다
@@ -77,7 +106,7 @@ def parse_line(line):
     role = entry.get("type")
     if role not in ROLES:
         return None
-    text = _text((entry.get("message") or {}).get("content"))
+    text = _text((entry.get("message") or {}).get("content"), collapse)
     if not text or text.startswith(SKIP_PREFIXES):
         return None
     return {
@@ -88,8 +117,8 @@ def parse_line(line):
     }
 
 
-def _text(content):
-    """도구 호출·결과·사고 블록은 빼고 말풍선 글자만 한 줄로"""
+def _text(content, collapse=True):
+    """도구 호출·결과·사고 블록은 빼고 말풍선 글자만. 기본은 목록용 한 줄"""
     if isinstance(content, str):
         blocks = [content]
     elif isinstance(content, list):
@@ -100,4 +129,6 @@ def _text(content):
         ]
     else:
         return ""
+    if not collapse:
+        return "\n".join(blocks).strip()
     return " ".join(" ".join(blocks).split())

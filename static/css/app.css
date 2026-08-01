@@ -474,6 +474,13 @@ button:disabled { color: var(--line); cursor: default; }
   white-space: pre-wrap;
 }
 
+.dlg-subtasks { list-style: none; margin: 0; padding: 0; }
+.dlg-subtasks li {
+  display: flex; align-items: baseline; gap: var(--sp-8);
+  padding: var(--sp-2) 0; font-size: var(--fs-sm);
+}
+.dlg-subtasks .text { flex: 1; }
+
 .dlg-head { margin-bottom: var(--sp-12); }
 .dlg-title {
   margin: 0; padding-right: var(--sp-32);

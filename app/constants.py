@@ -54,6 +54,14 @@ HISTORY_DAY_CHOICES = (7, 14)
 ONBOARDING_MIN_SESSIONS = 3
 ONBOARDING_DECLINED_FLAG = "onboarding_declined"
 
+# 대시보드에서 세션을 워크스페이스로 분류할 때 자동으로 만드는 할일.
+# 그 자리에는 Claude 가 없어 의미 판단을 할 수 없으므로 지시 원문에서 뽑을 수 있는 만큼만 만든다
+AUTO_TODO_TITLE_CHARS = 60
+AUTO_TODO_NOTE_PROMPTS = 5  # note 에 싣는 지시 건수. 뒤로 갈수록 곁가지라 앞쪽만
+AUTO_TODO_MAX_SUBTASKS = 8
+AUTO_TODO_MIN_SUBTASKS = 2  # 1개면 할일과 같은 말이라 쪼갤 이유가 없다
+AUTO_TODO_NOTE_HEAD = "(자동) 세션 분류 때 지시 원문에서 만든 할일. 진행하며 다듬는다."
+
 # 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라 파일에서 주워온다
 # (훅 페이로드에는 rate_limits 가 없다). token-optimizer statusline 이 떨어뜨리는 사이드카.
 RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.json")
