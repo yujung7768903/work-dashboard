@@ -57,6 +57,14 @@ ONBOARDING_DECLINED_FLAG = "onboarding_declined"
 # 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라 파일에서 주워온다
 # (훅 페이로드에는 rate_limits 가 없다). token-optimizer statusline 이 떨어뜨리는 사이드카.
 RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.json")
+# 같은 값이 Claude Code 가 캐시하는 이 파일에도 있고, 그쪽에는 계정 uuid 가 붙어 온다.
+# 계정을 초기화 시각으로 추론하는 대신 못박기 위해 같이 읽는다. 이 파일에는 계정 설정
+# 전부가 들어 있으므로 사용량 키 하나만 꺼내고 다른 내용은 읽지도 반환하지도 않는다
+CLAUDE_CONFIG_PATH = os.path.expanduser("~/.claude.json")
+USAGE_CACHE_KEY = "cachedUsageUtilization"
+# 두 소스의 초기화 시각은 1초 어긋난다 — 한쪽은 :59.66 을 그대로, 다른 쪽은 정시로
+# 반올림한 값을 준다. 같은 창인지 보려면 초 단위 오차를 허용해야 한다
+RESET_MATCH_SECONDS = 5
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 COST_LOG_PATH = os.path.expanduser("~/.claude/metrics/costs.jsonl")
 CREDENTIALS_TIER_PREFIX = "default_claude_"

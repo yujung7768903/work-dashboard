@@ -248,5 +248,85 @@ def _stamp_at(epoch_seconds):
     return datetime.fromtimestamp(epoch_seconds, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _config_file(uuid="acc-1", five_reset=None, seven_reset=None):
+    """~/.claude.json 흉내. 사용량 키 옆에 민감한 키를 같이 두어 그것까지 읽지 않는지 본다"""
+    body = {
+        "oauthAccount": {"secret": "건드리면 안 되는 값"},
+        "cachedUsageUtilization": {
+            "fetchedAtMs": int(time.time() * MS),
+            "accountUuid": uuid,
+            "utilization": {
+                "five_hour": {"utilization": 10, "resets_at": _stamp_at(five_reset)}
+                if five_reset
+                else None,
+                "seven_day": {"utilization": 69, "resets_at": _stamp_at(seven_reset)}
+                if seven_reset
+                else None,
+                "seven_day_opus": None,
+            },
+        },
+    }
+    return _write(os.path.join(tempfile.mkdtemp(), ".claude.json"), json.dumps(body))
+
+
+class AccountMatchTest(unittest.TestCase):
+    """사이드카는 어느 계정이든 마지막에 그려진 statusline 이 덮는다 — 창이 맞을 때만 이름표를 단다"""
+
+    def _stored_uuid(self, limits_path, config_path):
+        con = temp_db()
+        usage.snapshot(
+            con, limits_path=limits_path, cost_path=_cost_file([]), config_path=config_path
+        )
+        return con.execute("SELECT account_uuid FROM usage_samples").fetchone()["account_uuid"]
+
+    def test_uuid_is_attached_when_the_window_matches(self):
+        limits = _limits_file()
+        ours = usage._read_json(limits)["seven_day"]["resets_at"]
+        self.assertEqual(self._stored_uuid(limits, _config_file(seven_reset=ours)), "acc-1")
+
+    def test_one_second_skew_still_counts_as_the_same_window(self):
+        """한쪽은 :59.66 을, 다른 쪽은 정시로 반올림한 값을 준다"""
+        limits = _limits_file()
+        ours = usage._read_json(limits)["seven_day"]["resets_at"]
+        self.assertEqual(self._stored_uuid(limits, _config_file(seven_reset=ours - 1)), "acc-1")
+
+    def test_other_account_snapshot_gets_no_label(self):
+        limits = _limits_file()
+        ours = usage._read_json(limits)["seven_day"]["resets_at"]
+        # 사이드카에 남은 창이 이 계정의 창과 다르면 붙이지 않는다
+        self.assertIsNone(self._stored_uuid(limits, _config_file(seven_reset=ours + 40 * 3600)))
+
+    def test_missing_config_is_not_fatal(self):
+        limits = _limits_file()
+        self.assertIsNone(self._stored_uuid(limits, "/nonexistent/.claude.json"))
+
+    def test_uuid_beats_the_reset_remainder_when_they_disagree(self):
+        """두 계정의 초기화가 같은 요일·시각에 걸리면 나머지는 둘을 못 가른다"""
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+            con.execute("UPDATE usage_samples SET account_uuid=? WHERE source_ts=?", ("a", 10 + offset))
+            # 정확히 7일 뒤 — 나머지가 같아 예전 방식으로는 같은 트랙이 된다
+            _sample(con, 20 + offset, 70.0, reset + WEEK_SECONDS)
+            con.execute("UPDATE usage_samples SET account_uuid=? WHERE source_ts=?", ("b", 20 + offset))
+        con.commit()
+        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        self.assertEqual(len(result["tracks"]), 2)
+        self.assertTrue(result["multi_account"])
+
+    def test_weeks_recorded_before_the_uuid_column_join_that_account(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset - WEEK_SECONDS)  # uuid 없던 시절
+            _sample(con, 20 + offset, 70.0, reset)
+            con.execute("UPDATE usage_samples SET account_uuid=? WHERE source_ts=?", ("a", 20 + offset))
+        con.commit()
+        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        self.assertEqual(len(result["tracks"]), 1)  # 갈라지지 않고 한 계정으로
+        self.assertEqual(len(result["tracks"][0]["weeks"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

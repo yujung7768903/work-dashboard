@@ -12,10 +12,12 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from app.constants import (
+    CLAUDE_CONFIG_PATH,
     COST_FIELD,
     COST_LOG_PATH,
     CREDENTIALS_PATH,
     CREDENTIALS_TIER_PREFIX,
+    RESET_MATCH_SECONDS,
     MISSING_WINDOW_LABELS,
     MODEL_FAMILIES,
     MODEL_FAMILY_OTHER,
@@ -27,6 +29,7 @@ from app.constants import (
     USAGE_SAMPLE_RETENTION_DAYS,
     USAGE_SAMPLE_WINDOW_HOURS,
     USAGE_STALE_SECONDS,
+    USAGE_CACHE_KEY,
     USAGE_TRACK_MIN_SAMPLES,
     USAGE_TREND_DAYS,
     USAGE_WARN_PCT,
@@ -47,7 +50,9 @@ COST_DECIMALS = 2
 PCT_DECIMALS = 1
 
 
-def snapshot(con, limits_path=RATE_LIMITS_PATH, cost_path=COST_LOG_PATH):
+def snapshot(
+    con, limits_path=RATE_LIMITS_PATH, cost_path=COST_LOG_PATH, config_path=CLAUDE_CONFIG_PATH
+):
     """대시보드 한 화면에 필요한 전부
 
     조회면서 usage_samples 에 한 줄 쌓는다 — 사이드카는 매번 덮어써서 %의 이력이
@@ -55,7 +60,7 @@ def snapshot(con, limits_path=RATE_LIMITS_PATH, cost_path=COST_LOG_PATH):
     """
     limits = _read_json(limits_path)
     if isinstance(limits, dict):
-        _record_sample(con, limits)
+        _record_sample(con, limits, config_path=config_path)
     else:
         limits = None
     stale_seconds = _stale_seconds(limits)
@@ -110,24 +115,49 @@ def _pct_tracks(con, current, limit):
         "       MAX(seven_day_pct) AS peak_pct,"
         "       COUNT(*) AS samples,"
         "       MIN(source_ts) AS first_ts,"
-        "       MAX(source_ts) AS last_ts"
+        "       MAX(source_ts) AS last_ts,"
+        # 한 주차에 uuid 가 붙은 행과 안 붙은 행이 섞이면 붙은 쪽을 그 주차의 계정으로 본다
+        "       MAX(account_uuid) AS account_uuid"
         "  FROM usage_samples"
         " WHERE seven_day_resets_at IS NOT NULL AND seven_day_pct IS NOT NULL"
         " GROUP BY seven_day_resets_at ORDER BY seven_day_resets_at",
     ).fetchall()
+    key_of = _track_key(rows)
     tracks = {}
     for row in rows:
-        track = int(row["reset_at"]) % WEEK_SECONDS
-        tracks.setdefault(track, []).append(_week_row(row, current))
+        tracks.setdefault(key_of(row), []).append(_week_row(row, current))
     return sorted(
         (
-            {"track": track, "weeks": weeks[-limit:]}
+            {"track": str(track), "weeks": weeks[-limit:]}
             for track, weeks in tracks.items()
             if sum(week["samples"] for week in weeks) >= USAGE_TRACK_MIN_SAMPLES
         ),
         key=lambda item: item["weeks"][-1]["last_ts"],
         reverse=True,
     )
+
+
+def _track_key(rows):
+    """주차 그룹 → 트랙 키
+
+    uuid 가 붙어 있으면 그게 계정이다. 없으면 초기화 시각의 7일 나머지로 대신한다 —
+    같은 계정의 다음 창은 정확히 7일 뒤에 열리므로 나머지가 계정 구실을 한다. 다만
+    두 계정의 초기화가 같은 요일·시각에 걸리면 나머지는 둘을 못 가르므로, uuid 를
+    받은 뒤에는 그쪽이 이긴다.
+
+    uuid 를 받기 전에 쌓인 주차는 나머지를 열쇠로 uuid 쪽에 이어 붙인다. 그러지 않으면
+    한 계정이 "uuid 트랙"과 "나머지 트랙" 둘로 갈라져 보인다.
+    """
+    known = {}
+    for row in rows:
+        if row["account_uuid"]:
+            known[int(row["reset_at"]) % WEEK_SECONDS] = row["account_uuid"]
+
+    def key(row):
+        remainder = int(row["reset_at"]) % WEEK_SECONDS
+        return row["account_uuid"] or known.get(remainder) or remainder
+
+    return key
 
 
 def _week_row(row, current):
@@ -297,7 +327,7 @@ def _level(pct):
     return LEVEL_OK
 
 
-def _record_sample(con, limits):
+def _record_sample(con, limits, config_path=CLAUDE_CONFIG_PATH):
     """추이용 스냅샷 적립. 같은 스냅샷은 PK 가 막고, 1분 안쪽으로 촘촘한 건 건너뛴다"""
     stamp = limits.get("timestamp")
     if not isinstance(stamp, (int, float)):
@@ -312,13 +342,14 @@ def _record_sample(con, limits):
         con.execute(
             "INSERT OR IGNORE INTO usage_samples("
             " source_ts, five_hour_pct, five_hour_resets_at,"
-            " seven_day_pct, seven_day_resets_at, created_at) VALUES(?,?,?,?,?,?)",
+            " seven_day_pct, seven_day_resets_at, account_uuid, created_at) VALUES(?,?,?,?,?,?,?)",
             (
                 stamp,
                 five.get("used_percentage"),
                 five.get("resets_at"),
                 seven.get("used_percentage"),
                 seven.get("resets_at"),
+                _account_uuid(limits, config_path),
                 now(),
             ),
         )
@@ -326,6 +357,32 @@ def _record_sample(con, limits):
             "DELETE FROM usage_samples WHERE source_ts < ?",
             (stamp - USAGE_SAMPLE_RETENTION_DAYS * MS_PER_DAY,),
         )
+
+
+def _account_uuid(limits, config_path=CLAUDE_CONFIG_PATH):
+    """사이드카가 지금 담고 있는 창의 계정 uuid. 가릴 수 없으면 None
+
+    사이드카는 계정을 가리지 않고 마지막에 그려진 statusline 이 덮는다. 그래서 지금
+    로그인한 계정의 uuid 를 무조건 붙이면 남의 계정 값에 엉뚱한 이름표를 다는 셈이 된다.
+    두 소스의 초기화 시각이 같은 창을 가리킬 때만 붙인다.
+
+    이 파일에는 계정 설정 전부가 들어 있다. 사용량 키 하나만 꺼내고 나머지는 손대지 않는다.
+    """
+    cache = (_read_json(config_path) or {}).get(USAGE_CACHE_KEY)
+    if not isinstance(cache, dict):
+        return None
+    uuid = cache.get("accountUuid")
+    windows = cache.get("utilization")
+    if not isinstance(uuid, str) or not uuid or not isinstance(windows, dict):
+        return None
+    for key, _ in USAGE_WINDOWS:
+        cached = _parse_stamp((windows.get(key) or {}).get("resets_at"))
+        ours = (limits.get(key) or {}).get("resets_at")
+        if cached is None or not isinstance(ours, (int, float)):
+            continue
+        if abs(int(ours) - int(cached.timestamp())) <= RESET_MATCH_SECONDS:
+            return uuid
+    return None
 
 
 def _plan_label():
