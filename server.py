@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from app.constants import ALLOWED_STATIC_SUFFIXES, DEFAULT_HOST, DEFAULT_PORT
 from app.db import connect
-from app.errors import Conflict, DomainError, NotFound, Validation
+from app.errors import Conflict, DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
@@ -59,6 +59,16 @@ def resolve_static(url_path):
     return candidate
 
 
+def resolve_page(url_path):
+    """탭 경로(/board 등)에는 파일이 없다. 확장자가 없으면 index 를 주고 SPA 가 라우팅한다"""
+    resolved = resolve_static(url_path)
+    if resolved and os.path.isfile(resolved):
+        return resolved
+    if posixpath.splitext(url_path)[1]:
+        return None
+    return os.path.join(STATIC_ROOT, INDEX_FILE)
+
+
 def route(con, method, path, query, body):
     """경로와 메서드를 도메인 호출로 연결. 도메인 로직은 갖지 않음"""
     segments = [part for part in path.strip("/").split("/") if part][1:]
@@ -70,7 +80,7 @@ def route(con, method, path, query, body):
         "GET": lambda: _route_get(con, head, item_id, query),
         "POST": lambda: _route_post(con, head, body),
         "PATCH": lambda: _route_patch(con, head, item_id, body),
-        "DELETE": lambda: _route_delete(con, head, item_id),
+        "DELETE": lambda: _route_delete(con, head, item_id, query),
     }
     if method not in routers:
         raise Validation(f"지원하지 않는 메서드: {method}")
@@ -154,11 +164,12 @@ def _route_patch(con, head, item_id, body):
     raise NotFound("알 수 없는 엔드포인트")
 
 
-def _route_delete(con, head, item_id):
+def _route_delete(con, head, item_id, query):
     if not item_id:
         raise Validation("id 가 필요함")
+    force = _single(query, "force", None) == "1"
     deleters = {
-        "categories": category_repo.delete,
+        "categories": lambda con, item_id: category_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
         "subtasks": subtask_repo.delete,
@@ -220,6 +231,11 @@ class Handler(BaseHTTPRequestHandler):
                 con, method, parsed.path, parse_qs(parsed.query), self._read_body()
             )
             self._send_json(int(HTTPStatus.OK), payload)
+        except NeedsConfirm as error:
+            # 클라이언트가 되물은 뒤 ?force=1 로 재요청하도록 플래그로 구분해준다
+            self._send_json(
+                status_for(error), {"error": str(error), "confirm": True}
+            )
         except DomainError as error:
             self._send_json(status_for(error), {"error": str(error)})
         except Exception as error:  # 예상 못한 오류도 JSON 으로 알려줌
@@ -243,8 +259,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _serve_static(self, url_path):
-        resolved = resolve_static(url_path)
-        if not resolved or not os.path.isfile(resolved):
+        resolved = resolve_page(url_path)
+        if not resolved:
             self.send_error(int(HTTPStatus.NOT_FOUND))
             return
         with open(resolved, "rb") as handle:

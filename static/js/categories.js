@@ -53,6 +53,7 @@ function colorInput(category) {
 function moveButton(index, categories, offset) {
   const target = index + offset;
   const button = document.createElement("button");
+  button.className = "icon-btn";
   button.textContent = offset < 0 ? "↑" : "↓";
   button.disabled = target < 0 || target >= categories.length;
   button.addEventListener("click", () =>
@@ -83,14 +84,26 @@ function addWorkspaceButton(category) {
 
 function removeButton(category) {
   const button = document.createElement("button");
+  button.className = "icon-btn";
   button.textContent = "×";
   button.addEventListener("click", () =>
     run(async () => {
-      await api.deleteCategory(category.id);
+      await deleteWithConfirm(category.id);
       await renderCategories();
     })
   );
   return button;
+}
+
+// 붙은 게 없으면 서버가 바로 지운다. 세션이 딸려 있을 때만 되묻고 force 로 재요청
+async function deleteWithConfirm(id) {
+  try {
+    await api.deleteCategory(id);
+  } catch (error) {
+    if (!error.confirm) throw error;
+    if (!confirm(error.message)) return;
+    await api.deleteCategory(id, true);
+  }
 }
 
 document.getElementById("category-add").addEventListener("submit", (event) => {

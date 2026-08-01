@@ -2,11 +2,17 @@
 import json
 import os
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
 import server
-from app.constants import AUTO_TODO_MAX_SUBTASKS, AUTO_TODO_TITLE_CHARS, SUMMARY_MAX_CHARS
+from app.constants import (
+    AUTO_TODO_MAX_SUBTASKS,
+    AUTO_TODO_NOTE_RAW_TITLE,
+    AUTO_TODO_TITLE_CHARS,
+    SUMMARY_MAX_CHARS,
+)
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
@@ -16,6 +22,17 @@ from app.services import session_link, session_todo, summary, transcript
 from tests.support import temp_db
 
 SID = "sess-auto-todo"
+
+
+def run_inline(case):
+    """제목 요약은 뒷일(스레드)이다. 테스트는 스레드를 기다리지 않게 그 자리에서 돌린다"""
+    patcher = mock.patch.object(session_todo, "schedule", lambda work: work())
+    patcher.start()
+    case.addCleanup(patcher.stop)
+
+
+def _db_path(con):
+    return con.execute("PRAGMA database_list").fetchone()["file"]
 
 
 def write_transcript(session_id, prompts):
@@ -40,6 +57,7 @@ class AutoTodoTest(unittest.TestCase):
         patcher = mock.patch.object(summary, "one_line", return_value=None)
         patcher.start()
         self.addCleanup(patcher.stop)
+        run_inline(self)
         dev = category_repo.get_by_name(self.con, "개발")["id"]
         self.workspace = workspace_repo.create(self.con, dev, "대시보드")["id"]
         self.session = session_repo.register(
@@ -150,7 +168,7 @@ class AutoTodoTest(unittest.TestCase):
 
 
 class SummaryTitleTest(unittest.TestCase):
-    """제목은 요약으로 짧게. 지시 원문을 그대로 제목에 쓰면 보드가 구구절절해진다"""
+    """제목은 요약으로 짧게. 다만 요약을 기다리면 분류 저장이 7~8초 멈추므로 뒷일로 돌린다"""
 
     def setUp(self):
         self.con = temp_db()
@@ -162,27 +180,80 @@ class SummaryTitleTest(unittest.TestCase):
         self.root = write_transcript(SID, [self.prompt])
 
     def create(self, one_line):
+        """뒷일을 동기로 돌린 뒤의 (응답에 실린 할일, 요약 반영 후 DB 의 할일)"""
+        run_inline(self)
         with mock.patch.object(summary, "one_line", side_effect=one_line) as call:
-            todo = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
-        return todo, call
+            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+        return created, todo_repo.get(self.con, created["id"]), call
+
+    def test_response_does_not_wait_for_summary(self):
+        """분류 응답은 요약을 부르기 전에 끝난다 — 화면이 멈추면 안 된다"""
+        jobs = []
+        with mock.patch.object(session_todo, "schedule", jobs.append), mock.patch.object(
+            summary, "one_line", return_value="하위할일 기본 접힘 토글"
+        ) as call:
+            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+            call.assert_not_called()  # 응답을 만들 때까지 요약은 부르지 않는다
+            self.assertEqual(created["title"], self.prompt)
+            self.assertTrue(created["needs_title"])
+            jobs[0]()  # 뒷일이 돌면 제목이 요약으로 바뀐다
+        self.assertEqual(todo_repo.get(self.con, created["id"])["title"], "하위할일 기본 접힘 토글")
+
+    def test_background_job_works_from_another_thread(self):
+        """뒷일은 다른 스레드에서 돈다 — 요청 스레드의 sqlite 연결을 만지면 거부당한다"""
+        jobs = []
+        with mock.patch.object(session_todo, "schedule", jobs.append), mock.patch.object(
+            summary, "one_line", return_value="요약된 제목"
+        ):
+            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+            thread = threading.Thread(target=jobs[0])
+            thread.start()
+            thread.join(timeout=5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(todo_repo.get(self.con, created["id"])["title"], "요약된 제목")
 
     def test_summary_becomes_the_title(self):
-        todo, call = self.create(lambda text: "하위할일 기본 접힘 토글")
-        self.assertEqual(todo["title"], "하위할일 기본 접힘 토글")
+        created, stored, call = self.create(lambda text: "하위할일 기본 접힘 토글")
+        self.assertEqual(stored["title"], "하위할일 기본 접힘 토글")
+        self.assertFalse(stored["needs_title"])
         call.assert_called_once_with(self.prompt)
+        self.assertEqual(created["title"], self.prompt)
 
     def test_note_keeps_the_original_prompt(self):
         """제목이 요약이라 원문은 note 에만 남는다 — 여기서 잃으면 근거가 사라진다"""
-        todo, _ = self.create(lambda text: "하위할일 기본 접힘 토글")
-        self.assertIn(self.prompt, todo["note"])
-        self.assertNotIn("요약 실패", todo["note"])
+        _, stored, _ = self.create(lambda text: "하위할일 기본 접힘 토글")
+        self.assertIn(self.prompt, stored["note"])
+        self.assertNotIn("첫 문장을 그대로", stored["note"])
 
-    def test_failed_summary_falls_back_and_says_so(self):
-        todo, _ = self.create(lambda text: None)
-        self.assertEqual(
-            todo["title"], "워크스페이스에서 하위할일이 펼쳐진 상태로 보이는데, 너무 길어져서 접어줘"
-        )
-        self.assertIn("요약 실패", todo["note"])
+    def test_failed_summary_leaves_the_mark(self):
+        """요약을 못 만든 할일은 보드·팝업에서 구분돼야 한다 (needs_title)"""
+        _, stored, _ = self.create(lambda text: None)
+        self.assertEqual(stored["title"], self.prompt)
+        self.assertTrue(stored["needs_title"])
+        self.assertIn(AUTO_TODO_NOTE_RAW_TITLE, stored["note"])
+
+    def test_summary_does_not_overwrite_a_user_edit(self):
+        """요약이 도착하기 전에 사용자가 제목을 고쳤으면 그 제목이 이긴다"""
+        jobs = []
+        with mock.patch.object(session_todo, "schedule", jobs.append):
+            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+        todo_repo.update(self.con, created["id"], title="내가 고친 제목")
+        with mock.patch.object(summary, "one_line", return_value="요약된 제목"):
+            jobs[0]()
+        self.assertEqual(todo_repo.get(self.con, created["id"])["title"], "내가 고친 제목")
+
+    def test_retitle_survives_a_missing_todo(self):
+        """뒷일은 응답을 이미 보낸 뒤라 예외가 서버로 올라가면 안 된다"""
+        with mock.patch.object(summary, "one_line", return_value="요약된 제목"):
+            session_todo.retitle(_db_path(self.con), 9999, "무언가 해줘", "첫 문장")
+
+    def test_retitle_without_db_path_touches_nothing(self):
+        """경로가 비면 connect() 가 사용자의 실제 DB 로 떨어진다 — 열지도 말아야 한다"""
+        with mock.patch.object(summary, "one_line", return_value="요약된 제목"), mock.patch.object(
+            session_todo, "connect"
+        ) as opened:
+            session_todo.retitle("", 1, "무언가 해줘", "첫 문장")
+        opened.assert_not_called()
 
 
 class SummaryCallTest(unittest.TestCase):
@@ -211,12 +282,14 @@ class SummaryCallTest(unittest.TestCase):
         ):
             self.assertIsNone(summary.one_line("무언가 해줘"))
 
-    def test_failed_exit_returns_none(self):
-        result = mock.Mock(returncode=1, stdout="제목")
+    def test_failed_exit_returns_none_and_says_why(self):
+        """실패를 조용히 넘기면 배지만 뜨고 이유를 알 방법이 없다"""
+        result = mock.Mock(returncode=1, stdout="제목", stderr="로그인이 필요합니다")
         with mock.patch.object(summary.shutil, "which", return_value="/bin/claude"), mock.patch.object(
             summary.subprocess, "run", return_value=result
-        ):
+        ), mock.patch("builtins.print") as printed:
             self.assertIsNone(summary.one_line("무언가 해줘"))
+        self.assertIn("로그인이 필요합니다", printed.call_args[0][0])
 
     def test_harness_is_disabled_in_the_call(self):
         """도구·MCP·설정을 끄지 않으면 1분이 넘고 지시를 작업으로 착각해 파일을 고친다"""
@@ -240,6 +313,7 @@ class RouteTest(unittest.TestCase):
         patcher = mock.patch.object(summary, "one_line", return_value="요약된 제목")
         patcher.start()
         self.addCleanup(patcher.stop)
+        run_inline(self)
         dev = category_repo.get_by_name(self.con, "개발")["id"]
         self.workspace = workspace_repo.create(self.con, dev, "대시보드")["id"]
         self.row_id = session_repo.register(self.con, SID, cwd="/tmp")["id"]
@@ -252,7 +326,10 @@ class RouteTest(unittest.TestCase):
     def test_patch_with_workspace_returns_created_todo(self):
         payload = self.patch({"workspace_id": self.workspace})
         self.assertEqual(payload["workspace_id"], self.workspace)
-        self.assertEqual(payload["created_todo"]["title"], "요약된 제목")
+        # 응답은 요약을 기다리지 않으므로 첫 문장 제목. 요약은 뒷일이 갈아 끼운다
+        self.assertEqual(payload["created_todo"]["title"], "세션 분류할 때 할일도 만들어줘")
+        created_id = payload["created_todo"]["id"]
+        self.assertEqual(todo_repo.get(self.con, created_id)["title"], "요약된 제목")
         self.assertEqual(
             [row["title"] for row in payload["created_todo"]["subtasks"]], ["생성", "연결"]
         )

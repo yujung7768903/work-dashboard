@@ -7,7 +7,7 @@ from datetime import datetime
 
 from app.constants import HISTORY_DAY_CHOICES, UNASSIGNED_LABEL
 from app.db import connect
-from app.errors import DomainError, NotFound, Validation
+from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
@@ -126,6 +126,11 @@ def _build_parser():
 
     remove_category = sub.add_parser("rm-category")
     remove_category.add_argument("category_id", type=int)
+    remove_category.add_argument(
+        "--force",
+        action="store_true",
+        help="분류된 세션이 있어도 미분류로 내리고 삭제",
+    )
     remove_category.set_defaults(handler=_cmd_rm_category)
 
     done_today = sub.add_parser("done-today")
@@ -317,7 +322,11 @@ def _cmd_reorder(con, args):
 
 
 def _cmd_rm_category(con, args):
-    category_repo.delete(con, args.category_id)
+    """세션이 붙어 있으면 무엇이 바뀌는지 알리고 --force 를 요구한다"""
+    try:
+        category_repo.delete(con, args.category_id, force=args.force)
+    except NeedsConfirm as error:
+        raise NeedsConfirm(f"{error} 확인했으면 --force 로 다시 실행하세요")
     print("삭제됨")
 
 
@@ -395,9 +404,17 @@ def _cmd_finish(con, args):
     for pid, command in result["killed"]:
         print(f"종료한 프로세스: {pid} {command}")
     if not result["killed"]:
-        print("종료한 프로세스: (없음)")
-    if release.WORKTREE_MARK in result["worktree"]:
+        print(f"종료한 프로세스: (없음) — {_why_nothing_killed(result)}")
+    if result["worktree"]:
         print(f"남은 정리: ExitWorktree 로 워크트리 제거 — {result['worktree']}")
+
+
+def _why_nothing_killed(result):
+    """(없음) 만 찍고 넘기면 살아남은 서버를 아무도 모른다 — 어디를 봤는지 밝힌다"""
+    if result["worktree"]:
+        return f"{result['worktree']} 를 cwd 로 쓰는 서버가 없음"
+    looked = ", ".join(result["looked"]) or "(없음)"
+    return f"워크트리를 찾지 못함 — 본 경로: {looked} (--worktree 로 직접 지정 가능)"
 
 
 def _cmd_show_note(con, args):

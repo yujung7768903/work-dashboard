@@ -232,7 +232,7 @@ select {
 /* 아이콘 하나뿐인 버튼은 정사각으로 만들어 누를 면적을 확보 */
 #quick-submit {
   width: var(--sp-40); flex: none; padding: 0;
-  font-size: var(--fs-title); line-height: 1;
+  display: flex; align-items: center; justify-content: center;
   background-color: var(--accent); color: #fff; font-weight: 400;
 }
 #quick-submit:hover { background-color: color-mix(in srgb, var(--accent) 84%, #000); }
@@ -249,6 +249,26 @@ button {
 button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 13%, var(--surface)); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { color: var(--line); cursor: default; }
+
+/* 아이콘·기호 하나뿐인 작은 버튼. 정사각으로 잡아 hover 면이 원으로 뜬다 —
+   기본 버튼의 둥근 사각형은 아이콘 하나에는 폭이 남아 애매하게 보인다.
+   면은 hover 에서만: 평소엔 아이콘만 떠 있다 */
+.icon-btn, .group-add, .ws-menu > button, .modal-close {
+  width: var(--icon-box); height: var(--icon-box); flex: none; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: none; color: var(--muted);
+}
+/* 카드 상단은 카테고리 색이라 기본 hover 면(어두운 회색)이 다크모드에서 묻힌다.
+   글자색을 섞은 반투명 면이라 밝은 테마에선 옅은 회색, 어두운 테마에선 옅은 흰빛으로 뜬다.
+   :not(:disabled) 는 같은 조건의 기본 button:hover 규칙을 이기기 위한 것 */
+.icon-btn:hover:not(:disabled),
+.group-add:hover:not(:disabled),
+.ws-menu > button:hover,
+.modal-close:hover,
+.subtask-toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  color: var(--fg);
+}
 
 #board-controls {
   display: flex; gap: var(--gap); color: var(--muted);
@@ -305,6 +325,7 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라운딩은 summary 가 직접 가짐. 접혀 있으면 아래 모서리까지 둥글게 */
 .group > summary {
   padding: var(--sp-12) var(--pad-card); cursor: grab;
+  /* stretch(기본값) 유지: 세 요소가 줄 높이를 그대로 채우고 글자는 각자 안에서 가운데 */
   display: flex; justify-content: space-between;
   gap: var(--sp-8); background: var(--cat-bg); font-weight: 700;
   border-radius: var(--r-card);
@@ -313,6 +334,12 @@ button:disabled { color: var(--line); cursor: default; }
 .group > summary::marker, .group > summary::-webkit-details-marker { color: var(--muted); }
 .group.unassigned > summary { color: var(--muted); }
 .group-meta { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
+/* 글자 크기가 달라 박스만 늘려서는 안 맞는다. 각자 안에서 세로 가운데로 */
+.group-name, .group-meta { display: flex; align-items: center; }
+/* 이름이 남는 폭을 먹어 진행 수·추가 버튼이 오른쪽에 붙는다 */
+.group-name { flex: 1; }
+/* 크기가 고정된 원이라 늘어나지 않는다 — 줄 가운데에 직접 놓는다 */
+.group-add { align-self: center; }
 
 .todo {
   display: flex; align-items: center; gap: var(--sp-8);
@@ -337,17 +364,28 @@ button:disabled { color: var(--line); cursor: default; }
   list-style: none; color: var(--muted); font-size: var(--fs-sm);
 }
 /* 상태 배지 다음 칸. 하위가 없는 줄도 아이콘 자리를 비워 둬 제목 세로줄이 어긋나지 않는다 */
-/* 배경은 hover 에서만 — 평소엔 아이콘만 떠 있다 (bg 는 button:hover 기본 규칙이 얹어준다) */
-/* 폭은 .subtasks 들여쓰기와 같은 1.2em — 하위 목록이 제목 바로 아래로 떨어진다 */
+/* 폭은 .subtasks 들여쓰기와 같은 1.2em — 하위 목록이 제목 바로 아래로 떨어진다.
+   높이도 같은 값으로 맞춰 hover 면이 원이 된다 (다른 아이콘 버튼은 --icon-box 정사각) */
 .subtask-toggle {
   display: flex; align-items: center; justify-content: center;
-  width: 1.2em; padding: 0;
+  width: 1.2em; height: 1.2em; padding: 0; border-radius: 50%;
   background: none; color: var(--muted);
 }
-.subtask-toggle:hover { color: var(--fg); }
 .subtask-toggle svg { transition: transform 0.12s; }
 .subtask-toggle.open svg { transform: rotate(90deg); }
 .subtask-toggle.empty { visibility: hidden; }
+/* 제목이 요약 안 된 자동 생성 할일 — 지시 첫 문장이 그대로 제목이라 손봐야 한다.
+   면을 채우지 않고 테두리만 — 상태 배지보다 약하게 보여야 눈이 상태를 먼저 읽는다 */
+.raw-title {
+  margin-left: var(--sp-8);
+  padding: var(--sp-2) var(--sp-8);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-pill);
+  color: var(--warn);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
 
 /* ── 워크트리 ─────────────────────────────────────────────────────────────── */
@@ -445,10 +483,8 @@ button:disabled { color: var(--line); cursor: default; }
 .ws-row input, .ws-row select, .ws-row textarea { width: 100%; }
 .ws-actions { display: flex; gap: var(--sp-8); margin-top: var(--gap); }
 .ws-menu { position: relative; flex: none; }
-.ws-menu > button {
-  background: none; padding: 0 var(--sp-8);
-  font-size: var(--fs-title); line-height: 1; color: var(--muted);
-}
+/* 크기·면·정렬은 위 아이콘 버튼 공통 규칙이 잡는다. 여기서는 기호 크기만 */
+.ws-menu > button { font-size: var(--fs-title); line-height: 1; }
 .ws-menu-items {
   position: absolute; right: 0; top: 100%; z-index: 1; padding: var(--sp-4);
   background: var(--surface); border-radius: var(--r-ctl);
@@ -541,7 +577,8 @@ button:disabled { color: var(--line); cursor: default; }
 .modal-close {
   position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
   background: none; color: var(--muted);
-  font-size: var(--fs-title); line-height: var(--lh-tight); padding: 0 var(--sp-4);
+  /* 크기·면·정렬은 위 아이콘 버튼 공통 규칙이 잡는다 */
+  font-size: var(--fs-title); line-height: var(--lh-tight);
 }
 #session-modal-body { padding: var(--pad-card); overflow: auto; }
 

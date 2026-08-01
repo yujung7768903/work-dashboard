@@ -10,7 +10,10 @@ async function request(method, path, body) {
   const response = await fetch(`/api${path}`, options);
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(payload?.error ?? `요청 실패 (${response.status})`);
+    const error = new Error(payload?.error ?? `요청 실패 (${response.status})`);
+    // 서버가 확인을 요구한 것과 진짜 실패를 호출부가 구분할 수 있게 넘긴다
+    error.confirm = Boolean(payload?.confirm);
+    throw error;
   }
   return payload;
 }
@@ -28,7 +31,8 @@ export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });
 export const updateCategory = (id, fields) => request("PATCH", `/categories/${id}`, fields);
-export const deleteCategory = (id) => request("DELETE", `/categories/${id}`);
+export const deleteCategory = (id, force = false) =>
+  request("DELETE", `/categories/${id}${force ? "?force=1" : ""}`);
 
 export const createWorkspace = (fields) => request("POST", "/workspaces", fields);
 export const updateWorkspace = (id, fields) => request("PATCH", `/workspaces/${id}`, fields);

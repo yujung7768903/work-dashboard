@@ -85,7 +85,12 @@
         <form id="quick-add">
           <select id="quick-category" title="카테고리"></select>
           <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>
-          <button type="submit" id="quick-submit" title="할일 추가">+</button>
+          <button type="submit" id="quick-submit" title="할일 추가">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
         </form>
         <div id="category-filter"></div>
 
@@ -149,12 +154,16 @@
           <div class="u-main">
             <div class="u-row3" id="u-limits"></div>
             <div class="u-row2">
+              <div id="u-trend"></div>
+              <div id="u-share"></div>
+            </div>
+            <div class="u-row2">
               <div id="u-daily"></div>
               <div id="u-today"></div>
             </div>
             <div class="u-row2">
-              <div id="u-trend"></div>
-              <div id="u-share"></div>
+              <div id="u-weekly"></div>
+              <div id="u-weekly-tokens"></div>
             </div>
           </div>
           <aside class="u-rail">

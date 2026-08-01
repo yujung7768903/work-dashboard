@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 
 import { labelStride, nearestSlot, placeTip, spreadEnds } from "../static/js/chart.js";
-import { isHoliday } from "../static/js/usage.js";
+import { isHoliday, weekLabels } from "../static/js/usage.js";
 
 const slots = [10, 30, 50, 70].map((x) => ({ x, title: `t${x}` }));
 
@@ -75,5 +75,18 @@ assert.equal(isHoliday("2026-08-02"), true); // 일요일
 assert.equal(isHoliday("2026-08-01"), true); // 토요일
 assert.equal(isHoliday("2026-07-31"), false); // 금요일
 assert.equal(isHoliday(""), false);
+
+// 주차 이름 — 진행 중인 창이 "이번 주", 닫힌 창은 최근에서 거슬러 센다
+const week = (in_progress) => ({ in_progress });
+assert.deepEqual(weekLabels([week(false), week(false), week(false), week(true)]), [
+  "3주 전",
+  "2주 전",
+  "지난주",
+  "이번 주",
+]);
+// 진행 중인 창이 없으면(오래 안 쓴 계정) 마지막도 "지난주"부터 센다 — "이번 주"를 만들지 않는다
+assert.deepEqual(weekLabels([week(false), week(false)]), ["2주 전", "지난주"]);
+assert.deepEqual(weekLabels([week(true)]), ["이번 주"]);
+assert.deepEqual(weekLabels([]), []);
 
 console.log("chart hover check ok");
