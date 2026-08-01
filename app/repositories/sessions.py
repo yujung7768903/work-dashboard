@@ -190,6 +190,32 @@ def list_by_todo(con, todo_id):
     return [dict(row) for row in rows]
 
 
+def cwds_by_workspace(con, workspace_id):
+    """그 워크스페이스에서 돌았던 작업 위치. 최근 순.
+    워크스페이스에는 저장소 경로가 없어 워크트리 뷰가 여기서 저장소를 유추한다"""
+    rows = con.execute(
+        """SELECT cwd, MAX(last_seen_at) AS seen FROM sessions
+            WHERE workspace_id=? AND COALESCE(cwd,'') <> ''
+            GROUP BY cwd ORDER BY seen DESC""",
+        (workspace_id,),
+    )
+    return [row["cwd"] for row in rows]
+
+
+def todo_titles_by_cwd(con):
+    """작업 위치 → 거기서 돌던 세션이 잡은 할일 제목. 워크트리 뷰의 작업 요약용.
+    오래된 것부터 훑어 같은 위치는 가장 최근 세션의 제목이 남는다"""
+    rows = con.execute(
+        """SELECT s.cwd AS cwd, t.title AS title
+             FROM sessions s
+             JOIN session_todos st ON st.session_id = s.id
+             JOIN todos t ON t.id = st.todo_id
+            WHERE COALESCE(s.cwd,'') <> ''
+            ORDER BY s.last_seen_at ASC"""
+    )
+    return {row["cwd"]: row["title"] for row in rows}
+
+
 def get_by_row_id(con, session_row_id):
     """대시보드 팝업용. 목록과 같은 모양(이름 포함)으로 한 건"""
     row = con.execute(f"{WITH_NAMES} WHERE s.id=?", (session_row_id,)).fetchone()

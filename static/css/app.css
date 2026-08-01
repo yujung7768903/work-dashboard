@@ -179,6 +179,29 @@ h1 {
   .app-main { padding: 0 var(--sp-12) var(--sp-40); }
 }
 
+/* ── 보드 하위 탭 ─────────────────────────────────────────────────────────── */
+/* 아래 1px 선은 nav 의 inset 그림자. 고른 탭의 2px 밑줄이 그 위에 겹쳐 칠해진다 —
+   음수 margin 으로 끌어올리면 간격 토큰을 벗어나므로 그림자로 긋는다 */
+.subtabs {
+  display: flex; gap: var(--sp-4);
+  margin: 0 0 var(--gap);
+  box-shadow: inset 0 -1px var(--line);
+}
+.subtabs button {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-12) var(--sp-16);
+  background: none; box-shadow: none; color: var(--muted);
+  font-weight: 600; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--r-ctl) var(--r-ctl) 0 0;
+}
+.subtabs button svg { flex: none; }
+.subtabs button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+.subtabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
 /* ── 보드 ─────────────────────────────────────────────────────────────────── */
 /* p 기본 마진(1em)이 다른 블록의 gap 과 어긋나므로 명시 */
 #next-line {
@@ -287,6 +310,11 @@ button:disabled { color: var(--line); cursor: default; }
 /* 세로 화면은 1컬럼, 넓으면 2컬럼. 간격은 grid gap 이 담당하므로 카드 세로 마진 없음 */
 /* stretch: 같은 행의 두 카드를 더 긴 쪽 높이에 맞춰 아래선을 정렬 */
 #groups, #done-groups { display: grid; gap: var(--gap); align-items: stretch; margin: var(--gap) 0; }
+/* 워크트리 목록도 같은 격자. 세로 마진은 위의 탭 바가 이미 띄워 둔다 */
+#worktree-list { display: grid; gap: var(--gap); align-items: stretch; }
+/* 워크트리 줄은 줄바꿈을 하지 않아 격자 칸의 기본 min-width:auto 가 카드를 내용만큼
+   넓혀 버린다. 0 으로 풀어야 1fr 을 지키고 안쪽이 말줄임으로 접힌다 */
+#worktree-list > .group { min-width: 0; }
 
 /* overflow 를 걸지 않음: 마지막 항목의 케밥 메뉴가 카드 밖으로 펼쳐져야 함 */
 .group {
@@ -359,6 +387,68 @@ button:disabled { color: var(--line); cursor: default; }
   white-space: nowrap;
 }
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
+
+/* ── 워크트리 ─────────────────────────────────────────────────────────────── */
+/* 디폴트·워크트리·브랜치 세 섹션. 라벨은 워크스페이스 카드의 배경·목적·목표와 같은 값 */
+.wt-section > .label {
+  margin: 0; padding: var(--sp-8) var(--pad-card) var(--sp-4);
+  border-top: 1px solid var(--line);
+  color: var(--muted); font-size: var(--fs-sm); font-weight: 500;
+}
+/* 라벨이 이미 섹션 경계를 그으므로 그 아래 첫 줄은 선을 겹치지 않는다 */
+.wt-section > .label + .wt-row { border-top: none; }
+
+/* 표처럼 네 칸 — 이름 / 요약 / 커밋 변화 / 포트. 줄마다 같은 격자라 세로로 맞는다.
+   포트는 배지 하나 폭(60px)만 잡고 남는 폭은 이름이 더 가져간다. 대신 이름은
+   14em 아래로는 줄지 않는다 — 그 밑으로 가면 브랜치명이 말줄임뿐이라 못 읽는다.
+   포트 칸을 auto 로 두면 포트가 둘인 줄만 칸이 넓어져 표가 어긋난다. 고정 폭으로
+   두고 넘치는 배지는 칸 안에서 아래로 내린다 */
+.wt-row {
+  display: grid;
+  grid-template-columns: minmax(14em, 1.6fr) minmax(0, 1fr) 5em 60px;
+  align-items: center; gap: var(--sp-8);
+  padding: var(--sp-8) var(--pad-card);
+  border-top: 1px solid var(--line);
+}
+.wt-name { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
+.wt-row .title {
+  min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wt-summary {
+  min-width: 0; color: var(--muted); font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* lazygit 의 ↑↓ 와 같은 뜻. 앞선 건 초록, 뒤처진 건 주황.
+   두 방향이 각자 칸을 지켜 한쪽이 비어도 다른 쪽이 자리를 옮기지 않는다 */
+.wt-div {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4);
+  text-align: right;
+  font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.wt-div .ahead { color: var(--good); }
+.wt-div .behind { color: var(--warn); }
+/* 마지막 칸이라 오른쪽 끝에 붙인다 — 카드 오른쪽 여백과 줄이 맞는다.
+   한 칸에 안 들어가는 배지는 잘라내지 않고 아래로 내린다 (그 줄만 높아진다) */
+.wt-ports {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-4);
+  min-width: 0;
+}
+.wt-port {
+  padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent); font-size: var(--fs-sm); font-weight: 600;
+  font-variant-numeric: tabular-nums; text-decoration: none;
+}
+.wt-port:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
+/* 하위 할일 목록(.subtasks)의 모양은 쓰되, 들여쓰기는 셰브런 다음 칸 —
+   브랜치 이름 세로줄 아래로 떨어진다 */
+.wt-commits {
+  padding: var(--sp-2) var(--pad-card) var(--sp-8)
+           calc(var(--pad-card) + 1.2em + var(--sp-8));
+}
+.wt-commits code { color: var(--fg); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.wt-when { color: var(--muted); font-size: var(--fs-micro); }
 
 .field { margin-bottom: var(--gap); }
 /* 라벨은 어디서든 --fs-sm + 500 + muted (사용량 한도 카드 라벨과 같은 값) */
@@ -596,7 +686,7 @@ button:disabled { color: var(--line); cursor: default; }
 /* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음.
    레일이 208px 을 먹으므로 2컬럼 기준을 그만큼 올렸다 */
 @media (min-width: 1240px) {
-  #groups, #done-groups, #workspace-list { grid-template-columns: 1fr 1fr; }
+  #groups, #done-groups, #workspace-list, #worktree-list { grid-template-columns: 1fr 1fr; }
 }
 
 @media (prefers-color-scheme: dark) {

@@ -70,6 +70,7 @@
       </header>
 
       <section id="tab-board" class="tab">
+        <!-- 여기부터 카테고리 라벨까지는 두 하위 탭이 함께 쓴다 -->
         <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
         <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
         <details id="session-panel">
@@ -92,6 +93,30 @@
           </button>
         </form>
         <div id="category-filter"></div>
+
+        <!-- 공통 영역 바로 아래. 레일 메뉴와 달리 밑줄로만 고른 것을 표시한다 -->
+        <nav id="board-tabs" class="subtabs">
+          <button data-subtab="todos" class="active">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M2.5 4.5 4 6l2.5-2.5M8.5 4.8H14M2.5 11 4 12.5 6.5 10M8.5 11.3H14"
+                    fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            할일
+          </button>
+          <button data-subtab="worktrees">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <circle cx="4.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="4.5" cy="12.4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="11.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M4.5 5.4v5.2M11.5 5.4v1.3a2.4 2.4 0 0 1-2.4 2.4H6.9"
+                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            워크트리
+          </button>
+        </nav>
+
+        <div id="board-todos">
         <div id="board-controls">
           <label><input type="checkbox" id="show-done"> 완료 항목 표시</label>
         </div>
@@ -100,6 +125,11 @@
           <summary>완료</summary>
           <div id="done-groups"></div>
         </details>
+        </div>
+
+        <div id="board-worktrees" hidden>
+          <div id="worktree-list"></div>
+        </div>
       </section>
 
       <section id="tab-workspace" class="tab" hidden>
