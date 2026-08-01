@@ -91,26 +91,13 @@ function syncActivePills(container) {
   });
 }
 
-// 선택된 라벨은 카테고리 색을 그대로 채우므로 글자를 흰·검 중 대비가 큰 쪽으로 고른다.
-// 경계값(0.179)에서도 양쪽 다 4.5:1 을 넘겨서 어떤 색을 골라도 읽을 수 있다
-function inkOn(hex) {
-  const channel = (index) => {
-    const value = parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16) / 255;
-    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-  };
-  const luminance = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
-  return luminance < 0.179 ? "#fff" : "#14181d";
-}
-
 function filterPill(category) {
   const pill = document.createElement("button");
   pill.className = "cat-pill";
   pill.textContent = category.name;
   // 색이 없으면 CSS 의 중립 회색 기본값을 씀 (전체 라벨)
-  if (category.color) {
-    pill.style.setProperty("--cat", category.color);
-    pill.style.setProperty("--on-cat", inkOn(category.color));
-  }
+  // 글자색은 CSS 의 --on-cat 기본값(흰색)에 맡긴다 — 고른 라벨은 전부 흰 글씨
+  if (category.color) pill.style.setProperty("--cat", category.color);
   pill.dataset.categoryId = category.id ?? "";
   pill.addEventListener("click", () => {
     activeCategoryId = category.id;
