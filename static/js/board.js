@@ -185,17 +185,24 @@ function todoElement(todo) {
   return row;
 }
 
-// 상태 배지와 제목 사이의 펼침 화살표. 하위가 없는 줄도 빈 자리를 남겨 제목 세로줄을 맞춘다
+// 사이드바 메뉴와 같은 16 격자 · currentColor 스트로크 아이콘. 펼치면 CSS 로 90도 돌린다
+const CHEVRON_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+  <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+// 상태 배지와 제목 사이의 펼침 아이콘. 하위가 없는 줄도 빈 자리를 남겨 제목 세로줄을 맞춘다
 function subtaskToggle(todo) {
   const button = document.createElement("button");
   button.className = "subtask-toggle";
+  button.innerHTML = CHEVRON_SVG;
   if (!todo.subtasks.length) {
     button.classList.add("empty");
     return button;
   }
   const open = expandedTodoIds.has(todo.id);
   const done = todo.subtasks.filter((subtask) => subtask.status === DONE).length;
-  button.textContent = open ? "▾" : "▸";
+  button.classList.toggle("open", open);
   button.title = `하위 할일 ${done}/${todo.subtasks.length}`;
   button.addEventListener("click", (event) => {
     // 행 전체가 상세 팝업을 여는 클릭이라 화살표는 거기까지 올라가지 않게 막는다
