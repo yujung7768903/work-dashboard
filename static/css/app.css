@@ -285,6 +285,12 @@ button:disabled { color: var(--line); cursor: default; }
 .group > summary::marker, .group > summary::-webkit-details-marker { color: var(--muted); }
 .group.unassigned > summary { color: var(--muted); }
 .group-meta { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
+/* 이름이 남는 폭을 먹어 진행 수·추가 버튼이 오른쪽에 붙는다 */
+.group-name { flex: 1; }
+.group-add {
+  flex: none; background: none; padding: 0 var(--sp-4);
+  font-size: var(--fs-title); line-height: 1; color: var(--muted);
+}
 
 .todo {
   display: flex; align-items: center; gap: var(--sp-8);
