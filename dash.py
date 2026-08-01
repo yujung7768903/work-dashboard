@@ -32,8 +32,8 @@ PRECONDITION_HELP = (
 )
 EXIT_OK = 0
 EXIT_ERROR = 1
-# 상태줄에는 사용률 막대 세 개가 이미 있다. 한글은 두 칸을 먹으므로 짧게 자른다
-STATUSLINE_TITLE_MAX = 18
+# 사용률 막대와 다른 줄에 그리므로 폭은 넉넉하다. 한글은 두 칸을 먹으니 줄 폭의 절반쯤
+STATUSLINE_TITLE_MAX = 40
 USAGE_CLI_DAYS = 7
 COMPACT_UNITS = ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K"))
 SECONDS_PER_MINUTE = 60
