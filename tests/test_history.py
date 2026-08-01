@@ -5,7 +5,12 @@ import time
 import unittest
 
 from app.constants import HISTORY_FIRST_PROMPT_CHARS, HISTORY_HEAD_BYTES
+from app.errors import NotFound
+from app.repositories import categories as category_repo
+from app.repositories import sessions as session_repo
+from app.repositories import todos as todo_repo
 from app.services import history, transcript
+from tests.support import temp_db
 
 DAY = 86400
 
@@ -115,6 +120,73 @@ class RenderTest(unittest.TestCase):
     def test_empty_history_still_renders_a_header(self):
         text = history.render(history.scan(days=7, root=tempfile.mkdtemp()), days=7)
         self.assertIn("세션 0건", text)
+
+
+class PastSessionTest(unittest.TestCase):
+    def test_render_shows_session_ref_for_linking(self):
+        """앞머리가 없으면 온보딩이 어느 세션을 연결할지 알 수 없다"""
+        root = tempfile.mkdtemp()
+        write_session(root, "a", "abcd1234-dead-beef-0000-000000000000", [prompt("훅")])
+        text = history.render(history.scan(days=7, root=root), days=7)
+        self.assertIn("abcd1234", text)
+
+    def test_ensure_past_session_inserts_as_ended(self):
+        """register() 를 쓰면 idle+지금 이 되어 죽은 세션이 활성 목록에 뜬다"""
+        root = tempfile.mkdtemp()
+        write_session(root, "a", "sess-past", [prompt("훅", cwd="/work/dash")], age_days=3)
+        con = temp_db()
+        sid = history.ensure_past_session(con, "sess-past", root=root)
+        self.assertEqual(sid, "sess-past")
+        row = session_repo.get(con, sid)
+        self.assertEqual(row["state"], "ended")
+        self.assertEqual(row["cwd"], "/work/dash")
+        self.assertNotIn(sid, [s["claude_session_id"] for s in session_repo.list_active(con)])
+
+    def test_ensure_past_session_accepts_id_prefix(self):
+        root = tempfile.mkdtemp()
+        write_session(root, "a", "abcd1234-full-id", [prompt("훅")])
+        con = temp_db()
+        self.assertEqual(history.ensure_past_session(con, "abcd1234", root=root), "abcd1234-full-id")
+
+    def test_ensure_past_session_is_idempotent(self):
+        root = tempfile.mkdtemp()
+        write_session(root, "a", "sess-past", [prompt("훅")])
+        con = temp_db()
+        history.ensure_past_session(con, "sess-past", root=root)
+        history.ensure_past_session(con, "sess-past", root=root)
+        count = con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_unknown_session_raises(self):
+        with self.assertRaises(NotFound):
+            history.ensure_past_session(temp_db(), "nope", root=tempfile.mkdtemp())
+
+    def test_ambiguous_prefix_is_rejected(self):
+        """앞머리가 둘 이상 맞으면 엉뚱한 세션을 붙이느니 실패한다"""
+        root = tempfile.mkdtemp()
+        write_session(root, "a", "abcd1111", [prompt("A")])
+        write_session(root, "a", "abcd2222", [prompt("B")])
+        with self.assertRaises(NotFound):
+            history.ensure_past_session(temp_db(), "abcd", root=root)
+
+
+class PastLinkTest(unittest.TestCase):
+    def test_past_link_does_not_claim_the_todo(self):
+        """끝난 세션 연결은 기록이지 착수 선언이 아니다 — 추정한 상태가 뒤집히면 안 된다"""
+        con = temp_db()
+        category = category_repo.get_by_name(con, "개발")["id"]
+        todo = todo_repo.create(con, "글귀 수집", category_id=category)
+        session_repo.register(con, "sess-live")
+        session_repo.link_todo(con, "sess-live", todo["id"], claim=False)
+        self.assertEqual(todo_repo.get(con, todo["id"])["status"], "todo")
+
+    def test_normal_link_still_claims(self):
+        con = temp_db()
+        category = category_repo.get_by_name(con, "개발")["id"]
+        todo = todo_repo.create(con, "글귀 수집", category_id=category)
+        session_repo.register(con, "sess-live")
+        session_repo.link_todo(con, "sess-live", todo["id"])
+        self.assertEqual(todo_repo.get(con, todo["id"])["status"], "doing")
 
 
 if __name__ == "__main__":
