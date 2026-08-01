@@ -307,6 +307,12 @@ button:disabled { color: var(--line); cursor: default; }
   margin: 0; padding: var(--sp-2) var(--pad-card) var(--sp-8) var(--sp-40);
   list-style: none; color: var(--muted); font-size: var(--fs-sm);
 }
+/* 기본은 접힘. 요약줄만 보이고 눌러서 펼친다 */
+.subtask-wrap > summary {
+  padding: var(--sp-2) var(--pad-card) var(--sp-2) var(--sp-40);
+  color: var(--muted); font-size: var(--fs-sm); cursor: pointer;
+}
+.subtask-wrap:not([open]) > summary { padding-bottom: var(--sp-8); }
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
 
 .field { margin-bottom: var(--gap); }

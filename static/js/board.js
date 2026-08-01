@@ -18,6 +18,8 @@ const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
 let activeCategoryId = null;
 // 케밥 메뉴가 열린 할일. 한 번에 하나만 열림
 let openMenuTodoId = null;
+// 하위 할일을 펼쳐 둔 할일. 기본은 접힘이고, 재렌더에도 펼친 것만 유지된다
+const expandedTodoIds = new Set();
 
 function showDone() {
   return document.getElementById("show-done").checked;
@@ -226,6 +228,19 @@ function todoMenuItems(todo) {
 }
 
 function subtaskList(todo) {
+  const wrap = document.createElement("details");
+  wrap.className = "subtask-wrap";
+  wrap.open = expandedTodoIds.has(todo.id);
+  wrap.addEventListener("toggle", () => {
+    if (wrap.open) expandedTodoIds.add(todo.id);
+    else expandedTodoIds.delete(todo.id);
+  });
+
+  const done = todo.subtasks.filter((subtask) => subtask.status === DONE).length;
+  const summary = document.createElement("summary");
+  summary.textContent = `하위 할일 ${done}/${todo.subtasks.length}`;
+  wrap.appendChild(summary);
+
   const list = document.createElement("ul");
   list.className = "subtasks";
   todo.subtasks.forEach((subtask) => {
@@ -244,7 +259,8 @@ function subtaskList(todo) {
     item.append(checkbox, document.createTextNode(` ${subtask.title}`));
     list.appendChild(item);
   });
-  return list;
+  wrap.appendChild(list);
+  return wrap;
 }
 
 document.getElementById("quick-add").addEventListener("submit", (event) => {
