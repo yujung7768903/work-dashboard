@@ -277,7 +277,8 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라운딩은 summary 가 직접 가짐. 접혀 있으면 아래 모서리까지 둥글게 */
 .group > summary {
   padding: var(--sp-12) var(--pad-card); cursor: grab;
-  display: flex; justify-content: space-between;
+  /* 이름·진행 수·추가 버튼의 글자 크기가 달라 center 로 세로 가운데를 맞춘다 */
+  display: flex; justify-content: space-between; align-items: center;
   gap: var(--sp-8); background: var(--cat-bg); font-weight: 700;
   border-radius: var(--r-card);
 }
