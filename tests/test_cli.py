@@ -6,6 +6,8 @@ from contextlib import redirect_stderr, redirect_stdout
 
 import dash
 from app.constants import DB_PATH_ENV
+from app.db import connect
+from app.repositories import sessions as session_repo
 from tests.support import temp_db_path
 
 
@@ -73,6 +75,23 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("남아", err)
 
+    def test_rm_category_with_sessions_demands_force(self):
+        """세션이 붙어 있으면 무엇이 바뀌는지 알리고 --force 를 요구한다"""
+        con = connect()  # 세션 등록은 훅의 일이라 CLI 에 없다
+        session_repo.register(con, "sess-cli")
+        session_repo.classify(con, "sess-cli", category_name="운영")
+        code, _, err = self.run_cli("rm-category", "2")
+        self.assertEqual(code, 1)
+        self.assertIn("--force", err)
+        code, out, _ = self.run_cli("rm-category", "2", "--force")
+        self.assertEqual(code, 0)
+        self.assertIn("삭제됨", out)
+
+    def test_rm_category_without_occupants_succeeds(self):
+        code, out, _ = self.run_cli("rm-category", "2")
+        self.assertEqual(code, 0)
+        self.assertIn("삭제됨", out)
+
     def test_unknown_command_exits_nonzero(self):
         with self.assertRaises(SystemExit):
             self.run_cli("nope")
@@ -97,7 +116,9 @@ class CliTest(unittest.TestCase):
         from app.db import connect
         from app.repositories import sessions as session_repo
 
-        session_repo.register(connect(), "cli-sess", cwd="/tmp")
+        con = connect()
+        session_repo.register(con, "cli-sess", cwd="/tmp")
+        session_repo.set_last_prompt(con, "cli-sess", "무엇을 하나")
         code, _, _ = self.run_cli("classify", "cli-sess", "--category", "운영")
         self.assertEqual(code, 0)
         code, out, _ = self.run_cli("sessions", "--json")

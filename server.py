@@ -10,13 +10,13 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from app.constants import ALLOWED_STATIC_SUFFIXES, DEFAULT_HOST, DEFAULT_PORT
 from app.db import connect
-from app.errors import Conflict, DomainError, NotFound, Validation
+from app.errors import Conflict, DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link, usage
+from app.services import board, planning, session_link, session_todo, usage
 
 STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
@@ -70,7 +70,7 @@ def route(con, method, path, query, body):
         "GET": lambda: _route_get(con, head, item_id, query),
         "POST": lambda: _route_post(con, head, body),
         "PATCH": lambda: _route_patch(con, head, item_id, body),
-        "DELETE": lambda: _route_delete(con, head, item_id),
+        "DELETE": lambda: _route_delete(con, head, item_id, query),
     }
     if method not in routers:
         raise Validation(f"지원하지 않는 메서드: {method}")
@@ -141,20 +141,23 @@ def _route_patch(con, head, item_id, body):
     if head == "subtasks":
         return subtask_repo.update(con, item_id, **body)
     if head == "sessions":
-        return session_repo.classify_by_ids(
+        session = session_repo.classify_by_ids(
             con,
             item_id,
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
         )
+        # 워크스페이스로 분류한 세션은 할일까지 만들어 붙인다. 카테고리만이면 None
+        return {**session, "created_todo": session_todo.ensure_from_session(con, item_id)}
     raise NotFound("알 수 없는 엔드포인트")
 
 
-def _route_delete(con, head, item_id):
+def _route_delete(con, head, item_id, query):
     if not item_id:
         raise Validation("id 가 필요함")
+    force = _single(query, "force", None) == "1"
     deleters = {
-        "categories": category_repo.delete,
+        "categories": lambda con, item_id: category_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
         "subtasks": subtask_repo.delete,
@@ -216,6 +219,11 @@ class Handler(BaseHTTPRequestHandler):
                 con, method, parsed.path, parse_qs(parsed.query), self._read_body()
             )
             self._send_json(int(HTTPStatus.OK), payload)
+        except NeedsConfirm as error:
+            # 클라이언트가 되물은 뒤 ?force=1 로 재요청하도록 플래그로 구분해준다
+            self._send_json(
+                status_for(error), {"error": str(error), "confirm": True}
+            )
         except DomainError as error:
             self._send_json(status_for(error), {"error": str(error)})
         except Exception as error:  # 예상 못한 오류도 JSON 으로 알려줌

@@ -203,14 +203,27 @@ class SessionClassifyTest(unittest.TestCase):
 
     def test_count_unclassified(self):
         session_repo.register(self.con, "sess-2")
+        session_repo.set_last_prompt(self.con, "sess-2", "무엇을 하나")
         session_repo.classify(self.con, SID, category_name="운영")
         self.assertEqual(session_repo.count_unclassified(self.con), 1)
 
     def test_list_active_carries_names(self):
+        session_repo.set_last_prompt(self.con, SID, "무엇을 하나")
         session_repo.classify(self.con, SID, workspace_id=self.workspace["id"])
         row = session_repo.list_active(self.con)[0]
         self.assertEqual(row["workspace_name"], "KT 동시성")
         self.assertEqual(row["category_name"], "개발")
+
+    def test_list_active_excludes_promptless(self):
+        """spare(예열용) 프로세스도 SessionStart 로 등록된다 — 목록에 뜨면 안 됨"""
+        self.assertEqual(session_repo.list_active(self.con), [])
+
+    def test_list_active_excludes_empty_prompt(self):
+        session_repo.set_last_prompt(self.con, SID, "")
+        self.assertEqual(session_repo.list_active(self.con), [])
+
+    def test_count_unclassified_excludes_promptless(self):
+        self.assertEqual(session_repo.count_unclassified(self.con), 0)
 
 
 class SessionSweepTest(unittest.TestCase):
@@ -309,6 +322,7 @@ class SessionLinkTest(unittest.TestCase):
 
     def test_active_payload_shape(self):
         session_repo.register(self.con, SID)
+        session_repo.set_last_prompt(self.con, SID, "무엇을 하나")
         payload = session_link.active_payload(self.con)
         self.assertEqual(payload["unclassified_count"], 1)
         self.assertEqual(len(payload["sessions"]), 1)

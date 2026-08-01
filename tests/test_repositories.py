@@ -11,8 +11,9 @@ from app.constants import (
     WORKSPACE_ACTIVE,
 )
 from app.db import connect
-from app.errors import Conflict, NotFound, Validation
+from app.errors import Conflict, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
+from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
@@ -151,6 +152,42 @@ class CategoryRepoTest(unittest.TestCase):
         target = category_repo.get_by_name(self.con, "운영")
         with self.assertRaises(Validation):
             category_repo.update(self.con, target["id"])
+
+    def test_delete_without_occupants_needs_no_confirm(self):
+        """붙은 게 없으면 되묻지 않고 바로 지운다"""
+        target = category_repo.get_by_name(self.con, "운영")
+        category_repo.delete(self.con, target["id"])
+        with self.assertRaises(NotFound):
+            category_repo.get(self.con, target["id"])
+
+    def test_delete_asks_to_confirm_when_sessions_attached(self):
+        """분류된 세션이 있으면 확인을 요구하고 아직 지우지 않는다"""
+        target = self._category_with_session("운영")
+        with self.assertRaises(NeedsConfirm) as caught:
+            category_repo.delete(self.con, target["id"])
+        self.assertIn("1건", str(caught.exception))
+        self.assertEqual(category_repo.get(self.con, target["id"])["id"], target["id"])
+
+    def test_delete_with_force_unclassifies_sessions(self):
+        """확인을 받으면 세션을 미분류로 되돌리고 지운다"""
+        target = self._category_with_session("운영")
+        category_repo.delete(self.con, target["id"], force=True)
+        self.assertIsNone(session_repo.get(self.con, "sess-1")["category_id"])
+        with self.assertRaises(NotFound):
+            category_repo.get(self.con, target["id"])
+
+    def test_force_does_not_bypass_workspace_occupants(self):
+        """워크스페이스·할일은 옮겨야 한다 — force 로도 지워지지 않는다"""
+        target = category_repo.get_by_name(self.con, "운영")
+        workspace_repo.create(self.con, target["id"], "잔류")
+        with self.assertRaises(Conflict):
+            category_repo.delete(self.con, target["id"], force=True)
+
+    def _category_with_session(self, name):
+        target = category_repo.get_by_name(self.con, name)
+        session_repo.register(self.con, "sess-1")
+        session_repo.classify(self.con, "sess-1", category_name=name)
+        return target
 
     def test_style_columns_backfill_on_legacy_db(self):
         """색 컬럼이 없던 DB 를 열면 팔레트 색으로 채워짐"""

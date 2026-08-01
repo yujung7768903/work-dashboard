@@ -14,19 +14,11 @@ from app.constants import (
 )
 from app.errors import NotFound
 from app.repositories import sessions as session_repo
-from app.services.transcript import head, parse_line
+from app.services.transcript import NOISE_PREFIXES, USER_ROLE, head, parse_line
 
-USER_ROLE = "user"
 DAY_SECONDS = 86400
 SESSION_REF_CHARS = 8  # 세션 id 앞머리. 45줄에 uuid 전체를 싣지 않으려고 자른다
 PAST_STATE = "ended"
-# 사람이 친 지시처럼 보이지만 아닌 것들. 이게 첫 발화로 잡히면 세션의 주제를 가린다.
-# transcript.SKIP_PREFIXES 를 늘리지 않는 이유 — 세션 팝업은 슬래시 명령도 보여주는 게 맞다
-NOISE_PREFIXES = (
-    "<",  # <command-name>/model</command-name> 같은 슬래시 명령·주입 블록
-    "Below is a conversation log",  # 자동 압축이 만드는 요약 요청
-    "Please write a 5-10 word title",  # 세션 제목 생성 요청
-)
 
 
 def scan(days, root=None):

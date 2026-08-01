@@ -4,7 +4,7 @@ import re
 from app import ordering
 from app.constants import COLOR_PATTERN
 from app.db import now, palette_color, transaction
-from app.errors import Conflict, NotFound, Validation
+from app.errors import Conflict, NeedsConfirm, NotFound, Validation
 
 TABLE = "categories"
 ALL_SCOPE = ("1=1", ())
@@ -73,11 +73,24 @@ def update(con, category_id, **fields):
     return get(con, category_id)
 
 
-def delete(con, category_id):
-    """워크스페이스나 할일이 남아 있으면 거부. cascade 미지원"""
+def delete(con, category_id, force=False):
+    """워크스페이스나 할일이 남아 있으면 거부. cascade 미지원
+
+    세션은 옮길 대상이 아니라 분류 기록일 뿐이고 category_id 가 nullable 이라
+    미분류로 되돌리고 지운다. 안 그러면 sessions FK 에 걸려 IntegrityError 가 난다.
+    다만 분류가 조용히 사라지므로 붙어 있는 세션이 있으면 force 로 확인을 받는다
+    """
     get(con, category_id)
     _reject_if_occupied(con, category_id)
+    sessions = _count_sessions(con, category_id)
+    if sessions and not force:
+        raise NeedsConfirm(
+            f"이 카테고리로 분류된 세션 {sessions}건이 미분류로 바뀝니다. 삭제할까요?"
+        )
     with transaction(con):
+        con.execute(
+            "UPDATE sessions SET category_id=NULL WHERE category_id=?", (category_id,)
+        )
         con.execute("DELETE FROM categories WHERE id=?", (category_id,))
 
 
@@ -105,6 +118,12 @@ def _reject_duplicate(con, name, exclude_id=None):
     ).fetchone()
     if row:
         raise Conflict(f"카테고리 '{name}' 이미 있음")
+
+
+def _count_sessions(con, category_id):
+    return con.execute(
+        "SELECT COUNT(*) AS n FROM sessions WHERE category_id=?", (category_id,)
+    ).fetchone()["n"]
 
 
 def _reject_if_occupied(con, category_id):

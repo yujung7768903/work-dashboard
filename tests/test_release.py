@@ -32,6 +32,20 @@ def _worktree_dir():
     return path
 
 
+def _serve(root, case, *flags):
+    """워크트리를 cwd 로 도는 서버 프로세스. 탐지될 때까지 기다려 돌려준다"""
+    with open(os.path.join(root, "server.py"), "w") as handle:
+        handle.write("import time\ntime.sleep(30)\n")
+    proc = subprocess.Popen([sys.executable, *flags, "server.py"], cwd=root)
+    case.addCleanup(_stop, proc)
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if release.serving_processes(root):
+            return proc
+        time.sleep(0.2)
+    case.fail(f"워크트리에서 도는 서버를 찾지 못함: {flags}")
+
+
 class FinishTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
@@ -59,6 +73,61 @@ class FinishTest(unittest.TestCase):
         release.finish(self.con, SID)
         self.assertEqual(STATUS_TODO, todo_repo.get(self.con, other["id"])["status"])
 
+    def test_main_checkout_cwd_is_reported_but_never_used(self):
+        """메인 체크아웃은 탐색 대상이 아니고, 어디를 봤는지는 남아야 한다"""
+        result = release.finish(self.con, SID)
+        self.assertEqual("", result["worktree"])
+        self.assertIn("/tmp", result["looked"])
+
+
+class WorktreeLookupTest(unittest.TestCase):
+    """세션 cwd 는 SessionStart 때 값이라 메인 체크아웃이다 — 실제 작업 위치는 transcript 에 있다"""
+
+    def setUp(self):
+        self.con = temp_db()
+        session_repo.register(self.con, SID, cwd="/tmp")
+        self.root = tempfile.mkdtemp()
+
+    def _transcript(self, *cwds):
+        project = os.path.join(self.root, "-Users-me-repo")
+        os.makedirs(project, exist_ok=True)
+        with open(os.path.join(project, f"{SID}.jsonl"), "w") as handle:
+            for cwd in cwds:
+                handle.write(json.dumps({"type": "user", "cwd": cwd}) + "\n")
+
+    def test_last_worktree_cwd_wins(self):
+        self._transcript("/w/repo", "/w/repo/.claude/worktrees/a", "/w/repo/.claude/worktrees/b")
+        self.assertEqual(
+            "/w/repo/.claude/worktrees/b", release.last_worktree_cwd(SID, root=self.root)
+        )
+
+    def test_no_worktree_in_transcript_is_empty(self):
+        self._transcript("/w/repo", "/w/repo")
+        self.assertEqual("", release.last_worktree_cwd(SID, root=self.root))
+
+    def test_missing_transcript_is_empty(self):
+        self.assertEqual("", release.last_worktree_cwd(SID, root=self.root))
+
+    def test_finish_kills_the_server_of_the_worktree_from_the_transcript(self):
+        """--worktree 없이도 EnterWorktree 로 옮겨간 워크트리의 서버를 정리해야 한다"""
+        worktree = _worktree_dir()
+        self._patch_transcript(worktree)
+        proc = _serve(worktree, self)
+        result = release.finish(self.con, SID)
+        self.assertEqual(worktree, result["worktree"])
+        self.assertEqual([proc.pid], [pid for pid, _ in result["killed"]])
+        self.assertIsNotNone(proc.wait(timeout=5))
+
+    def test_explicit_worktree_still_wins(self):
+        given = _worktree_dir()
+        self._patch_transcript(_worktree_dir())
+        self.assertEqual(given, release.finish(self.con, SID, worktree=given)["worktree"])
+
+    def _patch_transcript(self, worktree):
+        original = release.last_worktree_cwd
+        release.last_worktree_cwd = lambda session_id, root=None: worktree
+        self.addCleanup(setattr, release, "last_worktree_cwd", original)
+
 
 class ServingProcessTest(unittest.TestCase):
     def test_server_outside_a_worktree_is_never_touched(self):
@@ -84,29 +153,29 @@ class ServingProcessTest(unittest.TestCase):
         self.assertTrue(release._is_server("/usr/bin/python3 server.py --port 9092"))
         self.assertTrue(release._is_server("node /opt/npm/bin/npm-cli.js run dev"))
 
+    def test_flags_do_not_hide_the_server(self):
+        """어떻게 띄웠는지에 판정이 흔들리면 안 된다 — 플래그가 스크립트 이름을 밀어낸다"""
+        self.assertTrue(release._is_server("python3 -u server.py --port 9092"))
+        self.assertTrue(release._is_server("/opt/homebrew/bin/python3 -B server.py"))
+
+    def test_wrappers_do_not_hide_the_server(self):
+        """nohup·env 로 감싸 띄우면 래퍼가 앞 두 토큰을 다 차지한다"""
+        self.assertTrue(release._is_server("env WORK_DASHBOARD_DB=/tmp/x.db python3 server.py"))
+        self.assertTrue(release._is_server("nohup python3 server.py --port 9092"))
+        # 래퍼를 걷어내도 셸은 여전히 서버가 아니어야 한다
+        self.assertFalse(release._is_server("nohup /bin/zsh -c 'python3 server.py'"))
+
     def test_running_server_in_worktree_is_found_and_killed(self):
         root = _worktree_dir()
-        script = os.path.join(root, "server.py")
-        with open(script, "w") as handle:
-            handle.write("import time\ntime.sleep(30)\n")
-        proc = subprocess.Popen([sys.executable, "server.py"], cwd=root)
-        try:
-            self.addCleanup(proc.kill)
-            found = self._wait_for_detection(root)
-            self.assertIn(proc.pid, [pid for pid, _ in found])
-            self.assertEqual([proc.pid], [pid for pid, _ in release.kill_serving(root)])
-            self.assertIsNotNone(proc.wait(timeout=5))
-        finally:
-            proc.poll()
+        proc = _serve(root, self)
+        self.assertEqual([proc.pid], [pid for pid, _ in release.kill_serving(root)])
+        self.assertIsNotNone(proc.wait(timeout=5))
 
-    def _wait_for_detection(self, root, timeout=5):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            found = release.serving_processes(root)
-            if found:
-                return found
-            time.sleep(0.2)
-        self.fail("워크트리에서 도는 서버를 찾지 못함")
+    def test_server_started_with_a_flag_is_found(self):
+        """`python3 -u server.py` 처럼 띄운 프로세스도 실제로 찾아야 한다"""
+        root = _worktree_dir()
+        proc = _serve(root, self, "-u")
+        self.assertIn(proc.pid, [pid for pid, _ in release.serving_processes(root)])
 
 
 class ReleasedContextTest(unittest.TestCase):
@@ -208,6 +277,22 @@ class CliTest(unittest.TestCase):
         self.assertIn(f"완료한 할일: {todo['id']}", out)
         self.assertIn("종료한 프로세스: (없음)", out)
         self.assertEqual(STATUS_DONE, todo_repo.get(con, todo["id"])["status"])
+
+    def test_finish_says_where_it_looked_when_it_found_nothing(self):
+        """(없음) 만 찍으면 서버가 남은 것을 아무도 모른다"""
+        path = temp_db_path()
+        session_repo.register(temp_db(path), SID, cwd="/tmp")
+        out = self._dash(path, "finish", SID)
+        self.assertIn("워크트리를 찾지 못함", out)
+        self.assertIn("/tmp", out)
+
+    def test_finish_says_the_worktree_had_no_server(self):
+        path = temp_db_path()
+        session_repo.register(temp_db(path), SID, cwd="/tmp")
+        empty = _worktree_dir()
+        out = self._dash(path, "finish", SID, "--worktree", empty)
+        self.assertIn(f"{empty} 를 cwd 로 쓰는 서버가 없음", out)
+        self.assertIn(f"ExitWorktree 로 워크트리 제거 — {empty}", out)
 
     def _dash(self, path, *argv):
         result = subprocess.run(

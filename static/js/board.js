@@ -2,7 +2,7 @@
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { run } from "./main.js";
-import { openDetail, startSessionPolling } from "./sessions.js";
+import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
@@ -18,6 +18,8 @@ const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
 let activeCategoryId = null;
 // 케밥 메뉴가 열린 할일. 한 번에 하나만 열림
 let openMenuTodoId = null;
+// 하위 할일을 펼쳐 둔 할일. 기본은 접힘이고, 재렌더에도 펼친 것만 유지된다
+const expandedTodoIds = new Set();
 
 function showDone() {
   return document.getElementById("show-done").checked;
@@ -139,20 +141,43 @@ function groupElement(group, alwaysShowDone = false) {
     .filter(Boolean)
     .join("  ");
   const name = document.createElement("span");
+  name.className = "group-name";
   name.textContent = group.name;
   const metaNode = document.createElement("span");
   metaNode.className = "group-meta";
   metaNode.textContent = meta;
   summary.append(name, metaNode);
+  // 미분류는 위 빠른 추가 폼이 담당하므로 워크스페이스 카드에만 붙인다
+  if (group.kind === GROUP_BY_WORKSPACE) summary.appendChild(groupAddButton(group));
   details.appendChild(summary);
 
   group.todos
     .filter((todo) => alwaysShowDone || showDone() || todo.status !== DONE)
     .forEach((todo) => {
       details.appendChild(todoElement(todo));
-      if (todo.subtasks.length) details.appendChild(subtaskList(todo));
+      if (expandedTodoIds.has(todo.id)) details.appendChild(subtaskList(todo));
     });
   return details;
+}
+
+// 카드에서 그 워크스페이스로 바로 할일 추가. 카테고리는 서버가 워크스페이스에서 가져온다
+function groupAddButton(group) {
+  const button = document.createElement("button");
+  button.className = "group-add";
+  button.innerHTML = PLUS_SVG;
+  button.title = `${group.name} 에 할일 추가`;
+  button.addEventListener("click", (event) => {
+    // summary 클릭은 카드를 접으므로 기본 동작까지 막는다
+    event.preventDefault();
+    event.stopPropagation();
+    const value = prompt(`"${group.name}" 에 추가할 할일 제목`);
+    if (!value) return;
+    run(async () => {
+      await api.createTodo({ title: value, workspace_id: group.id });
+      await renderBoard();
+    });
+  });
+  return button;
 }
 
 function todoElement(todo) {
@@ -176,11 +201,48 @@ function todoElement(todo) {
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = todo.title;
+  if (todo.needs_title) title.append(rawTitleMark());
 
-  row.append(statusButton, title, todoMenu(todo));
+  row.append(statusButton, subtaskToggle(todo), title, todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
+}
+
+// 사이드바 메뉴와 같은 16 격자 · currentColor 스트로크 아이콘. 펼치면 CSS 로 90도 돌린다
+const CHEVRON_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+  <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+// 사이드바 아이콘과 같은 격자·스트로크. 글자 + 는 폰트마다 글리프가 위아래로 치우쳐
+// 세로 가운데를 맞춰도 어긋나 보이므로 도형으로 그린다
+const PLUS_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+  <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round"/>
+</svg>`;
+
+// 상태 배지와 제목 사이의 펼침 아이콘. 하위가 없는 줄도 빈 자리를 남겨 제목 세로줄을 맞춘다
+function subtaskToggle(todo) {
+  const button = document.createElement("button");
+  button.className = "subtask-toggle";
+  button.innerHTML = CHEVRON_SVG;
+  if (!todo.subtasks.length) {
+    button.classList.add("empty");
+    return button;
+  }
+  const open = expandedTodoIds.has(todo.id);
+  const done = todo.subtasks.filter((subtask) => subtask.status === DONE).length;
+  button.classList.toggle("open", open);
+  button.title = `하위 할일 ${done}/${todo.subtasks.length}`;
+  button.addEventListener("click", (event) => {
+    // 행 전체가 상세 팝업을 여는 클릭이라 화살표는 거기까지 올라가지 않게 막는다
+    event.stopPropagation();
+    if (open) expandedTodoIds.delete(todo.id);
+    else expandedTodoIds.add(todo.id);
+    run(renderBoard);
+  });
+  return button;
 }
 
 // 하위 추가·삭제는 오른쪽 케밥 메뉴 안으로. 워크스페이스 카드와 같은 ws-menu 스타일 재사용
