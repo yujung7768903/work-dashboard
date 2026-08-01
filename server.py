@@ -10,7 +10,14 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from app.constants import ALLOWED_STATIC_SUFFIXES, DEFAULT_HOST, DEFAULT_PORT
 from app.db import connect
-from app.errors import Conflict, DomainError, NeedsConfirm, NotFound, Validation
+from app.errors import (
+    Conflict,
+    DomainError,
+    NeedsConfirm,
+    NotFound,
+    UnknownEndpoint,
+    Validation,
+)
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
@@ -73,7 +80,7 @@ def route(con, method, path, query, body):
     """경로와 메서드를 도메인 호출로 연결. 도메인 로직은 갖지 않음"""
     segments = [part for part in path.strip("/").split("/") if part][1:]
     if not segments:
-        raise NotFound("알 수 없는 엔드포인트")
+        raise UnknownEndpoint("알 수 없는 엔드포인트")
     head = segments[0]
     item_id = int(segments[1]) if len(segments) > 1 else None
     routers = {
@@ -115,7 +122,7 @@ def _route_get(con, head, item_id, query):
         return usage.snapshot(con)
     if head == "worktrees":
         return worktrees.overview(con)
-    raise NotFound("알 수 없는 엔드포인트")
+    raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
 def _route_post(con, head, body):
@@ -138,7 +145,7 @@ def _route_post(con, head, body):
         return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
     if head == "reorder":
         return _reorder(con, body)
-    raise NotFound("알 수 없는 엔드포인트")
+    raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
 def _route_patch(con, head, item_id, body):
@@ -161,7 +168,7 @@ def _route_patch(con, head, item_id, body):
         )
         # 워크스페이스로 분류한 세션은 할일까지 만들어 붙인다. 카테고리만이면 None
         return {**session, "created_todo": session_todo.ensure_from_session(con, item_id)}
-    raise NotFound("알 수 없는 엔드포인트")
+    raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
 def _route_delete(con, head, item_id, query):
@@ -175,7 +182,7 @@ def _route_delete(con, head, item_id, query):
         "subtasks": subtask_repo.delete,
     }
     if head not in deleters:
-        raise NotFound("알 수 없는 엔드포인트")
+        raise UnknownEndpoint("알 수 없는 엔드포인트")
     deleters[head](con, item_id)
     return {"deleted": item_id}
 
