@@ -302,11 +302,16 @@ button:disabled { color: var(--line); cursor: default; }
   border-radius: var(--r-pill); color: var(--muted);
 }
 .todo.doing > button:first-child { background: var(--softer); color: var(--accent); }
-/* 들여쓰기는 격자 한 칸(40px) — 상태 배지 폭과 맞춰 제목 아래로 떨어진다 */
+/* 들여쓰기는 격자 한 칸(40px) + 화살표 칸 — 상태 배지 폭과 맞춰 제목 아래로 떨어진다 */
 .subtasks {
-  margin: 0; padding: var(--sp-2) var(--pad-card) var(--sp-8) var(--sp-40);
+  margin: 0;
+  padding: var(--sp-2) var(--pad-card) var(--sp-8) calc(var(--sp-40) + 1.2em + var(--sp-8));
   list-style: none; color: var(--muted); font-size: var(--fs-sm);
 }
+/* 상태 배지 다음 칸. 하위가 없는 줄도 자리를 비워 둬 제목 세로줄이 어긋나지 않는다 */
+.subtask-toggle { width: 1.2em; padding: 0; color: var(--muted); }
+.subtask-toggle:hover { color: var(--fg); }
+.subtask-toggle.empty { visibility: hidden; }
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
 
 .field { margin-bottom: var(--gap); }
