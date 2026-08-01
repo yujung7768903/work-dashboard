@@ -62,6 +62,12 @@ AUTO_TODO_MAX_SUBTASKS = 8
 AUTO_TODO_MIN_SUBTASKS = 2  # 1개면 할일과 같은 말이라 쪼갤 이유가 없다
 AUTO_TODO_NOTE_HEAD = "(자동) 세션 분류 때 지시 원문에서 만든 할일. 진행하며 다듬는다."
 
+# 제목 요약. 한국어 문장을 규칙으로 줄이면 "…보이는데, 너무 길어져서" 같은 군더더기가 남는다.
+# 요약은 의미 판단이라 설치된 claude CLI 에 맡기고, 실패하면 첫 문장을 그대로 쓴다
+SUMMARY_MODEL = "claude-haiku-4-5-20251001"  # 제목 한 줄이라 가장 싼 모델로 충분
+SUMMARY_TIMEOUT_SEC = 25  # CLI 기동만 7~8초. 넘으면 기다리지 않고 첫 문장으로 떨어진다
+SUMMARY_MAX_CHARS = 40  # 이보다 길면 요약이 아니라 설명이므로 버린다
+
 # 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라 파일에서 주워온다
 # (훅 페이로드에는 rate_limits 가 없다). token-optimizer statusline 이 떨어뜨리는 사이드카.
 RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.json")

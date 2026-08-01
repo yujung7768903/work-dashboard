@@ -271,7 +271,11 @@ function classifyRow(session, workspaces, categories, dialog) {
       return;
     }
     try {
+      // 워크스페이스로 분류하면 서버가 제목 요약(claude CLI)을 기다린다 — 10초 가까이 걸린다
+      status.textContent = "분류하고 할일 만드는 중…";
+      save.disabled = true;
       const result = await api.classifySession(session.id, fields);
+      save.disabled = false;
       await renderSessions();
       // 할일이 자동으로 생겼으면 닫지 않고 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
       if (result?.created_todo) {
@@ -280,6 +284,7 @@ function classifyRow(session, workspaces, categories, dialog) {
       }
       dialog.close();
     } catch (error) {
+      save.disabled = false;
       status.textContent = error.message;
     }
   });

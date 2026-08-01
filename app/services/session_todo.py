@@ -4,9 +4,9 @@ CLI 로 분류하면 Claude 가 지시를 읽고 할일을 만든다. 그런데 
 분류하면 그 자리에 Claude 가 없어 할일이 생기지 않는다 — 보드는 그 작업을 모르고,
 다음 세션도 무엇을 하던 중인지 알 수 없다.
 
-그래서 여기서는 코드가 판단할 수 있는 것만 만든다: 제목·note 는 지시 원문에서,
-하위할일은 지시에 목록 표기가 있을 때만. 의미 판단(범위 쪼개기·요약)은 그 세션의
-Claude 가 이어서 다듬는다
+그래서 제목만 요약을 부르고(app/services/summary.py — claude CLI), 나머지는 코드가
+판단할 수 있는 것만 만든다: note 는 지시 원문 그대로, 하위할일은 목록 표기나 요청 문장.
+요약이 실패하면 첫 문장을 제목으로 쓴다 — 요약 하나 때문에 할일이 안 생기면 안 된다
 """
 import re
 
@@ -20,7 +20,7 @@ from app.constants import (
 from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
-from app.services import transcript
+from app.services import summary, transcript
 
 ITEM_PATTERN = re.compile(r"^\s*(?:[-*•·]|\d+[.)])\s+(?P<item>\S.*)$")
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
@@ -45,11 +45,12 @@ def ensure_from_session(con, session_row_id, root=None):
     if not prompts:
         return None
 
+    summarized = summary.one_line(prompts[0])
     todo = todo_repo.create(
         con,
-        _title(prompts[0]),
+        summarized or _title(prompts[0]),
         workspace_id=session["workspace_id"],
-        note=_note(session, prompts),
+        note=_note(session, prompts, summarized=bool(summarized)),
     )
     for title in _item_titles(prompts):
         subtask_repo.create(con, todo["id"], title)
@@ -66,7 +67,10 @@ def _prompts(session, root):
 
 
 def _title(prompt):
-    """첫 지시의 첫 문장. 목록 표기로 시작하는 줄은 항목이라 제목이 못 된다"""
+    """요약이 실패했을 때의 제목 — 첫 지시의 첫 문장.
+
+    목록 표기로 시작하는 줄은 항목이라 제목이 못 된다
+    """
     lines = [line.strip() for line in prompt.splitlines() if line.strip()]
     head = next((line for line in lines if not ITEM_PATTERN.match(line)), lines[0])
     first = _sentences(head)[0] if _sentences(head) else head
@@ -75,14 +79,17 @@ def _title(prompt):
     return first[: AUTO_TODO_TITLE_CHARS - len(ELLIPSIS)].rstrip() + ELLIPSIS
 
 
-def _note(session, prompts):
+def _note(session, prompts, summarized=True):
     """착수할 때 필요한 것 — 어디서 무엇을 하라고 했는지. 요약하지 않고 원문을 남긴다"""
     lines = [
         AUTO_TODO_NOTE_HEAD,
         f"위치: {session['cwd'] or '(모름)'} / 브랜치: {session['git_branch'] or '(없음)'}",
         f"세션: {session['claude_session_id']}",
-        "지시:",
     ]
+    if not summarized:
+        # 제목이 왜 구구절절한지 알 수 있게 남긴다. 모르면 규칙이 나쁘다고 오해한다
+        lines.append("제목: 요약 실패로 첫 문장을 그대로 씀")
+    lines.append("지시:")
     lines.extend(
         f"{index}) {_reflow(prompt)}"
         for index, prompt in enumerate(prompts[:AUTO_TODO_NOTE_PROMPTS], start=1)
