@@ -7,7 +7,7 @@ from datetime import datetime
 
 from app.constants import HISTORY_DAY_CHOICES, UNASSIGNED_LABEL
 from app.db import connect
-from app.errors import DomainError, NotFound, Validation
+from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
@@ -126,6 +126,11 @@ def _build_parser():
 
     remove_category = sub.add_parser("rm-category")
     remove_category.add_argument("category_id", type=int)
+    remove_category.add_argument(
+        "--force",
+        action="store_true",
+        help="분류된 세션이 있어도 미분류로 내리고 삭제",
+    )
     remove_category.set_defaults(handler=_cmd_rm_category)
 
     done_today = sub.add_parser("done-today")
@@ -317,7 +322,11 @@ def _cmd_reorder(con, args):
 
 
 def _cmd_rm_category(con, args):
-    category_repo.delete(con, args.category_id)
+    """세션이 붙어 있으면 무엇이 바뀌는지 알리고 --force 를 요구한다"""
+    try:
+        category_repo.delete(con, args.category_id, force=args.force)
+    except NeedsConfirm as error:
+        raise NeedsConfirm(f"{error} 확인했으면 --force 로 다시 실행하세요")
     print("삭제됨")
 
 
