@@ -2,6 +2,8 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -46,11 +48,24 @@ class WorktreeServeTest(unittest.TestCase):
             self.hook.EXIT_BLOCK, self._run({"transcript_path": transcript})
         )
 
-    def test_block_message_names_worktree_and_url(self):
+    def test_block_message_asks_for_worktree_url_summary_list(self):
+        """사용자가 보는 마지막 보고 형식 — 워크트리·url·작업 요약 세 줄"""
         port = self.hook.free_port()
         message = self.hook.MESSAGE.format(root=self.web, port=port)
-        self.assertIn(self.web, message)
-        self.assertIn(f"url: http://127.0.0.1:{port}/", message)
+        self.assertIn(f"- 워크트리: {self.web}", message)
+        self.assertIn(f"- url: http://127.0.0.1:{port}/", message)
+        self.assertIn("- 작업 요약:", message)
+
+    def test_running_server_is_detected_on_this_platform(self):
+        """실제 프로세스로 확인 — /proc 이 없는 macOS 에서도 찾아야 한다"""
+        script = os.path.join(self.web, "server.py")
+        with open(script, "w") as handle:
+            handle.write("import time\ntime.sleep(60)\n")
+        process = subprocess.Popen([sys.executable, "server.py"], cwd=self.web)
+        self.addCleanup(process.wait)
+        self.addCleanup(process.kill)
+        self.assertTrue(self.hook._is_served(self.web))
+        self.assertFalse(self.hook._is_served(self.lib))
 
     def test_non_web_worktree_passes(self):
         transcript = self._transcript(os.path.join(self.lib, "util.py"))

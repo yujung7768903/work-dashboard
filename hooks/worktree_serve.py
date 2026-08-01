@@ -9,10 +9,12 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 
 EXIT_OK = 0
 EXIT_BLOCK = 2
+RUN_TIMEOUT_SEC = 2
 WORKTREE_MARK = "/.claude/worktrees/"
 # 이 중 하나라도 워크트리 루트에 있으면 띄울 수 있는 웹 프로젝트로 본다
 SERVER_ENTRIES = ("server.py", "manage.py", "package.json")
@@ -24,9 +26,14 @@ PATH_PATTERN = re.compile(r'"(?:file_path|notebook_path)"\s*:\s*"([^"]+)"')
 MESSAGE = """워크트리를 고쳤는데 그 코드를 서비스하는 프로세스가 없음: {root}
 
 - 실행 방법은 그 워크트리의 README·CLAUDE.md 에서 확인 (예: python3 server.py --port {port})
-- 워크트리 루트를 cwd 로, `setsid nohup ... &` 로 띄워 세션이 끝나도 살아 있게 함
+- 워크트리 루트를 cwd 로, `nohup ... &` 로 띄워 세션이 끝나도 살아 있게 함
+  (macOS 에는 setsid 가 없으므로 쓰지 않는다)
 - 비어 있는 포트: {port}
-- 띄운 뒤 응답 마지막 줄에 `url: http://127.0.0.1:{port}/` 형식으로 주소를 알림"""
+- 띄운 뒤 응답 마지막을 아래 리스트로 끝냄:
+
+- 워크트리: {root}
+- url: http://127.0.0.1:{port}/
+- 작업 요약: <이 워크트리에서 바꾼 것>"""
 
 
 def main(stdin=None):
@@ -85,20 +92,50 @@ def _is_web_project(root):
 
 
 def _is_served(root):
-    """cwd 가 그 워크트리이고 커맨드가 서버 형태인 프로세스가 있는지"""
-    for entry in os.listdir("/proc"):
-        if not entry.isdigit():
-            continue
-        try:
-            if os.readlink(f"/proc/{entry}/cwd") != root:
-                continue
-            with open(f"/proc/{entry}/cmdline", "rb") as handle:
-                cmdline = handle.read().decode("utf-8", "replace")
-        except OSError:  # 이미 죽었거나 권한 밖
-            continue
-        if any(hint in cmdline for hint in SERVER_HINTS):
-            return True
-    return False
+    """cwd 가 그 워크트리이고 커맨드가 서버 형태인 프로세스가 있는지.
+
+    cwd 는 symlink 가 풀린 실경로로 나오므로(macOS 의 /var → /private/var) 양쪽을 맞춘다.
+    """
+    return os.path.realpath(root) in _cwds(_server_pids())
+
+
+def _server_pids():
+    """커맨드가 서버 형태인 프로세스의 pid. ps 는 리눅스·macOS 공통"""
+    pids = []
+    for line in _run(["ps", "-eo", "pid=,args="]).splitlines():
+        pid, _, args = line.strip().partition(" ")
+        if pid.isdigit() and any(hint in args for hint in SERVER_HINTS):
+            pids.append(pid)
+    return pids
+
+
+def _cwds(pids):
+    """프로세스들의 cwd 집합. 리눅스는 /proc, macOS 등은 lsof 한 번으로 모아 읽는다"""
+    if not pids:
+        return set()
+    if os.path.isdir("/proc"):
+        return {cwd for cwd in (_proc_cwd(pid) for pid in pids) if cwd}
+    # lsof -Fn 은 경로 줄만 'n' 으로 시작 — pid 짝은 필요 없고 경로 집합이면 충분
+    output = _run(["lsof", "-a", "-d", "cwd", "-Fn", "-p", ",".join(pids)])
+    return {line[1:] for line in output.splitlines() if line.startswith("n")}
+
+
+def _proc_cwd(pid):
+    try:
+        return os.readlink(f"/proc/{pid}/cwd")
+    except OSError:  # 이미 죽었거나 권한 밖
+        return None
+
+
+def _run(command):
+    """실패·미설치·지연은 빈 출력으로 — 판단을 못 하면 '서버 없음'으로 보고 알린다"""
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=RUN_TIMEOUT_SEC
+        )
+    except Exception:
+        return ""
+    return result.stdout
 
 
 def free_port():

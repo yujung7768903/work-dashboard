@@ -447,7 +447,7 @@ button:disabled { color: var(--line); cursor: default; }
 /* 밑줄 탭이라 전역 버튼의 radius 를 지운다 — 남겨 두면 밑줄이 U 자로 말린다 */
 .dlg-tabs button {
   background: none; border-radius: 0;
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
   padding: var(--sp-8) var(--sp-12);
   color: var(--muted); font-size: var(--fs-sm); font-weight: 600;
 }

@@ -46,7 +46,9 @@ work-dashboard/
 │       └── usage.py                 # 한도 사용률·토큰 추이
 │
 ├── hooks/
-│   └── dash_hook.py                 # Claude Code 훅 단일 진입점
+│   ├── dash_hook.py                 # Claude Code 훅 단일 진입점
+│   ├── worktree_serve.py            # Stop: 고친 워크트리에 서버가 없으면 띄우라고 지시
+│   └── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단 (미등록)
 │
 ├── static/                          # ES 모듈 프론트엔드 (번들러 없음)
 │   ├── index.html                   # 단일 페이지
@@ -84,6 +86,16 @@ work-dashboard/
 | 지시를 넣을 때마다 | `UserPromptSubmit` | 상태를 `working` 으로, 마지막 지시를 120자로 잘라 저장 | 분류 전이면 분류 지시 재주입, 분류됐으면 무출력 |
 | 응답이 끝날 때 | `Stop` | 상태를 `idle` 로 | 없음 |
 | 세션이 닫힐 때 | `SessionEnd` | 상태를 `ended` 로, 종료 시각 기록 | 없음 |
+
+### 워크트리 서버 훅 (`hooks/worktree_serve.py`)
+
+워크트리에서 코드를 고쳐 놓고 확인할 화면을 안 띄우면, 사용자는 결과를 눈으로 볼 수 없다. 이 `Stop` 훅이 그걸 막는다.
+
+- **등록 위치가 다르다.** `~/.claude/settings.json`(그 PC 전용, 절대 경로)이 아니라 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준으로 등록된다. 그래서 clone 한 다른 PC에서도 따로 설정할 것이 없다.
+- **거는 조건**: 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때.
+- **이미 떠 있으면 관여하지 않는다.** 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다.
+- 막으면서 빈 포트(9080–9139)를 골라 주고, 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다.
+- 프로세스 조회는 `ps` + (`/proc` 또는 `lsof`) 라서 리눅스·macOS 양쪽에서 같게 동작한다. `stop_hook_active` 면 통과해 무한 루프를 막고, 어떤 실패에서도 `exit 0` 으로 fail-open 한다.
 
 주입 블록은 세 갈래다.
 
