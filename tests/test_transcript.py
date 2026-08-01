@@ -15,6 +15,11 @@ from tests.support import temp_db
 SID = "sess-transcript"
 
 
+def speech(role, text, stamp="", cwd=""):
+    """parse_line 이 돌려주는 한 발화"""
+    return {"role": role, "text": text, "stamp": stamp, "cwd": cwd}
+
+
 def write_transcript(session_id, entries):
     """~/.claude/projects/<프로젝트>/<세션id>.jsonl 흉내. root 를 돌려줌"""
     root = tempfile.mkdtemp()
@@ -30,7 +35,7 @@ class ParseLineTest(unittest.TestCase):
     def test_reads_plain_user_text(self):
         line = json.dumps({"type": "user", "message": {"content": "할일  추가해줘"}})
         self.assertEqual(
-            transcript.parse_line(line), {"role": "user", "text": "할일 추가해줘"}
+            transcript.parse_line(line), speech("user", "할일 추가해줘")
         )
 
     def test_reads_assistant_text_blocks_only(self):
@@ -47,7 +52,7 @@ class ParseLineTest(unittest.TestCase):
             }
         )
         self.assertEqual(
-            transcript.parse_line(line), {"role": "assistant", "text": "네 추가했습니다"}
+            transcript.parse_line(line), speech("assistant", "네 추가했습니다")
         )
 
     def test_skips_non_conversation_lines(self):
@@ -88,7 +93,7 @@ class RecentTest(unittest.TestCase):
         ]
         root = write_transcript(SID, entries)
         self.assertEqual(
-            transcript.recent(SID, root=root), [{"role": "user", "text": "맨 앞 질문"}]
+            transcript.recent(SID, root=root), [speech("user", "맨 앞 질문")]
         )
 
     def test_missing_transcript_is_empty(self):
@@ -108,7 +113,7 @@ class DetailTest(unittest.TestCase):
         with mock.patch.object(transcript, "TRANSCRIPT_ROOT", root):
             payload = session_link.detail(con, session["id"])
         self.assertEqual(payload["session"]["claude_session_id"], SID)
-        self.assertEqual(payload["messages"], [{"role": "user", "text": "안녕"}])
+        self.assertEqual(payload["messages"], [speech("user", "안녕")])
 
     def test_detail_carries_linked_todos(self):
         """세션에서 팝업을 열어도 개요 탭에 보여줄 할일이 함께 와야 한다"""

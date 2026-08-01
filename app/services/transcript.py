@@ -53,8 +53,21 @@ def tail(path, max_bytes=TRANSCRIPT_TAIL_BYTES):
     return lines[1:] if size > max_bytes else lines  # 잘려 나온 첫 줄은 버림
 
 
+def head(path, max_bytes):
+    """파일 앞 일부만. 세션의 주제는 첫 지시에 있으므로 꼬리까지 읽을 이유가 없다"""
+    with open(path, "rb") as handle:
+        chunk = handle.read(max_bytes)
+    lines = chunk.decode("utf-8", "ignore").splitlines()
+    # 상한에 걸려 잘렸으면 마지막 줄은 반쪽이라 버림
+    return lines[:-1] if len(chunk) == max_bytes else lines
+
+
 def parse_line(line):
-    """대화 한 줄. 사람이 읽을 발화가 아니면 None"""
+    """대화 한 줄. 사람이 읽을 발화가 아니면 None.
+
+    stamp·cwd 는 온보딩 히스토리 스캔이 쓴다 — 어느 세션이 언제 어디서 돌았는지는
+    같은 줄에 있고, 발화를 골라내는 규칙을 두 곳에 두지 않기 위해 여기서 함께 돌려준다
+    """
     try:
         entry = json.loads(line)
     except (ValueError, TypeError):
@@ -67,7 +80,12 @@ def parse_line(line):
     text = _text((entry.get("message") or {}).get("content"))
     if not text or text.startswith(SKIP_PREFIXES):
         return None
-    return {"role": role, "text": text[:TRANSCRIPT_MAX_CHARS]}
+    return {
+        "role": role,
+        "text": text[:TRANSCRIPT_MAX_CHARS],
+        "stamp": entry.get("timestamp") or "",
+        "cwd": entry.get("cwd") or "",
+    }
 
 
 def _text(content):

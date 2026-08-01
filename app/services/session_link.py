@@ -1,7 +1,14 @@
 """세션에 주입할 컨텍스트 조립. 여러 엔티티에 걸치므로 service 계층"""
 import re
 
-from app.constants import JIRA_PATTERN, WORKSPACE_ACTIVE
+from app.constants import (
+    HISTORY_DAY_CHOICES,
+    JIRA_PATTERN,
+    ONBOARDING_DECLINED_FLAG,
+    ONBOARDING_MIN_SESSIONS,
+    WORKSPACE_ACTIVE,
+)
+from app.db import meta_get, meta_set
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
@@ -12,6 +19,7 @@ BLOCK_OPEN = '<work-dashboard session="{session}" state="{state}">'
 BLOCK_CLOSE = "</work-dashboard>"
 STATE_CLASSIFIED = "classified"
 STATE_UNCLASSIFIED = "unclassified"
+STATE_ONBOARDING = "onboarding"
 CONTEXT_LABELS = (
     ("배경", "background"),
     ("목적", "purpose"),
@@ -44,6 +52,46 @@ UNCLASSIFIED_GUIDE = (
     "dash.py show-todo --session <session> 으로 할일을 직접 확인하고 "
     "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."
 )
+ONBOARDING_GUIDE = (
+    "지침: 등록된 워크스페이스가 하나도 없다. 초기 설정을 진행한다. "
+    "(1) 먼저 사용자에게 묻는다 — 최근 며칠 치 Claude 히스토리를 보고 자동 분류할지. "
+    f"{' / '.join(f'{days}일' for days in HISTORY_DAY_CHOICES)} / 자동 분류 안 함. "
+    "'안 함' 이면 python3 dash.py onboard --skip 을 실행하고 여기서 끝낸다 "
+    "— 이후 이 질문은 다시 뜨지 않는다. "
+    "(2) python3 dash.py scan-history --days <선택> 을 실행한다. 세션당 한 줄로 나온다. "
+    "(3) 그 출력을 읽고 같은 일감끼리 묶는다. "
+    "묶는 단위는 기본적으로 작업 위치(디렉토리) 하나 = 워크스페이스 하나다. "
+    "한 저장소 안의 기획·구현·배포는 워크스페이스가 아니라 착수 순서대로 놓는 할일이다. "
+    "홈 디렉토리나 scratch 성격의 위치처럼 서로 무관한 일이 섞인 곳만 내용으로 쪼갠다. "
+    f"세션 {ONBOARDING_MIN_SESSIONS}건 미만인 묶음은 워크스페이스로 만들지 않고 "
+    "맨 아래 '(기타: 세션 N건 — 워크스페이스 미생성)' 한 줄로만 표시한다. "
+    "(4) 카테고리 두 안을 제시하고 고르게 한다 — A 는 위 디폴트 그대로, "
+    "B 는 히스토리에서 도출한 목록. B 를 고르면 B 에만 있는 것을 dash.py add-category 로 "
+    "추가한다. 어느 쪽이든 기존 카테고리는 지우지 않으며, 이 사실을 질문할 때 함께 알리고 "
+    "사용자가 지목해 빼달라고 할 때만 지운다. "
+    "(5) 카테고리 > 워크스페이스 트리를 보여주고 확인받는다. 워크스페이스마다 "
+    "이름·목표·세션 건수·기간을 적는다. 항목별로 하나씩 묻지 말고 트리 전체를 보여준 뒤 "
+    "자유 수정을 반복한다. 확정 전에는 DB 에 쓰지 않는다. "
+    "(6) 확정되면 dash.py add-workspace <카테고리> <이름> --goal <목표> 로 등록한다. "
+    "배경·목적·고려사항은 이 단계에서 채우지 않는다. "
+    "(7) 워크스페이스마다 할일을 dash.py add-todo --workspace <id> 로 만들고, "
+    "히스토리로 미루어 짐작되는 상태를 dash.py set-status todo <id> <todo|doing|done> 로 넣는다. "
+    "할일은 착수 가능한 순서로 놓는다(중요도 순이 아니다). "
+    "할일을 반드시 만드는 이유 — 보드는 할일이 0개인 워크스페이스를 통째로 감춘다. "
+    "워크스페이스만 만들면 사용자 화면에는 아무것도 안 나타나 초기 설정이 실패한 것처럼 보인다. "
+    "상태 추정이 틀려도 사용자가 보드에서 바로 고칠 수 있으므로 비워두는 것보다 낫다. "
+    "(8) 마지막으로 배경·목적·고려사항도 채울지 묻는다 — "
+    "1 아니요(기본) / 2 순차: 워크스페이스 하나를 채우고 확인받고 다음으로 / "
+    "3 병렬: 전부 추정해 한 번에 보여주고 한 번만 확인. "
+    "추정으로 채운 내용은 이후 매 세션 주입되므로 2 가 기본 동작이고, "
+    "3 은 사용자가 속도를 명시적으로 고를 때만 쓴다. "
+    "채울 때의 기준은 '매 세션 주입돼도 값어치가 있는가' 하나다 — "
+    "배경은 왜 이 일이 존재하는가(도메인의 문제, 시간이 지나도 안 변하는 것), "
+    "목적은 그 문제를 어떤 방향으로 푸는가, 목표는 끝났다고 판정할 수 있는 상태, "
+    "고려사항은 벗어나면 안 되는 제약·금지다. "
+    "기술 스택·URL·포트·저장소 주소·재현 절차처럼 특정 할일에서만 필요한 것은 "
+    "워크스페이스가 아니라 그 할일의 note 로 내린다."
+)
 SCOPE_GUIDE = (
     "지침: 이 브랜치 작업은 위 하위단계 범위 내에서만 진행한다. "
     "범위를 벗어나는 작업은 착수 전 사용자에게 안내하고 확인받는다."
@@ -74,7 +122,25 @@ def render_context(con, claude_session_id):
         return ""
     if session["workspace_id"]:
         return _classified_block(con, session)
+    if needs_onboarding(con):
+        return _onboarding_block(con, session)
     return _unclassified_block(con, session)
+
+
+def needs_onboarding(con):
+    """워크스페이스가 없고 사용자가 거절한 적도 없을 때.
+
+    완료 플래그는 두지 않는다 — 온보딩이 끝나면 워크스페이스가 생겨 첫 조건이 저절로 깨진다.
+    상태를 플래그와 실제 데이터 두 곳에 적으면 어긋나고, 그때 믿어야 하는 건 실제 데이터다
+    """
+    if meta_get(con, ONBOARDING_DECLINED_FLAG):
+        return False
+    return not workspace_repo.list_all(con)
+
+
+def decline(con):
+    """자동 분류 거절. 이후 온보딩 블록이 주입되지 않는다"""
+    meta_set(con, ONBOARDING_DECLINED_FLAG)
 
 
 def active_payload(con):
@@ -148,6 +214,20 @@ def _classified_block(con, session):
     lines.append(CLASSIFIED_GUIDE)
     lines.append(FRESHNESS_GUIDE)
     lines.append(BLOCK_CLOSE)
+    return "\n".join(lines)
+
+
+def _onboarding_block(con, session):
+    categories = category_repo.list_all(con)
+    lines = [
+        BLOCK_OPEN.format(session=session["claude_session_id"], state=STATE_ONBOARDING),
+        f"현재 위치: {session['cwd'] or '(알 수 없음)'}",
+        "카테고리(디폴트): " + " / ".join(row["name"] for row in categories),
+        "워크스페이스: (없음)",
+        ONBOARDING_GUIDE,
+        FRESHNESS_GUIDE,
+        BLOCK_CLOSE,
+    ]
     return "\n".join(lines)
 
 

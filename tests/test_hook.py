@@ -9,6 +9,7 @@ from app.db import connect
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
+from app.services import session_link
 from tests.support import temp_db_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -32,11 +33,29 @@ class HookTest(unittest.TestCase):
         )
         return result.returncode, result.stdout
 
+    def seed_workspace(self):
+        """워크스페이스가 하나라도 있어야 온보딩 대신 분류 블록이 나온다"""
+        dev = category_repo.get_by_name(self.con, "개발")["id"]
+        workspace_repo.create(self.con, dev, "기존 작업")
+
     def test_session_start_registers_and_injects_catalog(self):
+        self.seed_workspace()
         code, out = self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
         self.assertEqual(code, 0)
         self.assertIn('state="unclassified"', out)
         self.assertIsNotNone(session_repo.find(self.con, SID))
+
+    def test_session_start_injects_onboarding_when_no_workspace_exists(self):
+        """빈 DB 는 분류가 아니라 초기 설정이 먼저다"""
+        code, out = self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
+        self.assertEqual(code, 0)
+        self.assertIn('state="onboarding"', out)
+        self.assertIn("scan-history", out)
+
+    def test_onboarding_stops_after_user_declines(self):
+        session_link.decline(self.con)
+        _, out = self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
+        self.assertIn('state="unclassified"', out)
 
     def test_prompt_submit_sets_working_and_prompt(self):
         self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
@@ -49,6 +68,7 @@ class HookTest(unittest.TestCase):
         self.assertEqual(session["last_prompt"], "락 확인해줘")
 
     def test_prompt_submit_reinjects_while_unclassified(self):
+        self.seed_workspace()
         self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
         _, out = self.run_hook("UserPromptSubmit", {"session_id": SID, "prompt": "x"})
         self.assertIn('state="unclassified"', out)
