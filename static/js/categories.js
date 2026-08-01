@@ -53,6 +53,7 @@ function colorInput(category) {
 function moveButton(index, categories, offset) {
   const target = index + offset;
   const button = document.createElement("button");
+  button.className = "icon-btn";
   button.textContent = offset < 0 ? "↑" : "↓";
   button.disabled = target < 0 || target >= categories.length;
   button.addEventListener("click", () =>
@@ -83,6 +84,7 @@ function addWorkspaceButton(category) {
 
 function removeButton(category) {
   const button = document.createElement("button");
+  button.className = "icon-btn";
   button.textContent = "×";
   button.addEventListener("click", () =>
     run(async () => {
