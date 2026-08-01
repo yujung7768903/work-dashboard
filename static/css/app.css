@@ -422,7 +422,9 @@ button:disabled { color: var(--line); cursor: default; }
 /* ── 세션 상세 팝업 ────────────────────────────────────────────────────────── */
 /* 팝업도 카드다 — 카드와 같은 --pad-card·--r-card 를 쓰고 그림자만 --shadow-pop.
    스크롤은 본문이 맡는다. 그래야 닫기 버튼이 제목과 같은 선에 고정된다 */
-#session-modal {
+/* [open] 없이 쓰면 display 가 dialog:not([open]) 의 display:none 을 이겨서
+   닫힌 팝업이 문서 맨 아래에 빈 상자로 남는다 */
+#session-modal[open] {
   position: relative; display: flex; flex-direction: column;
   width: min(620px, calc(100vw - var(--sp-24))); max-height: 84vh; overflow: hidden;
   padding: 0; border: none; border-radius: var(--r-card);
