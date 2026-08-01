@@ -386,7 +386,11 @@ button:disabled { color: var(--line); cursor: default; }
 }
 .wt-div .ahead { color: var(--good); }
 .wt-div .behind { color: var(--warn); }
-.wt-ports { display: flex; gap: var(--sp-4); min-width: 0; overflow: hidden; }
+/* 마지막 칸이라 오른쪽 끝에 붙인다 — 카드 오른쪽 여백과 줄이 맞는다 */
+.wt-ports {
+  display: flex; justify-content: flex-end; gap: var(--sp-4);
+  min-width: 0; overflow: hidden;
+}
 .wt-port {
   padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
