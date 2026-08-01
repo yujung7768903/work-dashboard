@@ -34,6 +34,21 @@ class StaticPathTest(unittest.TestCase):
         self.assertIsNone(server.resolve_static("/js"))
 
 
+class PagePathTest(unittest.TestCase):
+    def test_tab_path_falls_back_to_index(self):
+        resolved = server.resolve_page("/board")
+        self.assertTrue(resolved.endswith(os.path.join("static", "index.html")))
+
+    def test_existing_asset_is_served_as_is(self):
+        self.assertTrue(server.resolve_page("/js/api.js").endswith("api.js"))
+
+    def test_missing_asset_stays_not_found(self):
+        self.assertIsNone(server.resolve_page("/js/nope.js"))
+
+    def test_traversal_with_suffix_stays_not_found(self):
+        self.assertIsNone(server.resolve_page("/../server.py"))
+
+
 class ErrorMappingTest(unittest.TestCase):
     def test_maps_domain_errors_to_status(self):
         self.assertEqual(server.status_for(NotFound("x")), NOT_FOUND)

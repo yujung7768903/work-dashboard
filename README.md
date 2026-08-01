@@ -59,7 +59,7 @@ work-dashboard/
 │   │   ├── app.css                  # 디자인 토큰 정의 + 공통·보드 스타일
 │   │   └── usage.css                # 사용량 화면 전용 (토큰은 app.css 것을 참조)
 │   └── js/
-│       ├── main.js                  # 부트스트랩·탭 전환
+│       ├── main.js                  # 부트스트랩·탭 전환 (/usage /board 등 경로 = 탭)
 │       ├── api.js                   # fetch 래퍼
 │       ├── board.js                 # 보드 렌더
 │       ├── categories.js            # 카테고리 관리

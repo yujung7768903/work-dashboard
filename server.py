@@ -59,6 +59,16 @@ def resolve_static(url_path):
     return candidate
 
 
+def resolve_page(url_path):
+    """탭 경로(/board 등)에는 파일이 없다. 확장자가 없으면 index 를 주고 SPA 가 라우팅한다"""
+    resolved = resolve_static(url_path)
+    if resolved and os.path.isfile(resolved):
+        return resolved
+    if posixpath.splitext(url_path)[1]:
+        return None
+    return os.path.join(STATIC_ROOT, INDEX_FILE)
+
+
 def route(con, method, path, query, body):
     """경로와 메서드를 도메인 호출로 연결. 도메인 로직은 갖지 않음"""
     segments = [part for part in path.strip("/").split("/") if part][1:]
@@ -247,8 +257,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _serve_static(self, url_path):
-        resolved = resolve_static(url_path)
-        if not resolved or not os.path.isfile(resolved):
+        resolved = resolve_page(url_path)
+        if not resolved:
             self.send_error(int(HTTPStatus.NOT_FOUND))
             return
         with open(resolved, "rb") as handle:
