@@ -178,14 +178,18 @@ def _add_precondition_columns(con):
 
 
 def _add_usage_account_column(con):
-    """한도 샘플에 계정 uuid 를 뒤늦게 붙임
+    """한도 샘플에 계정 uuid·플랜을 뒤늦게 붙임
 
     이 열을 받기 전에 쌓인 행은 NULL 로 남는다 — 어느 계정이었는지 되짚을 방법이 없다.
-    주차를 트랙으로 묶는 쪽에서 초기화 시각으로 이어 붙인다
+    주차를 트랙으로 묶는 쪽에서 초기화 시각으로 이어 붙인다.
+
+    플랜은 계정마다 다르고 설정 파일에는 지금 로그인한 계정 것만 있다. 계정을 번갈아
+    쓰는 동안 여기 쌓이면서 트랙별 플랜이 채워진다
     """
     columns = {row["name"] for row in con.execute("PRAGMA table_info(usage_samples)")}
-    if "account_uuid" not in columns:
-        con.execute("ALTER TABLE usage_samples ADD COLUMN account_uuid TEXT")
+    for column in ("account_uuid", "account_plan"):
+        if column not in columns:
+            con.execute(f"ALTER TABLE usage_samples ADD COLUMN {column} TEXT")
     con.commit()
 
 

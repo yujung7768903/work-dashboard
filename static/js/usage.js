@@ -43,6 +43,7 @@ const WEEK_PCT_SERIES = [{ key: "peak_pct", name: "최고 사용률", cls: "u-c-
 // 닫힌 주차를 최근부터 부르는 이름. 표에서 밀려나면 "N주 전"
 const WEEK_NAMES = [null, "지난주"];
 const WEEK_CURRENT = "이번 주";
+const PLAN_UNKNOWN = "플랜 미확인";
 const MODEL_CLASS = { Opus: "u-c-opus", Sonnet: "u-c-sonnet", Haiku: "u-c-haiku" };
 const FALLBACK_CLASS = "u-c-haiku";
 const BREAKDOWN_ROWS = [
@@ -387,7 +388,14 @@ function weekTrack(track) {
   const weeks = track.weeks;
   const labels = weekLabels(weeks);
   const title = `${trackLabel(weeks[weeks.length - 1].reset_at)} 초기화`;
-  wrap.appendChild(tag("h3", "u-week-title", title));
+  // 플랜은 지금 로그인한 계정 것만 설정 파일에 있다. 아직 그 계정으로 들어온 적이 없는
+  // 트랙은 알 수 없으므로, 빈 자리로 두지 않고 모른다는 사실을 적는다
+  const head = tag("div", "u-week-head");
+  head.append(
+    tag("h3", "u-week-title", title),
+    tag("span", track.plan ? "u-flag u-week-plan" : "u-flag", track.plan || PLAN_UNKNOWN)
+  );
+  wrap.appendChild(head);
   wrap.appendChild(
     stackedColumnChart({
       points: weeks.map((week, index) => ({

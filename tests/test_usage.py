@@ -248,10 +248,16 @@ def _stamp_at(epoch_seconds):
     return datetime.fromtimestamp(epoch_seconds, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _config_file(uuid="acc-1", five_reset=None, seven_reset=None):
+def _config_file(uuid="acc-1", five_reset=None, seven_reset=None, tier="default_claude_max_5x"):
     """~/.claude.json 흉내. 사용량 키 옆에 민감한 키를 같이 두어 그것까지 읽지 않는지 본다"""
     body = {
-        "oauthAccount": {"secret": "건드리면 안 되는 값"},
+        "primaryApiKey": "건드리면 안 되는 값",
+        "oauthAccount": {
+            "accountUuid": uuid,
+            "userRateLimitTier": tier,
+            "seatTier": "team_tier_1",  # 좌석 등급. 한도 티어가 아니라 이걸 읽으면 안 된다
+            "emailAddress": "건드리면 안 되는 값",
+        },
         "cachedUsageUtilization": {
             "fetchedAtMs": int(time.time() * MS),
             "accountUuid": uuid,
@@ -299,6 +305,59 @@ class AccountMatchTest(unittest.TestCase):
     def test_missing_config_is_not_fatal(self):
         limits = _limits_file()
         self.assertIsNone(self._stored_uuid(limits, "/nonexistent/.claude.json"))
+
+    def test_plan_rides_along_with_the_uuid(self):
+        limits = _limits_file()
+        ours = usage._read_json(limits)["seven_day"]["resets_at"]
+        con = temp_db()
+        usage.snapshot(
+            con,
+            limits_path=limits,
+            cost_path=_cost_file([]),
+            config_path=_config_file(seven_reset=ours),
+        )
+        row = con.execute("SELECT account_plan FROM usage_samples").fetchone()
+        self.assertEqual(row["account_plan"], "Max 5x")
+
+    def test_plan_is_dropped_when_the_usage_cache_names_another_account(self):
+        """캐시가 낡아 계정 블록과 어긋나면 남의 플랜을 붙이게 된다"""
+        limits = _limits_file()
+        ours = usage._read_json(limits)["seven_day"]["resets_at"]
+        path = _config_file(seven_reset=ours)
+        body = json.loads(open(path, encoding="utf-8").read())
+        body["cachedUsageUtilization"]["accountUuid"] = "acc-2"  # 계정 블록은 그대로 acc-1
+        _write(path, json.dumps(body))
+        con = temp_db()
+        usage.snapshot(con, limits_path=limits, cost_path=_cost_file([]), config_path=path)
+        row = con.execute("SELECT account_uuid, account_plan FROM usage_samples").fetchone()
+        self.assertEqual(row["account_uuid"], "acc-2")  # 창은 맞으니 계정은 기록하고
+        self.assertIsNone(row["account_plan"])  # 플랜은 어느 계정 것인지 못 가려 비운다
+
+    def test_track_carries_the_plan(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+        con.execute("UPDATE usage_samples SET account_uuid='a', account_plan='Max 5x'")
+        con.commit()
+        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        self.assertEqual(result["tracks"][0]["plan"], "Max 5x")
+
+    def test_track_without_a_known_plan_reports_none(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        self.assertIsNone(result["tracks"][0]["plan"])
+
+
+class PlanLabelTest(unittest.TestCase):
+    def test_tier_becomes_a_readable_label(self):
+        self.assertEqual(usage._tier_label("default_claude_max_5x"), "Max 5x")
+        self.assertEqual(usage._tier_label("default_claude_pro"), "Pro")
+        self.assertIsNone(usage._tier_label(""))
+        self.assertIsNone(usage._tier_label(None))
 
     def test_uuid_beats_the_reset_remainder_when_they_disagree(self):
         """두 계정의 초기화가 같은 요일·시각에 걸리면 나머지는 둘을 못 가른다"""

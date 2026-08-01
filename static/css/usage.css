@@ -60,10 +60,13 @@
    계정이 둘이면 트랙이 둘이라 같은 카드 안에 차트가 겹쳐 쌓인다. 소제목이 어느 창의
    막대인지 가르는 유일한 표시라, 차트와 붙여 두고 트랙 사이만 벌린다 */
 .u-week-track + .u-week-track { margin-top: var(--sp-16); }
-.u-week-title {
-  margin: 0 0 var(--sp-4); font-size: var(--fs-micro);
-  font-weight: 600; color: var(--muted);
+/* 창 이름은 왼쪽, 플랜 배지는 오른쪽 끝 — 트랙이 둘이면 어느 계정인지 여기서 갈린다 */
+.u-week-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--sp-8); margin-bottom: var(--sp-4);
 }
+.u-week-title { margin: 0; font-size: var(--fs-micro); font-weight: 600; color: var(--muted); }
+.u-week-plan { color: var(--accent); }
 
 /* ── 카드 ── */
 .u-card {

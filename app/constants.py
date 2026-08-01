@@ -62,6 +62,10 @@ RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.jso
 # 전부가 들어 있으므로 사용량 키 하나만 꺼내고 다른 내용은 읽지도 반환하지도 않는다
 CLAUDE_CONFIG_PATH = os.path.expanduser("~/.claude.json")
 USAGE_CACHE_KEY = "cachedUsageUtilization"
+# 플랜 이름도 이 파일의 계정 블록에서 온다. 예전에는 .credentials.json 에 있었는데
+# 로그인 방식에 따라 그 키가 사라져(키체인으로 옮겨감) 양쪽을 다 본다
+CONFIG_ACCOUNT_KEY = "oauthAccount"
+CONFIG_TIER_KEY = "userRateLimitTier"  # 한도를 정하는 티어. seatTier 는 좌석 등급이라 다름
 # 두 소스의 초기화 시각은 1초 어긋난다 — 한쪽은 :59.66 을 그대로, 다른 쪽은 정시로
 # 반올림한 값을 준다. 같은 창인지 보려면 초 단위 오차를 허용해야 한다
 RESET_MATCH_SECONDS = 5

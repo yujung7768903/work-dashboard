@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 from app.constants import (
     CLAUDE_CONFIG_PATH,
+    CONFIG_ACCOUNT_KEY,
+    CONFIG_TIER_KEY,
     COST_FIELD,
     COST_LOG_PATH,
     CREDENTIALS_PATH,
@@ -116,19 +118,24 @@ def _pct_tracks(con, current, limit):
         "       COUNT(*) AS samples,"
         "       MIN(source_ts) AS first_ts,"
         "       MAX(source_ts) AS last_ts,"
-        # 한 주차에 uuid 가 붙은 행과 안 붙은 행이 섞이면 붙은 쪽을 그 주차의 계정으로 본다
-        "       MAX(account_uuid) AS account_uuid"
+        # 한 주차에 이름표가 붙은 행과 안 붙은 행이 섞이면 붙은 쪽을 그 주차의 계정으로 본다
+        "       MAX(account_uuid) AS account_uuid,"
+        "       MAX(account_plan) AS account_plan"
         "  FROM usage_samples"
         " WHERE seven_day_resets_at IS NOT NULL AND seven_day_pct IS NOT NULL"
         " GROUP BY seven_day_resets_at ORDER BY seven_day_resets_at",
     ).fetchall()
     key_of = _track_key(rows)
-    tracks = {}
+    tracks, plans = {}, {}
     for row in rows:
-        tracks.setdefault(key_of(row), []).append(_week_row(row, current))
+        track = key_of(row)
+        tracks.setdefault(track, []).append(_week_row(row, current))
+        # reset_at 오름차순이라 늦은 주차의 플랜이 이긴다 — 플랜은 바뀔 수 있다
+        if row["account_plan"]:
+            plans[track] = row["account_plan"]
     return sorted(
         (
-            {"track": str(track), "weeks": weeks[-limit:]}
+            {"track": str(track), "plan": plans.get(track), "weeks": weeks[-limit:]}
             for track, weeks in tracks.items()
             if sum(week["samples"] for week in weeks) >= USAGE_TRACK_MIN_SAMPLES
         ),
@@ -342,14 +349,15 @@ def _record_sample(con, limits, config_path=CLAUDE_CONFIG_PATH):
         con.execute(
             "INSERT OR IGNORE INTO usage_samples("
             " source_ts, five_hour_pct, five_hour_resets_at,"
-            " seven_day_pct, seven_day_resets_at, account_uuid, created_at) VALUES(?,?,?,?,?,?,?)",
+            " seven_day_pct, seven_day_resets_at, account_uuid, account_plan, created_at)"
+            " VALUES(?,?,?,?,?,?,?,?)",
             (
                 stamp,
                 five.get("used_percentage"),
                 five.get("resets_at"),
                 seven.get("used_percentage"),
                 seven.get("resets_at"),
-                _account_uuid(limits, config_path),
+                *_account_of(limits, config_path),
                 now(),
             ),
         )
@@ -359,40 +367,70 @@ def _record_sample(con, limits, config_path=CLAUDE_CONFIG_PATH):
         )
 
 
-def _account_uuid(limits, config_path=CLAUDE_CONFIG_PATH):
-    """사이드카가 지금 담고 있는 창의 계정 uuid. 가릴 수 없으면 None
+def _account_of(limits, config_path=CLAUDE_CONFIG_PATH):
+    """사이드카가 지금 담고 있는 창의 (계정 uuid, 플랜). 가릴 수 없으면 (None, None)
 
     사이드카는 계정을 가리지 않고 마지막에 그려진 statusline 이 덮는다. 그래서 지금
-    로그인한 계정의 uuid 를 무조건 붙이면 남의 계정 값에 엉뚱한 이름표를 다는 셈이 된다.
+    로그인한 계정의 이름표를 무조건 붙이면 남의 계정 값에 엉뚱한 표를 다는 셈이 된다.
     두 소스의 초기화 시각이 같은 창을 가리킬 때만 붙인다.
 
-    이 파일에는 계정 설정 전부가 들어 있다. 사용량 키 하나만 꺼내고 나머지는 손대지 않는다.
+    이 파일에는 계정 설정 전부가 들어 있다. 필요한 키만 꺼내고 나머지는 손대지 않는다.
     """
-    cache = (_read_json(config_path) or {}).get(USAGE_CACHE_KEY)
+    config = _read_json(config_path) or {}
+    cache = config.get(USAGE_CACHE_KEY)
     if not isinstance(cache, dict):
-        return None
+        return None, None
     uuid = cache.get("accountUuid")
     windows = cache.get("utilization")
     if not isinstance(uuid, str) or not uuid or not isinstance(windows, dict):
-        return None
+        return None, None
+    if not _same_window(limits, windows):
+        return None, None
+    return uuid, _plan_of(config, uuid)
+
+
+def _same_window(limits, windows):
+    """사이드카와 설정 캐시가 같은 한도 창을 가리키는지"""
     for key, _ in USAGE_WINDOWS:
         cached = _parse_stamp((windows.get(key) or {}).get("resets_at"))
         ours = (limits.get(key) or {}).get("resets_at")
         if cached is None or not isinstance(ours, (int, float)):
             continue
         if abs(int(ours) - int(cached.timestamp())) <= RESET_MATCH_SECONDS:
-            return uuid
-    return None
+            return True
+    return False
+
+
+def _plan_of(config, uuid):
+    """계정 블록의 플랜. 사용량 캐시와 계정이 어긋나면(캐시가 낡음) 붙이지 않는다"""
+    account = config.get(CONFIG_ACCOUNT_KEY)
+    if not isinstance(account, dict) or account.get("accountUuid") != uuid:
+        return None
+    return _tier_label(account.get(CONFIG_TIER_KEY))
 
 
 def _plan_label():
     """플랜 이름만 뽑는다
 
-    이 파일에는 액세스 토큰도 같이 들어 있다. 그래서 이 한 키만 꺼내고, 파일의 다른
-    내용은 읽지도 반환하지도 않는다.
+    ~/.claude.json 의 계정 블록을 먼저 본다. 예전에는 .credentials.json 에 있었는데
+    로그인 방식에 따라 그 키가 사라지므로(키체인으로 옮겨감) 양쪽을 다 본다.
+
+    두 파일 모두 액세스 토큰·이메일이 같이 들어 있다. 그래서 티어 키 하나만 꺼내고,
+    파일의 다른 내용은 읽지도 반환하지도 않는다.
     """
-    oauth = (_read_json(CREDENTIALS_PATH) or {}).get(OAUTH_KEY)
-    tier = oauth.get(TIER_KEY) if isinstance(oauth, dict) else None
+    for path, holder, key in (
+        (CLAUDE_CONFIG_PATH, CONFIG_ACCOUNT_KEY, CONFIG_TIER_KEY),
+        (CREDENTIALS_PATH, OAUTH_KEY, TIER_KEY),
+    ):
+        block = (_read_json(path) or {}).get(holder)
+        label = _tier_label(block.get(key) if isinstance(block, dict) else None)
+        if label:
+            return label
+    return None
+
+
+def _tier_label(tier):
+    """default_claude_max_5x → Max 5x"""
     if not isinstance(tier, str) or not tier:
         return None
     words = tier.removeprefix(CREDENTIALS_TIER_PREFIX).split("_")
