@@ -77,6 +77,18 @@ SUMMARY_MAX_CHARS = 40  # 이보다 길면 요약이 아니라 설명이므로 �
 # 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라 파일에서 주워온다
 # (훅 페이로드에는 rate_limits 가 없다). token-optimizer statusline 이 떨어뜨리는 사이드카.
 RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.json")
+# 같은 값이 Claude Code 가 캐시하는 이 파일에도 있고, 그쪽에는 계정 uuid 가 붙어 온다.
+# 계정을 초기화 시각으로 추론하는 대신 못박기 위해 같이 읽는다. 이 파일에는 계정 설정
+# 전부가 들어 있으므로 사용량 키 하나만 꺼내고 다른 내용은 읽지도 반환하지도 않는다
+CLAUDE_CONFIG_PATH = os.path.expanduser("~/.claude.json")
+USAGE_CACHE_KEY = "cachedUsageUtilization"
+# 플랜 이름도 이 파일의 계정 블록에서 온다. 예전에는 .credentials.json 에 있었는데
+# 로그인 방식에 따라 그 키가 사라져(키체인으로 옮겨감) 양쪽을 다 본다
+CONFIG_ACCOUNT_KEY = "oauthAccount"
+CONFIG_TIER_KEY = "userRateLimitTier"  # 한도를 정하는 티어. seatTier 는 좌석 등급이라 다름
+# 두 소스의 초기화 시각은 1초 어긋난다 — 한쪽은 :59.66 을 그대로, 다른 쪽은 정시로
+# 반올림한 값을 준다. 같은 창인지 보려면 초 단위 오차를 허용해야 한다
+RESET_MATCH_SECONDS = 5
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 COST_LOG_PATH = os.path.expanduser("~/.claude/metrics/costs.jsonl")
 CREDENTIALS_TIER_PREFIX = "default_claude_"
@@ -84,10 +96,19 @@ CREDENTIALS_TIER_PREFIX = "default_claude_"
 # 15분을 넘으면 "지금 값"으로 읽히지 않게 낡음 표시만 한다
 USAGE_STALE_SECONDS = 900
 USAGE_SAMPLE_MIN_GAP_MS = 60_000  # % 추이 해상도 1분. 더 촘촘한 statusline 갱신은 버린다
-USAGE_SAMPLE_RETENTION_DAYS = 30
+# 주차 비교가 거슬러 볼 수 있는 과거는 이 보존 기간이 정한다 — 90일이면 12주차까지.
+# 1분 해상도라 하루 최대 1440줄, 90일에 13만 줄로 sqlite 에 부담이 되는 크기가 아니다
+USAGE_SAMPLE_RETENTION_DAYS = 90
 USAGE_SAMPLE_WINDOW_HOURS = 24  # % 추이로 내려보내는 구간
 USAGE_SAMPLE_BUCKET_MS = 300_000  # 5분 버킷. 폴링마다 원본 수천 줄을 실어보내지 않기 위함
 USAGE_TREND_DAYS = 14
+# 주간 창 하나의 길이. 같은 계정의 다음 창은 정확히 이만큼 뒤에 열리므로, 이 값으로
+# 나눈 나머지가 계정을 가르는 열쇠가 된다 (계정이 둘이면 주간 창도 둘이 동시에 돈다)
+WEEK_SECONDS = 604_800
+USAGE_WEEK_LIMIT = 12  # 주차 비교에 세우는 막대 수. 보존 기간(90일)이 실질 상한
+# 이보다 적게 잡힌 트랙은 계정으로 보지 않는다. 사이드카에는 정시가 아닌 초기화 시각이
+# 한두 줄 섞여 들어오는데, 그걸 계정으로 세우면 주차 비교에 한 칸짜리 유령 트랙이 생긴다
+USAGE_TRACK_MIN_SAMPLES = 3
 USAGE_WARN_PCT = 70
 USAGE_CRITICAL_PCT = 90
 # /usage 가 보여주는 창 중 사이드카에 남는 두 개. 나머지는 MISSING_WINDOW_LABELS 로 알린다
