@@ -87,6 +87,7 @@ class RouteTest(unittest.TestCase):
         from app.repositories import sessions as session_repo
 
         session_repo.register(self.con, "route-sess", cwd="/tmp")
+        session_repo.set_last_prompt(self.con, "route-sess", "무엇을 하나")
         payload = server.route(self.con, "GET", "/api/sessions", {}, {})
         self.assertEqual(payload["unclassified_count"], 1)
         self.assertEqual(len(payload["sessions"]), 1)
