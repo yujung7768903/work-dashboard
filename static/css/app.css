@@ -444,11 +444,14 @@ button:disabled { color: var(--line); cursor: default; }
   margin: 0 0 var(--sp-12); padding-right: var(--sp-32);
   border-bottom: 1px solid var(--line);
 }
+/* 밑줄 탭이라 전역 버튼의 radius 를 지운다 — 남겨 두면 밑줄이 U 자로 말린다 */
 .dlg-tabs button {
-  background: none; border-bottom: 2px solid transparent;
+  background: none; border-radius: 0;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
   padding: var(--sp-8) var(--sp-12);
   color: var(--muted); font-size: var(--fs-sm); font-weight: 600;
 }
+.dlg-tabs button:hover:not(:disabled) { background: none; color: var(--fg); }
 .dlg-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
 /* 탭 바로 아래 첫 블록은 이미 간격이 있어 위 여백을 지운다 */
 .dlg-pane > .dlg-section:first-child { margin-top: 0; }
