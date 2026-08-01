@@ -277,8 +277,8 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라운딩은 summary 가 직접 가짐. 접혀 있으면 아래 모서리까지 둥글게 */
 .group > summary {
   padding: var(--sp-12) var(--pad-card); cursor: grab;
-  /* 이름·진행 수·추가 버튼의 글자 크기가 달라 center 로 세로 가운데를 맞춘다 */
-  display: flex; justify-content: space-between; align-items: center;
+  /* stretch(기본값) 유지: 세 요소가 줄 높이를 그대로 채우고 글자는 각자 안에서 가운데 */
+  display: flex; justify-content: space-between;
   gap: var(--sp-8); background: var(--cat-bg); font-weight: 700;
   border-radius: var(--r-card);
 }
@@ -286,6 +286,8 @@ button:disabled { color: var(--line); cursor: default; }
 .group > summary::marker, .group > summary::-webkit-details-marker { color: var(--muted); }
 .group.unassigned > summary { color: var(--muted); }
 .group-meta { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
+/* 글자 크기가 셋 다 달라 박스만 늘려서는 안 맞는다. 각자 안에서 세로 가운데로 */
+.group-name, .group-meta, .group-add { display: flex; align-items: center; }
 /* 이름이 남는 폭을 먹어 진행 수·추가 버튼이 오른쪽에 붙는다 */
 .group-name { flex: 1; }
 .group-add {
