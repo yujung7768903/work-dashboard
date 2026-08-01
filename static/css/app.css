@@ -320,6 +320,18 @@ button:disabled { color: var(--line); cursor: default; }
 .subtask-toggle svg { transition: transform 0.12s; }
 .subtask-toggle.open svg { transform: rotate(90deg); }
 .subtask-toggle.empty { visibility: hidden; }
+/* 제목이 요약 안 된 자동 생성 할일 — 지시 첫 문장이 그대로 제목이라 손봐야 한다.
+   면을 채우지 않고 테두리만 — 상태 배지보다 약하게 보여야 눈이 상태를 먼저 읽는다 */
+.raw-title {
+  margin-left: var(--sp-8);
+  padding: var(--sp-2) var(--sp-8);
+  border: 1px solid var(--warn);
+  border-radius: var(--r-pill);
+  color: var(--warn);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .drop-target { box-shadow: 0 0 0 2px var(--accent); }
 
 .field { margin-bottom: var(--gap); }

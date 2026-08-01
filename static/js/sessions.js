@@ -164,9 +164,18 @@ function overviewPane(todos) {
   return pane;
 }
 
+// 제목이 요약 안 된 자동 생성 할일 표시. 보드 줄과 팝업 개요가 같은 표시를 쓴다
+export function rawTitleMark() {
+  const mark = element("span", "raw-title", "요약 안 됨");
+  mark.title = "제목이 지시 첫 문장 그대로다. 요약이 붙으면 자동으로 바뀌고, 안 붙으면 직접 고치면 된다";
+  return mark;
+}
+
 function todoBlock(todo) {
   const block = element("div", "dlg-section");
-  block.append(element("p", "dlg-title", todo.title), timeList(todo));
+  const title = element("p", "dlg-title", todo.title);
+  if (todo.needs_title) title.append(rawTitleMark());
+  block.append(title, timeList(todo));
   if (todo.subtasks?.length) {
     block.append(element("p", "label", "하위 할일"), subtaskList(todo.subtasks));
   }
@@ -271,8 +280,8 @@ function classifyRow(session, workspaces, categories, dialog) {
       return;
     }
     try {
-      // 워크스페이스로 분류하면 서버가 제목 요약(claude CLI)을 기다린다 — 10초 가까이 걸린다
-      status.textContent = "분류하고 할일 만드는 중…";
+      // 제목 요약은 서버가 뒷일로 돌리므로 이 응답은 바로 온다 (제목은 나중에 바뀐다)
+      status.textContent = "분류 중…";
       save.disabled = true;
       const result = await api.classifySession(session.id, fields);
       save.disabled = false;

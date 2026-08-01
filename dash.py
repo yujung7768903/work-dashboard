@@ -395,9 +395,17 @@ def _cmd_finish(con, args):
     for pid, command in result["killed"]:
         print(f"종료한 프로세스: {pid} {command}")
     if not result["killed"]:
-        print("종료한 프로세스: (없음)")
-    if release.WORKTREE_MARK in result["worktree"]:
+        print(f"종료한 프로세스: (없음) — {_why_nothing_killed(result)}")
+    if result["worktree"]:
         print(f"남은 정리: ExitWorktree 로 워크트리 제거 — {result['worktree']}")
+
+
+def _why_nothing_killed(result):
+    """(없음) 만 찍고 넘기면 살아남은 서버를 아무도 모른다 — 어디를 봤는지 밝힌다"""
+    if result["worktree"]:
+        return f"{result['worktree']} 를 cwd 로 쓰는 서버가 없음"
+    looked = ", ".join(result["looked"]) or "(없음)"
+    return f"워크트리를 찾지 못함 — 본 경로: {looked} (--worktree 로 직접 지정 가능)"
 
 
 def _cmd_show_note(con, args):
