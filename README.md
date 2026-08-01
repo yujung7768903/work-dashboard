@@ -41,6 +41,7 @@ work-dashboard/
 │       ├── board.py                 # 보드 트리 조립
 │       ├── planning.py              # 다음에 할 일 선정
 │       ├── session_link.py          # 세션 주입 블록 조립
+│       ├── release.py               # 병합 후 리소스 해제 (할일 done·서버 종료)
 │       ├── transcript.py            # Claude Code jsonl 읽기 (앞·꼬리 조각)
 │       ├── history.py               # 초기 설정용 히스토리 스캔·요약
 │       └── usage.py                 # 한도 사용률·토큰 추이
@@ -81,19 +82,20 @@ work-dashboard/
 | 시점 | 이벤트 | 하는 일 | 세션에 주입되는 것 |
 | --- | --- | --- | --- |
 | 세션이 열릴 때 | `SessionStart` | stdin JSON 의 `session_id`·`cwd` 로 세션 등록, `cwd` 에서 `git branch --show-current` 조회, 브랜치의 Jira ID 로 워크스페이스 자동 매칭 | 워크스페이스 블록 또는 분류 지시 블록 |
-| 지시를 넣을 때마다 | `UserPromptSubmit` | 상태를 `working` 으로, 마지막 지시를 120자로 잘라 저장 | 분류 전이면 분류 지시 재주입, 분류됐으면 무출력 |
+| 지시를 넣을 때마다 | `UserPromptSubmit` | 상태를 `working` 으로, 마지막 지시를 120자로 잘라 저장 | 분류 전이면 분류 지시 재주입, 잡은 할일을 모두 끝냈으면 새 할일 지침, 그 외 무출력 |
 | 응답이 끝날 때 | `Stop` | 상태를 `idle` 로 | 없음 |
 | 세션이 닫힐 때 | `SessionEnd` | 상태를 `ended` 로, 종료 시각 기록 | 없음 |
 
-주입 블록은 세 갈래다.
+주입 블록은 네 갈래다.
 
 | 상황 | 블록 | 내용 |
 | --- | --- | --- |
 | 브랜치의 Jira ID = 워크스페이스의 `jira_id` | `<work-dashboard state="classified">` | 배경·목적·목표·고려사항 + 할일 목록(컨텍스트 노트 유무 표시) + 범위 준수 지침 |
 | 워크스페이스가 0개이고 사용자가 거절한 적 없음 | `<work-dashboard state="onboarding">` | 초기 설정 절차 7단계 (아래 참고) |
 | 그 외 | `<work-dashboard state="unclassified">` | 현재 위치·브랜치, 카테고리 6개, 진행 중 워크스페이스 목록, 분류 절차 지시 |
+| 분류됐고 잡은 할일이 **전부 `done`** (프롬프트 시점) | `<work-dashboard state="released">` | 새 요청은 끝난 할일에 얹지 말고 새 할일로 받으라는 지시 |
 
-세 블록 모두 꼬리에 공통 규칙이 붙는다 — 다른 세션이 같은 코드·문서를 고칠 수 있으니 착수 전에 최신 상태를 다시 읽으라는 것.
+모든 블록 꼬리에 공통 규칙이 붙는다 — 다른 세션이 같은 코드·문서를 고칠 수 있으니 착수 전에 최신 상태를 다시 읽으라는 것. `classified`·`unclassified` 에는 아래 해제 절차도 함께 붙는다.
 
 분류는 훅이 못 한다(셸은 질문 내용을 이해할 수 없다). 훅이 넘긴 지시를 받아 Claude 가 아래 명령으로 직접 등록하고, 분류 전이면 매 프롬프트마다 지시가 다시 들어간다.
 
@@ -102,6 +104,26 @@ python3 dash.py sessions                                  # 돌고 있는 세션
 python3 dash.py classify <session> --category 개발 --workspace 2
 python3 dash.py link-todo <session> 3                     # 세션이 잡은 할일 연결
 ```
+
+### 병합 후 리소스 해제
+
+master 에 병합하면 작업은 끝났는데 리소스는 세 개가 남는다 — **연결된 할일**, **그 워크트리를 띄워둔 서버**, **워크트리 디렉토리**. 남겨두면 보드에는 끝난 일이 `doing` 으로 계속 뜨고, 죽은 브랜치의 서버가 포트를 물고 있는다.
+
+```bash
+python3 dash.py finish <session>                 # 연결된 할일 done + 그 워크트리의 서버 종료
+python3 dash.py finish <session> --worktree PATH # 세션 등록 위치와 워크트리가 다를 때
+```
+
+워크트리 제거는 이 명령이 하지 않는다 — Claude 의 cwd 가 그 안이라 밖에서 지우면 셸이 깨진다. `ExitWorktree` 툴이 나가면서 지우는 것이 맞는 순서다(**서버를 먼저 죽이고** 나간다).
+
+종료 대상은 두 겹으로 좁힌다. 잘못 죽이면 사용자가 보던 화면이 꺼지기 때문이다.
+
+- 경로에 `/.claude/worktrees/` 가 없으면 아예 훑지 않는다 → 메인 체크아웃의 대시보드 서버는 안전
+- 명령줄 **앞 두 토큰**만 보고 서버인지 판단한다 → `zsh -c '... server.py ...'` 같은 자기 셸을 죽이지 않는다
+
+프로세스 탐지(`app/services/release.py`)는 `/proc` 이 있으면 그걸로, 없으면(macOS) `lsof -a -d cwd -t` 로 한다. `worktree_serve.py` 훅의 "서버가 떠 있는가" 판정도 같은 함수를 쓴다 — 훅이 떠 있다고 본 프로세스를 `finish` 가 종료하므로 둘의 판정이 갈리면 안 된다.
+
+해제 뒤 같은 세션에서 사용자가 새 요청을 하면 `released` 블록이 주입돼 **새 할일을 만들어** 이어간다. 별도 플래그는 두지 않는다 — 새 할일을 `link-todo` 하는 순간 "전부 done" 이 깨져 블록이 저절로 조용해진다.
 
 ### 초기 설정 (⑤)
 

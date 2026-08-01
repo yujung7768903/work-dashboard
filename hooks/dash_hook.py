@@ -43,12 +43,17 @@ def _on_session_start(con, session_id, payload):
 
 
 def _on_prompt_submit(con, session_id, payload):
-    """분류 전이면 지시를 다시 주입. 분류되면 조용해짐"""
+    """분류 전이면 지시를 다시 주입. 분류되면 조용해짐.
+
+    예외로 할일을 끝낸(finish 한) 세션에는 새 요청을 새 할일로 받으라고 다시 알린다
+    """
     session_repo.set_state(con, session_id, STATE_WORKING)
     session_repo.set_last_prompt(con, session_id, payload.get("prompt") or "")
     session = session_repo.find(con, session_id)
-    if not session or session["category_id"]:
+    if not session:
         return ""
+    if session["category_id"]:
+        return session_link.released_context(con, session_id)
     return session_link.render_context(con, session_id)
 
 

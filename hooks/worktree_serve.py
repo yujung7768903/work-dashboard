@@ -11,13 +11,15 @@ import re
 import socket
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.services import release  # noqa: E402
+
 EXIT_OK = 0
 EXIT_BLOCK = 2
-WORKTREE_MARK = "/.claude/worktrees/"
+WORKTREE_MARK = release.WORKTREE_MARK
 # 이 중 하나라도 워크트리 루트에 있으면 띄울 수 있는 웹 프로젝트로 본다
 SERVER_ENTRIES = ("server.py", "manage.py", "package.json")
-# 프로세스 cwd 가 워크트리라도 서버 형태가 아니면(셸 등) 떠 있다고 보지 않음
-SERVER_HINTS = ("server.py", "manage.py", "npm", "yarn", "pnpm", "vite", "next", "node")
 PORT_RANGE = range(9080, 9140)
 PATH_PATTERN = re.compile(r'"(?:file_path|notebook_path)"\s*:\s*"([^"]+)"')
 
@@ -85,20 +87,12 @@ def _is_web_project(root):
 
 
 def _is_served(root):
-    """cwd 가 그 워크트리이고 커맨드가 서버 형태인 프로세스가 있는지"""
-    for entry in os.listdir("/proc"):
-        if not entry.isdigit():
-            continue
-        try:
-            if os.readlink(f"/proc/{entry}/cwd") != root:
-                continue
-            with open(f"/proc/{entry}/cmdline", "rb") as handle:
-                cmdline = handle.read().decode("utf-8", "replace")
-        except OSError:  # 이미 죽었거나 권한 밖
-            continue
-        if any(hint in cmdline for hint in SERVER_HINTS):
-            return True
-    return False
+    """cwd 가 그 워크트리이고 커맨드가 서버 형태인 프로세스가 있는지.
+
+    탐지는 release 와 같은 것을 쓴다 — 여기서 '떠 있다' 고 본 프로세스를
+    finish 가 종료하므로 둘의 판정이 갈리면 안 된다
+    """
+    return bool(release.serving_processes(root))
 
 
 def free_port():
