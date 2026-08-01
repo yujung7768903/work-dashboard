@@ -141,11 +141,14 @@ function groupElement(group, alwaysShowDone = false) {
     .filter(Boolean)
     .join("  ");
   const name = document.createElement("span");
+  name.className = "group-name";
   name.textContent = group.name;
   const metaNode = document.createElement("span");
   metaNode.className = "group-meta";
   metaNode.textContent = meta;
   summary.append(name, metaNode);
+  // 미분류는 위 빠른 추가 폼이 담당하므로 워크스페이스 카드에만 붙인다
+  if (group.kind === GROUP_BY_WORKSPACE) summary.appendChild(groupAddButton(group));
   details.appendChild(summary);
 
   group.todos
@@ -155,6 +158,26 @@ function groupElement(group, alwaysShowDone = false) {
       if (expandedTodoIds.has(todo.id)) details.appendChild(subtaskList(todo));
     });
   return details;
+}
+
+// 카드에서 그 워크스페이스로 바로 할일 추가. 카테고리는 서버가 워크스페이스에서 가져온다
+function groupAddButton(group) {
+  const button = document.createElement("button");
+  button.className = "group-add";
+  button.innerHTML = PLUS_SVG;
+  button.title = `${group.name} 에 할일 추가`;
+  button.addEventListener("click", (event) => {
+    // summary 클릭은 카드를 접으므로 기본 동작까지 막는다
+    event.preventDefault();
+    event.stopPropagation();
+    const value = prompt(`"${group.name}" 에 추가할 할일 제목`);
+    if (!value) return;
+    run(async () => {
+      await api.createTodo({ title: value, workspace_id: group.id });
+      await renderBoard();
+    });
+  });
+  return button;
 }
 
 function todoElement(todo) {
@@ -190,6 +213,13 @@ function todoElement(todo) {
 const CHEVRON_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
   <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor"
         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+// 사이드바 아이콘과 같은 격자·스트로크. 글자 + 는 폰트마다 글리프가 위아래로 치우쳐
+// 세로 가운데를 맞춰도 어긋나 보이므로 도형으로 그린다
+const PLUS_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+  <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round"/>
 </svg>`;
 
 // 상태 배지와 제목 사이의 펼침 아이콘. 하위가 없는 줄도 빈 자리를 남겨 제목 세로줄을 맞춘다
