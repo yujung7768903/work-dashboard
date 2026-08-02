@@ -40,6 +40,7 @@ from app.constants import (
     WEEK_SECONDS,
 )
 from app.db import now, transaction
+from app.services.attribution import attribution
 
 MS_PER_SECOND = 1000
 MS_PER_HOUR = 3_600_000
@@ -76,11 +77,12 @@ def snapshot(
         "missing_windows": list(MISSING_WINDOW_LABELS),
         "pct_samples": pct_samples(con),
         "tokens": daily_tokens(cost_path=cost_path),
-        "weekly": weekly_windows(con, cost_path=cost_path),
+        "weekly": weekly_windows(con),
+        "attribution": attribution(),
     }
 
 
-def weekly_windows(con, cost_path=COST_LOG_PATH, limit=USAGE_WEEK_LIMIT):
+def weekly_windows(con, limit=USAGE_WEEK_LIMIT):
     """닫힌 주간 창을 주차별로 모아 비교 가능한 형태로 돌려준다
 
     주간 %는 7일 내내 쌓이기만 하다 초기화되므로 시각 축에 올려두면 거의 평평한 선이
@@ -91,22 +93,14 @@ def weekly_windows(con, cost_path=COST_LOG_PATH, limit=USAGE_WEEK_LIMIT):
     계정의 다음 창은 정확히 7일 뒤에 열리므로 resets_at 을 7일로 나눈 나머지가 계정별
     트랙이 된다.
 
-    토큰은 트랙에 붙이지 않는다 — cost 로그에 계정 정보가 없어 계정별로 나눌 수 없고,
-    같은 합계를 트랙마다 되풀이하면 계정별 사용량으로 오해된다. 대신 주 트랙의 경계로만
-    잘라 token_weeks 로 한 번 내려보낸다. 그쪽은 %가 없는 지난 주차도 채우므로,
-    한도 %를 모으기 시작하기 전의 과거도 토큰으로는 볼 수 있다.
+    토큰은 붙이지 않는다 — cost 로그에 계정 정보가 없어 계정별로 나눌 수 없고, 같은
+    합계를 트랙마다 되풀이하면 계정별 사용량으로 오해된다.
     """
     current = _epoch_ms() // MS_PER_SECOND
     tracks = _pct_tracks(con, current, limit)
-    events = _spend_events(cost_path)
     return {
         "tracks": tracks,
         "multi_account": len(tracks) > 1,
-        # 주 경계는 %에서만 알 수 있다. 트랙이 없으면 어디서 주가 끊기는지도 모른다
-        "token_weeks": _token_weeks(tracks, events, current, limit),
-        "token_shared": len(tracks) > 1,
-        "token_source": cost_path,
-        "token_available": bool(events),
     }
 
 
@@ -179,49 +173,6 @@ def _week_row(row, current):
         "last_ts": row["last_ts"],
         "in_progress": reset_at > current,
     }
-
-
-def _token_weeks(tracks, events, current, limit):
-    """주 트랙의 초기화 시각을 기준으로 7일씩 되짚어 자른 토큰·비용
-
-    로그가 시작된 주차까지 채운다. %는 소급되지 않지만 토큰은 로그에 남아 있어,
-    한도 %를 모으기 전의 주차도 여기서는 값이 나온다.
-    """
-    if not tracks or not events:
-        return []
-    oldest = min(event[0] for event in events)
-    weeks = []
-    reset_at = tracks[0]["weeks"][-1]["reset_at"]
-    while len(weeks) < limit:
-        starts_at = reset_at - WEEK_SECONDS
-        spent = [event for event in events if starts_at <= event[0] < reset_at]
-        # 값이 없는 주차도 자리를 남긴다 — 일별 토큰과 같은 규칙
-        weeks.append(
-            {
-                "reset_at": reset_at,
-                "starts_at": starts_at,
-                "tokens": sum(event[1] for event in spent),
-                "cost_usd": round(sum(event[2] for event in spent), COST_DECIMALS),
-                "in_progress": reset_at > current,
-            }
-        )
-        if starts_at <= oldest:
-            break
-        reset_at = starts_at
-    return list(reversed(weeks))
-
-
-def _spend_events(cost_path):
-    """(초 단위 epoch, 토큰 합, 비용). 주 경계로 자르는 데 필요한 최소 형태만 남긴다"""
-    events = []
-    for row, delta in _deltas(_read_cost_log(cost_path)):
-        stamp = _parse_stamp(row.get("timestamp"))
-        if stamp is None:
-            continue
-        events.append(
-            (int(stamp.timestamp()), sum(delta[field] for field in TOKEN_FIELDS), delta[COST_FIELD])
-        )
-    return events
 
 
 def pct_samples(con, hours=USAGE_SAMPLE_WINDOW_HOURS):

@@ -47,7 +47,9 @@
 /* 세 행이 같은 열 격자를 공유해야 카드 경계가 맞는다. 행마다 별도 그리드를 쓰면
    1행 3등분과 2·3행 2:1 분할의 경계가 gap 만큼 어긋난다.
    래퍼는 display:contents 로 자식을 부모 격자에 그대로 흘려보낸다 */
-.u-main { display: grid; grid-template-columns: 1fr; gap: var(--gap); }
+/* 카드는 늘리지 않고 내용만큼만 세운다. 늘리면 짝 중 짧은 쪽(차트는 높이가 고정이라
+   늘어난 만큼 그대로 빈다)에 카드 절반이 빈 면으로 남는다 — 여백은 배경으로 두는 편이 낫다 */
+.u-main { display: grid; grid-template-columns: 1fr; gap: var(--gap); align-items: start; }
 .u-row3, .u-row2 { display: contents; }
 /* 3열이 아니면 1열이다. 2열 단계를 두면 한도 카드 3장 중 하나가 홀로 남아
    그 옆과 오늘 토큰·모델 구성 옆이 빈칸으로 뜬다.
@@ -148,6 +150,22 @@
 }
 .u-rows span { color: var(--muted); }
 .u-rows b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── 어디에 썼나 ──
+   이름·몫은 한 줄, 게이지는 그 아래 폭 전체. 이름이 "superpowers:brainstorming" 처럼
+   길어 한 줄에 게이지까지 넣으면 이름이 먼저 잘린다 */
+.u-attr-group + .u-attr-group { margin-top: var(--sp-16); }
+.u-attr-title {
+  margin: 0 0 var(--sp-4); font-size: var(--fs-micro); font-weight: 600; color: var(--muted);
+}
+.u-attr-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline; column-gap: var(--sp-8); padding: var(--sp-4) 0;
+}
+.u-attr-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-attr-pct { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 게이지는 두 열을 가로지른다. 한도 카드용 여백은 여기서 좁힌다 */
+.u-attr-row .u-track { grid-column: 1 / -1; margin-top: var(--sp-4); height: 4px; }
 
 /* ── 차트 공통 ── */
 /* 눈금 글자 크기는 chart.js 의 AXIS_FONT 가 정한다 — 좌표 계산에 쓰이기 때문 */

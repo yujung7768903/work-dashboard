@@ -181,7 +181,7 @@ class WeeklyWindowTest(unittest.TestCase):
         _sample(con, 4, 12.0, reset)  # 이번 주차
         _sample(con, 5, 15.0, reset)
         _sample(con, 6, 13.0, reset)
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(con)
         self.assertEqual(len(result["tracks"]), 1)
         self.assertFalse(result["multi_account"])
         weeks = result["tracks"][0]["weeks"]
@@ -194,7 +194,7 @@ class WeeklyWindowTest(unittest.TestCase):
         for offset in range(3):
             _sample(con, 10 + offset, 40.0, reset)
             _sample(con, 20 + offset, 70.0, reset + 40 * 3600)  # 7일 배수가 아닌 경계
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(con)
         self.assertEqual(len(result["tracks"]), 2)
         self.assertTrue(result["multi_account"])
 
@@ -204,44 +204,25 @@ class WeeklyWindowTest(unittest.TestCase):
         for offset in range(3):
             _sample(con, 10 + offset, 40.0, reset)
         _sample(con, 99, 43.0, reset + 17321)  # 정시가 아닌 한 줄짜리 잔여 기록
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(con)
         self.assertEqual(len(result["tracks"]), 1)
         self.assertFalse(result["multi_account"])
 
-    def test_tokens_are_cut_on_the_reset_boundary(self):
-        con = temp_db()
-        reset = int(time.time()) + 3600
-        for offset in range(3):
-            _sample(con, 10 + offset, 40.0, reset)
-        rows = [
-            _cost_row(_stamp_at(reset - WEEK_SECONDS - 60), session="old", output_tokens=5),
-            _cost_row(_stamp_at(reset - WEEK_SECONDS + 60), session="a", output_tokens=11),
-            _cost_row(_stamp_at(reset - 60), session="b", output_tokens=13),
-        ]
-        result = usage.weekly_windows(con, cost_path=_cost_file(rows))
-        weeks = result["token_weeks"]
-        self.assertEqual(weeks[-1]["tokens"], 24)  # 이번 주차 안의 두 줄만
-        self.assertEqual(weeks[-2]["tokens"], 5)  # 경계 앞은 지난 주차로
-        self.assertTrue(weeks[-1]["in_progress"])
-
-    def test_tokens_are_not_repeated_per_account(self):
+    def test_tokens_are_not_attached_to_tracks(self):
         """cost 로그에는 계정이 없다. 트랙마다 같은 합계를 붙이면 계정별 사용량으로 읽힌다"""
         con = temp_db()
         reset = int(time.time()) + 3600
         for offset in range(3):
             _sample(con, 10 + offset, 40.0, reset)
             _sample(con, 20 + offset, 70.0, reset + 40 * 3600)
-        result = usage.weekly_windows(con, cost_path=_cost_file([_cost_row(_stamp_at(reset - 60))]))
-        self.assertTrue(result["token_shared"])
+        result = usage.weekly_windows(con)
         for track in result["tracks"]:
             for week in track["weeks"]:
                 self.assertNotIn("tokens", week)
 
-    def test_no_samples_means_no_week_boundary(self):
+    def test_no_samples_means_no_track(self):
         con = temp_db()
-        result = usage.weekly_windows(con, cost_path=_cost_file([_cost_row(_today_stamp())]))
-        self.assertEqual(result["tracks"], [])
-        self.assertEqual(result["token_weeks"], [])
+        self.assertEqual(usage.weekly_windows(con)["tracks"], [])
 
 
 def _stamp_at(epoch_seconds):
@@ -340,7 +321,7 @@ class AccountMatchTest(unittest.TestCase):
             _sample(con, 10 + offset, 40.0, reset)
         con.execute("UPDATE usage_samples SET account_uuid='a', account_plan='Max 5x'")
         con.commit()
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(con)
         self.assertEqual(result["tracks"][0]["plan"], "Max 5x")
 
     def test_track_without_a_known_plan_reports_none(self):
@@ -348,7 +329,7 @@ class AccountMatchTest(unittest.TestCase):
         reset = int(time.time()) + 3600
         for offset in range(3):
             _sample(con, 10 + offset, 40.0, reset)
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(con)
         self.assertIsNone(result["tracks"][0]["plan"])
 
 
@@ -370,7 +351,7 @@ class PlanLabelTest(unittest.TestCase):
             _sample(con, 20 + offset, 70.0, reset + WEEK_SECONDS)
             con.execute("UPDATE usage_samples SET account_uuid=? WHERE source_ts=?", ("b", 20 + offset))
         con.commit()
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(con)
         self.assertEqual(len(result["tracks"]), 2)
         self.assertTrue(result["multi_account"])
 
@@ -382,7 +363,7 @@ class PlanLabelTest(unittest.TestCase):
             _sample(con, 20 + offset, 70.0, reset)
             con.execute("UPDATE usage_samples SET account_uuid=? WHERE source_ts=?", ("a", 20 + offset))
         con.commit()
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(con)
         self.assertEqual(len(result["tracks"]), 1)  # 갈라지지 않고 한 계정으로
         self.assertEqual(len(result["tracks"][0]["weeks"]), 2)
 

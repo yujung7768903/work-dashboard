@@ -92,9 +92,9 @@ function paint({ usage, next, sessions, categories }) {
   renderDaily(usage.tokens);
   renderToday(usage.tokens);
   renderTrend(usage);
+  renderAttribution(usage.attribution);
   renderShare(usage.tokens);
   renderWeekly(usage.weekly);
-  renderWeeklyTokens(usage.weekly);
   renderNext(next, categories);
   renderSessions(sessions);
 }
@@ -447,60 +447,44 @@ function weekTable(tracks) {
   return box;
 }
 
-// ── 4행: 주차별 토큰 ───────────────────────────────────────────────────────
-// %는 소급되지 않지만 토큰은 cost 로그에 남아 있어, 한도 %를 모으기 전 주차도 값이 나온다
-function renderWeeklyTokens(weekly) {
-  const box = slot("u-weekly-tokens", "u-card");
+// ── 2행: 어디에 썼나 ───────────────────────────────────────────────────────
+// /usage 와 같은 귀속 목록. 그룹끼리는 겹쳐 세어지므로(플러그인이 준 스킬은 양쪽에
+// 다 들어간다) 합이 100%가 되지 않는다 — 그 사실을 꼬리말에 적는다
+function renderAttribution(attribution) {
+  const box = slot("u-attribution", "u-card");
   if (!box) return;
-  const weeks = weekly?.token_weeks || [];
-  if (!weeks.length) {
-    box.append(
-      headRow("주차별 토큰"),
+  const groups = (attribution?.groups || []).filter((group) => group.items.length);
+  box.appendChild(headRow("어디에 썼나", `최근 ${attribution?.days || 0}일`));
+  if (!groups.length) {
+    box.appendChild(
       emptyState(
-        weekly?.token_available
-          ? "주 경계를 알 수 없음 — 주간 창 실측이 쌓이면 그려집니다"
-          : `토큰 기록이 없음 — ${weekly?.token_source || ""}`
+        attribution?.available
+          ? "이름표가 붙은 사용이 아직 없음 — 스킬·플러그인·MCP 를 쓰면 쌓입니다"
+          : `트랜스크립트를 읽을 수 없음 — ${attribution?.source || ""}`
       )
     );
     return;
   }
-  // 1칸 카드라 막대를 세우면 620 폭 viewBox 가 절반으로 줄어 축 라벨이 읽히지 않는다.
-  // 이 자리의 문법은 오늘 토큰과 같은 큰 수 + 행 목록이다
-  const labels = weekLabels(weeks);
-  const rows = weeks.map((week, index) => ({ week, label: labels[index] }));
-  const latest = rows[rows.length - 1];
-  box.appendChild(headRow("주차별 토큰", latest.label));
-  box.appendChild(bigNumber(latest.week.tokens));
-  const change = weekOverWeek(weeks);
-  if (change) box.appendChild(deltaLine(change, "지난주 대비"));
-
-  const list = tag("div", "u-rows");
-  rows
-    .slice(0, -1)
-    .reverse()
-    .forEach(({ week, label }) => list.appendChild(labelledRow(label, compact(week.tokens))));
-  list.appendChild(labelledRow("정가환산", `$${latest.week.cost_usd}`));
-  box.appendChild(list);
+  groups.forEach((group) => box.appendChild(attributionGroup(group)));
   box.appendChild(
-    tag(
-      "p",
-      "u-caption",
-      weekly.token_shared
-        ? "주 경계는 주 창 기준 · 계정별로 나눌 수 없어 전 계정 합산"
-        : "주 경계는 한도 창 초기화 시각 기준"
-    )
+    tag("p", "u-caption", "전체 사용량 대비 몫 · 그룹끼리 겹쳐 세어져 합은 100%가 아님")
   );
 }
 
-// 진행 중 주차와 바로 앞 주차의 비율. 일별과 같은 규칙 — 0 이면 줄을 빼고 분모가 0 이면 만들지 않는다
-function weekOverWeek(weeks) {
-  if (weeks.length < MIN_TREND_POINTS) return null;
-  const current = weeks[weeks.length - 1].tokens;
-  const previous = weeks[weeks.length - 2].tokens;
-  if (!previous) return null;
-  const ratio = Math.round(((current - previous) / previous) * PERCENT_FULL);
-  if (ratio === 0) return null;
-  return { dir: ratio > 0 ? "up" : "down", text: `${Math.abs(ratio)}%` };
+function attributionGroup(group) {
+  const wrap = tag("div", "u-attr-group");
+  wrap.appendChild(tag("h3", "u-attr-title", group.label));
+  group.items.forEach((item) => {
+    const row = tag("div", "u-attr-row");
+    row.append(
+      tag("span", "u-attr-name", item.name),
+      tag("b", "u-attr-pct", `${item.pct}%`),
+      // 게이지는 그룹 안에서만 견준다 — 1등을 꽉 채워야 순위가 눈에 들어온다
+      trackBar((item.pct / group.items[0].pct) * PERCENT_FULL, null)
+    );
+    wrap.appendChild(row);
+  });
+  return wrap;
 }
 
 // 진행 중인 주차는 "이번 주", 닫힌 주차는 최근에서 거슬러 "지난주 / 2주 전"

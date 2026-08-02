@@ -118,3 +118,26 @@ TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_re
 COST_FIELD = "estimated_cost_usd"
 MODEL_FAMILIES = (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"))
 MODEL_FAMILY_OTHER = "기타"
+
+# 귀속 사용량. 스킬·플러그인·MCP 이름표는 트랜스크립트에만 있어 거기서 긁는다.
+# 무게와 티어는 Claude Code 의 /usage 가 쓰는 값을 그대로 옮긴 것 — 토큰 종류마다 값이
+# 달라 합계 토큰으로 나누면 캐시 읽기가 대부분을 먹는다
+TOKEN_WEIGHTS = {
+    "cache_read_input_tokens": 1,
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 12.5,
+    "output_tokens": 50,
+}
+MODEL_TIERS = (("fable", 10), ("opus", 5), ("haiku", 1))
+MODEL_TIER_OTHER = 3  # Sonnet 과 이름을 못 가린 모델
+ATTRIBUTION_DAYS = 7
+ATTRIBUTION_GROUPS = (
+    ("skills", "스킬·서브에이전트"),
+    ("plugins", "플러그인"),
+    ("mcp", "MCP 서버"),
+)
+ATTRIBUTION_TOP = 6  # 한 칸 카드에 세 그룹이 들어간다. 그룹마다 이 정도가 상한
+ATTRIBUTION_MIN_PCT = 0.1
+# 7일치 트랜스크립트는 400MB 라 한 번 훑는 데 1초 가까이 걸린다. 프런트는 1분마다
+# 폴링하므로 그 사이는 물고 있는다 — 귀속 비율이 5분 만에 뒤집히는 값도 아니다
+ATTRIBUTION_CACHE_SECONDS = 300
