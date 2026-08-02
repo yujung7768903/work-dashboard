@@ -32,6 +32,14 @@ def list_all(con):
     ]
 
 
+def set_google_list_id(con, category_id, list_id):
+    """이 카테고리를 담는 구글 목록 id. 목록 제목을 바꿔도 연결이 안 끊기게 id 로 붙든다"""
+    with transaction(con):
+        con.execute(
+            "UPDATE categories SET google_list_id=? WHERE id=?", (list_id, category_id)
+        )
+
+
 def get(con, category_id):
     row = con.execute("SELECT * FROM categories WHERE id=?", (category_id,)).fetchone()
     if not row:

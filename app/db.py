@@ -123,6 +123,7 @@ def connect(path=None):
     _add_category_style_columns(con)
     _add_precondition_columns(con)
     _add_usage_account_column(con)
+    _add_gtasks_columns(con)
     _seed_categories(con)
     return con
 
@@ -190,6 +191,19 @@ def _add_usage_account_column(con):
     for column in ("account_uuid", "account_plan"):
         if column not in columns:
             con.execute(f"ALTER TABLE usage_samples ADD COLUMN {column} TEXT")
+    con.commit()
+
+
+def _add_gtasks_columns(con):
+    """구글 태스크 연결 열을 뒤늦게 붙임. 연동을 안 쓰면 계속 NULL 로 남는다
+
+    카테고리 하나가 구글 목록 하나, 할일 하나가 태스크 하나로 붙는다
+    """
+    pairs = (("categories", "google_list_id"), ("todos", "google_task_id"))
+    for table, column in pairs:
+        columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
     con.commit()
 
 

@@ -260,13 +260,63 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 | 테이블 | 역할 | 주요 컬럼 | 참조 |
 | --- | --- | --- | --- |
-| `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at` | — |
+| `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at`, `google_list_id`(구글 목록 연결) | — |
 | `workspaces` | 브랜치·Jira 단위 큰 작업. 배경·목적·목표·고려사항 보관 | `id`, `name`, `background`, `purpose`, `goal`, `considerations`, `status`(active/paused/done), `sort_order`, `jira_id`, `created_at`, `updated_at` | `category_id` → `categories` |
-| `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
+| `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at`, `google_task_id`(구글 태스크 연결) | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
 | `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (둘 다 nullable = 미분류) |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
-| `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined` | `key`(PK), `value` | — |
+| `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined`, `gtasks_seen_ids` | `key`(PK), `value` | — |
+
+## 구글 태스크 양방향 동기화
+
+폰에서 할일을 보고 체크하려고 붙였다. 카테고리 하나가 구글 목록 하나(`대시보드 · <카테고리>`)로 간다.
+
+### 최초 1회 설정
+
+1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트를 만들고 **Google Tasks API** 를 켠다
+2. **사용자 인증 정보 → OAuth 클라이언트 ID → 데스크톱 앱** 으로 클라이언트를 만든다
+3. 인증한다 (브라우저가 열리고, 승인하면 `~/.claude/work-dashboard/gtasks.json` 에 저장된다)
+
+```bash
+python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
+```
+
+### 동기화
+
+웹훅이 없는 API라 주기적으로 부르는 것 말고 방법이 없다. cron 이나 훅에 걸어 둔다.
+
+```bash
+python3 dash.py gtasks-sync --dry-run   # 무엇이 바뀔지만 보고 아무것도 안 씀
+python3 dash.py gtasks-sync
+```
+
+**첫 실행은 `--dry-run` 으로 확인한다** — 미완료 할일 전부가 구글에 생성된다.
+
+### 동기화 규칙
+
+| 항목 | 방향 | 충돌 시 |
+| --- | --- | --- |
+| 제목 | 양방향 | `updated_at` vs `updated` 최신 우선 |
+| 완료 여부 | 양방향 | 위와 같음 |
+| note·착수 조건 | 내려보내기만 | 폰에서 고쳐도 대시보드는 안 바뀜 |
+| 하위할일 | 동기화 안 함 | — |
+
+- **내용이 실제로 다를 때만** 시각을 본다. 안 그러면 우리가 방금 민 것 때문에 원격이 늘 최신이라 무한 왕복이 된다.
+- 시각은 초 단위로 잘라서 비교한다. `db.now()` 는 초까지만 적고 구글은 밀리초까지 주므로, 그대로 두면 같은 초에 고친 로컬 수정이 조용히 되돌려진다.
+- 동점이면 로컬이 이긴다.
+- 폰의 완료를 받다가 로컬 규칙(하위할일 미완료 등)에 막히면 **건너뛰고 보고**한다. 로컬 규칙이 이긴다.
+- 폰에는 `todo`/`doing` 구분이 없다. 폰에서 완료를 풀면 `doing` 이었어도 `todo` 로 내려온다.
+
+### 삭제
+
+`meta.gtasks_seen_ids` 에 지난 회차의 태스크 id 를 남겨 두는 것이 "폰에서 새로 만든 것"과 "로컬에서 지운 것"을 가르는 유일한 근거다.
+
+| 상황 | 처리 |
+| --- | --- |
+| 대시보드에서 지움 | 구글에서도 지움 |
+| 폰에서 지움 (미완료) | 되살림 — 존재 여부는 대시보드가 정한다 |
+| 폰에서 지움 (완료) | 그대로 둠 — '완료 항목 삭제'가 무덤을 파헤치면 안 되므로 |
 
 ## 규칙 몇 가지
 

@@ -114,6 +114,28 @@ USAGE_CRITICAL_PCT = 90
 # /usage 가 보여주는 창 중 사이드카에 남는 두 개. 나머지는 MISSING_WINDOW_LABELS 로 알린다
 USAGE_WINDOWS = (("five_hour", "현재 세션 (5시간)"), ("seven_day", "이번 주 (전체 모델)"))
 MISSING_WINDOW_LABELS = ("이번 주 (Sonnet 전용)", "모델별 주간 창")
+# Google Tasks 양방향 동기화. google-api-python-client 를 쓰면 이 프로젝트의 첫 외부
+# 의존성이 되고 전이 패키지가 열 개 넘게 딸려온다. 우리가 쓰는 엔드포인트는 다섯 개뿐이라
+# urllib 로 직접 치는 쪽이 싸다
+GTASKS_CONFIG_PATH = os.path.expanduser("~/.claude/work-dashboard/gtasks.json")
+GTASKS_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GTASKS_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GTASKS_API_ROOT = "https://tasks.googleapis.com/tasks/v1"
+GTASKS_SCOPE = "https://www.googleapis.com/auth/tasks"
+GTASKS_TIMEOUT_SEC = 20
+GTASKS_PAGE_MAX = 100  # Tasks API 가 한 번에 주는 최대치. 기본값 20 이라 명시해야 함
+GTASKS_TOKEN_MARGIN_SEC = 60  # 만료 직전에 쓰다 401 나는 걸 피하려고 미리 갱신
+GTASKS_SEEN_KEY = "gtasks_seen_ids"
+# 우리가 만든 목록임을 제목으로 구분한다. 사용자의 기존 목록을 건드리지 않기 위함
+GTASKS_LIST_PREFIX = "대시보드 · "
+GTASKS_STATUS_DONE = "completed"
+GTASKS_STATUS_TODO = "needsAction"
+GTASKS_NOTES_MAX = 8000  # 구글 상한은 8192. 잘라 보내지 않으면 호출 전체가 400 으로 죽는다
+GTASKS_UNTITLED = "(제목 없음)"
+# 로컬 인증 콜백. 데스크톱 OAuth 클라이언트는 127.0.0.1 이면 포트를 안 가린다
+GTASKS_AUTH_HOST = "127.0.0.1"
+GTASKS_AUTH_TIMEOUT_SEC = 300
+
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 COST_FIELD = "estimated_cost_usd"
 MODEL_FAMILIES = (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"))
