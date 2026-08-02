@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
@@ -218,6 +219,23 @@ class CliTest(unittest.TestCase):
         self.assertIn("…", out)
         self.assertIn("+1", out)
         self.assertNotIn("제목 끝", out)
+
+    def test_statusline_marks_read_status_place_port_in_that_order(self):
+        session_repo.register(connect(), "sess-line", cwd="/tmp", git_branch="worktree-abc")
+        self.run_cli("add-todo", "락 재설계", "--category", "개발")
+        self.run_cli("link-todo", "sess-line", "1")
+        code, out, _ = self.run_cli("statusline", "sess-line", "--cwd", "/tmp")
+        self.assertEqual(code, 0)
+        self.assertIn("[doing | worktree-abc] 락 재설계", out)
+
+    def test_statusline_prefers_the_worktree_name_over_the_branch(self):
+        """세션 DB 의 브랜치는 SessionStart 때 값이라 워크트리로 옮긴 뒤에는 메인 것이다"""
+        root = os.path.join(tempfile.mkdtemp(), "repo", ".claude", "worktrees", "wt-a")
+        os.makedirs(root)
+        session_repo.register(connect(), "sess-line", cwd="/tmp", git_branch="master")
+        code, out, _ = self.run_cli("statusline", "sess-line", "--cwd", root)
+        self.assertEqual(code, 0)
+        self.assertIn("[wt-a]", out)
 
     def test_statusline_is_silent_when_there_is_nothing_to_show(self):
         """등록 안 된 세션에서도 조용히 끝나야 한다 — 상태줄에 에러가 찍히면 안 된다"""

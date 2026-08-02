@@ -2,6 +2,7 @@
 """작업 대시보드 CLI. 파싱·위임·출력만 하고 도메인 로직은 갖지 않음"""
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 
@@ -428,30 +429,31 @@ def _cmd_statusline(con, args):
     session = session_repo.find(con, args.session)
     if not session:
         return
-    parts = _linked_todo_brief(con, args.session)
+    todos = _linked_todos(con, args.session)
     # 워크트리에서 작업 중이면 그 서버, 메인 체크아웃이면 거기서 도는 서버
     worktree = release.worktree_of(args.session, session["cwd"], worktree=args.cwd)
     port = release.serving_port(worktree or args.cwd or session["cwd"])
-    if port:
-        parts.append(f":{port}")
+    marks = [
+        todos[0]["status"] if todos else "",
+        os.path.basename(worktree) if worktree else (session["git_branch"] or ""),
+        f":{port}" if port else "",
+    ]
+    parts = [f"[{' | '.join(mark for mark in marks if mark)}]"] if any(marks) else []
+    if todos:
+        parts.append(_clipped(todos[0]["title"], STATUSLINE_TITLE_MAX))
+    if len(todos) > 1:
+        parts.append(f"+{len(todos) - 1}")
     if parts:
         print(" ".join(parts))
 
 
-def _linked_todo_brief(con, claude_session_id):
-    """할일 하나만 상태·제목으로, 나머지는 개수로. 상태줄에 목록을 늘어놓을 수 없다.
-
-    끝난 할일을 앞세우면 지금 뭘 하는지가 가려지므로 안 끝난 것부터 고른다
-    """
-    todo_ids = session_repo.linked_todo_ids(con, claude_session_id)
-    if not todo_ids:
-        return []
-    todos = [todo_repo.get(con, todo_id) for todo_id in todo_ids]
-    shown = next((todo for todo in todos if todo["status"] != STATUS_DONE), todos[0])
-    brief = [f"[{shown['status']}] {_clipped(shown['title'], STATUSLINE_TITLE_MAX)}"]
-    if len(todos) > 1:
-        brief.append(f"+{len(todos) - 1}")
-    return brief
+def _linked_todos(con, claude_session_id):
+    """연결된 할일. 안 끝난 것이 맨 앞 — 끝난 것을 앞세우면 지금 뭘 하는지가 가려진다"""
+    todos = [
+        todo_repo.get(con, todo_id)
+        for todo_id in session_repo.linked_todo_ids(con, claude_session_id)
+    ]
+    return sorted(todos, key=lambda todo: todo["status"] == STATUS_DONE)
 
 
 def _clipped(text, limit):
