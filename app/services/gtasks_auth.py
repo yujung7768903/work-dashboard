@@ -29,41 +29,49 @@ VERIFIER_BYTES = 64
 def authorize(client_id=None, client_secret=None, open_browser=True):
     """브라우저 동의 → 코드 → refresh_token. 받은 인증 정보를 저장하고 경로를 반환
 
-    인자를 안 주면 환경변수에서 읽는다. 이 함수는 최초 1회만 쓰이고, 이후 동기화는
-    저장된 refresh_token 으로 돌아 아무 인자도 필요 없다
+    자격증명은 인자 > 환경변수 > 저장된 gtasks.json 순으로 찾는다. client_id/secret 을
+    파일에 미리 적어두면 이 명령은 인자 없이 돌아간다.
+
+    이 함수는 최초 1회만 쓰인다. refresh_token 은 구글 동의 화면을 거쳐야만 나오므로
+    손으로 적어 넣을 수 없고, 한 번 받고 나면 이후 동기화는 그것만으로 돈다
     """
-    client_id = client_id or os.environ.get(GTASKS_CLIENT_ID_ENV)
-    client_secret = client_secret or os.environ.get(GTASKS_CLIENT_SECRET_ENV)
+    stored = gtasks_api.stored_client()
+    client_id = client_id or os.environ.get(GTASKS_CLIENT_ID_ENV) or stored.get("client_id")
+    client_secret = (
+        client_secret
+        or os.environ.get(GTASKS_CLIENT_SECRET_ENV)
+        or stored.get("client_secret")
+    )
     if not client_id or not client_secret:
         raise Validation(
             "client_id 와 client_secret 이 모두 필요함 —"
-            f" --client-id/--client-secret 이나 {GTASKS_CLIENT_ID_ENV},"
-            f" {GTASKS_CLIENT_SECRET_ENV} 환경변수로 준다"
+            f" --client-id/--client-secret, {GTASKS_CLIENT_ID_ENV}/"
+            f"{GTASKS_CLIENT_SECRET_ENV} 환경변수,"
+            f" 또는 {gtasks_api.GTASKS_CONFIG_PATH} 에 두 키를 적어 둔다"
         )
     verifier, challenge = _pkce_pair()
-    server = HTTPServer((GTASKS_AUTH_HOST, 0), _CallbackHandler)
-    server.timeout = GTASKS_AUTH_TIMEOUT_SEC
-    server.auth_code = None
-    server.auth_error = None
-    redirect_uri = f"http://{GTASKS_AUTH_HOST}:{server.server_port}"
-    url = _consent_url(client_id, redirect_uri, challenge)
-    print(f"브라우저에서 아래 주소를 열어 승인하세요:\n{url}")
-    if open_browser:
-        webbrowser.open(url)
-    try:
+    # with 로 감싸야 브라우저를 띄우기 전에 실패해도 포트가 물린 채 남지 않는다
+    with HTTPServer((GTASKS_AUTH_HOST, 0), _CallbackHandler) as server:
+        server.timeout = GTASKS_AUTH_TIMEOUT_SEC
+        server.auth_code = None
+        server.auth_error = None
+        redirect_uri = f"http://{GTASKS_AUTH_HOST}:{server.server_port}"
+        url = _consent_url(client_id, redirect_uri, challenge)
+        print(f"브라우저에서 아래 주소를 열어 승인하세요:\n{url}")
+        if open_browser:
+            webbrowser.open(url)
         server.handle_request()
-    finally:
-        server.server_close()
-    if server.auth_error:
-        raise Validation(f"구글이 인증을 거부함: {server.auth_error}")
-    if not server.auth_code:
+        auth_code, auth_error = server.auth_code, server.auth_error
+    if auth_error:
+        raise Validation(f"구글이 인증을 거부함: {auth_error}")
+    if not auth_code:
         raise Validation(f"{GTASKS_AUTH_TIMEOUT_SEC}초 안에 승인이 오지 않음")
     token = gtasks_api.post_form(
         GTASKS_TOKEN_URL,
         {
             "client_id": client_id,
             "client_secret": client_secret,
-            "code": server.auth_code,
+            "code": auth_code,
             "code_verifier": verifier,
             "grant_type": "authorization_code",
             "redirect_uri": redirect_uri,

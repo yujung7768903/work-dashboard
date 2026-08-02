@@ -1,5 +1,6 @@
 """구글 태스크 양방향 동기화. 네트워크를 타지 않고 가짜 클라이언트로 규칙만 검증한다"""
 import os
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest import mock
@@ -13,7 +14,7 @@ from app.constants import (
     STATUS_TODO,
 )
 from app.errors import Validation
-from app.services import gtasks_auth
+from app.services import gtasks_api, gtasks_auth
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
@@ -243,22 +244,81 @@ class GtasksSyncTest(unittest.TestCase):
 
 
 class GtasksAuthArgsTest(unittest.TestCase):
-    """최초 인증의 자격증명 출처. 브라우저까지 가기 전에 걸러지는 구간만 본다"""
+    """최초 인증의 자격증명 출처. 브라우저까지 가기 전에 걸러지는 구간만 본다
 
-    def test_인자도_환경변수도_없으면_둘_다_알려주고_멈춘다(self):
+    사용자의 실제 gtasks.json 을 절대 읽지 않도록 설정 경로를 매번 임시 파일로 돌린다
+    """
+
+    def setUp(self):
+        self.config_path = os.path.join(tempfile.mkdtemp(), "gtasks.json")
+        patcher = mock.patch.object(gtasks_api, "GTASKS_CONFIG_PATH", self.config_path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _write_config(self, payload):
+        with open(self.config_path, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+
+    def _reaches_consent(self):
+        """동의 화면 직전에서 멈춰 세운다 — 여기까지 왔으면 자격증명을 찾았다는 뜻"""
+        stopped = mock.patch.object(
+            gtasks_auth, "HTTPServer", side_effect=RuntimeError("여기까지")
+        )
+        with stopped:
+            with self.assertRaises(RuntimeError):
+                gtasks_auth.authorize()
+
+    def test_아무_데도_없으면_세_가지_방법을_다_알려주고_멈춘다(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(Validation) as caught:
                 gtasks_auth.authorize()
 
-        self.assertIn(GTASKS_CLIENT_ID_ENV, str(caught.exception))
-        self.assertIn(GTASKS_CLIENT_SECRET_ENV, str(caught.exception))
+        message = str(caught.exception)
+        self.assertIn(GTASKS_CLIENT_ID_ENV, message)
+        self.assertIn(GTASKS_CLIENT_SECRET_ENV, message)
+        self.assertIn(self.config_path, message)
 
     def test_환경변수만_있어도_인증_흐름으로_넘어간다(self):
         env = {GTASKS_CLIENT_ID_ENV: "id-from-env", GTASKS_CLIENT_SECRET_ENV: "secret"}
         with mock.patch.dict(os.environ, env, clear=True):
-            with mock.patch.object(gtasks_auth, "HTTPServer", side_effect=RuntimeError("여기까지")):
+            self._reaches_consent()
+
+    def test_파일에_적어_둔_자격증명만으로_돌아간다(self):
+        self._write_config('{"client_id": "id-in-file", "client_secret": "secret"}')
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self._reaches_consent()
+
+    def test_인자가_파일보다_우선한다(self):
+        self._write_config('{"client_id": "id-in-file", "client_secret": "secret"}')
+        seen = {}
+
+        def _capture(client_id, redirect_uri, challenge):
+            seen["client_id"] = client_id
+            raise RuntimeError("여기까지")
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch.object(gtasks_auth, "_consent_url", _capture):
                 with self.assertRaises(RuntimeError):
-                    gtasks_auth.authorize()
+                    gtasks_auth.authorize("id-from-arg", "secret-from-arg")
+
+        self.assertEqual(seen["client_id"], "id-from-arg")
+
+    def test_깨진_파일은_없는_것으로_보고_안내로_끝낸다(self):
+        self._write_config("{ 이건 JSON 이 아니다")
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(Validation):
+                gtasks_auth.authorize()
+
+    def test_refresh_token_까지_있으면_동기화는_인증_없이_읽는다(self):
+        self._write_config(
+            '{"client_id": "a", "client_secret": "b", "refresh_token": "c"}'
+        )
+
+        config = gtasks_api.load_config(self.config_path)
+
+        self.assertEqual(config["refresh_token"], "c")
 
 
 class GtasksTimestampTest(unittest.TestCase):

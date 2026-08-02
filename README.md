@@ -278,12 +278,26 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 2. **사용자 인증 정보 → OAuth 클라이언트 ID → 데스크톱 앱** 으로 클라이언트를 만든다
 3. 인증한다 — 브라우저가 열리고, 승인하면 `~/.claude/work-dashboard/gtasks.json` (권한 600) 에 저장된다
 
+자격증명은 **인자 > 환경변수 > `gtasks.json`** 순으로 찾는다. 셋 중 편한 것을 쓴다.
+
 ```bash
+# (a) 환경변수 — 셸 히스토리에 secret 이 남지 않는다
 GTASKS_CLIENT_ID=<ID> GTASKS_CLIENT_SECRET=<SECRET> python3 dash.py gtasks-auth
-# 또는: python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
+
+# (b) 파일에 미리 적어 두면 이 명령은 인자가 필요 없다
+cat > ~/.claude/work-dashboard/gtasks.json <<'EOF'
+{ "client_id": "<ID>", "client_secret": "<SECRET>" }
+EOF
+chmod 600 ~/.claude/work-dashboard/gtasks.json
+python3 dash.py gtasks-auth
+
+# (c) 플래그 — 히스토리에 남으므로 권하지 않는다
+python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
 ```
 
-**환경변수 쪽을 권한다** — 플래그로 넘기면 secret 이 셸 히스토리에 남는다.
+승인이 끝나면 같은 파일에 `refresh_token` 이 더해져 세 키가 된다.
+
+**`refresh_token` 은 손으로 적어 넣을 수 없다** — 구글 동의 화면을 거쳐야만 발급된다. 다른 데서 이미 받아 둔 것이 있다면 세 키를 직접 써넣고 `gtasks-auth` 를 건너뛰어도 된다.
 
 ### 동기화
 

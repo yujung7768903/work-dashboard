@@ -36,6 +36,23 @@ def load_config(path=None):
     return config
 
 
+def stored_client(path=None):
+    """저장된 파일에서 client_id/secret 만 느슨하게 읽는다. 없거나 깨졌으면 빈 값
+
+    load_config 는 refresh_token 까지 요구한다. 최초 인증은 그 토큰을 받으러 가는
+    길이라 그때는 아직 없는 게 정상이므로 여기서는 있는 것만 꺼낸다
+    """
+    resolved = path or GTASKS_CONFIG_PATH
+    if not os.path.exists(resolved):
+        return {}
+    try:
+        with open(resolved, encoding="utf-8") as handle:
+            stored = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return stored if isinstance(stored, dict) else {}
+
+
 def save_config(config, path=None):
     """refresh_token 은 비밀번호와 같아 파일 권한을 본인만으로 좁힌다"""
     resolved = path or GTASKS_CONFIG_PATH
