@@ -342,7 +342,9 @@ function labelToggles(todo) {
   if (!allLabels.length) return [emptyLabelHint()];
   const attached = new Set((todo.labels || []).map((label) => label.id));
   return allLabels.map((label) =>
-    menuItem(`${attached.has(label.id) ? "✓" : "·"} ${label.name}`, () =>
+    // 안 붙은 라벨은 체크 자리를 줄바꿈 없는 공백으로 비운다. 점 같은 기호를 넣으면
+    // 이름의 일부처럼(".feature") 읽히고, 보통 공백은 nowrap 이 접어 세로줄이 어긋난다
+    menuItem(`${attached.has(label.id) ? "✓" : "\u00a0"} ${label.name}`, () =>
       run(async () => {
         const next = attached.has(label.id)
           ? [...attached].filter((id) => id !== label.id)
