@@ -32,6 +32,7 @@ work-dashboard/
 │   │
 │   ├── repositories/                # 엔티티별 저장·조회와 정합성 규칙
 │   │   ├── categories.py            # 카테고리
+│   │   ├── labels.py                # 라벨 (할일에 여러 개)
 │   │   ├── workspaces.py            # 워크스페이스
 │   │   ├── todos.py                 # 할일
 │   │   ├── subtasks.py              # 하위할일
@@ -62,7 +63,7 @@ work-dashboard/
 │       ├── main.js                  # 부트스트랩·탭 전환 (/usage /board 등 경로 = 탭)
 │       ├── api.js                   # fetch 래퍼
 │       ├── board.js                 # 보드 렌더
-│       ├── categories.js            # 카테고리 관리
+│       ├── settings.js              # 설정 탭 — 카테고리·라벨 관리
 │       ├── workspace.js             # 워크스페이스 상세
 │       ├── sessions.js              # 활성 세션 (2초 폴링)
 │       ├── usage.js                 # 사용량 화면
@@ -251,7 +252,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 - `PRAGMA foreign_keys=ON` — 참조 무결성 강제
 - `PRAGMA journal_mode=WAL` — 웹·CLI·훅 동시 접근 대비
 - `PRAGMA busy_timeout=5000` — 잠금 대기 5초
-- `CREATE TABLE IF NOT EXISTS` 로 테이블 7개 생성
+- `CREATE TABLE IF NOT EXISTS` 로 테이블 9개 생성
 - 카테고리 6개(개발 / 운영 / 장애 대응 / 개발환경 개선 / 스킬 개발 / 프로세스 개선) 시드. `meta` 의 `categories_seeded` 플래그로 **최초 1회만** — 사용자가 지운 카테고리가 되살아나면 안 되기 때문
 
 시각 컬럼(`*_at`)은 전부 TEXT 이며 ISO8601 UTC 초 단위(`2026-07-31T04:12:33+00:00`).
@@ -262,6 +263,8 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 | --- | --- | --- | --- |
 | `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at` | — |
 | `workspaces` | 브랜치·Jira 단위 큰 작업. 배경·목적·목표·고려사항 보관 | `id`, `name`, `background`, `purpose`, `goal`, `considerations`, `status`(active/paused/done), `sort_order`, `jira_id`, `created_at`, `updated_at` | `category_id` → `categories` |
+| `labels` | 할일 성격 표시. 한 할일에 여러 개 (github 이슈 라벨과 같은 뜻) | `id`, `name`(UNIQUE), `color`, `sort_order`, `created_at` | — |
+| `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
 | `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
 | `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (둘 다 nullable = 미분류) |
@@ -272,6 +275,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 - 우선순위는 워크스페이스 순위 + 할일 순서로만 표현한다. **할일은 중요도가 아니라 착수 가능한 순서로 놓는다.**
 - 카테고리는 그룹핑 분류일 뿐 우선순위 계산에 관여하지 않는다.
+- 카테고리는 소속이라 할일마다 하나, 라벨은 성격이라 여러 개 붙는다. 라벨 삭제는 붙어 있는 할일이 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/labels/<id>?force=1`) 연결만 끊고 지운다.
 - 카테고리 삭제는 워크스페이스·할일이 없을 때만(있으면 먼저 옮긴다). 분류된 세션만 남아 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/categories/<id>?force=1`) 그 세션들을 미분류로 내리고 지운다. 붙은 게 아무것도 없으면 되묻지 않는다.
 - 워크스페이스 삭제 시 소속 할일은 미분류로 내려간다. 할일 삭제는 하위할일까지 지운다.
 - 웹과 CLI가 같은 DB를 쓴다. CLI 변경을 웹에서 보려면 새로고침한다. 세션 영역만 2초 폴링한다.

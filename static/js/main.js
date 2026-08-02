@@ -1,6 +1,6 @@
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
 import { renderBoard, renderShared } from "./board.js";
-import { renderCategories } from "./categories.js";
+import { renderSettings } from "./settings.js";
 import { renderUsage } from "./usage.js";
 import { renderWorkspaceTab } from "./workspace.js";
 import { renderWorktrees } from "./worktrees.js";
@@ -29,7 +29,7 @@ export function renderBoardTab() {
 const RENDERERS = {
   board: renderBoardTab,
   workspace: renderWorkspaceTab,
-  categories: renderCategories,
+  settings: renderSettings,
   usage: renderUsage,
 };
 
@@ -40,7 +40,7 @@ const DEFAULT_TAB = "usage";
 const TITLES = {
   board: "보드",
   workspace: "워크스페이스",
-  categories: "카테고리",
+  settings: "설정",
   usage: "사용량",
 };
 

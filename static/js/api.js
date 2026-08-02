@@ -34,6 +34,12 @@ export const updateCategory = (id, fields) => request("PATCH", `/categories/${id
 export const deleteCategory = (id, force = false) =>
   request("DELETE", `/categories/${id}${force ? "?force=1" : ""}`);
 
+export const getLabels = () => request("GET", "/labels");
+export const createLabel = (name) => request("POST", "/labels", { name });
+export const updateLabel = (id, fields) => request("PATCH", `/labels/${id}`, fields);
+export const deleteLabel = (id, force = false) =>
+  request("DELETE", `/labels/${id}${force ? "?force=1" : ""}`);
+
 export const createWorkspace = (fields) => request("POST", "/workspaces", fields);
 export const updateWorkspace = (id, fields) => request("PATCH", `/workspaces/${id}`, fields);
 export const deleteWorkspace = (id) => request("DELETE", `/workspaces/${id}`);

@@ -20,6 +20,8 @@ let activeCategoryId = null;
 let openMenuTodoId = null;
 // 하위 할일을 펼쳐 둔 할일. 기본은 접힘이고, 재렌더에도 펼친 것만 유지된다
 const expandedTodoIds = new Set();
+// 설정 탭에서 만든 라벨 전체. 케밥 메뉴가 켜고 끌 목록으로 쓴다
+let allLabels = [];
 
 function showDone() {
   return document.getElementById("show-done").checked;
@@ -28,7 +30,14 @@ function showDone() {
 // 두 하위 탭이 함께 쓰는 위쪽 — 다음에 할 일·세션 패널·빠른 추가·카테고리 라벨.
 // 하위 탭을 바꿔도 이 영역은 그대로 남아야 하므로 목록 렌더와 따로 둔다
 export async function renderShared() {
-  const [next, categories] = await Promise.all([api.getNext(), api.getCategories()]);
+  const [next, categories, labels] = await Promise.all([
+    api.getNext(),
+    api.getCategories(),
+    api.getLabels(),
+  ]);
+  // 케밥 메뉴가 라벨 목록을 그리려면 있어야 한다. 메뉴를 열 때 따로 부르면
+  // 메뉴가 한 박자 늦게 채워지므로 보드를 그릴 때 같이 받아 둔다
+  allLabels = labels;
   renderNext(next);
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
@@ -211,10 +220,24 @@ function todoElement(todo) {
   title.textContent = todo.title;
   if (todo.needs_title) title.append(rawTitleMark());
 
-  row.append(statusButton, subtaskToggle(todo), title, todoMenu(todo));
+  row.append(statusButton, subtaskToggle(todo), title, labelStrip(todo), todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
+}
+
+// 제목과 케밥 사이 세 번째 칸. 붙은 라벨이 없으면 빈 칸으로 남아 제목이 그만큼 넓게 쓴다
+function labelStrip(todo) {
+  const strip = document.createElement("span");
+  strip.className = "todo-labels";
+  (todo.labels || []).forEach((label) => {
+    const pill = document.createElement("span");
+    pill.className = "todo-label";
+    pill.style.setProperty("--cat", label.color);
+    pill.textContent = label.name;
+    strip.appendChild(pill);
+  });
+  return strip;
 }
 
 // 사이드바 메뉴와 같은 16 격자 · currentColor 스트로크 아이콘. 펼치면 CSS 로 90도 돌린다
@@ -260,7 +283,7 @@ function todoMenu(todo) {
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "⋮";
-  toggle.title = "하위 할일 추가 · 삭제";
+  toggle.title = "라벨 · 하위 할일 추가 · 삭제";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
@@ -274,6 +297,7 @@ function todoMenu(todo) {
 function todoMenuItems(todo) {
   const items = document.createElement("div");
   items.className = "ws-menu-items";
+  items.append(...labelToggles(todo));
   items.append(
     menuItem("하위 할일 추가", () =>
       run(async () => {
@@ -294,6 +318,23 @@ function todoMenuItems(todo) {
     )
   );
   return items;
+}
+
+// 라벨은 여러 개가 붙으므로 한 번 누를 때마다 하나씩 켜고 끈다. 메뉴는 닫지 않는다 —
+// 두 개를 붙이려고 케밥을 두 번 여는 건 번거롭다. 라벨이 없으면 항목 자체가 없다
+function labelToggles(todo) {
+  const attached = new Set((todo.labels || []).map((label) => label.id));
+  return allLabels.map((label) =>
+    menuItem(`${attached.has(label.id) ? "✓" : "·"} ${label.name}`, () =>
+      run(async () => {
+        const next = attached.has(label.id)
+          ? [...attached].filter((id) => id !== label.id)
+          : [...attached, label.id];
+        await api.updateTodo(todo.id, { label_ids: next });
+        await renderBoard();
+      })
+    )
+  );
 }
 
 function subtaskList(todo) {
