@@ -118,6 +118,9 @@ MISSING_WINDOW_LABELS = ("이번 주 (Sonnet 전용)", "모델별 주간 창")
 # 의존성이 되고 전이 패키지가 열 개 넘게 딸려온다. 우리가 쓰는 엔드포인트는 다섯 개뿐이라
 # urllib 로 직접 치는 쪽이 싸다
 GTASKS_CONFIG_PATH = os.path.expanduser("~/.claude/work-dashboard/gtasks.json")
+# 최초 인증 1회에만 쓰는 값. 플래그로 넘기면 셸 히스토리에 secret 이 남아 환경변수를 먼저 본다
+GTASKS_CLIENT_ID_ENV = "GTASKS_CLIENT_ID"
+GTASKS_CLIENT_SECRET_ENV = "GTASKS_CLIENT_SECRET"
 GTASKS_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GTASKS_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GTASKS_API_ROOT = "https://tasks.googleapis.com/tasks/v1"

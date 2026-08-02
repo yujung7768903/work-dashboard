@@ -276,15 +276,18 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트를 만들고 **Google Tasks API** 를 켠다
 2. **사용자 인증 정보 → OAuth 클라이언트 ID → 데스크톱 앱** 으로 클라이언트를 만든다
-3. 인증한다 (브라우저가 열리고, 승인하면 `~/.claude/work-dashboard/gtasks.json` 에 저장된다)
+3. 인증한다 — 브라우저가 열리고, 승인하면 `~/.claude/work-dashboard/gtasks.json` (권한 600) 에 저장된다
 
 ```bash
-python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
+GTASKS_CLIENT_ID=<ID> GTASKS_CLIENT_SECRET=<SECRET> python3 dash.py gtasks-auth
+# 또는: python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
 ```
+
+**환경변수 쪽을 권한다** — 플래그로 넘기면 secret 이 셸 히스토리에 남는다.
 
 ### 동기화
 
-웹훅이 없는 API라 주기적으로 부르는 것 말고 방법이 없다. cron 이나 훅에 걸어 둔다.
+**`gtasks-sync` 는 인자가 없다.** 자격증명은 위 1회로 끝이고, 이후로는 저장된 `refresh_token` 으로 access token 을 알아서 받아 쓴다.
 
 ```bash
 python3 dash.py gtasks-sync --dry-run   # 무엇이 바뀔지만 보고 아무것도 안 씀
@@ -292,6 +295,13 @@ python3 dash.py gtasks-sync
 ```
 
 **첫 실행은 `--dry-run` 으로 확인한다** — 미완료 할일 전부가 구글에 생성된다.
+
+웹훅이 없는 API라 주기적으로 부르는 것 말고 방법이 없다. 손으로 부르기 싫으면 cron 에 건다.
+
+```bash
+# 10분마다. crontab -e
+*/10 * * * * cd ~/work/work-dashboard && /usr/bin/python3 dash.py gtasks-sync >> /tmp/gtasks.log 2>&1
+```
 
 ### 동기화 규칙
 

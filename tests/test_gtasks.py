@@ -1,8 +1,19 @@
 """구글 태스크 양방향 동기화. 네트워크를 타지 않고 가짜 클라이언트로 규칙만 검증한다"""
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
-from app.constants import GTASKS_STATUS_DONE, GTASKS_STATUS_TODO, STATUS_DONE, STATUS_TODO
+from app.constants import (
+    GTASKS_CLIENT_ID_ENV,
+    GTASKS_CLIENT_SECRET_ENV,
+    GTASKS_STATUS_DONE,
+    GTASKS_STATUS_TODO,
+    STATUS_DONE,
+    STATUS_TODO,
+)
+from app.errors import Validation
+from app.services import gtasks_auth
 from app.repositories import categories as category_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
@@ -229,6 +240,25 @@ class GtasksSyncTest(unittest.TestCase):
         self._sync()
 
         self.assertEqual(len(self.client.lists()), 1)
+
+
+class GtasksAuthArgsTest(unittest.TestCase):
+    """최초 인증의 자격증명 출처. 브라우저까지 가기 전에 걸러지는 구간만 본다"""
+
+    def test_인자도_환경변수도_없으면_둘_다_알려주고_멈춘다(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(Validation) as caught:
+                gtasks_auth.authorize()
+
+        self.assertIn(GTASKS_CLIENT_ID_ENV, str(caught.exception))
+        self.assertIn(GTASKS_CLIENT_SECRET_ENV, str(caught.exception))
+
+    def test_환경변수만_있어도_인증_흐름으로_넘어간다(self):
+        env = {GTASKS_CLIENT_ID_ENV: "id-from-env", GTASKS_CLIENT_SECRET_ENV: "secret"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(gtasks_auth, "HTTPServer", side_effect=RuntimeError("여기까지")):
+                with self.assertRaises(RuntimeError):
+                    gtasks_auth.authorize()
 
 
 class GtasksTimestampTest(unittest.TestCase):

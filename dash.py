@@ -6,7 +6,13 @@ import os
 import sys
 from datetime import datetime
 
-from app.constants import HISTORY_DAY_CHOICES, STATUS_DONE, UNASSIGNED_LABEL
+from app.constants import (
+    GTASKS_CLIENT_ID_ENV,
+    GTASKS_CLIENT_SECRET_ENV,
+    HISTORY_DAY_CHOICES,
+    STATUS_DONE,
+    UNASSIGNED_LABEL,
+)
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
@@ -211,8 +217,14 @@ def _build_parser():
     usage_cmd.set_defaults(handler=_cmd_usage)
 
     auth = sub.add_parser("gtasks-auth", help="구글 태스크 최초 인증 (1회)")
-    auth.add_argument("--client-id", required=True, help="GCP 데스크톱 OAuth 클라이언트 id")
-    auth.add_argument("--client-secret", required=True)
+    auth.add_argument(
+        "--client-id",
+        help=f"GCP 데스크톱 OAuth 클라이언트 id. 없으면 {GTASKS_CLIENT_ID_ENV} 환경변수",
+    )
+    auth.add_argument(
+        "--client-secret",
+        help=f"없으면 {GTASKS_CLIENT_SECRET_ENV} 환경변수. 히스토리에 남기지 않으려면 이쪽",
+    )
     auth.set_defaults(handler=_cmd_gtasks_auth)
 
     gsync = sub.add_parser("gtasks-sync", help="구글 태스크 양방향 동기화")

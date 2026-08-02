@@ -12,6 +12,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from app.constants import (
     GTASKS_AUTH_HOST,
+    GTASKS_CLIENT_ID_ENV,
+    GTASKS_CLIENT_SECRET_ENV,
     GTASKS_AUTH_TIMEOUT_SEC,
     GTASKS_AUTH_URL,
     GTASKS_SCOPE,
@@ -24,10 +26,20 @@ DONE_PAGE = "<html><body><h3>인증 완료. 터미널로 돌아가세요.</h3></
 VERIFIER_BYTES = 64
 
 
-def authorize(client_id, client_secret, open_browser=True):
-    """브라우저 동의 → 코드 → refresh_token. 받은 인증 정보를 저장하고 경로를 반환"""
+def authorize(client_id=None, client_secret=None, open_browser=True):
+    """브라우저 동의 → 코드 → refresh_token. 받은 인증 정보를 저장하고 경로를 반환
+
+    인자를 안 주면 환경변수에서 읽는다. 이 함수는 최초 1회만 쓰이고, 이후 동기화는
+    저장된 refresh_token 으로 돌아 아무 인자도 필요 없다
+    """
+    client_id = client_id or os.environ.get(GTASKS_CLIENT_ID_ENV)
+    client_secret = client_secret or os.environ.get(GTASKS_CLIENT_SECRET_ENV)
     if not client_id or not client_secret:
-        raise Validation("client_id 와 client_secret 이 모두 필요함")
+        raise Validation(
+            "client_id 와 client_secret 이 모두 필요함 —"
+            f" --client-id/--client-secret 이나 {GTASKS_CLIENT_ID_ENV},"
+            f" {GTASKS_CLIENT_SECRET_ENV} 환경변수로 준다"
+        )
     verifier, challenge = _pkce_pair()
     server = HTTPServer((GTASKS_AUTH_HOST, 0), _CallbackHandler)
     server.timeout = GTASKS_AUTH_TIMEOUT_SEC
