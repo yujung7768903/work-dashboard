@@ -193,6 +193,39 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("없음", out)
 
+    def test_statusline_shows_the_linked_todo_and_its_status(self):
+        session_repo.register(connect(), "sess-line", cwd="/tmp")
+        self.run_cli("add-todo", "락 재설계", "--category", "개발")
+        self.run_cli("link-todo", "sess-line", "1")
+        code, out, _ = self.run_cli("statusline", "sess-line", "--cwd", "/tmp")
+        self.assertEqual(code, 0)
+        self.assertIn("[doing] 락 재설계", out)
+
+    def test_statusline_clips_a_long_title_and_counts_the_rest(self):
+        """한 줄에 다 못 담는다 — 제목은 자르고 나머지는 개수로"""
+        session_repo.register(connect(), "sess-line", cwd="/tmp")
+        self.run_cli(
+            "add-todo",
+            "긴 제목을 가진 할일 하나 여기에 더 길게 붙여서 한 줄을 넘기게 만든 제목 끝",
+            "--category",
+            "개발",
+        )
+        self.run_cli("add-todo", "두 번째", "--category", "개발")
+        self.run_cli("link-todo", "sess-line", "1")
+        self.run_cli("link-todo", "sess-line", "2")
+        code, out, _ = self.run_cli("statusline", "sess-line", "--cwd", "/tmp")
+        self.assertEqual(code, 0)
+        self.assertIn("…", out)
+        self.assertIn("+1", out)
+        self.assertNotIn("제목 끝", out)
+
+    def test_statusline_is_silent_when_there_is_nothing_to_show(self):
+        """등록 안 된 세션에서도 조용히 끝나야 한다 — 상태줄에 에러가 찍히면 안 된다"""
+        code, out, err = self.run_cli("statusline", "sess-none", "--cwd", "/tmp")
+        self.assertEqual(code, 0)
+        self.assertEqual("", out.strip())
+        self.assertEqual("", err.strip())
+
     def test_add_subtask_under_todo(self):
         self.run_cli("add-todo", "문의", "--category", "운영")
         code, out, _ = self.run_cli("add-subtask", "1", "회신 초안")

@@ -38,13 +38,22 @@ def finish(con, claude_session_id, worktree=None):
     """
     session = session_repo.get(con, claude_session_id)
     looked = _candidates(worktree, claude_session_id, session["cwd"])
-    root = next((path for path in looked if _is_worktree(path)), "")
+    root = _first_worktree(looked)
     return {
         "todos": _finish_todos(con, claude_session_id),
         "killed": kill_serving(root),
         "worktree": root,
         "looked": looked,
     }
+
+
+def worktree_of(claude_session_id, session_cwd, worktree=None):
+    """세션이 작업 중인 워크트리 루트. 못 찾으면 빈 문자열"""
+    return _first_worktree(_candidates(worktree, claude_session_id, session_cwd))
+
+
+def _first_worktree(paths):
+    return next((path for path in paths if _is_worktree(path)), "")
 
 
 def _candidates(worktree, claude_session_id, session_cwd):
@@ -94,6 +103,65 @@ def kill_serving(root):
             continue
         killed.append((pid, command))
     return killed
+
+
+def serving_port(root):
+    """그 디렉토리를 cwd 로 쓰는 프로세스가 듣고 있는 포트. 없으면 0.
+
+    죽이는 쪽과 달리 읽기만 하므로 워크트리로 제한하지 않는다 — 메인 체크아웃에서
+    작업하는 세션도 자기 서버 포트를 봐야 한다.
+
+    상태줄이 렌더링마다 부르므로 kill_serving 쪽 경로(`lsof -d cwd -t <경로>`, 전체
+    프로세스 스캔 300ms)는 쓸 수 없다. 듣고 있는 소켓 목록을 먼저 받아(40ms) 그 pid
+    들만 cwd 로 확인한다(40ms). lsof 가 없는 환경에서는 0 — 포트만 안 보이면 된다
+    """
+    if not root or not os.path.isdir(root):
+        return 0
+    listeners = _listening_ports()
+    if not listeners:
+        return 0
+    cwds = _cwd_by_pid(listeners)
+    target = os.path.realpath(root)
+    ports = [
+        port
+        for pid, port in listeners.items()
+        if pid in cwds and os.path.realpath(cwds[pid]) == target
+    ]
+    return min(ports) if ports else 0
+
+
+def _listening_ports():
+    """{pid: 듣고 있는 포트}. 한 프로세스가 여럿 들으면 가장 작은 것 (보통 그게 웹 포트)"""
+    found = {}
+    for pid, name in _lsof_fields(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]):
+        port = _port_of(name)
+        if port and port < found.get(pid, port + 1):
+            found[pid] = port
+    return found
+
+
+def _cwd_by_pid(pids):
+    joined = ",".join(str(pid) for pid in sorted(pids))
+    return dict(_lsof_fields(["lsof", "-a", "-d", "cwd", "-p", joined, "-Fpn"]))
+
+
+def _lsof_fields(argv):
+    """lsof -F 출력을 [(pid, n 필드)] 로. p<pid> 뒤의 n 줄들이 그 프로세스의 것이다"""
+    pairs = []
+    pid = 0
+    for line in _run(argv).splitlines():
+        tag, value = line[:1], line[1:]
+        if tag == "p":
+            pid = int(value) if value.isdigit() else 0
+        elif tag == "n" and pid:
+            pairs.append((pid, value))
+    return pairs
+
+
+def _port_of(name):
+    """`127.0.0.1:9081`, `*:7000`, `[::1]:6379` 에서 포트만. 못 읽으면 0"""
+    tail = name.rsplit(":", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
 
 
 def serving_processes(root):
