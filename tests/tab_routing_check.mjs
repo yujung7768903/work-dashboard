@@ -37,7 +37,7 @@ const expected = { "/": "/usage", "/board": "/board", "/nope": "/usage" };
 assert.equal(location.pathname, expected[process.argv[2] || "/"]);
 
 // 메뉴를 누르면 주소가 따라 바뀐다 — 그래야 새로고침이 제자리로 돌아온다
-listeners.tabs.click({ target: { closest: () => ({ dataset: { tab: "categories" } }) } });
-assert.equal(location.pathname, "/categories");
+listeners.tabs.click({ target: { closest: () => ({ dataset: { tab: "settings" } }) } });
+assert.equal(location.pathname, "/settings");
 
 console.log("ok");

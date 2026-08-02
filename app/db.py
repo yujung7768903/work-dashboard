@@ -1,5 +1,6 @@
 """sqlite 연결과 스키마. 다른 모듈은 connect() 만 씀"""
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -7,10 +8,12 @@ from datetime import datetime, timezone
 from app.constants import (
     BUSY_TIMEOUT_MS,
     CATEGORY_PALETTE,
+    COLOR_PATTERN,
     DB_PATH_ENV,
     DEFAULT_DB_PATH,
     SEED_CATEGORIES,
 )
+from app.errors import Validation
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categories(
@@ -19,6 +22,20 @@ CREATE TABLE IF NOT EXISTS categories(
     sort_order INTEGER NOT NULL,
     color TEXT,
     created_at TEXT NOT NULL
+);
+-- 라벨은 카테고리와 달리 한 할일에 여러 개 붙는다 (github 이슈 라벨과 같은 뜻).
+-- 카테고리는 소속이라 하나, 라벨은 성격이라 여럿 — 그래서 조인 테이블을 따로 둔다
+CREATE TABLE IF NOT EXISTS labels(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    sort_order INTEGER NOT NULL,
+    color TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS todo_labels(
+    todo_id INTEGER NOT NULL REFERENCES todos(id),
+    label_id INTEGER NOT NULL REFERENCES labels(id),
+    PRIMARY KEY(todo_id, label_id)
 );
 CREATE TABLE IF NOT EXISTS workspaces(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +117,14 @@ def now():
 def palette_color(sort_order):
     """카테고리 기본 색. 팔레트를 다 쓰면 처음으로 돌아감"""
     return CATEGORY_PALETTE[(sort_order - 1) % len(CATEGORY_PALETTE)]
+
+
+def clean_color(color):
+    """#rrggbb 만 통과. 카테고리·라벨이 같은 규칙을 쓴다"""
+    cleaned = (color or "").strip()
+    if not re.match(COLOR_PATTERN, cleaned):
+        raise Validation(f"색은 #rrggbb 형식이어야 함: {color!r}")
+    return cleaned.lower()
 
 
 def resolve_path(path=None):

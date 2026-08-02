@@ -1,9 +1,6 @@
 """카테고리 저장·조회. 비어 있을 때만 삭제 허용"""
-import re
-
 from app import ordering
-from app.constants import COLOR_PATTERN
-from app.db import now, palette_color, transaction
+from app.db import clean_color, now, palette_color, transaction
 from app.errors import Conflict, NeedsConfirm, NotFound, Validation
 
 TABLE = "categories"
@@ -61,7 +58,7 @@ def update(con, category_id, **fields):
         _reject_duplicate(con, cleaned, exclude_id=category_id)
         changes["name"] = cleaned
     if "color" in fields:
-        changes["color"] = _clean_color(fields["color"])
+        changes["color"] = clean_color(fields["color"])
     if not changes:
         raise Validation("수정할 필드가 없음 (name·color)")
     assignments = ", ".join(f"{key}=?" for key in changes)
@@ -103,13 +100,6 @@ def _clean_name(name):
     if not cleaned:
         raise Validation("카테고리 이름이 비어 있음")
     return cleaned
-
-
-def _clean_color(color):
-    cleaned = (color or "").strip()
-    if not re.match(COLOR_PATTERN, cleaned):
-        raise Validation(f"색은 #rrggbb 형식이어야 함: {color!r}")
-    return cleaned.lower()
 
 
 def _reject_duplicate(con, name, exclude_id=None):

@@ -12,10 +12,12 @@ from app.constants import (
 from app.db import now, transaction
 from app.errors import NotFound, Validation
 from app.repositories import categories as category_repo
+from app.repositories import labels as label_repo
 from app.repositories import workspaces as workspace_repo
 
 TABLE = "todos"
 EDITABLE_FIELDS = ("title", "note", "precondition", "status", "workspace_id")
+LABEL_FIELD = "label_ids"  # 컬럼이 아니라 조인 테이블이라 따로 뗀다
 
 
 def create(
@@ -75,9 +77,11 @@ def list_by_category(con, category_id):
 
 def update(con, todo_id, **fields):
     current = get(con, todo_id)
+    if LABEL_FIELD in fields:
+        label_repo.set_for_todo(con, todo_id, fields.pop(LABEL_FIELD))
     assignments = _validated_assignments(con, current, fields)
     if not assignments:
-        return current
+        return get(con, todo_id)
     assignments["updated_at"] = now()
     clause = ",".join(f"{key}=?" for key in assignments)
     with transaction(con):
@@ -89,9 +93,11 @@ def update(con, todo_id, **fields):
 
 
 def delete(con, todo_id):
-    """하위할일까지 cascade. 하위할일은 할일에 종속되어 독립 존재 의미가 없음"""
+    """하위할일까지 cascade. 하위할일은 할일에 종속되어 독립 존재 의미가 없음.
+    붙어 있던 라벨은 연결만 끊는다 — 라벨 자체는 다른 할일도 쓰는 공용이다"""
     get(con, todo_id)
     with transaction(con):
+        con.execute("DELETE FROM todo_labels WHERE todo_id=?", (todo_id,))
         con.execute("DELETE FROM subtasks WHERE todo_id=?", (todo_id,))
         con.execute("DELETE FROM todos WHERE id=?", (todo_id,))
 

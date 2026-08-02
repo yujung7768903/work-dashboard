@@ -2,6 +2,7 @@
 from app.constants import STATUS_DONE, UNASSIGNED_LABEL
 from app.errors import Validation
 from app.repositories import categories as category_repo
+from app.repositories import labels as label_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
@@ -21,11 +22,13 @@ def tree(con, group_by):
 
 
 def _workspace_groups(con):
-    # 보드가 카테고리 색·이모지로 카드 상단을 칠하고 라벨 필터를 거는 데 씀
+    # 보드가 카테고리 색·이모지로 카드 상단을 칠하고 카테고리 필터를 거는 데 씀
     by_id = {row["id"]: row for row in category_repo.list_all(con)}
+    # 라벨은 트리 한 번에 한 번만 읽는다. 카드마다 다시 물으면 카드 수만큼 쿼리가 는다
+    labels = label_repo.map_by_todo(con)
     groups = []
     for workspace in workspace_repo.list_all(con):
-        todos = _with_subtasks(con, todo_repo.list_by_workspace(con, workspace["id"]))
+        todos = _enriched(con, todo_repo.list_by_workspace(con, workspace["id"]), labels)
         if not todos:
             continue
         category = by_id.get(workspace["category_id"]) or {}
@@ -43,14 +46,15 @@ def _workspace_groups(con):
                 jira_id=workspace["jira_id"],
             )
         )
-    groups.append(_unassigned_group(con))
+    groups.append(_unassigned_group(con, labels))
     return groups
 
 
 def _category_groups(con):
+    labels = label_repo.map_by_todo(con)
     groups = []
     for category in category_repo.list_all(con):
-        todos = _with_subtasks(con, todo_repo.list_by_category(con, category["id"]))
+        todos = _enriched(con, todo_repo.list_by_category(con, category["id"]), labels)
         if not todos:
             continue
         groups.append(
@@ -65,21 +69,22 @@ def _category_groups(con):
     return groups
 
 
-def _unassigned_group(con):
+def _unassigned_group(con, labels):
     return _group(
         kind=KIND_UNASSIGNED,
         item_id=None,
         name=UNASSIGNED_LABEL,
         sort_order=None,
-        todos=_with_subtasks(con, todo_repo.list_by_workspace(con, None)),
+        todos=_enriched(con, todo_repo.list_by_workspace(con, None), labels),
     )
 
 
-def _with_subtasks(con, todos):
+def _enriched(con, todos, labels):
     enriched = []
     for todo in todos:
         item = dict(todo)
         item["subtasks"] = subtask_repo.list_by_todo(con, todo["id"])
+        item["labels"] = labels.get(todo["id"], [])
         enriched.append(item)
     return enriched
 

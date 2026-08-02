@@ -48,14 +48,14 @@
           </svg>
           워크스페이스
         </button>
-        <button data-tab="categories">
+        <button data-tab="settings">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M8.6 2.2H13a.8.8 0 0 1 .8.8v4.4L7.9 13.3a.8.8 0 0 1-1.2 0L2.7 9.3a.8.8 0 0 1 0-1.2z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="10.8" cy="5.2" r="1" fill="currentColor"/>
           </svg>
-          카테고리
+          설정
         </button>
       </nav>
 
@@ -141,12 +141,21 @@
         <div id="workspace-list"></div>
       </section>
 
-      <section id="tab-categories" class="tab" hidden>
+      <section id="tab-settings" class="tab" hidden>
+        <!-- 카테고리는 소속(하나), 라벨은 성격(여러 개). 같은 화면에서 색까지 관리한다 -->
+        <h2 class="set-head">카테고리</h2>
         <form id="category-add">
           <input id="category-name" placeholder="새 카테고리" required>
           <button type="submit">추가</button>
         </form>
-        <ul id="category-list"></ul>
+        <ul id="category-list" class="set-list"></ul>
+
+        <h2 class="set-head">라벨</h2>
+        <form id="label-add">
+          <input id="label-name" placeholder="새 라벨" required>
+          <button type="submit">추가</button>
+        </form>
+        <ul id="label-list" class="set-list"></ul>
       </section>
 
       <section id="tab-usage" class="tab" hidden>

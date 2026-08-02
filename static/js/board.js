@@ -18,8 +18,12 @@ const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
 let activeCategoryId = null;
 // 케밥 메뉴가 열린 할일. 한 번에 하나만 열림
 let openMenuTodoId = null;
+// 그 케밥 메뉴가 라벨 목록으로 들어가 있는 할일. 메뉴를 닫으면 첫 화면으로 돌아온다
+let labelMenuTodoId = null;
 // 하위 할일을 펼쳐 둔 할일. 기본은 접힘이고, 재렌더에도 펼친 것만 유지된다
 const expandedTodoIds = new Set();
+// 설정 탭에서 만든 라벨 전체. 케밥 메뉴가 켜고 끌 목록으로 쓴다
+let allLabels = [];
 
 function showDone() {
   return document.getElementById("show-done").checked;
@@ -28,7 +32,14 @@ function showDone() {
 // 두 하위 탭이 함께 쓰는 위쪽 — 다음에 할 일·세션 패널·빠른 추가·카테고리 라벨.
 // 하위 탭을 바꿔도 이 영역은 그대로 남아야 하므로 목록 렌더와 따로 둔다
 export async function renderShared() {
-  const [next, categories] = await Promise.all([api.getNext(), api.getCategories()]);
+  const [next, categories, labels] = await Promise.all([
+    api.getNext(),
+    api.getCategories(),
+    api.getLabels(),
+  ]);
+  // 케밥 메뉴가 라벨 목록을 그리려면 있어야 한다. 메뉴를 열 때 따로 부르면
+  // 메뉴가 한 박자 늦게 채워지므로 보드를 그릴 때 같이 받아 둔다
+  allLabels = labels;
   renderNext(next);
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
@@ -211,10 +222,24 @@ function todoElement(todo) {
   title.textContent = todo.title;
   if (todo.needs_title) title.append(rawTitleMark());
 
-  row.append(statusButton, subtaskToggle(todo), title, todoMenu(todo));
+  row.append(statusButton, subtaskToggle(todo), title, labelStrip(todo), todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
+}
+
+// 제목과 케밥 사이 세 번째 칸. 붙은 라벨이 없으면 빈 칸으로 남아 제목이 그만큼 넓게 쓴다
+function labelStrip(todo) {
+  const strip = document.createElement("span");
+  strip.className = "todo-labels";
+  (todo.labels || []).forEach((label) => {
+    const pill = document.createElement("span");
+    pill.className = "todo-label";
+    pill.style.setProperty("--cat", label.color);
+    pill.textContent = label.name;
+    strip.appendChild(pill);
+  });
+  return strip;
 }
 
 // 사이드바 메뉴와 같은 16 격자 · currentColor 스트로크 아이콘. 펼치면 CSS 로 90도 돌린다
@@ -260,10 +285,11 @@ function todoMenu(todo) {
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "⋮";
-  toggle.title = "하위 할일 추가 · 삭제";
+  toggle.title = "라벨 수정 · 하위 할일 추가 · 삭제";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
+    labelMenuTodoId = null;
     run(renderBoard);
   });
   wrapper.appendChild(toggle);
@@ -274,7 +300,21 @@ function todoMenu(todo) {
 function todoMenuItems(todo) {
   const items = document.createElement("div");
   items.className = "ws-menu-items";
+  if (labelMenuTodoId === todo.id) {
+    items.append(
+      menuItem("← 라벨 수정", () => {
+        labelMenuTodoId = null;
+        run(renderBoard);
+      }),
+      ...labelToggles(todo)
+    );
+    return items;
+  }
   items.append(
+    menuItem("라벨 수정", () => {
+      labelMenuTodoId = todo.id;
+      run(renderBoard);
+    }),
     menuItem("하위 할일 추가", () =>
       run(async () => {
         openMenuTodoId = null;
@@ -294,6 +334,34 @@ function todoMenuItems(todo) {
     )
   );
   return items;
+}
+
+// 라벨은 여러 개가 붙으므로 한 번 누를 때마다 하나씩 켜고 끈다. 메뉴는 닫지 않는다 —
+// 두 개를 붙이려고 케밥을 두 번 여는 건 번거롭다
+function labelToggles(todo) {
+  if (!allLabels.length) return [emptyLabelHint()];
+  const attached = new Set((todo.labels || []).map((label) => label.id));
+  return allLabels.map((label) =>
+    // 안 붙은 라벨은 체크 자리를 줄바꿈 없는 공백으로 비운다. 점 같은 기호를 넣으면
+    // 이름의 일부처럼(".feature") 읽히고, 보통 공백은 nowrap 이 접어 세로줄이 어긋난다
+    menuItem(`${attached.has(label.id) ? "✓" : "\u00a0"} ${label.name}`, () =>
+      run(async () => {
+        const next = attached.has(label.id)
+          ? [...attached].filter((id) => id !== label.id)
+          : [...attached, label.id];
+        await api.updateTodo(todo.id, { label_ids: next });
+        await renderBoard();
+      })
+    )
+  );
+}
+
+// 라벨을 아직 하나도 안 만들었으면 빈 메뉴가 열려 고장처럼 보인다. 어디서 만드는지 알려준다
+function emptyLabelHint() {
+  const hint = document.createElement("button");
+  hint.textContent = "설정 탭에서 먼저 만드세요";
+  hint.disabled = true;
+  return hint;
 }
 
 function subtaskList(todo) {
@@ -335,5 +403,6 @@ document.getElementById("board-controls").addEventListener("change", () => run(r
 document.addEventListener("click", () => {
   if (openMenuTodoId === null) return;
   openMenuTodoId = null;
+  labelMenuTodoId = null;
   run(renderBoard);
 });

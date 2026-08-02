@@ -19,6 +19,7 @@ from app.errors import (
     Validation,
 )
 from app.repositories import categories as category_repo
+from app.repositories import labels as label_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
@@ -103,6 +104,8 @@ def _route_get(con, head, item_id, query):
         return planning.done_on(con, _single(query, "date", None))
     if head == "categories":
         return category_repo.list_all(con)
+    if head == "labels":
+        return label_repo.list_all(con)
     if head == "workspaces":
         if item_id:
             return {
@@ -128,6 +131,8 @@ def _route_get(con, head, item_id, query):
 def _route_post(con, head, body):
     if head == "categories":
         return category_repo.create(con, body.get("name"))
+    if head == "labels":
+        return label_repo.create(con, body.get("name"))
     if head == "workspaces":
         extra = {key: body.get(key) for key in WORKSPACE_CREATE_FIELDS}
         return workspace_repo.create(
@@ -153,6 +158,8 @@ def _route_patch(con, head, item_id, body):
         raise Validation("id 가 필요함")
     if head == "categories":
         return category_repo.update(con, item_id, **body)
+    if head == "labels":
+        return label_repo.update(con, item_id, **body)
     if head == "workspaces":
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
@@ -177,6 +184,7 @@ def _route_delete(con, head, item_id, query):
     force = _single(query, "force", None) == "1"
     deleters = {
         "categories": lambda con, item_id: category_repo.delete(con, item_id, force),
+        "labels": lambda con, item_id: label_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
         "subtasks": subtask_repo.delete,
@@ -192,6 +200,8 @@ def _reorder(con, body):
     scope = body.get("scope_id")
     if kind == "categories":
         category_repo.reorder(con, ids)
+    elif kind == "labels":
+        label_repo.reorder(con, ids)
     elif kind == "workspaces":
         workspace_repo.reorder(con, ids)
     elif kind == "todos":
