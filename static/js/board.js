@@ -18,6 +18,8 @@ const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
 let activeCategoryId = null;
 // 케밥 메뉴가 열린 할일. 한 번에 하나만 열림
 let openMenuTodoId = null;
+// 그 케밥 메뉴가 라벨 목록으로 들어가 있는 할일. 메뉴를 닫으면 첫 화면으로 돌아온다
+let labelMenuTodoId = null;
 // 하위 할일을 펼쳐 둔 할일. 기본은 접힘이고, 재렌더에도 펼친 것만 유지된다
 const expandedTodoIds = new Set();
 // 설정 탭에서 만든 라벨 전체. 케밥 메뉴가 켜고 끌 목록으로 쓴다
@@ -283,10 +285,11 @@ function todoMenu(todo) {
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "⋮";
-  toggle.title = "라벨 · 하위 할일 추가 · 삭제";
+  toggle.title = "라벨 수정 · 하위 할일 추가 · 삭제";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
+    labelMenuTodoId = null;
     run(renderBoard);
   });
   wrapper.appendChild(toggle);
@@ -297,8 +300,21 @@ function todoMenu(todo) {
 function todoMenuItems(todo) {
   const items = document.createElement("div");
   items.className = "ws-menu-items";
-  items.append(...labelToggles(todo));
+  if (labelMenuTodoId === todo.id) {
+    items.append(
+      menuItem("← 라벨 수정", () => {
+        labelMenuTodoId = null;
+        run(renderBoard);
+      }),
+      ...labelToggles(todo)
+    );
+    return items;
+  }
   items.append(
+    menuItem("라벨 수정", () => {
+      labelMenuTodoId = todo.id;
+      run(renderBoard);
+    }),
     menuItem("하위 할일 추가", () =>
       run(async () => {
         openMenuTodoId = null;
@@ -321,8 +337,9 @@ function todoMenuItems(todo) {
 }
 
 // 라벨은 여러 개가 붙으므로 한 번 누를 때마다 하나씩 켜고 끈다. 메뉴는 닫지 않는다 —
-// 두 개를 붙이려고 케밥을 두 번 여는 건 번거롭다. 라벨이 없으면 항목 자체가 없다
+// 두 개를 붙이려고 케밥을 두 번 여는 건 번거롭다
 function labelToggles(todo) {
+  if (!allLabels.length) return [emptyLabelHint()];
   const attached = new Set((todo.labels || []).map((label) => label.id));
   return allLabels.map((label) =>
     menuItem(`${attached.has(label.id) ? "✓" : "·"} ${label.name}`, () =>
@@ -335,6 +352,14 @@ function labelToggles(todo) {
       })
     )
   );
+}
+
+// 라벨을 아직 하나도 안 만들었으면 빈 메뉴가 열려 고장처럼 보인다. 어디서 만드는지 알려준다
+function emptyLabelHint() {
+  const hint = document.createElement("button");
+  hint.textContent = "설정 탭에서 먼저 만드세요";
+  hint.disabled = true;
+  return hint;
 }
 
 function subtaskList(todo) {
@@ -376,5 +401,6 @@ document.getElementById("board-controls").addEventListener("change", () => run(r
 document.addEventListener("click", () => {
   if (openMenuTodoId === null) return;
   openMenuTodoId = null;
+  labelMenuTodoId = null;
   run(renderBoard);
 });
