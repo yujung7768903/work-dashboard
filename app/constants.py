@@ -130,14 +130,42 @@ TOKEN_WEIGHTS = {
 }
 MODEL_TIERS = (("fable", 10), ("opus", 5), ("haiku", 1))
 MODEL_TIER_OTHER = 3  # Sonnet 과 이름을 못 가린 모델
-ATTRIBUTION_DAYS = 7
+ATTRIBUTION_DAYS = 7  # 스캔 구간. 짧은 창은 이 안에서 잘라 쓴다
+# /usage 와 같은 두 창. 기본은 24시간 — /usage 도 그쪽을 먼저 보여준다
+ATTRIBUTION_WINDOWS = (("day", "24시간", 24), ("week", "7일", 24 * ATTRIBUTION_DAYS))
+# 서브에이전트는 스킬과 따로 센다. 한 줄에 이름표가 둘 다 붙어 있으면(서브에이전트가
+# 스킬을 물고 돈 경우) 서브에이전트 쪽으로 넣고 이름만 구체적인 스킬 것을 쓴다
 ATTRIBUTION_GROUPS = (
-    ("skills", "스킬·서브에이전트"),
+    ("skills", "스킬"),
+    ("agents", "서브에이전트"),
     ("plugins", "플러그인"),
     ("mcp", "MCP 서버"),
 )
-ATTRIBUTION_TOP = 6  # 한 칸 카드에 세 그룹이 들어간다. 그룹마다 이 정도가 상한
-ATTRIBUTION_MIN_PCT = 0.1
+ATTRIBUTION_TOP = 6  # 한 칸 카드에 네 그룹이 들어간다. 그룹마다 이 정도가 상한
+# 행동 특성. 서로 겹치고 이름표와도 겹치므로 분할이 아니다 — /usage 도 그렇게 적는다.
+# (키, 라벨, 조언). 순서는 몫이 큰 쪽이 위로 오게 런타임에 다시 정한다
+ATTRIBUTION_BEHAVIORS = (
+    ("long_context", "150k 넘는 컨텍스트", "긴 세션은 캐시가 받쳐줘도 비싸다 — 중간에 /compact, 주제가 바뀌면 /clear"),
+    ("cache_miss", "10만 토큰 넘는 캐시 미스", "쉬다 온 세션에 말을 걸면 생긴다 — 자리를 비우기 전에 /compact"),
+    ("subagent_heavy", "서브에이전트가 많은 세션", "서브에이전트는 각자 따로 요청한다 — 띄우는 데 신중하거나 싼 모델을 물린다"),
+    ("high_parallel", "4개 이상 세션 동시 실행", "세션이 몇 개든 한도는 하나다 — 굳이 동시가 아니면 줄 세우는 편이 고르게 쓴다"),
+    ("cron", "8시간 넘게 돈 세션", "대개 백그라운드·루프 세션이다. 계속 도는 사용은 금방 쌓이므로 의도한 것인지 본다"),
+)
+# /usage 와 같은 문턱. 행동 특성은 10% 아래를 접고, 이름표는 1% 아래(정수 반올림해서
+# 0%가 되는 것)를 접는다. 몫이 잘게 흩어진 이름을 다 세우면 큰 것이 안 보인다
+ATTRIBUTION_BEHAVIOR_MIN_PCT = 10
+# 요청 한 줄의 특성 — 캐시 미스는 캐시 안 탄 입력, 긴 컨텍스트는 그 요청이 실어보낸 입력
+UNCACHED_FIELD = "input_tokens"  # 캐시를 못 탄 입력
+CONTEXT_FIELDS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+CACHE_MISS_TOKENS = 100_000
+LONG_CONTEXT_TOKENS = 150_000
+# 세션의 특성. 서브에이전트가 3번 넘게 돌았거나 세션 무게의 절반을 넘게 먹었으면 "많은" 것
+SUBAGENT_HEAVY_COUNT = 3
+SUBAGENT_HEAVY_SHARE = 0.5
+CRON_SESSION_HOURS = 8  # 서로 다른 시각대 8개에 걸쳐 있으면 상시 도는 세션으로 본다
+# 같은 5분 안에 세션이 이만큼 겹쳐 있으면 그 구간의 사용은 병렬로 쓴 것으로 센다
+PARALLEL_BUCKET_MS = 300_000
+PARALLEL_SESSIONS = 4
 # 7일치 트랜스크립트는 400MB 라 한 번 훑는 데 1초 가까이 걸린다. 프런트는 1분마다
 # 폴링하므로 그 사이는 물고 있는다 — 귀속 비율이 5분 만에 뒤집히는 값도 아니다
 ATTRIBUTION_CACHE_SECONDS = 300

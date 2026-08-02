@@ -166,6 +166,25 @@
 .u-attr-pct { font-weight: 600; font-variant-numeric: tabular-nums; }
 /* 게이지는 두 열을 가로지른다. 한도 카드용 여백은 여기서 좁힌다 */
 .u-attr-row .u-track { grid-column: 1 / -1; margin-top: var(--sp-4); height: 4px; }
+.u-attr-group .u-empty { margin: 0; }
+
+/* 창 토글. 값이 둘뿐이라 셀렉트 대신 붙은 버튼 두 개 */
+.u-attr-windows { display: inline-flex; gap: var(--sp-2); }
+.u-attr-windows button {
+  font-size: var(--fs-micro); font-weight: 600; color: var(--muted);
+  padding: var(--sp-2) var(--sp-8); border: 0; border-radius: var(--r-pill);
+  background: var(--u-softer); cursor: pointer;
+}
+.u-attr-windows button.on { background: var(--accent); color: var(--surface); }
+
+/* 행동 특성은 몫이 주인공이라 %를 앞에 크게 두고, 조언은 그 아래 한 단 죽여서 붙인다 */
+.u-behav + .u-behav { margin-top: var(--sp-8); }
+.u-behav-head { display: flex; align-items: baseline; gap: var(--sp-8); }
+.u-behav-head b {
+  font-size: var(--fs-body); font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.u-behav-advice { margin: var(--sp-2) 0 0; color: var(--muted); font-size: var(--fs-micro); }
 
 /* ── 차트 공통 ── */
 /* 눈금 글자 크기는 chart.js 의 AXIS_FONT 가 정한다 — 좌표 계산에 쓰이기 때문 */

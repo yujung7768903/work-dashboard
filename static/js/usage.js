@@ -70,6 +70,9 @@ const STATUS_LABEL = { todo: "대기", doing: "진행중", done: "완료" };
 let timer = null;
 // 전체보기로 펼친 상태. 모듈 변수라 60초 폴링이 다시 그려도 접히지 않는다
 let sessionsExpanded = false;
+// 귀속 패널이 보고 있는 창. 7일이 기본 — 24시간은 하루 안 쓴 스킬이 통째로 빠져
+// "안 쓴 것"과 "어제 썼던 것"이 구분되지 않는다
+let attributionWindow = "week";
 
 export async function renderUsage() {
   paint(await load());
@@ -448,27 +451,70 @@ function weekTable(tracks) {
 }
 
 // ── 2행: 어디에 썼나 ───────────────────────────────────────────────────────
-// /usage 와 같은 귀속 목록. 그룹끼리는 겹쳐 세어지므로(플러그인이 준 스킬은 양쪽에
-// 다 들어간다) 합이 100%가 되지 않는다 — 그 사실을 꼬리말에 적는다
+// /usage 가 보여주는 그대로 두 단이다. 위는 요청·세션의 행동 특성(무엇이 비싸게
+// 만들었나), 아래는 이름표별 몫(무엇이 썼나). 둘 다 서로 겹쳐 세어지므로 합이
+// 100%가 되지 않는다 — 그 사실을 꼬리말에 적는다
 function renderAttribution(attribution) {
   const box = slot("u-attribution", "u-card");
   if (!box) return;
-  const groups = (attribution?.groups || []).filter((group) => group.items.length);
-  box.appendChild(headRow("어디에 썼나", `최근 ${attribution?.days || 0}일`));
-  if (!groups.length) {
-    box.appendChild(
-      emptyState(
-        attribution?.available
-          ? "이름표가 붙은 사용이 아직 없음 — 스킬·플러그인·MCP 를 쓰면 쌓입니다"
-          : `트랜스크립트를 읽을 수 없음 — ${attribution?.source || ""}`
-      )
-    );
+  const window = attribution?.windows?.[attributionWindow];
+  box.appendChild(headRow("어디에 썼나", null, [windowToggle(attribution)]));
+  if (!window) {
+    box.appendChild(emptyState(`트랜스크립트를 읽을 수 없음 — ${attribution?.source || ""}`));
     return;
   }
+  box.appendChild(behaviorList(window));
+  const groups = window.groups.filter((group) => group.items.length);
   groups.forEach((group) => box.appendChild(attributionGroup(group)));
+  if (!groups.length) {
+    box.appendChild(
+      emptyState("이름표가 붙은 사용이 없음 — 스킬·서브에이전트·플러그인·MCP 를 쓰면 쌓입니다")
+    );
+  }
   box.appendChild(
-    tag("p", "u-caption", "전체 사용량 대비 몫 · 그룹끼리 겹쳐 세어져 합은 100%가 아님")
+    tag(
+      "p",
+      "u-caption",
+      `요청 ${thousands(window.requests)}개 · 세션 ${window.sessions}개 ·` +
+        " 항목끼리 겹쳐 세어져 합은 100%가 아님"
+    )
   );
+}
+
+// 창은 두 개뿐이라 셀렉트를 두지 않는다. 같은 payload 를 다시 그리므로 재조회는 없다
+function windowToggle(attribution) {
+  const box = tag("div", "u-attr-windows");
+  Object.entries(attribution?.windows || {}).forEach(([key, window]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = window.label;
+    button.className = key === attributionWindow ? "on" : "";
+    button.setAttribute("aria-pressed", String(key === attributionWindow));
+    button.addEventListener("click", () => {
+      attributionWindow = key;
+      renderAttribution(attribution);
+    });
+    box.appendChild(button);
+  });
+  return box;
+}
+
+// 특성은 몫이 크고 손쓸 데가 있는 것만 남는다. 문턱 아래를 다 세우면 큰 것이 안 보인다
+function behaviorList(window) {
+  const wrap = tag("div", "u-attr-group");
+  wrap.appendChild(tag("h3", "u-attr-title", "행동 특성"));
+  if (!window.behaviors.length) {
+    wrap.appendChild(emptyState("이 구간에는 10% 넘는 특성이 없음 — 다른 창을 봅니다"));
+    return wrap;
+  }
+  window.behaviors.forEach((behavior) => {
+    const row = tag("div", "u-behav");
+    const head = tag("div", "u-behav-head");
+    head.append(tag("b", null, `${behavior.pct}%`), tag("span", null, behavior.label));
+    row.append(head, tag("p", "u-behav-advice", behavior.advice));
+    wrap.appendChild(row);
+  });
+  return wrap;
 }
 
 function attributionGroup(group) {
