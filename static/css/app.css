@@ -472,6 +472,11 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라벨은 어디서든 --fs-sm + 500 + muted (사용량 한도 카드 라벨과 같은 값) */
 .field label { display: block; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 .field textarea { width: 100%; min-height: 60px; }
+/* 라벨 아래 한 줄 안내. 라벨보다 한 단 옅게 — 읽는 순서가 라벨 → 안내 → 입력칸이다 */
+.field .hint {
+  margin: var(--sp-2) 0 var(--sp-4);
+  color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-body);
+}
 
 /* ── 워크스페이스 ─────────────────────────────────────────────────────────── */
 /* 카드 그리드. 보드와 같은 기준으로 1↔2컬럼 */
@@ -643,7 +648,9 @@ button:disabled { color: var(--line); cursor: default; }
 /* fixed + inset 0 + margin auto = 스크롤 위치와 무관하게 화면 정중앙.
    position: relative 로 두면 문서 흐름상의 자리에 뜨는 탓에 아래쪽 카드에서 열면
    팝업을 보려고 위로 스크롤해야 했다. 닫기 버튼의 기준 상자 역할은 fixed 도 한다 */
-#session-modal[open] {
+/* 할일 추가 팝업도 같은 외양을 쓴다 — 팝업이 두 종류로 보일 이유가 없다 */
+#session-modal[open],
+#todo-add-modal[open] {
   position: fixed; inset: 0; margin: auto;
   display: flex; flex-direction: column;
   width: min(620px, calc(100vw - var(--sp-24))); max-height: 80vh; overflow: hidden;
@@ -651,10 +658,18 @@ button:disabled { color: var(--line); cursor: default; }
   background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
 }
 /* 팝업이 열린 동안 뒤 화면은 고정. 스크롤은 팝업 본문만 갖는다 */
-html:has(#session-modal[open]) { overflow: hidden; }
-#session-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
+html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidden; }
+#session-modal::backdrop, #todo-add-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
 /* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
-#session-modal form { margin: 0; }
+#session-modal form, #todo-add-modal form { margin: 0; }
+/* 전역 form 은 한 줄 flex 다(빠른 추가·설정 폼용). 팝업 폼은 라벨과 칸이 붙어야 하므로
+   세로로 쌓는다 — display 를 안 바꾸면 제목·세 칸·버튼이 한 줄에 흩어진다.
+   여백은 세션 팝업 본문과 같은 값 */
+#todo-add-form { display: block; padding: var(--sp-20); overflow: auto; }
+/* textarea 는 .field 공통 규칙이 이미 100%. 한 줄 입력도 같은 폭이어야 줄이 맞는다 */
+#todo-add-form .field input { width: 100%; }
+/* 확인 버튼은 오른쪽 끝. 팝업의 마지막 동작 위치를 세션 팝업과 같게 둔다 */
+.dlg-actions { display: flex; justify-content: flex-end; margin-top: var(--sp-20); }
 .modal-close {
   position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
   background: none; color: var(--muted);
