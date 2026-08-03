@@ -333,14 +333,14 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 crontab -l
 ```
 
-### 등록된 크론
+### 크론 종류
 
-| 주기 | 명령 | 하는 일 | 소속 |
-| --- | --- | --- | --- |
-| 5분마다 | `dash.py autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | 이 저장소 (④) |
-| 5분마다 | `~/.claude/scripts/resume-limited-jobs.py` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 밂. 한 번에 1건 | Claude Code 설정 |
-| 평일 08·09·10시 | `~/.claude/skills/skill-sync/pull.sh` | 스킬 저장소를 GitHub 에서 pull·자동병합 | skill-sync 스킬 |
-| 평일 09~20시 매시 | `~/.claude/skills/skill-sync/apply.sh` | 사용자가 확인해 준 스킬 변경을 반영 | skill-sync 스킬 |
+| 크론 | 하는 일 | 크론식 | 주기 | 소속 |
+| --- | --- | --- | --- | --- |
+| `autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | `*/5 * * * *` | 5분마다 | 이 저장소 (④) |
+| `resume-limited-jobs` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 밂. 한 번에 1건 | `*/5 * * * *` | 5분마다 | Claude Code 설정 |
+| `skill-sync pull` | 스킬 저장소를 GitHub 에서 pull·자동병합 | `0 8,9,10 * * 1-5` | 평일 08·09·10시 | skill-sync 스킬 |
+| `skill-sync apply` | 사용자가 확인해 준 스킬 변경을 반영 | `0 9-20 * * 1-5` | 평일 09~20시 매시 | skill-sync 스킬 |
 
 ### 자율 실행과 리밋 재개는 짝
 
