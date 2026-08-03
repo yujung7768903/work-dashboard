@@ -28,6 +28,7 @@ export const classifySession = (id, fields) => request("PATCH", `/sessions/${id}
 export const getUsage = () => request("GET", "/usage");
 export const getWorktrees = () => request("GET", "/worktrees");
 export const getAutorun = () => request("GET", "/autorun");
+export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });
 export const confirmAutorunRun = (id) => request("PATCH", `/autorun-runs/${id}`);
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
