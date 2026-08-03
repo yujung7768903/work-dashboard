@@ -158,6 +158,10 @@ def _route_post(con, head, body):
 
 
 def _route_patch(con, head, item_id, body):
+    if head == "autorun":
+        # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
+        state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
+        return {"state": state, "runs": autorun_repo.recent_with_todos(con)}
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":

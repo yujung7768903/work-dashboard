@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 
+import server
 from app.constants import (
     AUTORUN_BLOCKED_STREAK_LIMIT,
     AUTORUN_LABEL,
@@ -380,6 +381,24 @@ class RecentWithTodos(AutorunCase):
         autorun_repo.close_run(self.con, first["id"], OUTCOME_DONE)
         second = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job2")
         self.assertEqual(autorun_repo.recent_with_todos(self.con)[0]["id"], second["id"])
+
+
+class WebToggle(AutorunCase):
+    """화면의 on/off 스위치. CLI 의 dash.py autorun on|off 와 같은 상태를 건드린다"""
+
+    def test_patch_turns_autorun_off_and_on(self):
+        payload = server.route(self.con, "PATCH", "/api/autorun", {}, {"enabled": False})
+        self.assertEqual(payload["state"]["enabled"], 0)
+        self.assertEqual(autorun_repo.state(self.con)["enabled"], 0)
+
+        payload = server.route(self.con, "PATCH", "/api/autorun", {}, {"enabled": True})
+        self.assertEqual(payload["state"]["enabled"], 1)
+        self.assertEqual(autorun_repo.state(self.con)["enabled"], 1)
+
+    def test_response_carries_runs_so_the_panel_repaints(self):
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        payload = server.route(self.con, "PATCH", "/api/autorun", {}, {"enabled": True})
+        self.assertEqual(payload["runs"][0]["todo_title"], self.todo["title"])
 
 
 if __name__ == "__main__":

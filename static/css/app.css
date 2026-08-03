@@ -563,11 +563,29 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-cycle {
   font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
 }
-/* 활성 여부 표시. 파란색(활성)·회색(비활성)은 배경색만 바뀐다 */
-#autorun-dot {
-  width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--muted); flex: none;
+/* 활성 여부 표시 겸 조작. 켜짐이 곧 스위치라 상태와 스위치를 따로 두지 않는다.
+   체크박스는 숨기고 접근성만 남긴다 — 키보드·스크린리더는 그대로 동작한다 */
+#autorun-switch {
+  display: inline-flex; align-items: center; gap: var(--sp-4);
+  flex: none; cursor: pointer;
 }
-#autorun-dot.on { background: var(--accent); }
+#autorun-toggle { position: absolute; width: 1px; height: 1px; opacity: 0; }
+#autorun-switch .track {
+  position: relative; width: 26px; height: 14px; flex: none;
+  border-radius: var(--r-pill); background: var(--muted); transition: background 0.12s;
+}
+#autorun-switch .track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px;
+  border-radius: var(--r-pill); background: var(--surface); transition: transform 0.12s;
+}
+#autorun-toggle:checked + .track { background: var(--accent); }
+#autorun-toggle:checked + .track::after { transform: translateX(12px); }
+#autorun-toggle:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 글자는 상태에서 파생시킨다 — JS 가 따로 갱신하지 않아 어긋날 자리가 없다 */
+#autorun-switch .state { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+#autorun-switch .state::after { content: "OFF"; }
+#autorun-toggle:checked ~ .state { color: var(--accent); }
+#autorun-toggle:checked ~ .state::after { content: "ON"; }
 #autorun-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
 /* 자율 실행 기록이 없으면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
 #autorun-list:empty { display: none; }

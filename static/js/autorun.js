@@ -12,17 +12,45 @@ const RUNNING_LABEL = "진행 중";
 const OUTCOME_LABELS = { done: "완료", review: "확인 필요", failed: "실패", blocked: "막힘" };
 const REVIEW = "review";
 const REVIEW_HINT = "변경을 확인·병합했으면 눌러 완료로 내린다";
+const TOGGLE_HINT = "자율 수행 켜기·끄기";
 
 let timer = null;
+let bound = false;
 
 export async function renderAutorun() {
   const { state, runs } = await api.getAutorun();
-  document.getElementById("autorun-dot").classList.toggle("on", Boolean(state.enabled));
+  paint(state, runs);
+}
+
+function paint(state, runs) {
+  document.getElementById("autorun-toggle").checked = Boolean(state.enabled);
   document.getElementById("autorun-cycle").textContent = TICK_LABEL;
 
   const list = document.getElementById("autorun-list");
   list.innerHTML = "";
   runs.forEach((run) => list.appendChild(runRow(run)));
+}
+
+// 스위치를 켜고 끄면 autorun_state 가 바뀐다 — CLI 의 dash.py autorun on|off 와 같은 곳
+function bindToggle() {
+  // 보드를 다시 그릴 때마다 폴링이 다시 시작한다. 두 번 붙으면 한 번 눌러 두 번 나간다
+  if (bound) return;
+  bound = true;
+  const label = document.getElementById("autorun-switch");
+  const toggle = document.getElementById("autorun-toggle");
+  // summary 안이라 막지 않으면 스위치를 누를 때마다 패널이 접혔다 펴진다
+  label.addEventListener("click", (event) => event.stopPropagation());
+  toggle.addEventListener("change", () => {
+    label.title = TOGGLE_HINT;
+    api
+      .setAutorun(toggle.checked)
+      .then(({ state, runs }) => paint(state, runs))
+      .catch((error) => {
+        // 서버가 안 받았으면 스위치도 원래대로 — 켠 줄 알고 자리를 뜨면 안 된다
+        toggle.checked = !toggle.checked;
+        label.title = error.message;
+      });
+  });
 }
 
 function runRow(run) {
@@ -69,6 +97,7 @@ function element(tag, className, text) {
 
 export function startAutorunPolling() {
   if (timer) clearInterval(timer);
+  bindToggle();
   // 폴링 실패는 삼킨다 — 세션 패널과 같은 규칙
   const tick = () => renderAutorun().catch(() => {});
   tick();
