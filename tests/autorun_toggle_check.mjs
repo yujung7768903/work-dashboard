@@ -42,6 +42,9 @@ const autorun = await import("../static/js/autorun.js");
 autorun.startAutorunPolling();
 await new Promise((resolve) => setTimeout(resolve, 0));
 
+// 한 번도 안 돌았으면 tick 시각이 없다 — 빈 자리 대신 없다고 적는다
+assert.equal(elements["autorun-cycle"].textContent, "5분마다 | 마지막 수행 없음");
+
 const toggle = elements["autorun-toggle"];
 const label = elements["autorun-switch"];
 assert.equal(typeof toggle.listeners.change, "function", "스위치에 핸들러가 없다");

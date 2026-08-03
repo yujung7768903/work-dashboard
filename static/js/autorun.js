@@ -5,6 +5,7 @@ import { formatAge, openDetail } from "./sessions.js";
 const POLL_INTERVAL_MS = 5000;
 // 크론 주기는 crontab 이 정하고 이 값은 화면 표시용 상수다 — README "크론" 참고
 const TICK_LABEL = "5분마다";
+const NO_TICK = "마지막 수행 없음";
 const NO_WORKSPACE = "미분류";
 const RUNNING_LABEL = "진행 중";
 // review = 잡은 끝났고 사람이 diff 를 보고 병합을 판정할 차례. 진행 중(클로드가 아직
@@ -24,7 +25,11 @@ export async function renderAutorun() {
 
 function paint(state, runs) {
   document.getElementById("autorun-toggle").checked = Boolean(state.enabled);
-  document.getElementById("autorun-cycle").textContent = TICK_LABEL;
+  // 주기만으로는 크론이 실제로 돌고 있는지 알 수 없다. 마지막 tick 이 5분을 한참
+  // 넘겼으면 크론이 죽은 것이다 — 목록의 실행 이력과 달리 tick 은 여기서만 보인다
+  document.getElementById("autorun-cycle").textContent = state.last_tick_at
+    ? `${TICK_LABEL} | 마지막 수행 ${formatAge(state.last_tick_at)} 전`
+    : `${TICK_LABEL} | ${NO_TICK}`;
 
   const list = document.getElementById("autorun-list");
   list.innerHTML = "";
