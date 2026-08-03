@@ -2,6 +2,8 @@
 
 작성일: 2026-07-29 · 상태: 설계 확정 (미구현)
 
+> **개정 2026-08-03** — 할일 상태가 4개로 늘었다. `TODO_STATUSES = ("todo", "waiting", "doing", "done")`. `waiting`("대기")은 선제조건이 안 풀려 지금 착수할 수 없는 할일이고 `next` 후보에서 빠진다. 이 문서의 3-상태 서술과 "다음에 할 일" 규칙(`status != 'done'`)은 그 범위에서 낡았다. 정본은 `2026-08-03-waiting-status-spec.md`(⑥).
+
 ## 배경
 
 업무가 세 갈래로 흩어져 있다. 계획된 메인 작업(KT 동시성 이슈 해결, 헤르메스 테스트), 꾸준히 하는 효율화 작업(터미널 세팅, 스킬 개발, 단축키), 그리고 계획 불가능한 유입(문의, 장애 대응). Jira에 남는 건 일부뿐이라 "지금 내가 뭘 하고 있는지"가 한 화면에 없다.
@@ -100,7 +102,7 @@ todos(
   category_id INTEGER NOT NULL REFERENCES categories(id),
   workspace_id INTEGER REFERENCES workspaces(id),   -- NULL이면 미분류
   title TEXT NOT NULL, note TEXT,
-  status TEXT NOT NULL DEFAULT 'todo',     -- todo | doing | done
+  status TEXT NOT NULL DEFAULT 'todo',     -- todo | waiting | doing | done (waiting 은 ⑥에서 추가)
   sort_order INTEGER NOT NULL,
   completed_at TEXT,                       -- done 전환 시각. daily-todo 집계용
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL)
@@ -120,9 +122,9 @@ subtasks(
 
 **우선순위는 `sort_order` 하나로만 표현한다.** 워크스페이스의 sort_order가 전역 순위이고, 할일의 sort_order는 그룹 내 순서다. 등급(P0~P3)이나 마감일 기반 정렬은 두지 않는다 — 등급은 같은 등급이 쌓이면 다시 모호해지고, 마감일 기반은 마감 없는 효율화 작업을 영원히 뒤로 민다. 재정렬 시 해당 범위를 1..N으로 통째 재부여한다. 항목이 수십 개 규모라 fractional index는 불필요하다.
 
-**"다음에 할 일" 규칙은 한 줄이다.** `status='active'` 워크스페이스를 sort_order 순으로 훑어 첫 미완료(`status != 'done'`) 할일을 고른다. 같은 워크스페이스 안에서는 `doing`이 `todo`보다 먼저다 — 벌여둔 걸 먼저 끝낸다. active 워크스페이스를 다 훑어도 없으면 미분류 할일을 sort_order 순으로 본다. `paused`·`done` 워크스페이스는 후보에서 빠진다. 규칙이 짧아서 ④ 자율 실행이 그대로 물고 들어갈 수 있다.
+**"다음에 할 일" 규칙은 한 줄이다.** `status='active'` 워크스페이스를 sort_order 순으로 훑어 첫 착수 가능(`status in ('todo','doing')` — ⑥ 개정 전에는 `status != 'done'`) 할일을 고른다. 같은 워크스페이스 안에서는 `doing`이 `todo`보다 먼저다 — 벌여둔 걸 먼저 끝낸다. active 워크스페이스를 다 훑어도 없으면 미분류 할일을 sort_order 순으로 본다. `paused`·`done` 워크스페이스는 후보에서 빠진다. 규칙이 짧아서 ④ 자율 실행이 그대로 물고 들어갈 수 있다.
 
-**순위는 실행 가능한 순서로 매긴다 (규약).** 할일을 나열할 때 중요도 순이 아니라 지금 착수 가능한 순서로 놓는다. 선행 할일이 위, 후행이 아래다. 이 규약이 지켜지면 `sort_order`가 곧 실행 순서라서 `blocked_by` 같은 의존성 필드 없이 ④ 자율 실행이 성립한다. 다만 규약에는 강제력이 없어 순서를 잘못 매기면 ④가 아직 못 하는 일을 집는다. 그때 가서 의존성 필드가 필요해질 수 있고, 이 규약은 그 판단을 ④로 미루기 위한 것이지 문제를 없애는 게 아니다.
+**순위는 실행 가능한 순서로 매긴다 (규약).** 할일을 나열할 때 중요도 순이 아니라 지금 착수 가능한 순서로 놓는다. 선행 할일이 위, 후행이 아래다. 이 규약이 지켜지면 `sort_order`가 곧 실행 순서라서 `blocked_by` 같은 의존성 필드 없이 ④ 자율 실행이 성립한다. 다만 규약에는 강제력이 없어 순서를 잘못 매기면 ④가 아직 못 하는 일을 집는다. 그때 가서 의존성 필드가 필요해질 수 있고, 이 규약은 그 판단을 ④로 미루기 위한 것이지 문제를 없애는 게 아니다. (⑥에서 답이 나왔다 — 의존성 필드가 아니라 상태 값 하나(`waiting`)로 "지금 되는가"만 표현한다.)
 
 **카테고리는 우선순위 계산에 관여하지 않는다.** 그룹핑 분류일 뿐이며 `sort_order`는 표시 순서에만 쓴다. 워크스페이스 순위는 카테고리를 가로지르는 전역 순위다. "특정 카테고리가 항상 우선"이라는 규칙은 실제로 성립하지 않아서(장애가 늘 급한 것은 아니다) 넣지 않는다. 필요해지면 그때 추가한다.
 
@@ -277,7 +279,7 @@ DEFAULT_PORT = 9080
 BUSY_TIMEOUT_MS = 5000
 UNASSIGNED_LABEL = "미분류"
 SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "스킬 개발", "프로세스 개선")
-TODO_STATUSES = ("todo", "doing", "done")
+TODO_STATUSES = ("todo", "waiting", "doing", "done")   # waiting 은 ⑥에서 추가
 WORKSPACE_STATUSES = ("active", "paused", "done")
 ```
 
