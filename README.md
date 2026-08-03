@@ -232,11 +232,7 @@ python3 dash.py autorun-tick --dry-run     # 띄우지 않고 판정 사유만
 python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어가는 지시 전문
 ```
 
-```cron
-*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autorun-tick >/dev/null 2>&1
-```
-
-데몬을 따로 만들지 않는다 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
+트리거는 5분 크론이다 (아래 "크론" 참고). 데몬을 따로 만들지 않는다 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
 
 #### 대상은 두 겹으로 좁힌다
 
@@ -326,6 +322,29 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 `link-todo` 는 `session_todos` 에 연결만 하고 할일 상태는 바꾸지 않는다 — 착수 시 `doing` 전환은 아직 없다(할일 32).
 
 세션 정리는 별도 크론 없이 조회할 때 함께 수행한다 — `last_seen_at` 이 24시간 지난 `idle` 은 `ended` 로 간주하고, `ended` 이면서 연결된 할일이 없는 세션은 7일 뒤 삭제한다.
+
+## 크론
+
+자리를 비운 사이 도는 것은 전부 `crontab -l` 한 곳에 모여 있다. 상시 데몬을 만들지 않는 것이 규칙이다 — 두 번째 프로세스는 감시 비용만 늘리고, 조건이 안 맞을 때 아무것도 안 하고 끝나는 tick 이면 5분 간격으로 충분하다.
+
+| 주기 | 명령 | 하는 일 | 소속 |
+| --- | --- | --- | --- |
+| 5분마다 | `dash.py autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄운다. 조건이 안 맞으면 아무것도 안 한다 | 이 저장소 (④) |
+| 5분마다 | `~/.claude/scripts/resume-limited-jobs.py` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 민다. 한 번에 1건 | Claude Code 설정 |
+| 평일 08·09·10시 | `~/.claude/skills/skill-sync/pull.sh` | 스킬 저장소를 GitHub 에서 pull·자동병합 | skill-sync 스킬 |
+| 평일 09~20시 매시 | `~/.claude/skills/skill-sync/apply.sh` | 사용자가 확인해 준 스킬 변경을 반영 | skill-sync 스킬 |
+
+앞의 둘은 짝이다. ④는 잡을 **띄우는 것까지**만 하고 리밋 처리를 다시 구현하지 않는다 — `--bg` 로 띄우면 `~/.claude/jobs/<id>/state.json` 이 생기므로 재개는 `resume-limited-jobs.py` 가 그대로 담당한다. 그래서 자율 잡이 리밋에 걸려도 `autorun_runs` 는 열린 채 두고, 재개된 잡이 끝나야 닫힌다.
+
+`autorun-tick` 은 아직 등록돼 있지 않다. 등록하는 명령은 아래와 같다.
+
+```bash
+crontab -l > /tmp/ct
+echo '*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autorun-tick >/dev/null 2>&1' >> /tmp/ct
+crontab /tmp/ct
+```
+
+등록해도 `dash.py autorun on` 이 없으면 매 tick 이 "autorun 이 꺼져 있음" 으로 끝난다. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않았다.
 
 ## 상태줄
 
