@@ -325,18 +325,30 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 
 ## 크론
 
-자리를 비운 사이 도는 것은 전부 `crontab -l` 한 곳에 모여 있다. 상시 데몬을 만들지 않는 것이 규칙이다 — 두 번째 프로세스는 감시 비용만 늘리고, 조건이 안 맞을 때 아무것도 안 하고 끝나는 tick 이면 5분 간격으로 충분하다.
+자리를 비운 사이 도는 것은 전부 crontab 한 곳에 모임. 상시 데몬은 만들지 않음 — 두 번째 프로세스는 감시 비용만 늘리고, 조건이 안 맞으면 아무것도 안 하고 끝나는 tick 은 5분 간격으로 충분함
+
+### 크론 목록 확인
+
+```bash
+crontab -l
+```
+
+### 등록된 크론
 
 | 주기 | 명령 | 하는 일 | 소속 |
 | --- | --- | --- | --- |
-| 5분마다 | `dash.py autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄운다. 조건이 안 맞으면 아무것도 안 한다 | 이 저장소 (④) |
-| 5분마다 | `~/.claude/scripts/resume-limited-jobs.py` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 민다. 한 번에 1건 | Claude Code 설정 |
+| 5분마다 | `dash.py autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | 이 저장소 (④) |
+| 5분마다 | `~/.claude/scripts/resume-limited-jobs.py` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 밂. 한 번에 1건 | Claude Code 설정 |
 | 평일 08·09·10시 | `~/.claude/skills/skill-sync/pull.sh` | 스킬 저장소를 GitHub 에서 pull·자동병합 | skill-sync 스킬 |
 | 평일 09~20시 매시 | `~/.claude/skills/skill-sync/apply.sh` | 사용자가 확인해 준 스킬 변경을 반영 | skill-sync 스킬 |
 
-앞의 둘은 짝이다. ④는 잡을 **띄우는 것까지**만 하고 리밋 처리를 다시 구현하지 않는다 — `--bg` 로 띄우면 `~/.claude/jobs/<id>/state.json` 이 생기므로 재개는 `resume-limited-jobs.py` 가 그대로 담당한다. 그래서 자율 잡이 리밋에 걸려도 `autorun_runs` 는 열린 채 두고, 재개된 잡이 끝나야 닫힌다.
+### 자율 실행과 리밋 재개는 짝
 
-`autorun-tick` 은 아직 등록돼 있지 않다. 등록하는 명령은 아래와 같다.
+④는 잡을 **띄우는 것까지**만 하고 리밋 처리를 다시 구현하지 않음 — `--bg` 로 띄우면 `~/.claude/jobs/<id>/state.json` 이 생기므로 재개는 `resume-limited-jobs.py` 가 그대로 담당함. 그래서 자율 잡이 리밋에 걸려도 `autorun_runs` 는 열린 채 두고, 재개된 잡이 끝나야 닫음
+
+### 크론 등록
+
+`autorun-tick` 은 아직 미등록 상태
 
 ```bash
 crontab -l > /tmp/ct
@@ -344,7 +356,7 @@ echo '*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autor
 crontab /tmp/ct
 ```
 
-등록해도 `dash.py autorun on` 이 없으면 매 tick 이 "autorun 이 꺼져 있음" 으로 끝난다. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않았다.
+등록해도 `dash.py autorun on` 전에는 매 tick 이 "autorun 이 꺼져 있음" 으로 끝남. 기본 off 이고 자동으로 다시 켜지는 경로는 없음
 
 ## 상태줄
 
