@@ -83,7 +83,7 @@ const plus = created.find((made) => made.className === "group-add");
 assert.ok(plus, "+ 버튼이 없다");
 plus.listeners.click({ preventDefault() {}, stopPropagation() {} });
 assert.equal(elements["todo-add-modal"].open, true, "팝업이 안 열렸다");
-assert.equal(elements["todo-add-scope"].textContent, "작업 대시보드 에 할일 추가");
+assert.equal(elements["todo-add-scope"].textContent, "작업 대시보드에 할일 추가");
 
 // 팝업에서 세 값을 채워 보내면 한 번의 POST 에 다 실려야 한다
 elements["todo-add-title"].value = "제목";

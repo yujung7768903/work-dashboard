@@ -657,12 +657,14 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 #session-modal::backdrop, #todo-add-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
 /* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
 #session-modal form, #todo-add-modal form { margin: 0; }
-/* 본문 여백은 세션 팝업 본문과 같은 값. 닫기 버튼과 겹치지 않게 제목만 오른쪽을 비운다 */
-#todo-add-form { padding: var(--sp-20); overflow: auto; }
-#todo-add-scope {
-  margin: 0 0 var(--sp-16); padding-right: var(--sp-32);
-  font-size: var(--fs-title); font-weight: 600;
-}
+/* 전역 form 은 한 줄 flex 다(빠른 추가·설정 폼용). 팝업 폼은 라벨과 칸이 붙어야 하므로
+   세로로 쌓는다 — display 를 안 바꾸면 제목·세 칸·버튼이 한 줄에 흩어진다.
+   여백은 세션 팝업 본문과 같은 값 */
+#todo-add-form { display: block; padding: var(--sp-20); overflow: auto; }
+/* textarea 는 .field 공통 규칙이 이미 100%. 한 줄 입력도 같은 폭이어야 줄이 맞는다 */
+#todo-add-form .field input { width: 100%; }
+/* 확인 버튼은 오른쪽 끝. 팝업의 마지막 동작 위치를 세션 팝업과 같게 둔다 */
+.dlg-actions { display: flex; justify-content: flex-end; margin-top: var(--sp-20); }
 .modal-close {
   position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
   background: none; color: var(--muted);

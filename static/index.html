@@ -216,7 +216,7 @@
   <dialog id="todo-add-modal">
     <form method="dialog"><button class="modal-close" aria-label="닫기">×</button></form>
     <form id="todo-add-form">
-      <h2 id="todo-add-scope"></h2>
+      <div class="dlg-head"><p class="dlg-title" id="todo-add-scope"></p></div>
       <div class="field">
         <label for="todo-add-title">제목</label>
         <input id="todo-add-title" required>
@@ -229,7 +229,7 @@
         <label for="todo-add-note">note</label>
         <textarea id="todo-add-note"></textarea>
       </div>
-      <button type="submit">추가</button>
+      <div class="dlg-actions"><button type="submit">추가</button></div>
     </form>
   </dialog>
 

@@ -201,7 +201,7 @@ let addTarget = null;
 
 function openAddDialog(group) {
   addTarget = group;
-  document.getElementById("todo-add-scope").textContent = `${group.name} 에 할일 추가`;
+  document.getElementById("todo-add-scope").textContent = `${group.name}에 할일 추가`;
   addDialogFields().forEach((field) => {
     field.value = "";
   });
