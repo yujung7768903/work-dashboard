@@ -6,7 +6,12 @@ import os
 import sys
 from datetime import datetime
 
-from app.constants import HISTORY_DAY_CHOICES, STATUS_DONE, UNASSIGNED_LABEL
+from app.constants import (
+    HISTORY_DAY_CHOICES,
+    SESSION_ID_ENV,
+    STATUS_DONE,
+    UNASSIGNED_LABEL,
+)
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
@@ -33,6 +38,12 @@ PRECONDITION_HELP = (
 )
 EXIT_OK = 0
 EXIT_ERROR = 1
+# 세션 인자를 생략했다는 표시. 값이 아니라 자리표라 파싱 뒤 환경변수로 바뀐다
+SELF_SESSION = object()
+SESSION_ARG_HELP = (
+    f"생략하면 {SESSION_ID_ENV} 가 가리키는 이 세션."
+    " 터미널에서 직접 실행할 때는 값을 적는다"
+)
 # 사용률 막대와 다른 줄에 그리므로 폭은 넉넉하다. 한글은 두 칸을 먹으니 줄 폭의 절반쯤
 STATUSLINE_TITLE_MAX = 40
 USAGE_CLI_DAYS = 7
@@ -45,6 +56,8 @@ def main(argv=None):
     args = _build_parser().parse_args(argv)
     con = connect()
     try:
+        if getattr(args, "session", None) is SELF_SESSION:
+            args.session = _self_session()
         args.handler(con, args)
     except DomainError as error:
         print(str(error), file=sys.stderr)
@@ -68,8 +81,8 @@ def _build_parser():
 
     upcoming = sub.add_parser("next", help="다음에 할 일 1건")
     upcoming.add_argument("--workspace", type=int, default=None)
-    upcoming.add_argument("--session", default=None,
-                          help="이 세션이 잡은 할일은 후보로 남기고 남의 것은 뺌")
+    _add_session_arg(upcoming, required=False,
+                     note="이 세션이 잡은 할일은 후보로 남기고 남의 것은 뺌.")
     _add_json_flag(upcoming)
     upcoming.set_defaults(handler=_cmd_next)
 
@@ -94,8 +107,7 @@ def _build_parser():
     add_todo.add_argument("title")
     add_todo.add_argument("--category", default=None)
     add_todo.add_argument("--workspace", default=None)
-    add_todo.add_argument("--session", default=None,
-                          help="이 세션이 붙은 워크스페이스에 추가")
+    _add_session_arg(add_todo, required=False, note="이 세션이 붙은 워크스페이스에 추가.")
     add_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
     add_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
     add_todo.set_defaults(handler=_cmd_add_todo)
@@ -146,14 +158,14 @@ def _build_parser():
     sessions.set_defaults(handler=_cmd_sessions)
 
     classify = sub.add_parser("classify", help="세션 분류 등록")
-    classify.add_argument("session")
+    _add_session_arg(classify)
     classify.add_argument("--category", default=None)
     classify.add_argument("--workspace", type=int, default=None)
     classify.set_defaults(handler=_cmd_classify)
 
     show_todo = sub.add_parser("show-todo", help="할일 목록 (id·제목·컨텍스트 유무)")
     show_todo.add_argument("--workspace", type=int, default=None)
-    show_todo.add_argument("--session", default=None)
+    _add_session_arg(show_todo, required=False, note="이 세션이 붙은 범위만.")
     _add_json_flag(show_todo)
     show_todo.set_defaults(handler=_cmd_show_todo)
 
@@ -163,7 +175,7 @@ def _build_parser():
     show_note.set_defaults(handler=_cmd_show_note)
 
     link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
-    link_todo.add_argument("session")
+    _add_session_arg(link_todo)
     link_todo.add_argument("todo_id", type=int)
     link_todo.add_argument(
         "--past",
@@ -174,14 +186,14 @@ def _build_parser():
     link_todo.set_defaults(handler=_cmd_link_todo)
 
     finish = sub.add_parser("finish", help="병합 후 리소스 해제 (할일 done·서버 종료)")
-    finish.add_argument("session")
+    _add_session_arg(finish)
     finish.add_argument("--worktree", default=None, help="기본값은 세션의 작업 위치")
     finish.set_defaults(handler=_cmd_finish)
 
     status_line = sub.add_parser(
         "statusline", help="상태줄 한 줄 (연결된 할일·상태·워크트리 서버 포트)"
     )
-    status_line.add_argument("session")
+    _add_session_arg(status_line)
     status_line.add_argument(
         "--cwd", default=None, help="세션의 현재 위치. 상태줄이 넘겨주는 값이 가장 정확하다"
     )
@@ -207,6 +219,32 @@ def _add_json_flag(parser):
     parser.add_argument(
         "--json", action="store_true", dest="as_json", help="Claude 파싱용 JSON 출력"
     )
+
+
+def _add_session_arg(parser, required=True, note=""):
+    """세션 인자. 생략하면 환경변수로 자기 세션을 찾는다.
+
+    required 는 '이 명령에 세션이 꼭 필요한가'다. 필요 없는 쪽(--session)은 플래그를
+    빼는 것이 '세션 범위 없음'이라 기존 뜻을 지키고, 값 없이 적었을 때만 이 세션으로 본다
+    """
+    if required:
+        parser.add_argument(
+            "session", nargs="?", default=SELF_SESSION, help=SESSION_ARG_HELP
+        )
+        return
+    parser.add_argument(
+        "--session", nargs="?", const=SELF_SESSION, default=None,
+        help=f"{note} 값을 생략하면 이 세션 ({SESSION_ID_ENV})",
+    )
+
+
+def _self_session():
+    session = os.environ.get(SESSION_ID_ENV)
+    if not session:
+        raise Validation(
+            f"세션을 알 수 없음 ({SESSION_ID_ENV} 없음). session 인자에 값을 적을 것"
+        )
+    return session
 
 
 def _cmd_ls(con, args):

@@ -38,15 +38,15 @@ FRESHNESS_GUIDE = (
 # 끝난 작업의 리소스(할일·서버·워크트리)가 남으면 다음 세션이 그걸 진행 중으로 오해한다
 RELEASE_GUIDE = (
     "완료: master 에 병합해 이 작업이 끝나면 리소스를 해제한다 — "
-    "python3 dash.py finish <session> 으로 연결된 할일을 done 으로 내리고 "
+    "python3 dash.py finish 로 연결된 할일을 done 으로 내리고 "
     "그 워크트리를 쓰던 서버를 종료한 뒤, ExitWorktree 로 워크트리를 제거한다."
 )
 # 해제 뒤 같은 세션이 이어질 때. 끝난 할일에 새 작업을 얹으면 무엇이 끝났는지 알 수 없어진다
 RELEASED_GUIDE = (
     "지침: 이 세션이 잡았던 할일은 모두 끝났다(done). "
     "사용자가 새 요청을 하면 끝난 할일에 얹지 말고 새 할일로 진행한다 — "
-    "dash.py add-todo <제목> --session <session> 으로 만들고 "
-    "dash.py link-todo <session> <todo-id> 로 연결한다. "
+    "dash.py add-todo <제목> --session 으로 만들고 "
+    "dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 만들지 않는다."
 )
 CLASSIFIED_GUIDE = (
@@ -61,12 +61,12 @@ UNCLASSIFIED_GUIDE = (
     "(1) 위치와 질문 내용으로 카테고리를 정하고 확인 없이 등록한다. "
     "(2) 관련된 진행 중 워크스페이스가 있다고 판단되면 사용자에게 확인받고 등록한다. "
     "없으면 카테고리만 등록한다. "
-    "등록: python3 dash.py classify <session> --category <이름> [--workspace <id>] "
+    "등록: python3 dash.py classify --category <이름> [--workspace <id>] "
     "코드·문서를 바꾸거나 여러 턴에 걸치거나 산출물이 남는 작업이면 "
-    "dash.py add-todo 로 할일을 만들고 dash.py link-todo <session> <todo-id> 로 연결한다. "
+    "dash.py add-todo 로 할일을 만들고 dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 할일을 만들지 않는다. "
     "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
-    "dash.py show-todo --session <session> 으로 할일을 직접 확인하고 "
+    "dash.py show-todo --session 으로 할일을 직접 확인하고 "
     "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."
 )
 ONBOARDING_GUIDE = (
