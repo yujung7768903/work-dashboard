@@ -173,9 +173,8 @@ export function rawTitleMark() {
 
 function todoBlock(todo) {
   const block = element("div", "dlg-section");
-  const title = element("p", "dlg-title", todo.title);
-  // 할일 번호. dash.py 명령에 그대로 넣을 수 있게 팝업에서 바로 보인다
-  title.append(element("span", "dlg-badge", `#${todo.id}`));
+  // 할일 번호를 제목 앞에 붙인다 — dash.py 명령에 넣을 id 를 팝업에서 바로 읽게
+  const title = element("p", "dlg-title", `#${todo.id} | ${todo.title}`);
   if (todo.needs_title) title.append(rawTitleMark());
   block.append(title, timeList(todo));
   block.append(...textField("착수 조건", todo.precondition));

@@ -715,7 +715,6 @@ html:has(#session-modal[open]) { overflow: hidden; }
   font-size: var(--fs-micro); font-weight: 600; line-height: var(--lh-heading);
   background: var(--bg); color: var(--muted);
 }
-.dlg-title .dlg-badge { min-width: 0; margin-left: var(--sp-8); font-weight: 500; }
 #session-modal .muted { color: var(--muted); font-size: var(--fs-sm); }
 #session-modal button.copy {
   padding: var(--sp-2) var(--sp-8); font-size: var(--fs-sm); color: var(--muted);
