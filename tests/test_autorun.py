@@ -12,11 +12,13 @@ from app.constants import (
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_REVIEW,
     STATE_ENDED,
     STATUS_DOING,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
 )
+from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
@@ -269,11 +271,33 @@ class Outcomes(AutorunCase):
         self._job(JOB, "blocked")
         self.assertEqual(autorun.reconcile(self.con), [])
 
-    def test_done_job_with_done_todo(self):
+    def test_done_job_with_done_todo_waits_for_review(self):
+        """성공한 잡은 완료가 아니라 확인 필요다 — 변경이 워크트리에 남아 있다"""
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         self._job(JOB, "done")
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
-        self.assertEqual(autorun.reconcile(self.con)[0]["outcome"], OUTCOME_DONE)
+        run = autorun.reconcile(self.con)[0]
+        self.assertEqual(run["outcome"], OUTCOME_REVIEW)
+        self.assertEqual(
+            autorun_repo.confirm_run(self.con, run["id"])["outcome"], OUTCOME_DONE
+        )
+
+    def test_confirm_rejects_anything_but_review(self):
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        with self.assertRaises(Validation):  # 진행 중
+            autorun_repo.confirm_run(self.con, run["id"])
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_FAILED)
+        with self.assertRaises(Validation):
+            autorun_repo.confirm_run(self.con, run["id"])
+
+    def test_review_does_not_count_as_failure(self):
+        """확인이 밀린 동안 그 할일이 blocked 로 올라가면 다음 tick 후보에서 빠진다"""
+        first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
+        autorun_repo.close_run(self.con, first["id"], OUTCOME_REVIEW)
+        self.assertEqual(autorun_repo.consecutive_failures(self.con, self.todo["id"]), 0)
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        self._job(JOB, "stopped")
+        self.assertEqual(autorun.reconcile(self.con)[0]["outcome"], OUTCOME_FAILED)
 
     def test_finished_job_with_unfinished_todo_fails(self):
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
