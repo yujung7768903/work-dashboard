@@ -52,7 +52,7 @@ work-dashboard/
 ├── hooks/
 │   ├── dash_hook.py                 # Claude Code 훅 단일 진입점
 │   ├── worktree_serve.py            # Stop: 고친 워크트리에 서버가 없으면 띄우라고 지시
-│   └── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단 (미등록)
+│   └── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단 (플래그 파일 있을 때만)
 │
 ├── static/                          # ES 모듈 프론트엔드 (번들러 없음)
 │   ├── index.html                   # 단일 페이지
@@ -82,33 +82,63 @@ work-dashboard/
 
 ## 훅 동작
 
-`hooks/dash_hook.py <이벤트>` 하나가 네 이벤트를 분기한다. `~/.claude/settings.json` 에 절대 경로로 등록돼 있고 타임아웃은 2초. **어떤 실패에서도 `exit 0` 무출력으로 끝난다** — 대시보드 문제로 Claude 세션이 안 열리는 것이 최악의 실패이기 때문이다.
+훅은 세 개다. **어떤 실패에서도 `exit 0` 무출력으로 끝난다** — 대시보드 문제로 Claude 세션이 안 열리거나 편집을 못 하게 되는 것이 최악의 실패이기 때문이다. 의도적으로 막을 때만 `exit 2` 를 쓴다.
 
-| 시점 | 이벤트 | 하는 일 | 세션에 주입되는 것 |
+### 훅 종류
+
+| 훅 | 등록 위치 | 하는 일 | 동작 방식 |
 | --- | --- | --- | --- |
-| 세션이 열릴 때 | `SessionStart` | stdin JSON 의 `session_id`·`cwd` 로 세션 등록, `cwd` 에서 `git branch --show-current` 조회, 브랜치의 Jira ID 로 워크스페이스 자동 매칭 | 워크스페이스 블록 또는 분류 지시 블록 |
-| 지시를 넣을 때마다 | `UserPromptSubmit` | 상태를 `working` 으로, 마지막 지시를 120자로 잘라 저장 | 분류 전이면 분류 지시 재주입, 잡은 할일을 모두 끝냈으면 새 할일 지침, 그 외 무출력 |
-| 응답이 끝날 때 | `Stop` | 상태를 `idle` 로 | 없음 |
-| 세션이 닫힐 때 | `SessionEnd` | 상태를 `ended` 로, 종료 시각 기록 | 없음 |
+| `hooks/dash_hook.py` | `~/.claude/settings.json` (그 PC 전용, 절대 경로). 타임아웃 2초 | 세션 등록·상태 추적, 세션에 워크스페이스·분류·해제 블록 주입 | 인자로 받은 이벤트 이름 하나로 네 갈래 분기하는 단일 진입점. stdin JSON 의 `session_id`·`cwd` 로 DB 를 갱신하고 주입할 블록을 stdout 으로 뱉음. 차단은 하지 않음 |
+| `hooks/worktree_serve.py` | 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준. 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9080–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
+| `hooks/worktree_guard.py` | `~/.claude/settings.json`, matcher `Edit`·`Write`·`NotebookEdit`. 타임아웃 5초. `~/.claude/worktree-guard.on` 이 있을 때만 동작 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
 
-### 워크트리 서버 훅 (`hooks/worktree_serve.py`)
+`worktree_serve.py` 만 등록 위치가 다른 이유는 clone 한 다른 PC 에서도 따로 설정할 것이 없어야 하기 때문이다. 거는 조건은 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때. **이미 떠 있으면 관여하지 않는다** — 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다. 막으면서 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다. 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고).
 
-워크트리에서 코드를 고쳐 놓고 확인할 화면을 안 띄우면, 사용자는 결과를 눈으로 볼 수 없다. 이 `Stop` 훅이 그걸 막는다.
+### 실행 단계
 
-- **등록 위치가 다르다.** `~/.claude/settings.json`(그 PC 전용, 절대 경로)이 아니라 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준으로 등록된다. 그래서 clone 한 다른 PC에서도 따로 설정할 것이 없다.
-- **거는 조건**: 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때.
-- **이미 떠 있으면 관여하지 않는다.** 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다.
-- 막으면서 빈 포트(9080–9139)를 골라 주고, 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다.
-- 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고). `stop_hook_active` 면 통과해 무한 루프를 막고, 어떤 실패에서도 `exit 0` 으로 fail-open 한다.
-
-주입 블록은 네 갈래다.
-
-| 상황 | 블록 | 내용 |
+| 이벤트 | 트리거 시점 | 훅 종류 |
 | --- | --- | --- |
-| 브랜치의 Jira ID = 워크스페이스의 `jira_id` | `<work-dashboard state="classified">` | 배경·목적·목표·고려사항 + 할일 목록(컨텍스트 노트 유무 표시) + 범위 준수 지침 |
-| 워크스페이스가 0개이고 사용자가 거절한 적 없음 | `<work-dashboard state="onboarding">` | 초기 설정 절차 7단계 (아래 참고) |
-| 그 외 | `<work-dashboard state="unclassified">` | 현재 위치·브랜치, 카테고리 6개, 진행 중 워크스페이스 목록, 분류 절차 지시 |
-| 분류됐고 잡은 할일이 **전부 `done`** (프롬프트 시점) | `<work-dashboard state="released">` | 새 요청은 끝난 할일에 얹지 말고 새 할일로 받으라는 지시 |
+| `SessionStart` | 세션 시작/재개/초기화/압축 | `dash_hook.py` |
+| `UserPromptSubmit` | 사용자가 프롬프트 제출 | `dash_hook.py` |
+| `PreToolUse` | 도구 실행 전 (matcher `Edit`·`Write`·`NotebookEdit`) | `worktree_guard.py` |
+| `Stop` | Claude 응답 완료 | `dash_hook.py`, `worktree_serve.py` |
+| `SessionEnd` | 세션 종료 | `dash_hook.py` |
+
+`Stop` 은 두 훅이 함께 걸린다 — 등록 위치가 달라 서로를 모른다. `dash_hook.py` 는 상태만 내리고 차단하지 않으므로, 막을지 여부는 `worktree_serve.py` 판정만으로 갈린다.
+
+`dash_hook.py` 가 이벤트별로 하는 일:
+
+| 이벤트 | 하는 일 | 세션에 주입되는 것 |
+| --- | --- | --- |
+| `SessionStart` | `session_id`·`cwd` 로 세션 등록, `cwd` 에서 `git branch --show-current` 조회, 브랜치의 Jira ID 로 워크스페이스 자동 매칭 | 워크스페이스 블록 또는 분류 지시 블록 (아래 네 갈래) |
+| `UserPromptSubmit` | 상태를 `working` 으로, 마지막 지시를 120자로 잘라 저장 | 분류 전이면 분류 지시 재주입, 잡은 할일을 모두 끝냈으면 새 할일 지침, 그 외 무출력 |
+| `Stop` | 상태를 `idle` 로 | 없음 |
+| `SessionEnd` | 상태를 `ended` 로, 종료 시각 기록 | 없음 |
+
+`worktree_serve.py` 가 이벤트별로 하는 일:
+
+| 이벤트 | 하는 일 | 세션에 주입되는 것 |
+| --- | --- | --- |
+| `Stop` | transcript 에서 이번 세션이 고친 워크트리를 뽑아, 웹 프로젝트인데 그 cwd 를 쓰는 서버 프로세스가 없는 것을 찾고 빈 포트(9080–9139)를 고름. `stop_hook_active` 면 아무것도 안 함 | 해당 워크트리가 있으면 `exit 2` 로 종료를 막고 stderr 로 실행 지시 — 실행 방법 확인 위치(그 워크트리의 README·CLAUDE.md), `nohup ... &` 로 띄우라는 것, 빈 포트, `- 워크트리:` / `- url:` / `- 작업 요약:` 마무리 형식. 없으면 무출력 |
+
+`worktree_guard.py` 가 이벤트별로 하는 일:
+
+| 이벤트 | 하는 일 | 세션에 주입되는 것 |
+| --- | --- | --- |
+| `PreToolUse` (`Edit`·`Write`·`NotebookEdit`) | `tool_input` 의 `file_path`·`notebook_path` 를 보고 `~/work/` 안의 저장소인지, 그 저장소의 git 디렉토리에 `/worktrees/` 가 없는지(= 메인 체크아웃) 판정 | 차단 대상이면 `exit 2` 로 편집을 막고 stderr 로 사유 + 우회 두 가지(`EnterWorktree` 로 워크트리에서 같은 경로 편집, `ALLOW_MAIN_CHECKOUT=1`). 통과면 무출력 |
+
+## 세션 상태
+
+훅이 세션에 넣는 `<work-dashboard state="...">` 블록은 **한 번에 하나만** 들어간다. 그 하나가 세션 상태에 따라 네 갈래로 갈린다.
+
+| 순위 | 조건 | `state` | 주입 내용 |
+| --- | --- | --- | --- |
+| 1 | 세션에 워크스페이스가 붙어 있음 — 브랜치의 Jira ID = 워크스페이스의 `jira_id` 로 자동 매칭, 또는 `classify --workspace` | `classified` | 배경·목적·목표·고려사항 + 할일 목록(컨텍스트 노트 유무 표시) + 범위 준수 지침 |
+| 2 | 워크스페이스가 0개이고 사용자가 거절한 적 없음 | `onboarding` | 초기 설정 절차 7단계 (아래 참고) |
+| 3 | 그 외 — 워크스페이스가 있는데 이 세션에 안 붙었거나, 0개인데 자동 분류를 거절한 상태 | `unclassified` | 현재 위치·브랜치, 카테고리 6개, 진행 중 워크스페이스 목록, 분류 절차 지시 |
+| 별도 | 분류됐고 이 세션이 잡은 할일이 **전부 `done`** (프롬프트 시점) | `released` | 새 요청은 끝난 할일에 얹지 말고 새 할일로 받으라는 지시 |
+
+순위 1~3 은 `render_context()` 의 한 갈래라 서로 배타적이고, `released` 만 `released_context()` 에서 나온다(`app/services/session_link.py`). 호출 지점도 갈린다 — `SessionStart` 는 항상 `render_context()`, `UserPromptSubmit` 은 "전부 `done`" 이면 `released_context()`, 아니면 `render_context()`.
 
 모든 블록 꼬리에 공통 규칙이 붙는다 — 다른 세션이 같은 코드·문서를 고칠 수 있으니 착수 전에 최신 상태를 다시 읽으라는 것. `classified`·`unclassified` 에는 아래 해제 절차도 함께 붙는다.
 
@@ -120,7 +150,7 @@ python3 dash.py classify <session> --category 개발 --workspace 2
 python3 dash.py link-todo <session> 3                     # 세션이 잡은 할일 연결
 ```
 
-### 웹에서 분류하면 할일까지 만든다
+### 웹 분류 시 할일 자동 생성
 
 세션 줄을 눌러 팝업에서 **워크스페이스로** 분류하면(`PATCH /api/sessions/<id>`) 그 자리에서 할일을 하나 만들고 세션에 연결한다(`app/services/session_todo.py`). 카테고리만 고르면 만들지 않는다 — 워크스페이스 없는 세션은 대개 단발 조회다.
 

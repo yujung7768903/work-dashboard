@@ -176,27 +176,18 @@ function todoBlock(todo) {
   const title = element("p", "dlg-title", todo.title);
   if (todo.needs_title) title.append(rawTitleMark());
   block.append(title, timeList(todo));
-  if (todo.subtasks?.length) {
-    block.append(element("p", "label", "하위 할일"), subtaskList(todo.subtasks));
-  }
-  block.append(
-    element("p", "label", "note"),
-    element("p", todo.note ? "note-body" : "muted", todo.note || "(없음)")
-  );
+  block.append(...textField("착수 조건", todo.precondition));
+  // 하위 할일은 보드 카드에서 펼쳐 보므로 여기서는 안 그린다
+  block.append(...textField("note", todo.note));
   return block;
 }
 
-function subtaskList(subtasks) {
-  const list = element("ul", "dlg-subtasks");
-  subtasks.forEach((subtask) => {
-    const item = document.createElement("li");
-    item.append(
-      element("span", "dlg-badge", subtask.status),
-      element("span", "text", subtask.title)
-    );
-    list.appendChild(item);
-  });
-  return list;
+// note·착수 조건 둘 다 여러 줄이 오는 글이라 같은 라벨+본문 짝을 쓴다
+function textField(label, value) {
+  return [
+    element("p", "label", label),
+    element("p", value ? "note-body" : "muted", value || "(없음)"),
+  ];
 }
 
 // 완료 시각이 없는 할일도 있어 빈 값은 빼고, 남은 것만 최근 순으로 세운다

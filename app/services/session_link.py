@@ -220,7 +220,10 @@ def detail(con, session_row_id):
 
 
 def todo_detail(con, todo_id):
-    """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다"""
+    """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다.
+
+    하위할일은 싣지 않는다 — 개요 탭이 안 그리고, 펼쳐 보는 자리는 보드 카드다
+    """
     return {
         "todo": todo_repo.get(con, todo_id),
         "sessions": session_repo.list_by_todo(con, todo_id),
