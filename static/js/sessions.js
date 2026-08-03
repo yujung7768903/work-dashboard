@@ -174,6 +174,8 @@ export function rawTitleMark() {
 function todoBlock(todo) {
   const block = element("div", "dlg-section");
   const title = element("p", "dlg-title", todo.title);
+  // 할일 번호. dash.py 명령에 그대로 넣을 수 있게 팝업에서 바로 보인다
+  title.append(element("span", "dlg-badge", `#${todo.id}`));
   if (todo.needs_title) title.append(rawTitleMark());
   block.append(title, timeList(todo));
   block.append(...textField("착수 조건", todo.precondition));
