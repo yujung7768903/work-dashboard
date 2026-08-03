@@ -551,8 +551,9 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-head {
   flex: 1; min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: var(--sp-8);
 }
-#autorun-status {
-  display: flex; align-items: center; gap: var(--sp-4);
+/* 점은 제목 바로 옆에 붙는다 — 무엇이 켜졌는지 읽는 순간 함께 보여야 한다 */
+.autorun-title { display: inline-flex; align-items: center; gap: var(--sp-4); }
+#autorun-cycle {
   font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
 }
 /* 활성 여부 표시. 파란색(활성)·회색(비활성)은 배경색만 바뀐다 */
