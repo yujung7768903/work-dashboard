@@ -1,6 +1,6 @@
 // 자율 수행 패널. 켜짐 여부와 최근 실행한 할일을 보여준다. 세션 패널과 같은 폴링 방식
 import * as api from "./api.js";
-import { formatAge } from "./sessions.js";
+import { formatAge, openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 5000;
 // 크론 주기는 crontab 이 정하고 이 값은 화면 표시용 상수다 — README "크론" 참고
@@ -32,6 +32,8 @@ function runRow(run) {
   );
   const age = element("span", "age", formatAge(run.started_at));
   item.append(scope, title, outcome, age);
+  // 세션 줄·보드 카드와 같은 팝업. 실행 단위가 할일이라 할일로 열어 개요 탭부터 보여준다
+  item.addEventListener("click", () => openDetail({ todo: { id: run.todo_id } }));
   return item;
 }
 
