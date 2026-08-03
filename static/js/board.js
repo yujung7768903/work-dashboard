@@ -2,6 +2,7 @@
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { renderBoardTab, run } from "./main.js";
+import { startAutorunPolling } from "./autorun.js";
 import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
@@ -43,6 +44,7 @@ export async function renderShared() {
   renderNext(next);
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
+  startAutorunPolling();
   startSessionPolling();
 }
 
@@ -189,14 +191,29 @@ function groupAddButton(group) {
     // summary 클릭은 카드를 접으므로 기본 동작까지 막는다
     event.preventDefault();
     event.stopPropagation();
-    const value = prompt(`"${group.name}" 에 추가할 할일 제목`);
-    if (!value) return;
-    run(async () => {
-      await api.createTodo({ title: value, workspace_id: group.id });
-      await renderBoard();
-    });
+    openAddDialog(group);
   });
   return button;
+}
+
+// 팝업이 어느 워크스페이스로 넣을지. 팝업은 하나뿐이라 열 때마다 덮어쓴다
+let addTarget = null;
+
+function openAddDialog(group) {
+  addTarget = group;
+  document.getElementById("todo-add-scope").textContent = `${group.name}에 할일 추가`;
+  addDialogFields().forEach((field) => {
+    field.value = "";
+  });
+  const dialog = document.getElementById("todo-add-modal");
+  if (!dialog.open) dialog.showModal();
+  document.getElementById("todo-add-title").focus();
+}
+
+function addDialogFields() {
+  return ["todo-add-title", "todo-add-precondition", "todo-add-note"].map((id) =>
+    document.getElementById(id)
+  );
 }
 
 function todoElement(todo) {
@@ -390,9 +407,35 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
   event.preventDefault();
   const title = document.getElementById("quick-title");
   const categoryId = Number(document.getElementById("quick-category").value);
+  const precondition = document.getElementById("quick-precondition");
+  const note = document.getElementById("quick-note");
   run(async () => {
-    await api.createTodo({ title: title.value, category_id: categoryId });
+    await api.createTodo({
+      title: title.value,
+      category_id: categoryId,
+      precondition: precondition.value || null,
+      note: note.value || null,
+    });
     title.value = "";
+    precondition.value = "";
+    note.value = "";
+    document.getElementById("quick-extra").open = false;
+    await renderBoard();
+  });
+});
+
+document.getElementById("todo-add-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const [title, precondition, note] = addDialogFields();
+  const workspaceId = addTarget?.id;
+  run(async () => {
+    await api.createTodo({
+      title: title.value,
+      workspace_id: workspaceId,
+      precondition: precondition.value || null,
+      note: note.value || null,
+    });
+    document.getElementById("todo-add-modal").close();
     await renderBoard();
   });
 });

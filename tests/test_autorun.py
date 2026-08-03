@@ -6,17 +6,20 @@ import tempfile
 import time
 import unittest
 
+import server
 from app.constants import (
     AUTORUN_BLOCKED_STREAK_LIMIT,
     AUTORUN_LABEL,
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_REVIEW,
     STATE_ENDED,
     STATUS_DOING,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
 )
+from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
@@ -269,11 +272,33 @@ class Outcomes(AutorunCase):
         self._job(JOB, "blocked")
         self.assertEqual(autorun.reconcile(self.con), [])
 
-    def test_done_job_with_done_todo(self):
+    def test_done_job_with_done_todo_waits_for_review(self):
+        """성공한 잡은 완료가 아니라 확인 필요다 — 변경이 워크트리에 남아 있다"""
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         self._job(JOB, "done")
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
-        self.assertEqual(autorun.reconcile(self.con)[0]["outcome"], OUTCOME_DONE)
+        run = autorun.reconcile(self.con)[0]
+        self.assertEqual(run["outcome"], OUTCOME_REVIEW)
+        self.assertEqual(
+            autorun_repo.confirm_run(self.con, run["id"])["outcome"], OUTCOME_DONE
+        )
+
+    def test_confirm_rejects_anything_but_review(self):
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        with self.assertRaises(Validation):  # 진행 중
+            autorun_repo.confirm_run(self.con, run["id"])
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_FAILED)
+        with self.assertRaises(Validation):
+            autorun_repo.confirm_run(self.con, run["id"])
+
+    def test_review_does_not_count_as_failure(self):
+        """확인이 밀린 동안 그 할일이 blocked 로 올라가면 다음 tick 후보에서 빠진다"""
+        first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
+        autorun_repo.close_run(self.con, first["id"], OUTCOME_REVIEW)
+        self.assertEqual(autorun_repo.consecutive_failures(self.con, self.todo["id"]), 0)
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        self._job(JOB, "stopped")
+        self.assertEqual(autorun.reconcile(self.con)[0]["outcome"], OUTCOME_FAILED)
 
     def test_finished_job_with_unfinished_todo_fails(self):
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
@@ -312,6 +337,68 @@ class Handover(AutorunCase):
     def test_other_session_is_left_alone(self):
         self.assertFalse(autorun.disable_for_session(self.con, "남의 세션"))
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
+    def test_the_jobs_own_first_prompt_is_not_a_human(self):
+        """런처가 last_prompt 를 미리 심으면 자율 세션 자신의 첫 프롬프트가 사람으로
+        오판돼 autorun 이 뜨자마자 꺼진다 — 실제로 job cfe5d3f4 가 그렇게 꺼졌다"""
+        autorun.tick(self.con, launcher=Recorder())
+        self.assertFalse(autorun.handover_if_human(self.con, CHILD))
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
+    def test_second_prompt_is_a_human_and_hands_over(self):
+        autorun.tick(self.con, launcher=Recorder())
+        # 자율 세션의 첫 프롬프트는 훅이 그때 기록한다
+        session_repo.set_last_prompt(self.con, CHILD, "자율 실행 지시 전문")
+        self.assertTrue(autorun.handover_if_human(self.con, CHILD))
+        self.assertFalse(autorun_repo.state(self.con)["enabled"])
+
+    def test_handover_ignores_sessions_without_a_run(self):
+        session_repo.register(self.con, "손세션", cwd=self.repo)
+        session_repo.set_last_prompt(self.con, "손세션", "사람이 친 지시")
+        self.assertFalse(autorun.handover_if_human(self.con, "손세션"))
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
+
+class RecentWithTodos(AutorunCase):
+    """자율 수행 패널이 그대로 뿌리는 조회. 할일 제목·워크스페이스 이름이 붙어야 한다"""
+
+    def test_carries_todo_title_and_workspace_name(self):
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        row = autorun_repo.recent_with_todos(self.con)[0]
+        self.assertEqual(row["todo_title"], self.todo["title"])
+        self.assertEqual(row["workspace_name"], self.workspace["name"])
+
+    def test_unassigned_todo_has_no_workspace_name(self):
+        orphan = todo_repo.create(
+            self.con, "미분류 할일", category_id=self.workspace["category_id"]
+        )
+        autorun_repo.start_run(self.con, orphan["id"], CHILD, JOB)
+        row = autorun_repo.recent_with_todos(self.con)[0]
+        self.assertIsNone(row["workspace_name"])
+
+    def test_most_recent_run_comes_first(self):
+        first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
+        autorun_repo.close_run(self.con, first["id"], OUTCOME_DONE)
+        second = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job2")
+        self.assertEqual(autorun_repo.recent_with_todos(self.con)[0]["id"], second["id"])
+
+
+class WebToggle(AutorunCase):
+    """화면의 on/off 스위치. CLI 의 dash.py autorun on|off 와 같은 상태를 건드린다"""
+
+    def test_patch_turns_autorun_off_and_on(self):
+        payload = server.route(self.con, "PATCH", "/api/autorun", {}, {"enabled": False})
+        self.assertEqual(payload["state"]["enabled"], 0)
+        self.assertEqual(autorun_repo.state(self.con)["enabled"], 0)
+
+        payload = server.route(self.con, "PATCH", "/api/autorun", {}, {"enabled": True})
+        self.assertEqual(payload["state"]["enabled"], 1)
+        self.assertEqual(autorun_repo.state(self.con)["enabled"], 1)
+
+    def test_response_carries_runs_so_the_panel_repaints(self):
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        payload = server.route(self.con, "PATCH", "/api/autorun", {}, {"enabled": True})
+        self.assertEqual(payload["runs"][0]["todo_title"], self.todo["title"])
 
 
 if __name__ == "__main__":

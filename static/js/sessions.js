@@ -44,8 +44,8 @@ export async function renderSessions() {
   if (idle.length) list.appendChild(idleToggle(idle.length));
 }
 
-// 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다
-function formatAge(iso) {
+// 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다. autorun.js 는 이걸 그대로 쓴다
+export function formatAge(iso) {
   if (!iso) return "";
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return "";
@@ -173,7 +173,8 @@ export function rawTitleMark() {
 
 function todoBlock(todo) {
   const block = element("div", "dlg-section");
-  const title = element("p", "dlg-title", todo.title);
+  // 할일 번호를 제목 앞에 붙인다 — dash.py 명령에 넣을 id 를 팝업에서 바로 읽게
+  const title = element("p", "dlg-title", `#${todo.id} | ${todo.title}`);
   if (todo.needs_title) title.append(rawTitleMark());
   block.append(title, timeList(todo));
   block.append(...textField("착수 조건", todo.precondition));

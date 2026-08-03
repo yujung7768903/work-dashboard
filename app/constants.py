@@ -57,6 +57,16 @@ HISTORY_DAY_CHOICES = (7, 14)
 ONBOARDING_MIN_SESSIONS = 3
 ONBOARDING_DECLINED_FLAG = "onboarding_declined"
 
+# 착수 조건 작성 안내. CLI(--precondition 도움말)와 추가 팝업이 같은 문구를 쓴다 —
+# 두 곳에서 다르게 설명하면 어느 쪽 규약이 맞는지 알 수 없다.
+# 세션에는 첫 줄만 주입되므로(session_link) 판정 문장이 첫 줄에 와야 한다
+PRECONDITION_HINT = (
+    "참/거짓이 갈리는 한 문장을 첫 줄에 쓴다."
+    " 다른 할일이 조건이면 #id 로 적고, 명령으로 확인되면 둘째 줄에 '확인: <명령>'."
+    " 조건이 있는 할일은 자율 수행 후보에서 빠진다"
+)
+PRECONDITION_EXAMPLE = "#57 이 done 일 것\n확인: git -C ~/work/work-dashboard status --short"
+
 # 대시보드에서 세션을 워크스페이스로 분류할 때 자동으로 만드는 할일.
 # 그 자리에는 Claude 가 없어 의미 판단을 할 수 없으므로 지시 원문에서 뽑을 수 있는 만큼만 만든다
 AUTO_TODO_TITLE_CHARS = 60
@@ -129,8 +139,12 @@ AUTORUN_MODEL = "claude-sonnet-5"  # 모델은 상수. 성공률 학습·자동 
 AUTORUN_MAX_CONCURRENT = 1  # 사용량 창을 나눠 쓰면 둘 다 리밋에 걸리고 diff 가 섞인다
 AUTORUN_FAIL_LIMIT = 2  # 같은 할일이 이만큼 연속 실패하면 막고 다음 할일로
 AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun 자체를 끈다
-AUTORUN_OUTCOMES = ("done", "failed", "blocked")
-OUTCOME_DONE, OUTCOME_FAILED, OUTCOME_BLOCKED = AUTORUN_OUTCOMES
+# review(확인 필요)가 성공한 잡의 첫 결과다. 자율 세션은 커밋하지 않고 변경을 워크트리에
+# 남기므로, 잡이 끝난 시점의 그 작업은 '끝난 것'이 아니라 '사람이 보고 병합을 판정할 것'이다.
+# done 은 사람이 확인 필요 배지를 눌러 내렸을 때만 붙는다 — 진행 중과 확인 필요를 같은
+# 배지로 뭉개면 사람이 무엇을 봐야 하는지 목록에서 알 수 없다
+AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked")
+OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_FAILED, OUTCOME_BLOCKED = AUTORUN_OUTCOMES
 # --bg 잡의 상태 파일. 이 값들이면 잡이 끝난 것으로 보고 실행 기록을 닫는다.
 # blocked(리밋)는 열어 둔다 — resume-limited-jobs.py 가 다시 밀어 준다
 AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")

@@ -68,6 +68,7 @@ work-dashboard/
 │       ├── settings.js              # 설정 탭 — 카테고리·라벨 관리
 │       ├── workspace.js             # 워크스페이스 상세
 │       ├── sessions.js              # 활성 세션 (2초 폴링)
+│       ├── autorun.js               # 자율 수행 패널 (5초 폴링)
 │       ├── usage.js                 # 사용량 화면
 │       ├── chart.js                 # 차트 렌더
 │       └── dnd.js                   # 드래그 재정렬
@@ -232,6 +233,8 @@ python3 dash.py autorun-tick --dry-run     # 띄우지 않고 판정 사유만
 python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어가는 지시 전문
 ```
 
+보드 화면의 "자율 수행" 옆 ON/OFF 스위치도 같은 설정을 켜고 끈다 — CLI 와 상태가 하나다.
+
 트리거는 5분 크론이다 (아래 "크론" 참고). 데몬을 따로 만들지 않는다 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
 
 #### 대상은 두 겹으로 좁힌다
@@ -278,9 +281,12 @@ python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어�
 
 | `outcome` | 언제 |
 | --- | --- |
-| `done` | 잡이 끝났고 그 할일이 `done` |
+| `review` | 잡이 끝났고 그 할일이 `done`. **확인 필요** — 사람이 diff 를 보고 병합을 판정할 차례 |
+| `done` | 사람이 자율 수행 패널의 `확인 필요` 배지를 눌러 확인을 마침 |
 | `failed` | 잡이 끝났는데 할일이 안 끝남 |
 | `blocked` | 그 실패로 `AUTORUN_FAIL_LIMIT` 에 닿음. 그 할일은 이후 후보에서 빠진다 |
+
+성공한 잡이 곧바로 `done` 이 되지 않는 이유 — 자율 세션은 커밋하지 않고 변경을 워크트리에 남긴다. 그 시점의 작업은 끝난 것이 아니라 **사람이 봐야 하는 것**이고, 클로드가 아직 돌고 있는 `진행 중` 과는 다른 상태다. 확인은 코드가 판정할 수 없으므로(diff 를 읽고 병합할지 정하는 일이다) 배지 클릭(`PATCH /api/autorun-runs/<id>`)만 기록한다. `review` 는 실패로 세지 않는다 — 확인이 밀린 동안 그 할일이 `blocked` 로 올라가면 안 된다.
 
 `blocked` 가 `AUTORUN_BLOCKED_STREAK_LIMIT` 만큼 연속되면 autorun 자체를 끈다. 자율 잡에 사람이 프롬프트를 넣어도 끈다(`UserPromptSubmit` 훅) — 그 잡은 사람 것으로 인계된 것이다. 첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 `last_prompt` 가 이미 있을 때만 사람이 끼어든 것으로 본다.
 
@@ -497,7 +503,7 @@ cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db
 | ① 4계층 + 웹/CLI | `specs/2026-07-29-work-dashboard-design.md`, `plans/2026-07-29-work-dashboard.md` | 구현 완료 |
 | ② 세션 매핑 | `specs/2026-07-29-session-link-design.md` (설계) + `specs/2026-07-30-session-mapping-spec.md` (확정 결정) | 대부분 구현, 잔여 2건 |
 | ③ 결정 대기 큐 | `specs/2026-07-30-decision-queue-spec.md` | 결정 확정, 미구현 |
-| ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 1차 구현 완료 (③ 큐 연동·웹 토글·⑥ `waiting` 제외) |
+| ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 1차 구현 완료 (③ 큐 연동·⑥ `waiting` 제외) |
 | ⑤ 초기 설정(온보딩) | `specs/2026-08-01-onboarding-spec.md` | 구현 완료 |
 
 경로는 모두 `docs/superpowers/` 기준. ②③④ 문서는 각각 (a) 문제 (b) 확정 결정과 근거 (c) 안 하는 것 (d) 파일 경계를 담고 있어 그대로 착수할 수 있다.
@@ -506,5 +512,5 @@ cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db
 
 - 결정 대기 큐 (③) — 스펙만 있고 코드 없음. 없으면 막힌 자율 세션이 갈 곳이 없다
 - 선제조건 대기 상태 (⑥ `waiting`) — 없어서 자율 실행이 "조건 있는 할일은 후보 제외" 로 대신하고 있다
-- 자율 실행의 웹 토글·막힘 배지 — CLI(`dash.py autorun`)로만 켜고 끈다
+- 자율 실행의 막힘 배지 — 막힌 할일이 목록에서 눈에 띄지 않는다
 - 완료 항목 아카이브, 할일 의존성, 카테고리 우선순위

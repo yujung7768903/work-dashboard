@@ -1,7 +1,11 @@
 """착수 가능 조건(precondition) 저장·표시·주입."""
+import pathlib
 import sqlite3
 import unittest
 
+import dash
+import server
+from app.constants import PRECONDITION_EXAMPLE, PRECONDITION_HINT
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
@@ -9,6 +13,9 @@ from app.repositories import workspaces as workspace_repo
 from app.services import session_link
 from tests.support import temp_db, temp_db_path
 
+STATIC = pathlib.Path(__file__).resolve().parent.parent / "static"
+INDEX = STATIC / "index.html"
+BOARD_JS = STATIC / "js" / "board.js"
 CONDITION = "#30 사용량 대시보드가 done 일 것"
 MULTILINE = (
     "work-dashboard 에 미커밋 변경이 남은 워크트리가 없을 것\n"
@@ -127,6 +134,54 @@ class PreconditionPopupTest(unittest.TestCase):
         )
         payload = session_link.todo_detail(self.con, todo["id"])
         self.assertEqual(payload["todo"]["precondition"], MULTILINE)
+
+
+class PreconditionAddFormTest(unittest.TestCase):
+    """화면에서 넣은 조건·note 가 저장까지 가야 한다.
+
+    빠른 추가 폼에 입력칸이 없거나 서버가 body 의 값을 버리면, 저장 계층
+    테스트는 전부 통과하면서 브라우저에서만 값이 사라진다 — 실제로 그랬다.
+    """
+
+    def setUp(self):
+        self.con = temp_db()
+
+    def test_post_carries_condition_and_note(self):
+        created = server.route(
+            self.con,
+            "POST",
+            "/api/todos",
+            {},
+            {
+                "title": "할일",
+                "category_id": 1,
+                "precondition": CONDITION,
+                "note": "컨텍스트",
+            },
+        )
+        stored = todo_repo.get(self.con, created["id"])
+        self.assertEqual(stored["precondition"], CONDITION)
+        self.assertEqual(stored["note"], "컨텍스트")
+
+    def test_popup_hint_matches_cli_help(self):
+        """안내 문구는 CLI 도움말과 같아야 한다.
+
+        두 곳에서 다르게 설명하면 어느 규약이 맞는지 알 수 없다. HTML 은 정적이라
+        상수를 끼워 넣을 수 없으므로 같은 문장인지 여기서 대조한다
+        """
+        markup = INDEX.read_text(encoding="utf-8")
+        # 부등호는 HTML 이라 이스케이프돼 있다
+        self.assertIn(PRECONDITION_HINT.replace("<", "&lt;").replace(">", "&gt;"), markup)
+        self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
+        # 예시는 placeholder 로 보여 준다 (개행은 &#10;)
+        self.assertIn(PRECONDITION_EXAMPLE.replace("\n", "&#10;"), markup)
+
+    def test_quick_add_form_has_both_inputs(self):
+        markup = INDEX.read_text(encoding="utf-8")
+        script = BOARD_JS.read_text(encoding="utf-8")
+        for element_id in ("quick-precondition", "quick-note"):
+            self.assertIn(f'id="{element_id}"', markup)
+            self.assertIn(f'getElementById("{element_id}")', script)
 
 
 if __name__ == "__main__":

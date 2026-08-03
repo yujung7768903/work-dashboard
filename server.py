@@ -18,6 +18,7 @@ from app.errors import (
     UnknownEndpoint,
     Validation,
 )
+from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
 from app.repositories import subtasks as subtask_repo
@@ -125,6 +126,8 @@ def _route_get(con, head, item_id, query):
         return usage.snapshot(con)
     if head == "worktrees":
         return worktrees.overview(con)
+    if head == "autorun":
+        return {"state": autorun_repo.state(con), "runs": autorun_repo.recent_with_todos(con)}
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -145,6 +148,7 @@ def _route_post(con, head, body):
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
             note=body.get("note"),
+            precondition=body.get("precondition"),
         )
     if head == "subtasks":
         return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
@@ -154,6 +158,10 @@ def _route_post(con, head, body):
 
 
 def _route_patch(con, head, item_id, body):
+    if head == "autorun":
+        # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
+        state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
+        return {"state": state, "runs": autorun_repo.recent_with_todos(con)}
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":
@@ -166,6 +174,9 @@ def _route_patch(con, head, item_id, body):
         return todo_repo.update(con, item_id, **body)
     if head == "subtasks":
         return subtask_repo.update(con, item_id, **body)
+    if head == "autorun-runs":
+        # 확인 필요 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
+        return autorun_repo.confirm_run(con, item_id)
     if head == "sessions":
         session = session_repo.classify_by_ids(
             con,
