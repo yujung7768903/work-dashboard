@@ -193,8 +193,10 @@ function groupAddButton(group) {
     event.stopPropagation();
     const value = prompt(`"${group.name}" 에 추가할 할일 제목`);
     if (!value) return;
+    const precondition = prompt("착수 조건 (선택, 없으면 비워두세요)") || null;
+    const note = prompt("note (선택, 없으면 비워두세요)") || null;
     run(async () => {
-      await api.createTodo({ title: value, workspace_id: group.id });
+      await api.createTodo({ title: value, workspace_id: group.id, precondition, note });
       await renderBoard();
     });
   });
@@ -392,9 +394,19 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
   event.preventDefault();
   const title = document.getElementById("quick-title");
   const categoryId = Number(document.getElementById("quick-category").value);
+  const precondition = document.getElementById("quick-precondition");
+  const note = document.getElementById("quick-note");
   run(async () => {
-    await api.createTodo({ title: title.value, category_id: categoryId });
+    await api.createTodo({
+      title: title.value,
+      category_id: categoryId,
+      precondition: precondition.value || null,
+      note: note.value || null,
+    });
     title.value = "";
+    precondition.value = "";
+    note.value = "";
+    document.getElementById("quick-extra").open = false;
     await renderBoard();
   });
 });
