@@ -120,14 +120,12 @@ class PreconditionPopupTest(unittest.TestCase):
         self.con = temp_db()
         self.workspace = workspace_repo.create(self.con, 1, "테스트")
 
-    def test_todo_detail_carries_subtask_conditions(self):
+    def test_todo_detail_carries_condition(self):
         todo = todo_repo.create(
-            self.con, "할일", workspace_id=self.workspace["id"], precondition=CONDITION
+            self.con, "할일", workspace_id=self.workspace["id"], precondition=MULTILINE
         )
-        subtask_repo.create(self.con, todo["id"], "하위", precondition=MULTILINE)
         payload = session_link.todo_detail(self.con, todo["id"])
-        self.assertEqual(payload["todo"]["precondition"], CONDITION)
-        self.assertEqual(payload["todo"]["subtasks"][0]["precondition"], MULTILINE)
+        self.assertEqual(payload["todo"]["precondition"], MULTILINE)
 
 
 if __name__ == "__main__":

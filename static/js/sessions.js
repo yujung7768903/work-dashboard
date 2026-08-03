@@ -177,9 +177,7 @@ function todoBlock(todo) {
   if (todo.needs_title) title.append(rawTitleMark());
   block.append(title, timeList(todo));
   block.append(...textField("착수 조건", todo.precondition));
-  if (todo.subtasks?.length) {
-    block.append(element("p", "label", "하위 할일"), subtaskList(todo.subtasks));
-  }
+  // 하위 할일은 보드 카드에서 펼쳐 보므로 여기서는 안 그린다
   block.append(...textField("note", todo.note));
   return block;
 }
@@ -190,21 +188,6 @@ function textField(label, value) {
     element("p", "label", label),
     element("p", value ? "note-body" : "muted", value || "(없음)"),
   ];
-}
-
-function subtaskList(subtasks) {
-  const list = element("ul", "dlg-subtasks");
-  subtasks.forEach((subtask) => {
-    const item = document.createElement("li");
-    item.append(
-      element("span", "dlg-badge", subtask.status),
-      element("span", "text", subtask.title)
-    );
-    // 하위 할일은 한 줄 목록이라 조건은 있을 때만 아랫줄로 붙인다
-    if (subtask.precondition) item.append(element("p", "cond", subtask.precondition));
-    list.appendChild(item);
-  });
-  return list;
 }
 
 // 완료 시각이 없는 할일도 있어 빈 값은 빼고, 남은 것만 최근 순으로 세운다
