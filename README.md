@@ -68,6 +68,7 @@ work-dashboard/
 │       ├── settings.js              # 설정 탭 — 카테고리·라벨 관리
 │       ├── workspace.js             # 워크스페이스 상세
 │       ├── sessions.js              # 활성 세션 (2초 폴링)
+│       ├── autorun.js               # 자율 수행 패널 (5초 폴링)
 │       ├── usage.js                 # 사용량 화면
 │       ├── chart.js                 # 차트 렌더
 │       └── dnd.js                   # 드래그 재정렬

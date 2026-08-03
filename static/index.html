@@ -72,6 +72,19 @@
       <section id="tab-board" class="tab">
         <!-- 여기부터 카테고리 라벨까지는 두 하위 탭이 함께 쓴다 -->
         <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
+        <!-- 기본 접힘. 펼치면 자율 실행으로 돌린 할일 목록 -->
+        <details id="autorun-panel">
+          <summary>
+            <span id="autorun-head">
+              <span>자율 수행</span>
+              <span id="autorun-status">
+                <span id="autorun-dot"></span>
+                <span id="autorun-cycle"></span>
+              </span>
+            </span>
+          </summary>
+          <ul id="autorun-list"></ul>
+        </details>
         <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
         <details id="session-panel">
           <summary>

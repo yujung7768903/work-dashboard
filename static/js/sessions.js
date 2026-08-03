@@ -44,8 +44,8 @@ export async function renderSessions() {
   if (idle.length) list.appendChild(idleToggle(idle.length));
 }
 
-// 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다
-function formatAge(iso) {
+// 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다. autorun.js 는 이걸 그대로 쓴다
+export function formatAge(iso) {
   if (!iso) return "";
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return "";
