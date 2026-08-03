@@ -9,6 +9,7 @@ from datetime import datetime
 from app.constants import (
     HISTORY_DAY_CHOICES,
     SESSION_ID_ENV,
+    STATUS_DOING,
     STATUS_DONE,
     UNASSIGNED_LABEL,
 )
@@ -177,6 +178,12 @@ def _build_parser():
     link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
     _add_session_arg(link_todo)
     link_todo.add_argument("todo_id", type=int)
+    link_todo.add_argument(
+        "--status",
+        choices=(STATUS_DOING, STATUS_DONE),
+        default=None,
+        help="연결하며 넣을 상태. 기본은 doing. 이미 master 에 병합된 작업이면 done",
+    )
     link_todo.add_argument(
         "--past",
         action="store_true",
@@ -566,8 +573,10 @@ def _cmd_link_todo(con, args):
     session = args.session
     if args.past:
         session = history.ensure_past_session(con, session)
-    session_repo.link_todo(con, session, args.todo_id, claim=not args.past)
-    print(f"할일 {args.todo_id} 연결됨")
+    session_repo.link_todo(
+        con, session, args.todo_id, claim=not args.past, status=args.status
+    )
+    print(f"할일 {args.todo_id} 연결됨" + (f" ({args.status})" if args.status else ""))
 
 
 def _cmd_scan_history(con, args):

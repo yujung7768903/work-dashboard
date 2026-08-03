@@ -49,11 +49,18 @@ RELEASED_GUIDE = (
     "dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 만들지 않는다."
 )
+# 연결은 착수 선언이지만 늘 그런 것은 아니다 — 이미 끝난 작업을 뒤늦게 연결하는 일도 있다.
+# 무엇이 끝난 것인지는 작업 내용을 본 쪽만 알므로 코드가 추측하지 않고 여기서 규칙을 알린다
+LINK_STATUS_RULE = (
+    "연결 상태는 기본 doing 이고, 이미 master 에 병합돼 끝난 작업이면 "
+    "--status done 을 붙인다."
+)
 # 브랜치로 워크스페이스는 알아냈지만 아직 할일을 안 잡은 세션. 잡아야 보드에 보인다
 UNLINKED_GUIDE = (
     "미연결: 이 세션은 아직 어느 할일도 잡지 않았다. 위 목록에서 이번 작업에 해당하는 "
     "할일을 dash.py link-todo <todo-id> 로 잡는다. 해당하는 것이 없으면 "
-    "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다."
+    "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다. "
+    + LINK_STATUS_RULE
 )
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
@@ -70,7 +77,8 @@ UNCLASSIFIED_GUIDE = (
     "등록: python3 dash.py classify --category <이름> [--workspace <id>] "
     "코드·문서를 바꾸거나 여러 턴에 걸치거나 산출물이 남는 작업이면 "
     "dash.py add-todo 로 할일을 만들고 dash.py link-todo <todo-id> 로 연결한다. "
-    "단발 조회·설명 질문이면 할일을 만들지 않는다. "
+    + LINK_STATUS_RULE
+    + " 단발 조회·설명 질문이면 할일을 만들지 않는다. "
     "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
     "dash.py show-todo --session 으로 할일을 직접 확인하고 "
     "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."

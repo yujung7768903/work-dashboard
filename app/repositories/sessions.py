@@ -10,6 +10,7 @@ from app.constants import (
     STATE_IDLE,
     STATE_WORKING,
     STATUS_DOING,
+    STATUS_DONE,
     STATUS_TODO,
 )
 from app.db import now, transaction
@@ -132,17 +133,21 @@ def classify_by_ids(con, session_row_id, category_id=None, workspace_id=None):
     return _row_by_id(con, session_row_id)
 
 
-def link_todo(con, claude_session_id, todo_id, claim=True):
+def link_todo(con, claude_session_id, todo_id, claim=True, status=None):
     """중복 연결은 무시. PK 가 (session_id, todo_id).
 
-    연결은 착수 선언이므로 할일을 doing 으로 올림. status=todo 인 것만 바꿔서
-    이미 done 인 할일이 되살아나지 않게 함.
+    연결하며 할일의 상태도 정한다. 기본은 doing(착수 선언)이고, 이미 끝난 작업을
+    뒤늦게 연결하는 것이면 done 을 넘긴다 — 무엇이 끝난 것인지는 작업 내용을 본
+    쪽만 알 수 있으므로 여기서 추측하지 않고 받은 값을 쓴다.
+
+    doing 은 status=todo 인 것만 바꾼다. 이미 done 인 할일이 연결만으로 되살아나면 안 된다.
 
     claim=False 는 끝난 히스토리 세션을 소급 연결할 때 쓴다 — 그건 착수 선언이 아니라
     기록이므로 상태를 건드리면 안 된다 (온보딩이 추정해 넣은 상태가 뒤집힌다)
     """
     session = get(con, claude_session_id)
     _require_todo(con, todo_id)
+    target = _validated_link_status(status)
     stamp = now()
     with transaction(con):
         con.execute(
@@ -150,11 +155,27 @@ def link_todo(con, claude_session_id, todo_id, claim=True):
             " VALUES(?,?,?)",
             (session["id"], todo_id, stamp),
         )
-        if claim:
+        if not claim:
+            return
+        if target == STATUS_DONE:
+            con.execute(
+                "UPDATE todos SET status=?, completed_at=?, updated_at=? WHERE id=?",
+                (STATUS_DONE, stamp, stamp, todo_id),
+            )
+        else:
             con.execute(
                 "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status=?",
                 (STATUS_DOING, stamp, todo_id, STATUS_TODO),
             )
+
+
+def _validated_link_status(status):
+    """연결할 때 넣을 수 있는 상태는 doing·done 뿐. todo 는 연결하지 않은 것과 같은 말"""
+    if status is None:
+        return STATUS_DOING
+    if status not in (STATUS_DOING, STATUS_DONE):
+        raise Validation(f"연결 상태는 {STATUS_DOING} 또는 {STATUS_DONE} 이어야 함: {status!r}")
+    return status
 
 
 def linked_todo_ids(con, claude_session_id):
