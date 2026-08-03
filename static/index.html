@@ -211,6 +211,28 @@
     <div id="session-modal-body"></div>
   </dialog>
 
+  <!-- 워크스페이스 카드의 + 버튼이 여는 추가 폼. 세 값을 한 번에 받는다 —
+       prompt 를 연달아 띄우면 브라우저가 둘째부터 억제해 제목만 물어본 꼴이 된다 -->
+  <dialog id="todo-add-modal">
+    <form method="dialog"><button class="modal-close" aria-label="닫기">×</button></form>
+    <form id="todo-add-form">
+      <h2 id="todo-add-scope"></h2>
+      <div class="field">
+        <label for="todo-add-title">제목</label>
+        <input id="todo-add-title" required>
+      </div>
+      <div class="field">
+        <label for="todo-add-precondition">착수 조건</label>
+        <textarea id="todo-add-precondition"></textarea>
+      </div>
+      <div class="field">
+        <label for="todo-add-note">note</label>
+        <textarea id="todo-add-note"></textarea>
+      </div>
+      <button type="submit">추가</button>
+    </form>
+  </dialog>
+
   <script type="module" src="/js/main.js"></script>
 </body>
 </html>

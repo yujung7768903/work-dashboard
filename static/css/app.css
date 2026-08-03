@@ -643,7 +643,9 @@ button:disabled { color: var(--line); cursor: default; }
 /* fixed + inset 0 + margin auto = 스크롤 위치와 무관하게 화면 정중앙.
    position: relative 로 두면 문서 흐름상의 자리에 뜨는 탓에 아래쪽 카드에서 열면
    팝업을 보려고 위로 스크롤해야 했다. 닫기 버튼의 기준 상자 역할은 fixed 도 한다 */
-#session-modal[open] {
+/* 할일 추가 팝업도 같은 외양을 쓴다 — 팝업이 두 종류로 보일 이유가 없다 */
+#session-modal[open],
+#todo-add-modal[open] {
   position: fixed; inset: 0; margin: auto;
   display: flex; flex-direction: column;
   width: min(620px, calc(100vw - var(--sp-24))); max-height: 80vh; overflow: hidden;
@@ -651,10 +653,16 @@ button:disabled { color: var(--line); cursor: default; }
   background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
 }
 /* 팝업이 열린 동안 뒤 화면은 고정. 스크롤은 팝업 본문만 갖는다 */
-html:has(#session-modal[open]) { overflow: hidden; }
-#session-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
+html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidden; }
+#session-modal::backdrop, #todo-add-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
 /* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
-#session-modal form { margin: 0; }
+#session-modal form, #todo-add-modal form { margin: 0; }
+/* 본문 여백은 세션 팝업 본문과 같은 값. 닫기 버튼과 겹치지 않게 제목만 오른쪽을 비운다 */
+#todo-add-form { padding: var(--sp-20); overflow: auto; }
+#todo-add-scope {
+  margin: 0 0 var(--sp-16); padding-right: var(--sp-32);
+  font-size: var(--fs-title); font-weight: 600;
+}
 .modal-close {
   position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
   background: none; color: var(--muted);
