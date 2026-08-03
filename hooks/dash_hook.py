@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.constants import STATE_ENDED, STATE_IDLE, STATE_WORKING  # noqa: E402
 from app.db import connect  # noqa: E402
 from app.repositories import sessions as session_repo  # noqa: E402
-from app.services import session_link  # noqa: E402
+from app.services import autorun, session_link  # noqa: E402
 
 EXIT_OK = 0
 GIT_BRANCH_TIMEOUT_SEC = 1
@@ -45,8 +45,14 @@ def _on_session_start(con, session_id, payload):
 def _on_prompt_submit(con, session_id, payload):
     """분류 전이면 지시를 다시 주입. 분류되면 조용해짐.
 
-    예외로 할일을 끝낸(finish 한) 세션에는 새 요청을 새 할일로 받으라고 다시 알린다
+    예외로 할일을 끝낸(finish 한) 세션에는 새 요청을 새 할일로 받으라고 다시 알린다.
+
+    자율 실행으로 뜬 잡에 사람이 말을 걸면 그 잡은 사람 것으로 인계하고 autorun 을 끈다.
+    첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 last_prompt 가 이미 있을 때만
+    사람이 끼어든 것으로 본다 — 자율 세션에 두 번째로 말을 거는 것은 사람뿐이다
     """
+    if (session_repo.find(con, session_id) or {}).get("last_prompt"):
+        autorun.disable_for_session(con, session_id)
     session_repo.set_state(con, session_id, STATE_WORKING)
     session_repo.set_last_prompt(con, session_id, payload.get("prompt") or "")
     session = session_repo.find(con, session_id)

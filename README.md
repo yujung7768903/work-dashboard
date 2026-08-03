@@ -36,7 +36,8 @@ work-dashboard/
 │   │   ├── workspaces.py            # 워크스페이스
 │   │   ├── todos.py                 # 할일
 │   │   ├── subtasks.py              # 하위할일
-│   │   └── sessions.py              # 세션 등록·분류·상태·할일 연결·정리
+│   │   ├── sessions.py              # 세션 등록·분류·상태·할일 연결·정리
+│   │   └── autorun.py               # 자율 실행 설정(단일 행)과 실행 기록
 │   │
 │   └── services/                    # 여러 엔티티에 걸치는 로직
 │       ├── board.py                 # 보드 트리 조립
@@ -45,6 +46,7 @@ work-dashboard/
 │       ├── session_todo.py          # 웹에서 워크스페이스로 분류할 때 할일 자동 생성
 │       ├── summary.py               # 지시문 한 줄 요약 (claude CLI 호출, 실패 시 None)
 │       ├── release.py               # 병합 후 리소스 해제 (할일 done·서버 종료)
+│       ├── autorun.py               # 자율 실행 tick 판정·프롬프트 조립·잡 실행
 │       ├── transcript.py            # Claude Code jsonl 읽기 (앞·꼬리 조각)
 │       ├── history.py               # 초기 설정용 히스토리 스캔·요약
 │       └── usage.py                 # 한도 사용률·토큰 추이
@@ -219,6 +221,72 @@ python3 dash.py finish <session> --worktree PATH # 자동으로 못 찾을 때 �
 프로세스 탐지(`app/services/release.py`)는 `/proc` 이 있으면 그걸로, 없으면(macOS) `lsof -a -d cwd -t` 로 한다. `worktree_serve.py` 훅의 "서버가 떠 있는가" 판정도 같은 함수를 쓴다 — 훅이 떠 있다고 본 프로세스를 `finish` 가 종료하므로 둘의 판정이 갈리면 안 된다.
 
 해제 뒤 같은 세션에서 사용자가 새 요청을 하면 `released` 블록이 주입돼 **새 할일을 만들어** 이어간다. 별도 플래그는 두지 않는다 — 새 할일을 `link-todo` 하는 순간 "전부 done" 이 깨져 블록이 저절로 조용해진다.
+
+### 자율 실행 (④)
+
+사람이 자리를 비운 사이 할일 1건을 `claude --bg` 잡으로 돌린다. 5분 크론이 `autorun-tick` 을 부르고, tick 은 판정만 하고 조건이 안 맞으면 아무것도 하지 않는다.
+
+```bash
+python3 dash.py autorun on|off|status      # 기본 off. 자동으로 다시 켜지는 경로는 없다
+python3 dash.py autorun-tick --dry-run     # 띄우지 않고 판정 사유만
+python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어가는 지시 전문
+```
+
+```cron
+*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autorun-tick >/dev/null 2>&1
+```
+
+데몬을 따로 만들지 않는다 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
+
+#### 대상은 두 겹으로 좁힌다
+
+순위 로직은 새로 만들지 않고 `planning.next_todo` 에 술어 하나(`keep`)를 넘겨 후보만 거른다. 자율 실행이 다른 기준으로 고르면 사람이 보는 `next` 순서와 어긋난다.
+
+| 겹 | 규칙 | 왜 |
+| --- | --- | --- |
+| 라벨 | `auto` 라벨이 붙은 할일만 | 자율 실행 허가는 사람이 준다. 코드가 "이건 맡겨도 되겠다" 를 추정하지 않는다 |
+| 조건 | `precondition` 문장이 **없을** 것 | 조건은 자연어라 코드가 충족 여부를 판정할 수 없다. 조건이 붙은 할일은 사람이 풀어야 후보가 된다 |
+| 기록 | `autorun_runs.outcome='blocked'` 가 있는 할일은 제외 | 2회 연속 실패한 할일을 계속 다시 집으면 사용량만 태운다 |
+
+조건이 붙은 채로 후보에 오르는 경로는 지금 없지만, 프롬프트는 조건 전문과 재확인 지시를 싣는다 — ⑥(`waiting` 상태)이 들어와 조건 있는 할일도 후보가 되면 그 판단은 자율 세션이 첫 단계로 한다.
+
+#### 시작 금지 조건
+
+| 조건 | 확인 | 동작 |
+| --- | --- | --- |
+| autorun off | `autorun_state.enabled` | 시작 안 함 (기본) |
+| 이미 자율 잡이 돎 | `autorun_runs.ended_at IS NULL` | 시작 안 함 (동시 1건) |
+| 5시간 창 사용률 ≥ `USAGE_CRITICAL_PCT` | 사이드카 `RATE_LIMITS_PATH` | 다음 tick 재확인 |
+| 사용률 데이터가 낡음 | `USAGE_STALE_SECONDS` | 시작 안 함 — 모르면 안 돈다 |
+| 후보 없음 | `planning.next_todo` | autorun off |
+| 작업 위치를 모름 | 그 워크스페이스에서 돈 세션이 없음 | 시작 안 함 |
+| 작업 위치가 더러움 | `git status --porcelain` | 시작 안 함 |
+
+사용률은 `usage.snapshot()` 이 아니라 사이드카를 직접 읽는다 — 그 함수는 조회하면서 `usage_samples` 에 한 줄 적립하므로 tick 이 5분마다 부르면 추이 그래프에 tick 이 섞인다.
+
+작업 위치는 **그 워크스페이스에서 세션이 가장 많이 돈 저장소**다(`sessions.cwd_counts_by_workspace`). 워크트리 경로는 `/.claude/worktrees/` 앞에서 잘라 본 저장소로 접고, `.git` 이 없는 위치(홈·scratch)는 걸러낸다. "가장 최근" 으로 골랐더니 다른 저장소에서 이 워크스페이스 할일을 하나 잡은 세션 때문에 1위가 그쪽으로 넘어갔다.
+
+#### 권한과 안전망
+
+권한 모드 플래그는 넘기지 않고 사용자 설정(`settings.json` 의 `defaultMode`)을 그대로 상속한다. `acceptEdits` 로 못박으면 테스트·git 같은 Bash 가 승인 대기에 걸려 잡이 그대로 멈춘다.
+
+그래서 안전망은 권한 플래그가 아니라 **프롬프트 규칙 + 커밋 금지**다. 자율 세션은 커밋·푸시·PR 을 하지 않고 변경을 워크트리에 남긴 채 끝낸다 — 규칙을 넘어선 변경도 `git diff` 로 전부 보이고 `git checkout` 으로 되돌아간다.
+
+`--bg` 하네스는 "끝나면 커밋·푸시하고 draft PR 을 올려라" 를 시스템 프롬프트로 넣는다. 정반대이므로 `autorun-prompt` 가 그 항목을 지목해 취소한다. **프롬프트로 프롬프트를 이기는 구조라 기술적 차단이 아니다** — 첫 실전 잡에서 이 두 항목이 지켜지는지를 눈으로 확인해야 한다.
+
+워크트리 격리는 스펙에서 "안 한다" 였지만 뒤집었다. `hooks/worktree_guard.py` 가 켜져(`~/.claude/worktree-guard.on`) 메인 체크아웃 소스 편집을 막으므로, 자율 세션도 `EnterWorktree` 로 워크트리를 만들어 작업한다. 가드를 `ALLOW_MAIN_CHECKOUT=1` 로 무력화하는 쪽은 택하지 않았다.
+
+#### 실행 기록을 닫는 것도 tick 이 한다
+
+닫지 않으면 "이미 돌고 있음" 에 영원히 걸린다. tick 은 먼저 열린 실행의 `~/.claude/jobs/<job-id>/state.json` 을 보고 `done`·`failed`·`stopped` 면 닫는다. `blocked`(리밋)는 열어 둔다 — `resume-limited-jobs.py` 가 다시 민다.
+
+| `outcome` | 언제 |
+| --- | --- |
+| `done` | 잡이 끝났고 그 할일이 `done` |
+| `failed` | 잡이 끝났는데 할일이 안 끝남 |
+| `blocked` | 그 실패로 `AUTORUN_FAIL_LIMIT` 에 닿음. 그 할일은 이후 후보에서 빠진다 |
+
+`blocked` 가 `AUTORUN_BLOCKED_STREAK_LIMIT` 만큼 연속되면 autorun 자체를 끈다. 자율 잡에 사람이 프롬프트를 넣어도 끈다(`UserPromptSubmit` 훅) — 그 잡은 사람 것으로 인계된 것이다. 첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 `last_prompt` 가 이미 있을 때만 사람이 끼어든 것으로 본다.
 
 ### 초기 설정 (⑤)
 
@@ -398,12 +466,14 @@ cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db
 | ① 4계층 + 웹/CLI | `specs/2026-07-29-work-dashboard-design.md`, `plans/2026-07-29-work-dashboard.md` | 구현 완료 |
 | ② 세션 매핑 | `specs/2026-07-29-session-link-design.md` (설계) + `specs/2026-07-30-session-mapping-spec.md` (확정 결정) | 대부분 구현, 잔여 2건 |
 | ③ 결정 대기 큐 | `specs/2026-07-30-decision-queue-spec.md` | 결정 확정, 미구현 |
-| ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 결정 확정, 미구현 |
+| ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 1차 구현 완료 (③ 큐 연동·웹 토글·⑥ `waiting` 제외) |
 | ⑤ 초기 설정(온보딩) | `specs/2026-08-01-onboarding-spec.md` | 구현 완료 |
 
 경로는 모두 `docs/superpowers/` 기준. ②③④ 문서는 각각 (a) 문제 (b) 확정 결정과 근거 (c) 안 하는 것 (d) 파일 경계를 담고 있어 그대로 착수할 수 있다.
 
 ## 아직 없는 것
 
-- 결정 대기 큐 (③), 자율 실행 (④) — 스펙만 있고 코드 없음
+- 결정 대기 큐 (③) — 스펙만 있고 코드 없음. 없으면 막힌 자율 세션이 갈 곳이 없다
+- 선제조건 대기 상태 (⑥ `waiting`) — 없어서 자율 실행이 "조건 있는 할일은 후보 제외" 로 대신하고 있다
+- 자율 실행의 웹 토글·막힘 배지 — CLI(`dash.py autorun`)로만 켜고 끈다
 - 완료 항목 아카이브, 할일 의존성, 카테고리 우선순위

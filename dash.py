@@ -20,7 +20,8 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, history, planning, release, session_link, usage
+from app.repositories import autorun as autorun_repo
+from app.services import autorun, board, history, planning, release, session_link, usage
 
 NONE_LITERAL = "none"
 REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
@@ -37,6 +38,8 @@ PRECONDITION_HELP = (
     "착수 가능 조건. 참/거짓이 갈리는 한 문장으로 쓴다."
     " 다른 할일이 조건이면 #id, 자동 확인이 되면 둘째 줄에 '확인: <명령>'"
 )
+AUTORUN_ACTIONS = ("on", "off", "status")
+AUTORUN_RECENT = 5  # 상태 출력에 붙이는 최근 실행 건수
 EXIT_OK = 0
 EXIT_ERROR = 1
 # 세션 인자를 생략했다는 표시. 값이 아니라 자리표라 파싱 뒤 환경변수로 바뀐다
@@ -218,6 +221,25 @@ def _build_parser():
     usage_cmd = sub.add_parser("usage", help="한도 사용률과 토큰 추이")
     _add_json_flag(usage_cmd)
     usage_cmd.set_defaults(handler=_cmd_usage)
+
+    autorun_cmd = sub.add_parser("autorun", help="자율 실행 켜기·끄기·상태")
+    autorun_cmd.add_argument("action", choices=AUTORUN_ACTIONS)
+    _add_json_flag(autorun_cmd)
+    autorun_cmd.set_defaults(handler=_cmd_autorun)
+
+    autorun_tick = sub.add_parser("autorun-tick", help="자율 실행 판정 (5분 크론)")
+    autorun_tick.add_argument(
+        "--dry-run", action="store_true", dest="dry_run", help="띄우지 않고 판정 사유만"
+    )
+    _add_json_flag(autorun_tick)
+    autorun_tick.set_defaults(handler=_cmd_autorun_tick)
+
+    autorun_prompt = sub.add_parser("autorun-prompt", help="자율 세션에 줄 지시 전문")
+    autorun_prompt.add_argument("todo_id", type=int)
+    autorun_prompt.add_argument(
+        "--cwd", default=None, help="기본값은 그 워크스페이스에서 작업하던 저장소"
+    )
+    autorun_prompt.set_defaults(handler=_cmd_autorun_prompt)
 
     return parser
 
@@ -645,6 +667,54 @@ def _resolve_workspace(con, target):
     if not found:
         raise NotFound(f"'{target}' 에 해당하는 워크스페이스 없음")
     return found
+
+
+def _cmd_autorun(con, args):
+    """켜고 끄기는 명시적. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않는다"""
+    if args.action != "status":
+        autorun_repo.set_enabled(con, args.action == "on")
+    state = autorun_repo.state(con)
+    runs = autorun_repo.recent(con, AUTORUN_RECENT)
+    if args.as_json:
+        _emit_json({"state": state, "recent": runs})
+        return
+    print(f"autorun: {'on' if state['enabled'] else 'off'}"
+          f" (연속 막힘 {state['blocked_streak']}, 마지막 tick {state['last_tick_at'] or '없음'})")
+    for run in runs:
+        print(f"  #{run['id']} 할일 {run['todo_id']} [{run['outcome'] or '진행 중'}]"
+              f" job={run['job_id'] or '?'} session={run['claude_session_id'] or '?'}")
+
+
+def _cmd_autorun_tick(con, args):
+    decision = autorun.tick(con, dry_run=args.dry_run)
+    if args.as_json:
+        _emit_json(decision)
+        return
+    print(decision["reason"])
+    for run in decision.get("closed") or []:
+        print(f"  실행 #{run['id']} 닫음 → {run['outcome']}")
+    picked = decision.get("todo")
+    if picked:
+        print(f"  대상: {picked['id']}. {picked['title']}")
+    if decision.get("cwd"):
+        print(f"  작업 위치: {decision['cwd']}")
+    if decision.get("run"):
+        print(f"  띄움: job={decision['run']['job_id']}"
+              f" session={decision['run']['claude_session_id'] or '(못 받음)'}")
+    if decision.get("error"):
+        print(f"  실패: {decision['error']}", file=sys.stderr)
+
+
+def _cmd_autorun_prompt(con, args):
+    """자율 세션에 실제로 들어가는 지시. 띄우기 전에 사람이 눈으로 볼 수 있어야 한다"""
+    todo = todo_repo.get(con, args.todo_id)
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
+    )
+    cwd = args.cwd or autorun.target_cwd(con, workspace)
+    if not cwd:
+        raise Validation(autorun.REASON_NO_CWD + " — --cwd 로 지정할 것")
+    print(autorun.build_prompt(todo, workspace, cwd))
 
 
 def _emit_json(payload):
