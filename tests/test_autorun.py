@@ -313,6 +313,26 @@ class Handover(AutorunCase):
         self.assertFalse(autorun.disable_for_session(self.con, "남의 세션"))
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
+    def test_the_jobs_own_first_prompt_is_not_a_human(self):
+        """런처가 last_prompt 를 미리 심으면 자율 세션 자신의 첫 프롬프트가 사람으로
+        오판돼 autorun 이 뜨자마자 꺼진다 — 실제로 job cfe5d3f4 가 그렇게 꺼졌다"""
+        autorun.tick(self.con, launcher=Recorder())
+        self.assertFalse(autorun.handover_if_human(self.con, CHILD))
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
+    def test_second_prompt_is_a_human_and_hands_over(self):
+        autorun.tick(self.con, launcher=Recorder())
+        # 자율 세션의 첫 프롬프트는 훅이 그때 기록한다
+        session_repo.set_last_prompt(self.con, CHILD, "자율 실행 지시 전문")
+        self.assertTrue(autorun.handover_if_human(self.con, CHILD))
+        self.assertFalse(autorun_repo.state(self.con)["enabled"])
+
+    def test_handover_ignores_sessions_without_a_run(self):
+        session_repo.register(self.con, "손세션", cwd=self.repo)
+        session_repo.set_last_prompt(self.con, "손세션", "사람이 친 지시")
+        self.assertFalse(autorun.handover_if_human(self.con, "손세션"))
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
 
 class RecentWithTodos(AutorunCase):
     """자율 수행 패널이 그대로 뿌리는 조회. 할일 제목·워크스페이스 이름이 붙어야 한다"""

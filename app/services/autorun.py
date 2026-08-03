@@ -279,8 +279,24 @@ def reconcile(con):
     return closed
 
 
+def handover_if_human(con, claude_session_id):
+    """UserPromptSubmit 이 부른다. 사람이 끼어들었으면 인계하고 autorun 을 끈다.
+
+    무엇이 '사람' 인가 — 자율 세션의 **첫** 프롬프트는 자율 실행이 스스로 넣은 지시다.
+    그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다.
+
+    그래서 **반드시 set_last_prompt 앞에서 불러야 한다** — 뒤에서 부르면 첫 프롬프트도
+    사람으로 보인다. 판정이 훅과 런처 두 곳에 흩어져 있던 동안 실제로 그렇게 오판해서,
+    자율 잡이 뜨자마자 autorun 이 꺼졌다
+    """
+    session = session_repo.find(con, claude_session_id)
+    if not (session or {}).get("last_prompt"):
+        return False
+    return disable_for_session(con, claude_session_id)
+
+
 def disable_for_session(con, claude_session_id):
-    """사람이 자율 잡에 프롬프트를 넣었으면 그 잡은 사람 것으로 인계하고 autorun 을 끈다"""
+    """그 세션이 자율 잡이면 autorun 을 끈다. 판정 없이 끄기만 하는 메커니즘"""
     if not autorun_repo.find_by_session(con, claude_session_id):
         return False
     autorun_repo.set_enabled(con, False)
@@ -300,13 +316,16 @@ def _register_run(con, decision, launched):
     """자율 세션을 대시보드에 붙인다 — 안 붙이면 보드는 그 작업을 모른다.
 
     ②의 --inherit 이 아직 없으므로 워크스페이스를 직접 지정한다. link_todo 가
-    할일을 doing 으로 올리므로 사람이 보드에서 진행 중임을 바로 본다
+    할일을 doing 으로 올리므로 사람이 보드에서 진행 중임을 바로 본다.
+
+    last_prompt 는 여기서 심지 않는다 — 잡의 UserPromptSubmit 훅이 곧 채운다.
+    미리 심었더니 그 훅이 자기 첫 프롬프트를 사람의 개입으로 보고 autorun 을 껐다
+    (handover_if_human 참고)
     """
     session_id = launched.get("session_id") or ""
     todo = decision["todo"]
     if session_id:
         session_repo.register(con, session_id, cwd=decision["cwd"])
-        session_repo.set_last_prompt(con, session_id, f"[자율 실행] {todo['title']}")
         if decision.get("workspace"):
             session_repo.classify(
                 con, session_id, workspace_id=decision["workspace"]["id"]

@@ -48,11 +48,10 @@ def _on_prompt_submit(con, session_id, payload):
     예외로 할일을 끝낸(finish 한) 세션에는 새 요청을 새 할일로 받으라고 다시 알린다.
 
     자율 실행으로 뜬 잡에 사람이 말을 걸면 그 잡은 사람 것으로 인계하고 autorun 을 끈다.
-    첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 last_prompt 가 이미 있을 때만
-    사람이 끼어든 것으로 본다 — 자율 세션에 두 번째로 말을 거는 것은 사람뿐이다
+    판정은 서비스가 하고 훅은 순서만 지킨다 — set_last_prompt 앞에서 불러야 자율 세션
+    자신의 첫 프롬프트를 사람으로 오판하지 않는다
     """
-    if (session_repo.find(con, session_id) or {}).get("last_prompt"):
-        autorun.disable_for_session(con, session_id)
+    autorun.handover_if_human(con, session_id)
     session_repo.set_state(con, session_id, STATE_WORKING)
     session_repo.set_last_prompt(con, session_id, payload.get("prompt") or "")
     session = session_repo.find(con, session_id)
