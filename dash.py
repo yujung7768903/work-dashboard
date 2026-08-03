@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.constants import (
     HISTORY_DAY_CHOICES,
+    PRECONDITION_HINT,
     SESSION_ID_ENV,
     STATUS_DOING,
     STATUS_DONE,
@@ -33,11 +34,9 @@ DETAIL_LABELS = (
     ("목표", "goal"),
     ("고려사항", "considerations"),
 )
-# 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다
-PRECONDITION_HELP = (
-    "착수 가능 조건. 참/거짓이 갈리는 한 문장으로 쓴다."
-    " 다른 할일이 조건이면 #id, 자동 확인이 되면 둘째 줄에 '확인: <명령>'"
-)
+# 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다.
+# 문구는 팝업과 공유한다 (app.constants.PRECONDITION_HINT)
+PRECONDITION_HELP = f"착수 가능 조건. {PRECONDITION_HINT}"
 AUTORUN_ACTIONS = ("on", "off", "status")
 AUTORUN_RECENT = 5  # 상태 출력에 붙이는 최근 실행 건수
 EXIT_OK = 0

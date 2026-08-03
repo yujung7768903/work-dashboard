@@ -191,16 +191,29 @@ function groupAddButton(group) {
     // summary 클릭은 카드를 접으므로 기본 동작까지 막는다
     event.preventDefault();
     event.stopPropagation();
-    const value = prompt(`"${group.name}" 에 추가할 할일 제목`);
-    if (!value) return;
-    const precondition = prompt("착수 조건 (선택, 없으면 비워두세요)") || null;
-    const note = prompt("note (선택, 없으면 비워두세요)") || null;
-    run(async () => {
-      await api.createTodo({ title: value, workspace_id: group.id, precondition, note });
-      await renderBoard();
-    });
+    openAddDialog(group);
   });
   return button;
+}
+
+// 팝업이 어느 워크스페이스로 넣을지. 팝업은 하나뿐이라 열 때마다 덮어쓴다
+let addTarget = null;
+
+function openAddDialog(group) {
+  addTarget = group;
+  document.getElementById("todo-add-scope").textContent = `${group.name}에 할일 추가`;
+  addDialogFields().forEach((field) => {
+    field.value = "";
+  });
+  const dialog = document.getElementById("todo-add-modal");
+  if (!dialog.open) dialog.showModal();
+  document.getElementById("todo-add-title").focus();
+}
+
+function addDialogFields() {
+  return ["todo-add-title", "todo-add-precondition", "todo-add-note"].map((id) =>
+    document.getElementById(id)
+  );
 }
 
 function todoElement(todo) {
@@ -407,6 +420,22 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
     precondition.value = "";
     note.value = "";
     document.getElementById("quick-extra").open = false;
+    await renderBoard();
+  });
+});
+
+document.getElementById("todo-add-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const [title, precondition, note] = addDialogFields();
+  const workspaceId = addTarget?.id;
+  run(async () => {
+    await api.createTodo({
+      title: title.value,
+      workspace_id: workspaceId,
+      precondition: precondition.value || null,
+      note: note.value || null,
+    });
+    document.getElementById("todo-add-modal").close();
     await renderBoard();
   });
 });

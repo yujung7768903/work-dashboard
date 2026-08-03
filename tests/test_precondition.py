@@ -3,7 +3,9 @@ import pathlib
 import sqlite3
 import unittest
 
+import dash
 import server
+from app.constants import PRECONDITION_EXAMPLE, PRECONDITION_HINT
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
@@ -160,6 +162,19 @@ class PreconditionAddFormTest(unittest.TestCase):
         stored = todo_repo.get(self.con, created["id"])
         self.assertEqual(stored["precondition"], CONDITION)
         self.assertEqual(stored["note"], "컨텍스트")
+
+    def test_popup_hint_matches_cli_help(self):
+        """안내 문구는 CLI 도움말과 같아야 한다.
+
+        두 곳에서 다르게 설명하면 어느 규약이 맞는지 알 수 없다. HTML 은 정적이라
+        상수를 끼워 넣을 수 없으므로 같은 문장인지 여기서 대조한다
+        """
+        markup = INDEX.read_text(encoding="utf-8")
+        # 부등호는 HTML 이라 이스케이프돼 있다
+        self.assertIn(PRECONDITION_HINT.replace("<", "&lt;").replace(">", "&gt;"), markup)
+        self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
+        # 예시는 placeholder 로 보여 준다 (개행은 &#10;)
+        self.assertIn(PRECONDITION_EXAMPLE.replace("\n", "&#10;"), markup)
 
     def test_quick_add_form_has_both_inputs(self):
         markup = INDEX.read_text(encoding="utf-8")
