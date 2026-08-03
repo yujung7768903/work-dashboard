@@ -40,23 +40,32 @@ globalThis.fetch = async (url, options) => {
 const alerts = [];
 globalThis.alert = (message) => alerts.push(message);
 
-const node = () => ({
-  textContent: "", title: "", href: "", target: "", rel: "", className: "",
-  hidden: false, open: false,
-  style: { setProperty() {} },
-  classList: { toggle() {}, add() {}, remove() {} },
-  children: [],
-  listeners: {},
-  append() {},
-  appendChild() {},
-  replaceChildren() {},
-  showModal() {
-    this.open = true;
-  },
-  addEventListener(type, handler) {
-    this.listeners[type] = handler;
-  },
-});
+const node = () => {
+  const made = {
+    textContent: "", title: "", href: "", target: "", rel: "", className: "",
+    hidden: false, open: false,
+    style: { setProperty() {} },
+    // 어떤 클래스가 붙었는지 봐야 한다 — 누를 수 있는 칸에만 linked 가 붙는다
+    classes: new Set(),
+    classList: {
+      toggle() {},
+      add: (name) => made.classes.add(name),
+      remove() {},
+    },
+    children: [],
+    listeners: {},
+    append() {},
+    appendChild() {},
+    replaceChildren() {},
+    showModal() {
+      made.open = true;
+    },
+    addEventListener(type, handler) {
+      made.listeners[type] = handler;
+    },
+  };
+  return made;
+};
 
 const created = [];
 const elements = { "worktree-list": node() };
@@ -80,19 +89,26 @@ const worktrees = await import("../static/js/worktrees.js");
 await worktrees.renderWorktrees();
 
 const rows = created.filter((made) => made.className === "wt-row");
+const names = created.filter((made) => made.className === "wt-name");
 assert.equal(rows.length, 2, "워크트리 줄 두 개(master, worktree-feat)가 그려져야 한다");
-assert.equal(typeof rows[0].listeners.click, "function");
-assert.equal(typeof rows[1].listeners.click, "function");
+assert.equal(names.length, 2);
 
-// todo_id 가 있는 줄(master, 57) → 할일 상세 팝업이 열린다
-rows[0].listeners.click();
+// 누를 수 있는 범위는 이름 칸까지 — 줄 전체에는 핸들러가 붙지 않는다
+assert.equal(rows[0].listeners.click, undefined, "줄 전체가 눌리면 안 된다");
+assert.equal(rows[1].listeners.click, undefined, "줄 전체가 눌리면 안 된다");
+
+// todo_id 가 있는 줄(master, 57) → 이름 칸을 누르면 할일 상세 팝업이 열린다
+assert.equal(typeof names[0].listeners.click, "function");
+assert.ok(names[0].classes.has("linked"), "누를 수 있는 칸에는 linked 가 붙어야 한다");
+names[0].listeners.click();
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(asked.includes("GET /api/todos/57"), asked.join(", "));
 assert.equal(elements["session-modal"].open, true);
 
-// todo_id 가 없는 줄(worktree-feat) → 팝업 대신 안내만 뜬다
-rows[1].listeners.click();
-assert.deepEqual(alerts, ["연결된 할일이 없습니다."]);
+// todo_id 가 없는 줄(worktree-feat) → 아예 안 눌린다. 손 모양도 안 뜬다
+assert.equal(names[1].listeners.click, undefined);
+assert.ok(!names[1].classes.has("linked"));
+assert.deepEqual(alerts, [], "안 눌리는 칸이므로 안내창도 뜨지 않는다");
 assert.ok(!asked.includes("GET /api/todos/undefined"), asked.join(", "));
 
 // 포트 배지 클릭은 줄 클릭(팝업)까지 올라가지 않아야 한다

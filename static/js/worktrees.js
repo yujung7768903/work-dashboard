@@ -7,7 +7,6 @@ import { menuItem } from "./workspace.js";
 
 const NO_REPO = "저장소를 찾은 워크스페이스가 없습니다. 그 위치에서 세션이 한 번 돌면 잡힙니다.";
 const NO_MATCH = "이 카테고리에는 저장소를 찾은 워크스페이스가 없습니다.";
-const NO_LINKED_TODO = "연결된 할일이 없습니다.";
 // 줄마다 배지를 다는 대신 섹션으로 가른다 — 워크스페이스 카드가 배경·목적·목표를
 // 라벨로 나누는 것과 같은 방식
 const SECTIONS = [
@@ -127,10 +126,12 @@ function rowElement(group, row) {
   ports.append(...portLinks(row));
 
   element.append(name, summary, divergence(row), ports, actionCell(group, row));
-  element.addEventListener("click", () => {
-    if (row.todo_id) openDetail({ todo: { id: row.todo_id } });
-    else alert(NO_LINKED_TODO);
-  });
+  // 클릭은 이름 칸까지만 — 줄 전체를 누를 수 있으면 요약·포트 칸의 빈 공간까지 팝업이
+  // 열려 무엇을 누르는 칸인지 알 수 없다. 연결된 할일이 없는 줄은 아예 안 눌린다
+  if (row.todo_id) {
+    name.classList.add("linked");
+    name.addEventListener("click", () => openDetail({ todo: { id: row.todo_id } }));
+  }
   return element;
 }
 

@@ -85,6 +85,20 @@ class HookTest(unittest.TestCase):
         self.run_hook("Stop", {"session_id": SID})
         self.assertEqual(session_repo.get(self.con, SID)["state"], STATE_IDLE)
 
+    def test_stop_moves_cwd_into_the_worktree(self):
+        """세션이 시작 뒤에 EnterWorktree 하면 위치가 따라와야 한다 — 안 따라오면
+        워크트리 뷰가 할일을 워크트리 줄이 아니라 base 줄에 붙인다"""
+        self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
+        worktree = "/tmp/repo/.claude/worktrees/feat"
+        self.run_hook("Stop", {"session_id": SID, "cwd": worktree})
+        self.assertEqual(session_repo.get(self.con, SID)["cwd"], worktree)
+
+    def test_stop_without_cwd_keeps_the_known_one(self):
+        """위치를 안 알려주는 페이로드에 기존 위치를 지우면 그 줄을 잃는다"""
+        self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
+        self.run_hook("Stop", {"session_id": SID})
+        self.assertEqual(session_repo.get(self.con, SID)["cwd"], "/tmp")
+
     def test_session_end_sets_ended(self):
         self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
         self.run_hook("SessionEnd", {"session_id": SID})
