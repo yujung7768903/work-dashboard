@@ -165,6 +165,38 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("연결", out)
 
+    def test_link_todo_defaults_to_doing(self):
+        from app.db import connect
+        from app.repositories import sessions as session_repo
+        from app.repositories import todos as todo_repo
+
+        session_repo.register(connect(), "env-sess")
+        os.environ[SESSION_ID_ENV] = "env-sess"
+        self.run_cli("add-todo", "진행할 일", "--category", "운영")
+        self.run_cli("link-todo", "1")
+        self.assertEqual(todo_repo.get(connect(), 1)["status"], "doing")
+
+    def test_link_todo_with_status_done_closes_it(self):
+        """이미 master 에 병합된 작업을 뒤늦게 연결하는 경우"""
+        from app.db import connect
+        from app.repositories import sessions as session_repo
+        from app.repositories import todos as todo_repo
+
+        session_repo.register(connect(), "env-sess")
+        os.environ[SESSION_ID_ENV] = "env-sess"
+        self.run_cli("add-todo", "이미 끝난 일", "--category", "운영")
+        code, out, _ = self.run_cli("link-todo", "1", "--status", "done")
+        self.assertEqual(code, 0)
+        self.assertIn("done", out)
+        todo = todo_repo.get(connect(), 1)
+        self.assertEqual(todo["status"], "done")
+        self.assertIsNotNone(todo["completed_at"])
+
+    def test_link_todo_rejects_unknown_status(self):
+        """todo 로 연결하는 것은 연결하지 않은 것과 같은 말이라 받지 않는다"""
+        with self.assertRaises(SystemExit):
+            self.run_cli("link-todo", "1", "--status", "todo")
+
     def test_bare_session_flag_scopes_to_env_session(self):
         from app.db import connect
         from app.repositories import sessions as session_repo
