@@ -148,6 +148,7 @@ def _route_post(con, head, body):
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
             note=body.get("note"),
+            precondition=body.get("precondition"),
         )
     if head == "subtasks":
         return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
