@@ -113,5 +113,22 @@ class PreconditionInjectionTest(unittest.TestCase):
         self.assertNotIn("     조건:", block)
 
 
+class PreconditionPopupTest(unittest.TestCase):
+    """팝업 개요 탭이 조건을 그리려면 API 응답에 값이 실려 있어야 한다"""
+
+    def setUp(self):
+        self.con = temp_db()
+        self.workspace = workspace_repo.create(self.con, 1, "테스트")
+
+    def test_todo_detail_carries_subtask_conditions(self):
+        todo = todo_repo.create(
+            self.con, "할일", workspace_id=self.workspace["id"], precondition=CONDITION
+        )
+        subtask_repo.create(self.con, todo["id"], "하위", precondition=MULTILINE)
+        payload = session_link.todo_detail(self.con, todo["id"])
+        self.assertEqual(payload["todo"]["precondition"], CONDITION)
+        self.assertEqual(payload["todo"]["subtasks"][0]["precondition"], MULTILINE)
+
+
 if __name__ == "__main__":
     unittest.main()

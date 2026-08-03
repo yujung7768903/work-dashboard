@@ -598,7 +598,8 @@ button:disabled { color: var(--line); cursor: default; }
   /* 크기·면·정렬은 위 아이콘 버튼 공통 규칙이 잡는다 */
   font-size: var(--fs-title); line-height: var(--lh-tight);
 }
-#session-modal-body { padding: var(--pad-card); overflow: auto; }
+/* 팝업은 카드보다 담는 글이 많아 내부 여백만 한 칸 넉넉하게 준다 */
+#session-modal-body { padding: var(--sp-20); overflow: auto; }
 
 /* 팝업 탭. 개요 = 할일의 시각·note, 세션 = 분류·최근 대화 */
 .dlg-tabs {
@@ -634,10 +635,17 @@ button:disabled { color: var(--line); cursor: default; }
 
 .dlg-subtasks { list-style: none; margin: 0; padding: 0; }
 .dlg-subtasks li {
-  display: flex; align-items: baseline; gap: var(--sp-8);
-  padding: var(--sp-2) 0; font-size: var(--fs-sm);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-8);
+  padding: var(--sp-4) 0; font-size: var(--fs-sm);
 }
 .dlg-subtasks .text { flex: 1; }
+/* 착수 조건은 제목 아랫줄. 왼쪽 여백을 배지(4.2em+좌우패딩) + gap 만큼 밀어 제목과 맞춘다 */
+.dlg-subtasks .cond {
+  flex-basis: 100%; margin: var(--sp-2) 0 0;
+  margin-left: calc(4.2em + var(--sp-16) + var(--sp-8));
+  color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-body);
+  white-space: pre-wrap;
+}
 
 .dlg-head { margin-bottom: var(--sp-12); }
 .dlg-title {
@@ -651,10 +659,13 @@ button:disabled { color: var(--line); cursor: default; }
   background-color: var(--cat-bg); color: var(--cat-ink);
   font-size: var(--fs-micro); font-weight: 600; letter-spacing: 0;
 }
-.dlg-section { margin-top: var(--sp-16); }
+.dlg-section { margin-top: var(--sp-20); }
 .dlg-section > .label {
-  margin: 0 0 var(--sp-4); color: var(--muted); font-size: var(--fs-sm); font-weight: 500;
+  margin: var(--sp-12) 0 var(--sp-4);
+  color: var(--muted); font-size: var(--fs-sm); font-weight: 500;
 }
+/* 블록 첫 라벨은 위 여백이 겹치므로 지운다 */
+.dlg-section > .label:first-child { margin-top: 0; }
 .dlg-badge {
   display: inline-block; min-width: 4.2em; text-align: center;
   padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);

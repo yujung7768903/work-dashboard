@@ -220,9 +220,16 @@ def detail(con, session_row_id):
 
 
 def todo_detail(con, todo_id):
-    """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다"""
+    """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다.
+
+    하위할일은 detail() 과 같은 모양으로 싣는다 — 개요 탭은 두 경로를 구분하지 않는데
+    여기만 빠져 있어 보드에서 연 할일은 하위할일·그 착수 조건이 아예 안 보였다
+    """
     return {
-        "todo": todo_repo.get(con, todo_id),
+        "todo": {
+            **todo_repo.get(con, todo_id),
+            "subtasks": subtask_repo.list_by_todo(con, todo_id),
+        },
         "sessions": session_repo.list_by_todo(con, todo_id),
     }
 
