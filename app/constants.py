@@ -121,3 +121,19 @@ TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_re
 COST_FIELD = "estimated_cost_usd"
 MODEL_FAMILIES = (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"))
 MODEL_FAMILY_OTHER = "기타"
+
+# ④ 자율 실행. 사람이 자리를 비운 사이 할일 1건씩 `claude --bg` 잡으로 돌린다.
+# 대상은 두 겹으로 좁힌다 — 사람이 붙인 라벨과, 코드가 판정할 수 없는 조건의 부재.
+AUTORUN_LABEL = "auto"  # 이 라벨이 붙은 할일만 후보. 자율 실행 허가는 사람이 라벨로 준다
+AUTORUN_MODEL = "claude-sonnet-5"  # 모델은 상수. 성공률 학습·자동 선택은 하지 않는다
+AUTORUN_MAX_CONCURRENT = 1  # 사용량 창을 나눠 쓰면 둘 다 리밋에 걸리고 diff 가 섞인다
+AUTORUN_FAIL_LIMIT = 2  # 같은 할일이 이만큼 연속 실패하면 막고 다음 할일로
+AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun 자체를 끈다
+AUTORUN_OUTCOMES = ("done", "failed", "blocked")
+OUTCOME_DONE, OUTCOME_FAILED, OUTCOME_BLOCKED = AUTORUN_OUTCOMES
+# --bg 잡의 상태 파일. 이 값들이면 잡이 끝난 것으로 보고 실행 기록을 닫는다.
+# blocked(리밋)는 열어 둔다 — resume-limited-jobs.py 가 다시 밀어 준다
+AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
+AUTORUN_JOB_TERMINAL = ("done", "failed", "stopped")
+AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
+AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다

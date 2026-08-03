@@ -16,23 +16,30 @@ def today_text():
     return datetime.now(timezone.utc).date().isoformat()
 
 
-def next_todo(con, workspace_id=None, claude_session_id=None):
+def next_todo(con, workspace_id=None, claude_session_id=None, keep=None):
     """active 워크스페이스 순위대로 훑고, 없으면 미분류. doing 이 todo 보다 먼저
 
     workspace_id 가 오면 그 워크스페이스 안에서만 뽑는다(워크스페이스 status 무관).
     다른 활성 세션이 잡은 할일은 후보에서 뺀다. 내 세션이 잡은 것은 link-todo 로
     doing 이 되어 있으므로 기존 doing 우선 규칙만으로 1순위가 된다.
+
+    keep 은 후보를 더 좁히는 술어다 — 자율 실행이 라벨·조건으로 거를 때 쓴다.
+    순위 로직을 복제하지 않으려고 여기에 구멍 하나만 낸다 (사람용 next 는 안 넘긴다).
     """
     claimed = todo_repo.ids_claimed_by_others(con, claude_session_id)
     if workspace_id is not None:
         workspace = workspace_repo.get(con, workspace_id)
-        picked = _first_open(todo_repo.list_by_workspace(con, workspace_id), claimed)
+        picked = _first_open(
+            todo_repo.list_by_workspace(con, workspace_id), claimed, keep
+        )
         return {"todo": picked, "workspace": workspace} if picked else None
     for workspace in workspace_repo.list_all(con, status=WORKSPACE_ACTIVE):
-        picked = _first_open(todo_repo.list_by_workspace(con, workspace["id"]), claimed)
+        picked = _first_open(
+            todo_repo.list_by_workspace(con, workspace["id"]), claimed, keep
+        )
         if picked:
             return {"todo": picked, "workspace": workspace}
-    picked = _first_open(todo_repo.list_by_workspace(con, None), claimed)
+    picked = _first_open(todo_repo.list_by_workspace(con, None), claimed, keep)
     if picked:
         return {"todo": picked, "workspace": None}
     return None
@@ -55,12 +62,14 @@ def done_on(con, date_text=None):
     return rows
 
 
-def _first_open(todos, claimed=()):
-    """미완료 중 doing 우선, 그 다음 sort_order. 남이 잡은 것은 제외"""
+def _first_open(todos, claimed=(), keep=None):
+    """미완료 중 doing 우선, 그 다음 sort_order. 남이 잡은 것과 keep 이 뺀 것은 제외"""
     open_todos = [
         todo
         for todo in todos
-        if todo["status"] != STATUS_DONE and todo["id"] not in claimed
+        if todo["status"] != STATUS_DONE
+        and todo["id"] not in claimed
+        and (keep is None or keep(todo))
     ]
     if not open_todos:
         return None

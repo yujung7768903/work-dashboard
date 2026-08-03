@@ -103,6 +103,24 @@ CREATE TABLE IF NOT EXISTS usage_samples(
     seven_day_resets_at INTEGER,
     created_at TEXT NOT NULL
 );
+-- ④ 자율 실행. 설정은 필드 셋뿐이라 키-값 테이블 대신 단일 행을 쓴다
+CREATE TABLE IF NOT EXISTS autorun_state(
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 0,
+    blocked_streak INTEGER NOT NULL DEFAULT 0,
+    last_tick_at TEXT,
+    updated_at TEXT NOT NULL
+);
+-- 실행 1건 = 할일 1건. ended_at 이 NULL 이면 아직 도는 잡이라 다음 tick 이 시작하지 않는다
+CREATE TABLE IF NOT EXISTS autorun_runs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    todo_id INTEGER NOT NULL REFERENCES todos(id),
+    claude_session_id TEXT,
+    job_id TEXT,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    outcome TEXT
+);
 """
 
 SEEDED_FLAG = "categories_seeded"

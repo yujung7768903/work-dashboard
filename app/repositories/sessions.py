@@ -236,6 +236,25 @@ def cwds_by_workspace(con, workspace_id):
     return [row["cwd"] for row in rows]
 
 
+def cwd_counts_by_workspace(con, workspace_id):
+    """그 워크스페이스에서 돈 작업 위치 → 세션 수. 많이 돈 순, 같으면 최근 순.
+
+    cwds_by_workspace 와 갈라 두는 이유 — 워크트리 뷰는 '어느 저장소들을 봐야 하나'라
+    목록이 필요하고, 자율 실행은 '어디가 이 워크스페이스의 본거지인가'라 무게가 필요하다.
+    한 번 스쳐간 위치가 최근이라는 이유로 이기면 자율 잡이 엉뚱한 저장소에서 돈다
+    """
+    rows = con.execute(
+        """SELECT s.cwd AS cwd, COUNT(*) AS sessions, MAX(s.last_seen_at) AS seen
+             FROM sessions s
+             JOIN session_todos st ON st.session_id = s.id
+             JOIN todos t ON t.id = st.todo_id
+            WHERE t.workspace_id=? AND COALESCE(s.cwd,'') <> ''
+            GROUP BY s.cwd ORDER BY sessions DESC, seen DESC""",
+        (workspace_id,),
+    )
+    return [(row["cwd"], row["sessions"]) for row in rows]
+
+
 def todo_titles_by_cwd(con):
     """작업 위치 → 거기서 돌던 세션이 잡은 할일 제목. 워크트리 뷰의 작업 요약용.
     오래된 것부터 훑어 같은 위치는 가장 최근 세션의 제목이 남는다"""
