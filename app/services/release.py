@@ -1,8 +1,12 @@
 """병합으로 작업이 끝났을 때의 리소스 해제.
 
-세 가지가 남는다 — 연결된 할일, 그 워크트리를 쓰던 서버 프로세스, 워크트리 디렉토리.
-앞의 둘은 여기서 처리하고, 워크트리 제거는 에이전트의 ExitWorktree 가 맡는다
-(에이전트의 cwd 가 그 안이라 밖에서 지우면 셸이 깨진다).
+네 가지가 남는다 — 연결된 할일, 그 워크트리를 쓰던 서버 프로세스, 워크트리 디렉토리,
+그 워크트리의 브랜치. 워크트리 제거만 에이전트의 ExitWorktree 가 맡고(에이전트의 cwd 가
+그 안이라 밖에서 지우면 셸이 깨진다) 나머지는 여기서 처리한다.
+
+브랜치는 워크트리가 사라진 뒤에야 지울 수 있다(체크아웃돼 있으면 git 이 거부). 그래서
+finish 는 앞서 남은 것을 걷고, 이번 워크트리의 브랜치는 ExitWorktree 뒤에 도는
+Stop 훅(hooks/worktree_serve.py)이 걷는다.
 """
 import os
 import re
@@ -12,7 +16,7 @@ import subprocess
 from app.constants import STATUS_DONE
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.services import transcript
+from app.services import transcript, worktrees
 
 # 종료 대상은 워크트리 안에서만 찾는다. 메인 체크아웃까지 뒤지면
 # 사용자가 보고 있는 대시보드 서버를 죽인다
@@ -44,7 +48,60 @@ def finish(con, claude_session_id, worktree=None):
         "killed": kill_serving(root),
         "worktree": root,
         "looked": looked,
+        "branches": prune_merged_branches(root or session["cwd"]),
     }
+
+
+def prune_merged_branches(path):
+    """워크트리가 사라진 뒤 남은, 기준 브랜치에 병합된 브랜치를 지운다. 지운 이름 목록.
+
+    ExitWorktree 는 디렉토리만 지우고 브랜치는 남긴다. 어딘가에 체크아웃돼 있는 브랜치는
+    건드리지 않고, 병합 판정은 두 번 본다 — `--merged` 로 고르고 `git branch -d` 로 지운다
+    (`-D` 를 쓰면 그 사이에 갈라진 브랜치를 되돌릴 수 없게 날린다)
+    """
+    root = main_checkout(path)
+    if not root:
+        return []
+    # 디렉토리만 지우고 간 워크트리의 메타데이터가 남아 있으면 그 브랜치가 체크아웃된 것으로 보인다
+    _run(["git", "-C", root, "worktree", "prune"])
+    base = worktrees._base_branch(root, worktrees._branches(root))
+    if not base:
+        return []
+    return [
+        branch
+        for branch in _merged_loose_branches(root, base)
+        if _run_ok(["git", "-C", root, "branch", "-d", branch])
+    ]
+
+
+def main_checkout(path):
+    """워크트리든 메인 체크아웃이든 그 저장소의 메인 체크아웃. 저장소가 아니면 빈 문자열.
+
+    브랜치 삭제는 워크트리 안에서도 메인 체크아웃을 기준으로 돌아야 한다 — 워크트리의
+    HEAD 는 지우려는 그 브랜치다
+    """
+    common = _run(
+        ["git", "-C", path, "rev-parse", "--path-format=absolute", "--git-common-dir"]
+    ).strip()
+    return os.path.dirname(common) if os.path.basename(common) == ".git" else ""
+
+
+def _merged_loose_branches(root, base):
+    """base 에 병합됐고 어느 워크트리에도 체크아웃돼 있지 않은 브랜치.
+
+    worktreepath 가 비어 있는지로 거른다 — 다른 세션이 쓰고 있는 워크트리의 브랜치를
+    지우면 그 세션이 깨진다. base 자신도 뺀다
+    """
+    out = _run(
+        ["git", "-C", root, "for-each-ref", "--merged", base,
+         "--format=%(refname:short)\t%(worktreepath)", "refs/heads/"]
+    )
+    found = []
+    for line in out.splitlines():
+        name, _, checkout = line.partition("\t")
+        if name and name != base and not checkout.strip():
+            found.append(name)
+    return found
 
 
 def worktree_of(claude_session_id, session_cwd, worktree=None):
@@ -242,3 +299,11 @@ def _run(argv):
     except Exception:
         return ""
     return result.stdout
+
+
+def _run_ok(argv):
+    """성공했는지만. git 이 거부한 것(병합 안 됨 등)은 실패로 보고 넘어간다"""
+    try:
+        return subprocess.run(argv, capture_output=True, timeout=LSOF_TIMEOUT_SEC).returncode == 0
+    except Exception:
+        return False

@@ -39,6 +39,8 @@ MESSAGE = """워크트리를 고쳤는데 그 코드를 서비스하는 프로�
 def main(stdin=None):
     try:
         payload = json.loads((stdin or sys.stdin).read() or "{}")
+        # ExitWorktree 로 워크트리가 사라진 직후가 그 브랜치를 지울 수 있는 첫 시점이다
+        release.prune_merged_branches(payload.get("cwd") or os.getcwd())
         # 이미 이 훅이 한 번 막았으면 다시 막지 않음 (무한 루프 방지)
         if payload.get("stop_hook_active"):
             return EXIT_OK

@@ -417,8 +417,11 @@ def _cmd_finish(con, args):
         print(f"종료한 프로세스: {pid} {command}")
     if not result["killed"]:
         print(f"종료한 프로세스: (없음) — {_why_nothing_killed(result)}")
+    if result["branches"]:
+        print("지운 브랜치: " + ", ".join(result["branches"]))
     if result["worktree"]:
         print(f"남은 정리: ExitWorktree 로 워크트리 제거 — {result['worktree']}")
+        print("  (이 워크트리의 브랜치는 제거된 뒤 Stop 훅이 지운다)")
 
 
 def _cmd_statusline(con, args):

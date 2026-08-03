@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -64,6 +65,81 @@ def _listen(root, case):
     case.addCleanup(_stop, proc)
     # 포트를 찍기 전에 이미 bind·listen 이 끝나 있으므로 이 줄만 읽으면 탐지 가능한 상태다
     return proc, int(proc.stdout.readline().strip())
+
+
+def _git(root, *args):
+    subprocess.run(["git", "-C", root, *args], check=True, capture_output=True)
+
+
+class PruneBranchTest(unittest.TestCase):
+    """워크트리가 사라진 뒤 남는 브랜치. 실제 저장소로 git 호출 경로를 그대로 지난다"""
+
+    def setUp(self):
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, True)
+        self.repo = os.path.join(base, "repo")
+        os.makedirs(self.repo)
+        _git(self.repo, "init", "-q", "-b", "master")
+        _git(self.repo, "config", "user.email", "t@t")
+        _git(self.repo, "config", "user.name", "t")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "기준 커밋")
+
+    def _worktree(self, name, branch):
+        path = os.path.join(self.repo, ".claude", "worktrees", name)
+        _git(self.repo, "worktree", "add", "-q", "-b", branch, path)
+        _git(path, "commit", "-q", "--allow-empty", "-m", f"feat: {name}")
+        return path
+
+    def _branches(self):
+        out = subprocess.run(
+            ["git", "-C", self.repo, "branch", "--format=%(refname:short)"],
+            capture_output=True, text=True, check=True,
+        )
+        return set(out.stdout.split())
+
+    def test_merged_branch_goes_with_its_removed_worktree(self):
+        path = self._worktree("wt", "feat/done")
+        _git(self.repo, "merge", "-q", "feat/done")
+        _git(self.repo, "worktree", "remove", path)
+        self.assertEqual(["feat/done"], release.prune_merged_branches(self.repo))
+        self.assertNotIn("feat/done", self._branches())
+
+    def test_unmerged_branch_survives(self):
+        path = self._worktree("wt", "feat/wip")
+        _git(self.repo, "worktree", "remove", path)
+        self.assertEqual([], release.prune_merged_branches(self.repo))
+        self.assertIn("feat/wip", self._branches())
+
+    def test_branch_still_checked_out_survives(self):
+        """다른 세션이 쓰고 있는 워크트리의 브랜치를 지우면 그 세션이 깨진다"""
+        self._worktree("wt", "feat/live")
+        _git(self.repo, "merge", "-q", "feat/live")
+        self.assertEqual([], release.prune_merged_branches(self.repo))
+        self.assertIn("feat/live", self._branches())
+
+    def test_base_branch_itself_survives(self):
+        self._worktree("wt", "feat/done")
+        _git(self.repo, "merge", "-q", "feat/done")
+        release.prune_merged_branches(self.repo)
+        self.assertIn("master", self._branches())
+
+    def test_runs_from_inside_a_worktree(self):
+        """finish 는 워크트리 안에서 불린다. 거기 HEAD 로 판정하면 아무것도 못 지운다"""
+        gone = self._worktree("gone", "feat/done")
+        live = self._worktree("live", "feat/live")
+        _git(self.repo, "merge", "-q", "feat/done")
+        _git(self.repo, "worktree", "remove", gone)
+        self.assertEqual(["feat/done"], release.prune_merged_branches(live))
+
+    def test_directory_deleted_without_git_still_frees_the_branch(self):
+        """rm -rf 로 지우면 워크트리 메타데이터가 남아 체크아웃된 것으로 보인다"""
+        path = self._worktree("wt", "feat/done")
+        _git(self.repo, "merge", "-q", "feat/done")
+        shutil.rmtree(path)
+        self.assertEqual(["feat/done"], release.prune_merged_branches(self.repo))
+
+    def test_outside_a_repository_does_nothing(self):
+        self.assertEqual([], release.prune_merged_branches(tempfile.mkdtemp()))
 
 
 class FinishTest(unittest.TestCase):
