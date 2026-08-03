@@ -7,7 +7,11 @@ const POLL_INTERVAL_MS = 5000;
 const TICK_LABEL = "5분마다";
 const NO_WORKSPACE = "미분류";
 const RUNNING_LABEL = "진행 중";
-const OUTCOME_LABELS = { done: "완료", failed: "실패", blocked: "막힘" };
+// review = 잡은 끝났고 사람이 diff 를 보고 병합을 판정할 차례. 진행 중(클로드가 아직
+// 돌고 있음)과 섞이면 목록에서 무엇을 봐야 하는지 알 수 없어 배지를 따로 둔다
+const OUTCOME_LABELS = { done: "완료", review: "확인 필요", failed: "실패", blocked: "막힘" };
+const REVIEW = "review";
+const REVIEW_HINT = "변경을 확인·병합했으면 눌러 완료로 내린다";
 
 let timer = null;
 
@@ -25,16 +29,35 @@ function runRow(run) {
   const item = document.createElement("li");
   const scope = element("span", "scope", run.workspace_name || NO_WORKSPACE);
   const title = element("span", "prompt", run.todo_title);
-  const outcome = element(
-    "span",
-    `badge outcome-${run.outcome || "running"}`,
-    run.outcome ? (OUTCOME_LABELS[run.outcome] ?? run.outcome) : RUNNING_LABEL
-  );
+  const outcome = outcomeBadge(run);
   const age = element("span", "age", formatAge(run.started_at));
   item.append(scope, title, outcome, age);
   // 세션 줄·보드 카드와 같은 팝업. 실행 단위가 할일이라 할일로 열어 개요 탭부터 보여준다
   item.addEventListener("click", () => openDetail({ todo: { id: run.todo_id } }));
   return item;
+}
+
+// 확인 필요만 누를 수 있는 버튼이다 — 다른 결과는 사람이 내릴 것이 없다
+function outcomeBadge(run) {
+  const label = run.outcome
+    ? (OUTCOME_LABELS[run.outcome] ?? run.outcome)
+    : RUNNING_LABEL;
+  const className = `badge outcome-${run.outcome || "running"}`;
+  if (run.outcome !== REVIEW) return element("span", className, label);
+  const button = element("button", className, label);
+  button.type = "button";
+  button.title = REVIEW_HINT;
+  button.addEventListener("click", (event) => {
+    // 줄 클릭은 상세 팝업이라 여기서 멈춘다 — 확인하려고 눌렀는데 팝업이 뜨면 안 된다
+    event.stopPropagation();
+    api
+      .confirmAutorunRun(run.id)
+      .then(() => renderAutorun())
+      .catch((error) => {
+        button.title = error.message;
+      });
+  });
+  return button;
 }
 
 function element(tag, className, text) {

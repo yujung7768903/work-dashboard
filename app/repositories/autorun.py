@@ -5,9 +5,10 @@ from app.constants import (
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_REVIEW,
 )
 from app.db import now, transaction
-from app.errors import Validation
+from app.errors import NotFound, Validation
 
 STATE_ROW_ID = 1
 
@@ -144,17 +145,39 @@ def recent(con, limit=10):
 
 
 def consecutive_failures(con, todo_id):
-    """그 할일의 끝난 실행을 뒤에서부터, done 이 나오기 전까지 센 실패 수"""
+    """그 할일의 끝난 실행을 뒤에서부터, 성공이 나오기 전까지 센 실패 수.
+
+    review 도 성공으로 센다 — 사람이 아직 확인하지 않았을 뿐 잡은 할일을 끝냈다.
+    실패로 세면 확인이 밀린 동안 그 할일이 blocked 로 올라가 후보에서 빠진다
+    """
     count = 0
     for row in con.execute(
         "SELECT outcome FROM autorun_runs WHERE todo_id=? AND ended_at IS NOT NULL"
         " ORDER BY id DESC",
         (todo_id,),
     ):
-        if row["outcome"] == OUTCOME_DONE:
+        if row["outcome"] in (OUTCOME_DONE, OUTCOME_REVIEW):
             break
         count += 1
     return count
+
+
+def confirm_run(con, run_id):
+    """사람이 확인을 마쳤다 — review 를 done 으로 내린다.
+
+    무엇이 '확인' 인가는 코드가 판정할 수 없다(diff 를 읽고 병합할지 정하는 일이다).
+    그래서 이 함수는 판정하지 않고 사람의 클릭을 기록만 한다
+    """
+    run = get(con, run_id)
+    if not run:
+        raise NotFound(f"실행 기록 {run_id} 없음")
+    if run["outcome"] != OUTCOME_REVIEW:
+        raise Validation(f"확인 필요 상태가 아님: {run['outcome'] or '진행 중'}")
+    with transaction(con):
+        con.execute(
+            "UPDATE autorun_runs SET outcome=? WHERE id=?", (OUTCOME_DONE, run_id)
+        )
+    return get(con, run_id)
 
 
 def blocked_todo_ids(con):
@@ -173,10 +196,10 @@ def blocked_todo_ids(con):
 
 
 def outcome_for_close(con, todo_id, todo_done):
-    """끝난 잡의 결과. 할일이 done 이면 done, 아니면 실패.
+    """끝난 잡의 결과. 할일이 done 이면 확인 필요, 아니면 실패.
     이 실패로 한도에 닿으면 그 자리에서 blocked 로 올린다"""
     if todo_done:
-        return OUTCOME_DONE
+        return OUTCOME_REVIEW
     if consecutive_failures(con, todo_id) + 1 >= AUTORUN_FAIL_LIMIT:
         return OUTCOME_BLOCKED
     return OUTCOME_FAILED
