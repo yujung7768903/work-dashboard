@@ -472,6 +472,11 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라벨은 어디서든 --fs-sm + 500 + muted (사용량 한도 카드 라벨과 같은 값) */
 .field label { display: block; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 .field textarea { width: 100%; min-height: 60px; }
+/* 라벨 아래 한 줄 안내. 라벨보다 한 단 옅게 — 읽는 순서가 라벨 → 안내 → 입력칸이다 */
+.field .hint {
+  margin: var(--sp-2) 0 var(--sp-4);
+  color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-body);
+}
 
 /* ── 워크스페이스 ─────────────────────────────────────────────────────────── */
 /* 카드 그리드. 보드와 같은 기준으로 1↔2컬럼 */
