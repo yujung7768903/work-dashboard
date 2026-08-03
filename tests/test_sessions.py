@@ -143,11 +143,28 @@ class SessionClassifyTest(unittest.TestCase):
         self.assertIsNone(result["workspace_id"])
 
     def test_classify_with_workspace_overrides_category(self):
+        """워크스페이스는 카테고리를 고르는 데만 쓰고 세션에 남지 않는다 —
+        세션이 그 워크스페이스 일감이라는 사실은 할일 연결로만 생긴다"""
         result = session_repo.classify(
             self.con, SID, category_name="운영", workspace_id=self.workspace["id"]
         )
-        self.assertEqual(result["workspace_id"], self.workspace["id"])
         self.assertEqual(result["category_id"], self.dev)
+        self.assertIsNone(result["workspace_id"])
+
+    def test_workspace_comes_from_the_linked_todo(self):
+        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        session_repo.link_todo(self.con, SID, todo["id"])
+        self.assertEqual(
+            session_repo.get(self.con, SID)["workspace_id"], self.workspace["id"]
+        )
+
+    def test_latest_link_wins_when_todos_span_workspaces(self):
+        other = workspace_repo.create(self.con, self.dev, "다른 일")
+        first = todo_repo.create(self.con, "먼저", workspace_id=self.workspace["id"])
+        later = todo_repo.create(self.con, "나중", workspace_id=other["id"])
+        session_repo.link_todo(self.con, SID, first["id"])
+        session_repo.link_todo(self.con, SID, later["id"])
+        self.assertEqual(session_repo.get(self.con, SID)["workspace_id"], other["id"])
 
     def test_classify_requires_something(self):
         with self.assertRaises(Validation):
@@ -210,6 +227,8 @@ class SessionClassifyTest(unittest.TestCase):
     def test_list_active_carries_names(self):
         session_repo.set_last_prompt(self.con, SID, "무엇을 하나")
         session_repo.classify(self.con, SID, workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        session_repo.link_todo(self.con, SID, todo["id"])
         row = session_repo.list_active(self.con)[0]
         self.assertEqual(row["workspace_name"], "KT 동시성")
         self.assertEqual(row["category_name"], "개발")
@@ -289,9 +308,11 @@ class SessionLinkTest(unittest.TestCase):
         self.assertIsNone(session_link.jira_from_branch(None))
 
     def test_attach_by_branch_finds_workspace(self):
+        """브랜치로 알 수 있는 것은 카테고리까지. 할일을 잡아야 그 워크스페이스 일감이 된다"""
         session_repo.register(self.con, SID)
         attached = session_link.attach_by_branch(self.con, SID, "feature/KT-1530-lock")
-        self.assertEqual(attached["workspace_id"], self.workspace["id"])
+        self.assertEqual(attached["category_id"], self.workspace["category_id"])
+        self.assertIsNone(attached["workspace_id"])
 
     def test_attach_by_branch_returns_none_without_match(self):
         session_repo.register(self.con, SID)
@@ -302,10 +323,12 @@ class SessionLinkTest(unittest.TestCase):
         self.assertIsNone(session_link.attach_by_branch(self.con, SID, "AB-1"))
 
     def test_classified_context_has_workspace_fields(self):
-        session_repo.register(self.con, SID)
+        """할일을 아직 안 잡았어도 브랜치 Jira 로 워크스페이스 컨텍스트는 되찾아 준다"""
+        session_repo.register(self.con, SID, git_branch="KT-1530")
         session_link.attach_by_branch(self.con, SID, "KT-1530")
         text = session_link.render_context(self.con, SID)
         self.assertIn('state="classified"', text)
+        self.assertIn("미연결:", text)
         self.assertIn("엑셀 충돌", text)
         self.assertIn("락 재설계", text)
 

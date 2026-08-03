@@ -49,6 +49,12 @@ RELEASED_GUIDE = (
     "dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 만들지 않는다."
 )
+# 브랜치로 워크스페이스는 알아냈지만 아직 할일을 안 잡은 세션. 잡아야 보드에 보인다
+UNLINKED_GUIDE = (
+    "미연결: 이 세션은 아직 어느 할일도 잡지 않았다. 위 목록에서 이번 작업에 해당하는 "
+    "할일을 dash.py link-todo <todo-id> 로 잡는다. 해당하는 것이 없으면 "
+    "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다."
+)
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
     "범위를 벗어나는 작업은 착수 전 사용자에게 확인받는다. "
@@ -147,10 +153,20 @@ def render_context(con, claude_session_id):
     if not session:
         return ""
     if session["workspace_id"]:
-        return _classified_block(con, session)
+        return _classified_block(con, session, session["workspace_id"])
+    by_branch = _workspace_by_branch(con, session)
+    if by_branch:
+        # 소속은 아직 없다(할일 미연결). 워크스페이스 컨텍스트만 브랜치로 되찾아 준다 —
+        # 저장하지 않고 매번 다시 계산하므로 세션에 워크스페이스가 남지는 않는다
+        return _classified_block(con, session, by_branch["id"], linked=False)
     if needs_onboarding(con):
         return _onboarding_block(con, session)
     return _unclassified_block(con, session)
+
+
+def _workspace_by_branch(con, session):
+    jira = jira_from_branch(session["git_branch"])
+    return workspace_repo.get_by_jira(con, jira) if jira else None
 
 
 def released_context(con, claude_session_id):
@@ -255,8 +271,8 @@ def scope_guard_block(con, jira_id):
     return "\n".join(lines)
 
 
-def _classified_block(con, session):
-    workspace = workspace_repo.get(con, session["workspace_id"])
+def _classified_block(con, session, workspace_id, linked=True):
+    workspace = workspace_repo.get(con, workspace_id)
     category = category_repo.get(con, workspace["category_id"])
     jira = f" [{workspace['jira_id']}]" if workspace["jira_id"] else ""
     lines = [
@@ -267,6 +283,8 @@ def _classified_block(con, session):
         lines.append(f"{label}: {workspace[key] or '(미입력)'}")
     lines.append("할일:")
     lines.extend(_todo_lines(con, workspace["id"]))
+    if not linked:
+        lines.append(UNLINKED_GUIDE)
     lines.append(CLASSIFIED_GUIDE)
     lines.append(RELEASE_GUIDE)
     lines.append(FRESHNESS_GUIDE)

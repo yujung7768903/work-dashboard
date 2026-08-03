@@ -19,10 +19,18 @@ from app.repositories import workspaces as workspace_repo
 
 TABLE = "sessions"
 ACTIVE_STATES = (STATE_WORKING, STATE_IDLE)
-WITH_NAMES = """SELECT s.*, c.name AS category_name, w.name AS workspace_name
+# 세션의 워크스페이스는 저장하지 않고 연결된 할일에서 파생한다 — 소속이 세션과 할일
+# 두 군데 있으면 세션을 분류해도 보드에 안 나타나는 어긋남이 생긴다.
+# 할일이 여럿이면 가장 최근 연결된 것이 이 세션의 현재 작업이다
+LATEST_LINKED = """FROM session_todos st JOIN todos t ON t.id = st.todo_id
+                   WHERE st.session_id = s.id
+                   ORDER BY st.created_at DESC, st.todo_id DESC LIMIT 1"""
+WITH_NAMES = f"""SELECT s.*, c.name AS category_name,
+                (SELECT t.workspace_id {LATEST_LINKED}) AS workspace_id,
+                (SELECT (SELECT w.name FROM workspaces w WHERE w.id = t.workspace_id)
+                 {LATEST_LINKED}) AS workspace_name
             FROM sessions s
-            LEFT JOIN categories c ON c.id = s.category_id
-            LEFT JOIN workspaces w ON w.id = s.workspace_id"""
+            LEFT JOIN categories c ON c.id = s.category_id"""
 # 데몬이 미리 띄우는 spare 프로세스도 SessionStart 로 등록된다. 프롬프트가 한 번도
 # 없던 세션은 목록·미분류 집계 양쪽에서 같이 빠져야 개수와 목록이 어긋나지 않는다.
 PROMPTED = "COALESCE(last_prompt,'') <> ''"
@@ -58,7 +66,7 @@ def get(con, claude_session_id):
 
 def find(con, claude_session_id):
     row = con.execute(
-        "SELECT * FROM sessions WHERE claude_session_id=?", (claude_session_id,)
+        f"{WITH_NAMES} WHERE s.claude_session_id=?", (claude_session_id,)
     ).fetchone()
     return dict(row) if row else None
 
@@ -91,14 +99,17 @@ def set_last_prompt(con, claude_session_id, text):
 
 
 def classify(con, claude_session_id, category_name=None, workspace_id=None):
-    """워크스페이스를 주면 카테고리는 그 워크스페이스의 것이 이김"""
+    """워크스페이스를 주면 카테고리는 그 워크스페이스의 것이 이김.
+
+    워크스페이스 자체는 저장하지 않는다 — 세션이 어느 워크스페이스 일감인지는
+    할일을 연결하는 것으로 정해진다. 여기서는 카테고리를 고르는 데만 쓴다
+    """
     get(con, claude_session_id)
     category_id = _resolve_category(con, category_name, workspace_id)
     with transaction(con):
         con.execute(
-            "UPDATE sessions SET category_id=?, workspace_id=?, last_seen_at=?"
-            " WHERE claude_session_id=?",
-            (category_id, workspace_id, now(), claude_session_id),
+            "UPDATE sessions SET category_id=?, last_seen_at=? WHERE claude_session_id=?",
+            (category_id, now(), claude_session_id),
         )
     return get(con, claude_session_id)
 
@@ -115,8 +126,8 @@ def classify_by_ids(con, session_row_id, category_id=None, workspace_id=None):
         raise Validation("카테고리나 워크스페이스 중 하나는 필요함")
     with transaction(con):
         con.execute(
-            "UPDATE sessions SET category_id=?, workspace_id=?, last_seen_at=? WHERE id=?",
-            (category_id, workspace_id, now(), session_row_id),
+            "UPDATE sessions SET category_id=?, last_seen_at=? WHERE id=?",
+            (category_id, now(), session_row_id),
         )
     return _row_by_id(con, session_row_id)
 
@@ -194,9 +205,11 @@ def cwds_by_workspace(con, workspace_id):
     """그 워크스페이스에서 돌았던 작업 위치. 최근 순.
     워크스페이스에는 저장소 경로가 없어 워크트리 뷰가 여기서 저장소를 유추한다"""
     rows = con.execute(
-        """SELECT cwd, MAX(last_seen_at) AS seen FROM sessions
-            WHERE workspace_id=? AND COALESCE(cwd,'') <> ''
-            GROUP BY cwd ORDER BY seen DESC""",
+        """SELECT s.cwd AS cwd, MAX(s.last_seen_at) AS seen FROM sessions s
+            JOIN session_todos st ON st.session_id = s.id
+            JOIN todos t ON t.id = st.todo_id
+            WHERE t.workspace_id=? AND COALESCE(s.cwd,'') <> ''
+            GROUP BY s.cwd ORDER BY seen DESC""",
         (workspace_id,),
     )
     return [row["cwd"] for row in rows]

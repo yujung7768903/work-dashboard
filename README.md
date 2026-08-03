@@ -158,6 +158,14 @@ python3 dash.py link-todo 3                               # 세션이 잡은 할
 
 세션 줄을 눌러 팝업에서 **워크스페이스로** 분류하면(`PATCH /api/sessions/<id>`) 그 자리에서 할일을 하나 만들고 세션에 연결한다(`app/services/session_todo.py`). 카테고리만 고르면 만들지 않는다 — 워크스페이스 없는 세션은 대개 단발 조회다.
 
+### 세션의 소속은 할일 하나뿐
+
+`sessions` 에는 워크스페이스 컬럼이 없다. 세션이 어느 워크스페이스 일감인지는 **연결된 할일**(`session_todos` → `todos.workspace_id`)에서 파생하고, 할일이 여럿이면 가장 최근 연결된 것이 이긴다. 소속을 세션과 할일 두 군데 두었더니 세션을 분류해도 보드는 `todos.workspace_id` 로만 그려서 그 워크스페이스에 아무것도 나타나지 않았다.
+
+그래서 분류는 **할일을 연결해야 끝난다**. `classify --workspace <id>` 는 카테고리만 세션에 넣고 그 워크스페이스에서 아직 아무도 안 잡은 할일을 후보로 출력한다. 그중 하나를 `link-todo` 로 잡거나, 없으면 `add-todo --workspace <id>` 로 만들어 연결한다. 무엇이 이 세션의 작업인지는 의미 판단이라 코드가 고르지 않는다.
+
+브랜치명 Jira 로 워크스페이스를 알 수 있으면 할일을 잡기 전에도 그 워크스페이스의 배경·목적·할일 목록을 주입한다. 이 값은 저장하지 않고 매번 다시 계산하며, 블록에 "미연결" 줄이 함께 붙는다.
+
 CLI 로 분류할 때는 Claude 가 지시를 읽고 직접 만들지만, 웹에서 누르는 순간에는 그 자리에 Claude 가 없다. 그러면 보드는 그 작업을 모르고 다음 세션도 무엇을 하던 중인지 알 수 없다. 그래서 **코드가 판단할 수 있는 것만** 만든다.
 
 | 항목 | 근거 | 규칙 |
@@ -301,7 +309,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 | `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
 | `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
 | `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
-| `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (둘 다 nullable = 미분류) |
+| `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
 | `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined` | `key`(PK), `value` | — |
 

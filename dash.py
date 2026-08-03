@@ -407,11 +407,36 @@ def _cmd_sessions(con, args):
 
 
 def _cmd_classify(con, args):
+    """카테고리만 세션에 남는다. 워크스페이스 소속은 할일을 연결해야 생긴다"""
     updated = session_repo.classify(
         con, args.session, category_name=args.category, workspace_id=args.workspace
     )
-    scope = updated["workspace_id"] or "-"
-    print(f"분류됨: category={updated['category_id']} workspace={scope}")
+    print(f"분류됨: category={updated['category_id']}")
+    if args.workspace is None:
+        return
+    print(_link_candidates(con, args.workspace, args.session))
+
+
+def _link_candidates(con, workspace_id, claude_session_id):
+    """분류는 할일 연결까지 해야 끝난다 — 그 워크스페이스에서 아직 아무도 안 잡은 할일.
+
+    무엇이 이 세션의 작업인지는 의미 판단이라 코드가 고르지 않는다. 후보만 좁혀 준다
+    """
+    claimed = todo_repo.ids_claimed_by_others(con, claude_session_id)
+    open_todos = [
+        todo
+        for todo in todo_repo.list_by_workspace(con, workspace_id)
+        if todo["status"] != STATUS_DONE and todo["id"] not in claimed
+    ]
+    if not open_todos:
+        return (
+            f"연결할 후보 없음. 새로 만들 것:"
+            f" add-todo <제목> --workspace {workspace_id} 후 link-todo <todo-id>"
+        )
+    lines = ["이 세션의 작업을 고를 것 (없으면 add-todo 로 새로 만든다):"]
+    lines += [f"  {todo['id']}. [{todo['status']}] {todo['title']}" for todo in open_todos]
+    lines.append("  → link-todo <todo-id>")
+    return "\n".join(lines)
 
 
 def _cmd_show_todo(con, args):
