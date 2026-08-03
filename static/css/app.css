@@ -424,6 +424,7 @@ button:disabled { color: var(--line); cursor: default; }
   align-items: center; gap: var(--sp-8);
   padding: var(--sp-8) var(--pad-card);
   border-top: 1px solid var(--line);
+  cursor: pointer;
 }
 .wt-name { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
 .wt-row .title {

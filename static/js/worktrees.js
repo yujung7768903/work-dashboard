@@ -2,10 +2,12 @@
 import * as api from "./api.js";
 import { CHEVRON_SVG, currentCategoryId } from "./board.js";
 import { run } from "./main.js";
+import { openDetail } from "./sessions.js";
 import { menuItem } from "./workspace.js";
 
 const NO_REPO = "저장소를 찾은 워크스페이스가 없습니다. 그 위치에서 세션이 한 번 돌면 잡힙니다.";
 const NO_MATCH = "이 카테고리에는 저장소를 찾은 워크스페이스가 없습니다.";
+const NO_LINKED_TODO = "연결된 할일이 없습니다.";
 // 줄마다 배지를 다는 대신 섹션으로 가른다 — 워크스페이스 카드가 배경·목적·목표를
 // 라벨로 나누는 것과 같은 방식
 const SECTIONS = [
@@ -125,6 +127,10 @@ function rowElement(group, row) {
   ports.append(...portLinks(row));
 
   element.append(name, summary, divergence(row), ports, actionCell(group, row));
+  element.addEventListener("click", () => {
+    if (row.todo_id) openDetail({ todo: { id: row.todo_id } });
+    else alert(NO_LINKED_TODO);
+  });
   return element;
 }
 
@@ -223,6 +229,8 @@ function portLink(port, process) {
   link.target = "_blank";
   link.rel = "noopener";
   link.title = `${process.command} (pid ${process.pid}) — 새 탭에서 열기`;
+  // 줄 클릭은 할일 상세를 여니, 포트 배지는 그 클릭이 거기까지 올라가지 않게 막는다
+  link.addEventListener("click", (event) => event.stopPropagation());
   return link;
 }
 
@@ -239,7 +247,9 @@ function commitToggle(group, row) {
   const open = expandedRows.has(key);
   button.classList.toggle("open", open);
   button.title = `${group.base} 분기 이후 커밋 ${row.commits.length}개`;
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
+    // 줄 클릭은 할일 상세를 여니, 셰브런은 그 클릭이 거기까지 올라가지 않게 막는다
+    event.stopPropagation();
     if (open) expandedRows.delete(key);
     else expandedRows.add(key);
     // 커밋은 이미 받아 둔 응답에 들어 있다 — 서버에 다시 묻지 않는다

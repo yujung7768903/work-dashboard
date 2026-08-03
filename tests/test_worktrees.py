@@ -167,6 +167,18 @@ class RepoTest(unittest.TestCase):
         row = next(r for r in self._group()["rows"] if r["branch"] == "worktree-feat")
         self.assertEqual(row["summary"], "탭 분리")
 
+    def test_row_carries_the_todo_id_of_the_session_that_worked_there(self):
+        """워크트리 탭 클릭으로 할일 상세를 열려면 줄마다 todo_id 가 있어야 한다"""
+        todo = todo_repo.create(self.con, "탭 분리", workspace_id=self.workspace["id"])
+        session_repo.register(self.con, "sess-4444", cwd=self.worktree)
+        session_repo.link_todo(self.con, "sess-4444", todo["id"])
+        row = next(r for r in self._group()["rows"] if r["branch"] == "worktree-feat")
+        self.assertEqual(row["todo_id"], todo["id"])
+
+    def test_row_without_a_session_has_no_todo_id(self):
+        row = next(r for r in self._group()["rows"] if r["branch"] == "worktree-feat")
+        self.assertIsNone(row["todo_id"])
+
     def test_workspace_without_a_repo_is_left_out(self):
         """세션이 한 번도 안 돈 워크스페이스는 저장소를 모르므로 그리지 않는다"""
         groups = worktrees.overview(self.con)["groups"]
