@@ -69,6 +69,7 @@ def tick(con, dry_run=False, launcher=None):
     closed = reconcile(con)
     decision = judge(con)
     decision["closed"] = closed
+    autorun_repo.set_tick_reason(con, decision["reason"])
     if dry_run or decision["reason"] != REASON_READY:
         return decision
     launched = (launcher or launch)(
@@ -94,8 +95,9 @@ def judge(con):
         return {"reason": usage["reason"], "state": state, "usage": usage}
     picked = pick(con)
     if not picked:
-        autorun_repo.set_enabled(con, False)
-        return {"reason": REASON_NO_TODO, "state": autorun_repo.state(con)}
+        # 끄지 않는다 — 후보가 비는 것은 일시적이다. 다른 세션이 그 할일을 잡고 있기만
+        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다
+        return {"reason": REASON_NO_TODO, "state": state}
     cwd = target_cwd(con, picked["workspace"])
     if not cwd:
         return dict(picked, reason=REASON_NO_CWD, state=state)

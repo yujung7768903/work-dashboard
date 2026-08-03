@@ -7,12 +7,16 @@ import assert from "node:assert/strict";
 const RUN = { id: 2, todo_id: 57, todo_title: "제목", workspace_name: "작업 대시보드" };
 const REVIEW_RUN = { id: 3, todo_id: 58, todo_title: "확인 대기", outcome: "review" };
 const TICK_AT = new Date(Date.now() - 3 * 60 * 1000).toISOString(); // 3분 전 tick
+const REASON = "돌릴 수 있는 할일이 없음"; // 켜져 있는데 안 도는 이유. 주기 옆에 같이 보인다
 
 const asked = [];
 globalThis.fetch = async (url, options) => {
   asked.push(`${options?.method ?? "GET"} ${url}`);
   const body = {
-    "/api/autorun": { state: { enabled: 1, last_tick_at: TICK_AT }, runs: [RUN, REVIEW_RUN] },
+    "/api/autorun": {
+      state: { enabled: 1, last_tick_at: TICK_AT, last_tick_reason: REASON },
+      runs: [RUN, REVIEW_RUN],
+    },
     "/api/workspaces": [],
     "/api/categories": [],
     "/api/todos/57": { todo: { id: 57, title: "제목" }, sessions: [] },
@@ -56,8 +60,12 @@ globalThis.document = {
 const autorun = await import("../static/js/autorun.js");
 await autorun.renderAutorun();
 
-// 주기 옆에 마지막 tick 이 붙는다 — 크론이 죽었는지 이 줄로만 알 수 있다
-assert.equal(elements["autorun-cycle"].textContent, "5분마다 | 마지막 수행 3m 전");
+// 주기 옆에 마지막 tick 과 그 판정 사유가 붙는다 — 크론이 죽었는지, 켜져 있는데 왜 안
+// 도는지 이 줄로만 알 수 있다
+assert.equal(
+  elements["autorun-cycle"].textContent,
+  `5분마다 | 마지막 수행 3m 전 · ${REASON}`,
+);
 
 // 줄마다 클릭 핸들러가 붙어 있어야 한다 — 안 붙으면 눌러도 아무 일도 없다
 assert.equal(rows.length, 2);

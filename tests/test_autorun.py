@@ -145,10 +145,22 @@ class Gates(AutorunCase):
         self._use_limits(os.path.join(tempfile.mkdtemp(), "없음.json"))
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_STALE)
 
-    def test_no_candidate_turns_autorun_off(self):
+    def test_no_candidate_only_skips_start(self):
+        """후보가 비는 것은 일시적이다 — 다른 세션이 잡고 있기만 해도 그렇다. 끄면 안 된다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
-        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_TODO)
-        self.assertFalse(autorun_repo.state(self.con)["enabled"])
+        launcher = Recorder()
+        result = autorun.tick(self.con, launcher=launcher)
+        self.assertEqual(result["reason"], autorun.REASON_NO_TODO)
+        self.assertEqual(launcher.calls, [])
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
+    def test_tick_records_its_reason(self):
+        """켜져 있는데 안 도는 이유를 화면에서 보려면 사유가 남아야 한다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        autorun.tick(self.con, launcher=Recorder())
+        state = autorun_repo.state(self.con)
+        self.assertEqual(state["last_tick_reason"], autorun.REASON_NO_TODO)
+        self.assertTrue(state["last_tick_at"])
 
     def test_busiest_repo_wins_over_the_most_recent(self):
         """다른 저장소에서 이 워크스페이스 할일을 하나 잡았다고 위치가 넘어가면 안 된다"""
