@@ -2,6 +2,7 @@
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { renderBoardTab, run } from "./main.js";
+import { startAutorunPolling } from "./autorun.js";
 import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
@@ -43,6 +44,7 @@ export async function renderShared() {
   renderNext(next);
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
+  startAutorunPolling();
   startSessionPolling();
 }
 

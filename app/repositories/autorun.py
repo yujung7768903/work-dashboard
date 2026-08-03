@@ -112,6 +112,19 @@ def get(con, run_id):
     return dict(row) if row else None
 
 
+def recent_with_todos(con, limit=10):
+    """최근 실행 + 그 할일 제목·워크스페이스 이름. 자율 수행 패널이 그대로 뿌린다"""
+    rows = con.execute(
+        """SELECT r.*, t.title AS todo_title, w.name AS workspace_name
+             FROM autorun_runs r
+             JOIN todos t ON t.id = r.todo_id
+             LEFT JOIN workspaces w ON w.id = t.workspace_id
+            ORDER BY r.id DESC LIMIT ?""",
+        (limit,),
+    )
+    return [dict(row) for row in rows]
+
+
 def find_by_session(con, claude_session_id):
     """그 세션이 자율 실행으로 뜬 것인지. 사람이 끼어들었을 때의 판정에 쓴다"""
     row = con.execute(

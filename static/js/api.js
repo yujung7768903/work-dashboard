@@ -27,6 +27,7 @@ export const getSession = (id) => request("GET", `/sessions/${id}`);
 export const classifySession = (id, fields) => request("PATCH", `/sessions/${id}`, fields);
 export const getUsage = () => request("GET", "/usage");
 export const getWorktrees = () => request("GET", "/worktrees");
+export const getAutorun = () => request("GET", "/autorun");
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });

@@ -314,5 +314,29 @@ class Handover(AutorunCase):
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
 
+class RecentWithTodos(AutorunCase):
+    """자율 수행 패널이 그대로 뿌리는 조회. 할일 제목·워크스페이스 이름이 붙어야 한다"""
+
+    def test_carries_todo_title_and_workspace_name(self):
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        row = autorun_repo.recent_with_todos(self.con)[0]
+        self.assertEqual(row["todo_title"], self.todo["title"])
+        self.assertEqual(row["workspace_name"], self.workspace["name"])
+
+    def test_unassigned_todo_has_no_workspace_name(self):
+        orphan = todo_repo.create(
+            self.con, "미분류 할일", category_id=self.workspace["category_id"]
+        )
+        autorun_repo.start_run(self.con, orphan["id"], CHILD, JOB)
+        row = autorun_repo.recent_with_todos(self.con)[0]
+        self.assertIsNone(row["workspace_name"])
+
+    def test_most_recent_run_comes_first(self):
+        first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
+        autorun_repo.close_run(self.con, first["id"], OUTCOME_DONE)
+        second = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job2")
+        self.assertEqual(autorun_repo.recent_with_todos(self.con)[0]["id"], second["id"])
+
+
 if __name__ == "__main__":
     unittest.main()

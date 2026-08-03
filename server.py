@@ -18,6 +18,7 @@ from app.errors import (
     UnknownEndpoint,
     Validation,
 )
+from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
 from app.repositories import subtasks as subtask_repo
@@ -125,6 +126,8 @@ def _route_get(con, head, item_id, query):
         return usage.snapshot(con)
     if head == "worktrees":
         return worktrees.overview(con)
+    if head == "autorun":
+        return {"state": autorun_repo.state(con), "runs": autorun_repo.recent_with_todos(con)}
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
