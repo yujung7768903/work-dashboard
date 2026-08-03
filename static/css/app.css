@@ -548,11 +548,10 @@ button:disabled { color: var(--line); cursor: default; }
   transform: rotate(-45deg); transition: transform 0.12s;
 }
 #autorun-panel[open] > summary::before { transform: rotate(45deg); }
+/* 라벨·점·주기를 한 줄로 — 켜짐 여부와 주기를 제목 옆에서 한 번에 읽는다 */
 #autorun-head {
-  flex: 1; min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: var(--sp-8);
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-12);
 }
-/* 점은 제목 바로 옆에 붙는다 — 무엇이 켜졌는지 읽는 순간 함께 보여야 한다 */
-.autorun-title { display: inline-flex; align-items: center; gap: var(--sp-4); }
 #autorun-cycle {
   font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
 }
