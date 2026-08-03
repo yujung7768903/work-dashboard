@@ -38,16 +38,22 @@ FRESHNESS_GUIDE = (
 # 끝난 작업의 리소스(할일·서버·워크트리)가 남으면 다음 세션이 그걸 진행 중으로 오해한다
 RELEASE_GUIDE = (
     "완료: master 에 병합해 이 작업이 끝나면 리소스를 해제한다 — "
-    "python3 dash.py finish <session> 으로 연결된 할일을 done 으로 내리고 "
+    "python3 dash.py finish 로 연결된 할일을 done 으로 내리고 "
     "그 워크트리를 쓰던 서버를 종료한 뒤, ExitWorktree 로 워크트리를 제거한다."
 )
 # 해제 뒤 같은 세션이 이어질 때. 끝난 할일에 새 작업을 얹으면 무엇이 끝났는지 알 수 없어진다
 RELEASED_GUIDE = (
     "지침: 이 세션이 잡았던 할일은 모두 끝났다(done). "
     "사용자가 새 요청을 하면 끝난 할일에 얹지 말고 새 할일로 진행한다 — "
-    "dash.py add-todo <제목> --session <session> 으로 만들고 "
-    "dash.py link-todo <session> <todo-id> 로 연결한다. "
+    "dash.py add-todo <제목> --session 으로 만들고 "
+    "dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 만들지 않는다."
+)
+# 브랜치로 워크스페이스는 알아냈지만 아직 할일을 안 잡은 세션. 잡아야 보드에 보인다
+UNLINKED_GUIDE = (
+    "미연결: 이 세션은 아직 어느 할일도 잡지 않았다. 위 목록에서 이번 작업에 해당하는 "
+    "할일을 dash.py link-todo <todo-id> 로 잡는다. 해당하는 것이 없으면 "
+    "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다."
 )
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
@@ -61,12 +67,12 @@ UNCLASSIFIED_GUIDE = (
     "(1) 위치와 질문 내용으로 카테고리를 정하고 확인 없이 등록한다. "
     "(2) 관련된 진행 중 워크스페이스가 있다고 판단되면 사용자에게 확인받고 등록한다. "
     "없으면 카테고리만 등록한다. "
-    "등록: python3 dash.py classify <session> --category <이름> [--workspace <id>] "
+    "등록: python3 dash.py classify --category <이름> [--workspace <id>] "
     "코드·문서를 바꾸거나 여러 턴에 걸치거나 산출물이 남는 작업이면 "
-    "dash.py add-todo 로 할일을 만들고 dash.py link-todo <session> <todo-id> 로 연결한다. "
+    "dash.py add-todo 로 할일을 만들고 dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 할일을 만들지 않는다. "
     "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
-    "dash.py show-todo --session <session> 으로 할일을 직접 확인하고 "
+    "dash.py show-todo --session 으로 할일을 직접 확인하고 "
     "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."
 )
 ONBOARDING_GUIDE = (
@@ -147,10 +153,20 @@ def render_context(con, claude_session_id):
     if not session:
         return ""
     if session["workspace_id"]:
-        return _classified_block(con, session)
+        return _classified_block(con, session, session["workspace_id"])
+    by_branch = _workspace_by_branch(con, session)
+    if by_branch:
+        # 소속은 아직 없다(할일 미연결). 워크스페이스 컨텍스트만 브랜치로 되찾아 준다 —
+        # 저장하지 않고 매번 다시 계산하므로 세션에 워크스페이스가 남지는 않는다
+        return _classified_block(con, session, by_branch["id"], linked=False)
     if needs_onboarding(con):
         return _onboarding_block(con, session)
     return _unclassified_block(con, session)
+
+
+def _workspace_by_branch(con, session):
+    jira = jira_from_branch(session["git_branch"])
+    return workspace_repo.get_by_jira(con, jira) if jira else None
 
 
 def released_context(con, claude_session_id):
@@ -255,8 +271,8 @@ def scope_guard_block(con, jira_id):
     return "\n".join(lines)
 
 
-def _classified_block(con, session):
-    workspace = workspace_repo.get(con, session["workspace_id"])
+def _classified_block(con, session, workspace_id, linked=True):
+    workspace = workspace_repo.get(con, workspace_id)
     category = category_repo.get(con, workspace["category_id"])
     jira = f" [{workspace['jira_id']}]" if workspace["jira_id"] else ""
     lines = [
@@ -267,6 +283,8 @@ def _classified_block(con, session):
         lines.append(f"{label}: {workspace[key] or '(미입력)'}")
     lines.append("할일:")
     lines.extend(_todo_lines(con, workspace["id"]))
+    if not linked:
+        lines.append(UNLINKED_GUIDE)
     lines.append(CLASSIFIED_GUIDE)
     lines.append(RELEASE_GUIDE)
     lines.append(FRESHNESS_GUIDE)

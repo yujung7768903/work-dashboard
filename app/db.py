@@ -80,7 +80,6 @@ CREATE TABLE IF NOT EXISTS sessions(
     cwd TEXT,
     git_branch TEXT,
     category_id INTEGER REFERENCES categories(id),
-    workspace_id INTEGER REFERENCES workspaces(id),
     state TEXT NOT NULL DEFAULT 'idle',
     last_prompt TEXT,
     started_at TEXT NOT NULL,
@@ -148,6 +147,7 @@ def connect(path=None):
     _add_category_style_columns(con)
     _add_precondition_columns(con)
     _add_usage_account_column(con)
+    _drop_session_workspace_column(con)
     _seed_categories(con)
     return con
 
@@ -191,6 +191,19 @@ def _seed_categories(con):
             (name, order, palette_color(order), stamp),
         )
     meta_set(con, SEEDED_FLAG, stamp)
+
+
+def _drop_session_workspace_column(con):
+    """세션의 워크스페이스 소속을 없애고 할일 연결에서 파생하도록 바꾼 자국.
+
+    소속이 세션과 할일 두 군데 있어 서로를 모르는 것이 문제였다 — 세션을 워크스페이스로
+    분류해도 보드는 todos.workspace_id 로만 그리므로 아무것도 나타나지 않았다.
+    카테고리는 분류 때 워크스페이스에서 파생돼 이미 들어가 있으므로 잃는 정보가 없다
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(sessions)")}
+    if "workspace_id" in columns:
+        con.execute("ALTER TABLE sessions DROP COLUMN workspace_id")
+        con.commit()
 
 
 def _add_precondition_columns(con):

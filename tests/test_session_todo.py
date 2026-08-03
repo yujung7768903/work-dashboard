@@ -67,10 +67,11 @@ class AutoTodoTest(unittest.TestCase):
     def classify(self, prompts, **fields):
         """transcript 를 깔고 분류한 뒤 만들어진 할일(또는 None)"""
         root = write_transcript(SID, prompts) if prompts else tempfile.mkdtemp()
-        session_repo.classify_by_ids(
-            self.con, self.session["id"], **(fields or {"workspace_id": self.workspace})
+        fields = fields or {"workspace_id": self.workspace}
+        session_repo.classify_by_ids(self.con, self.session["id"], **fields)
+        return session_todo.ensure_from_session(
+            self.con, self.session["id"], fields.get("workspace_id"), root=root
         )
-        return session_todo.ensure_from_session(self.con, self.session["id"], root=root)
 
     def test_creates_todo_in_the_workspace(self):
         todo = self.classify(["세션 팝업에 탭을 추가해줘"])
@@ -183,7 +184,9 @@ class SummaryTitleTest(unittest.TestCase):
         """뒷일을 동기로 돌린 뒤의 (응답에 실린 할일, 요약 반영 후 DB 의 할일)"""
         run_inline(self)
         with mock.patch.object(summary, "one_line", side_effect=one_line) as call:
-            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+            created = session_todo.ensure_from_session(
+                self.con, self.row_id, self.workspace, root=self.root
+            )
         return created, todo_repo.get(self.con, created["id"]), call
 
     def test_response_does_not_wait_for_summary(self):
@@ -192,7 +195,9 @@ class SummaryTitleTest(unittest.TestCase):
         with mock.patch.object(session_todo, "schedule", jobs.append), mock.patch.object(
             summary, "one_line", return_value="하위할일 기본 접힘 토글"
         ) as call:
-            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+            created = session_todo.ensure_from_session(
+                self.con, self.row_id, self.workspace, root=self.root
+            )
             call.assert_not_called()  # 응답을 만들 때까지 요약은 부르지 않는다
             self.assertEqual(created["title"], self.prompt)
             self.assertTrue(created["needs_title"])
@@ -205,7 +210,9 @@ class SummaryTitleTest(unittest.TestCase):
         with mock.patch.object(session_todo, "schedule", jobs.append), mock.patch.object(
             summary, "one_line", return_value="요약된 제목"
         ):
-            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+            created = session_todo.ensure_from_session(
+                self.con, self.row_id, self.workspace, root=self.root
+            )
             thread = threading.Thread(target=jobs[0])
             thread.start()
             thread.join(timeout=5)
@@ -236,7 +243,9 @@ class SummaryTitleTest(unittest.TestCase):
         """요약이 도착하기 전에 사용자가 제목을 고쳤으면 그 제목이 이긴다"""
         jobs = []
         with mock.patch.object(session_todo, "schedule", jobs.append):
-            created = session_todo.ensure_from_session(self.con, self.row_id, root=self.root)
+            created = session_todo.ensure_from_session(
+                self.con, self.row_id, self.workspace, root=self.root
+            )
         todo_repo.update(self.con, created["id"], title="내가 고친 제목")
         with mock.patch.object(summary, "one_line", return_value="요약된 제목"):
             jobs[0]()

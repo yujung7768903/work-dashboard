@@ -173,8 +173,14 @@ def _route_patch(con, head, item_id, body):
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
         )
-        # 워크스페이스로 분류한 세션은 할일까지 만들어 붙인다. 카테고리만이면 None
-        return {**session, "created_todo": session_todo.ensure_from_session(con, item_id)}
+        # 워크스페이스로 분류한 세션은 할일까지 만들어 붙인다. 카테고리만이면 None.
+        # 세션이 그 워크스페이스에 속한다는 사실은 이 할일 연결로만 남으므로,
+        # 연결 뒤 세션 행을 다시 읽어 파생된 워크스페이스가 응답에 실리게 한다
+        created = session_todo.ensure_from_session(
+            con, item_id, body.get("workspace_id")
+        )
+        session = session_repo.get_by_row_id(con, item_id) if created else session
+        return {**session, "created_todo": created}
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 

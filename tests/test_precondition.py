@@ -86,8 +86,9 @@ class PreconditionMigrationTest(unittest.TestCase):
 class PreconditionInjectionTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
-        self.workspace = workspace_repo.create(self.con, 1, "테스트")
-        session_repo.register(self.con, "sess-1", cwd="/tmp")
+        # 세션에 워크스페이스가 저장되지 않으므로 브랜치 Jira 로 컨텍스트를 되찾는 경로를 씀
+        self.workspace = workspace_repo.create(self.con, 1, "테스트", jira_id="AB-1")
+        session_repo.register(self.con, "sess-1", cwd="/tmp", git_branch="AB-1")
         session_repo.classify(self.con, "sess-1", workspace_id=self.workspace["id"])
 
     def test_condition_appears_in_injected_block(self):

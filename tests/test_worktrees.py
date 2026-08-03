@@ -104,13 +104,13 @@ class RepoTest(unittest.TestCase):
         category = category_repo.list_all(self.con)[0]
         self.workspace = workspace_repo.create(self.con, category["id"], "테스트")
 
-    def _register(self, session_id, cwd):
+    def _register(self, session_id, cwd, todo_title=None):
+        """세션이 워크스페이스에 속한다는 것은 그 워크스페이스 할일을 잡았다는 뜻이다"""
         session_repo.register(self.con, session_id, cwd=cwd)
-        session_repo.classify_by_ids(
-            self.con,
-            session_repo.get(self.con, session_id)["id"],
-            workspace_id=self.workspace["id"],
+        todo = todo_repo.create(
+            self.con, todo_title or f"작업 {session_id}", workspace_id=self.workspace["id"]
         )
+        session_repo.link_todo(self.con, session_id, todo["id"])
 
     def _group(self):
         self._register("sess-1111", self.repo)
@@ -147,9 +147,7 @@ class RepoTest(unittest.TestCase):
 
     def test_summary_uses_the_todo_that_session_claimed(self):
         """워크트리에서 돈 세션이 할일을 잡고 있으면 커밋 제목 대신 그 제목이 보인다"""
-        todo = todo_repo.create(self.con, "탭 분리", workspace_id=self.workspace["id"])
-        self._register("sess-3333", self.worktree)
-        session_repo.link_todo(self.con, "sess-3333", todo["id"])
+        self._register("sess-3333", self.worktree, todo_title="탭 분리")
         row = next(r for r in self._group()["rows"] if r["branch"] == "worktree-feat")
         self.assertEqual(row["summary"], "탭 분리")
 

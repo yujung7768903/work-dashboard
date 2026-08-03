@@ -44,14 +44,17 @@ def schedule(work):
     threading.Thread(target=work, daemon=True).start()
 
 
-def ensure_from_session(con, session_row_id, root=None):
+def ensure_from_session(con, session_row_id, workspace_id, root=None):
     """분류 직후 호출. 만든 할일(하위할일 포함) 또는 만들지 않았으면 None.
+
+    워크스페이스를 인자로 받는 이유 — 세션에는 워크스페이스가 저장되지 않는다.
+    세션의 소속은 여기서 만드는 할일 연결로 비로소 생긴다.
 
     제목 요약은 기다리지 않는다 — 첫 문장 제목으로 바로 돌려주고 요약은 뒤따라 붙는다
     """
-    session = session_repo.get_by_row_id(con, session_row_id)
-    if session["workspace_id"] is None:
+    if workspace_id is None:
         return None
+    session = session_repo.get_by_row_id(con, session_row_id)
     # 이미 잡은 할일이 있으면 그게 이 세션의 작업이다. 새로 만들면 같은 일이 두 줄 된다
     if session_repo.linked_todo_ids(con, session["claude_session_id"]):
         return None
@@ -63,7 +66,7 @@ def ensure_from_session(con, session_row_id, root=None):
     todo = todo_repo.create(
         con,
         raw_title,
-        workspace_id=session["workspace_id"],
+        workspace_id=workspace_id,
         note=_note(session, prompts),
     )
     for title in _item_titles(prompts):

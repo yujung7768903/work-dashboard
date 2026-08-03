@@ -27,6 +27,9 @@ WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js")
 FIRST_SORT_ORDER = 1
 
+# 세션이 띄운 하위 프로세스에 실려오는 자기 세션 id. 훅 stdin 의 session_id 와 같은 값이라
+# CLI 가 이걸로 자기 세션을 안다 — 모델이 주입 블록의 UUID 를 옮겨 적지 않아도 된다
+SESSION_ID_ENV = "CLAUDE_CODE_SESSION_ID"
 SESSION_STATES = ("working", "idle", "ended")
 STATE_WORKING, STATE_IDLE, STATE_ENDED = SESSION_STATES
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop", "SessionEnd")

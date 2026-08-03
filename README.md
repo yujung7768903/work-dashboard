@@ -146,18 +146,30 @@ work-dashboard/
 
 ```bash
 python3 dash.py sessions                                  # 돌고 있는 세션
-python3 dash.py classify <session> --category 개발 --workspace 2
-python3 dash.py link-todo <session> 3                     # 세션이 잡은 할일 연결
+python3 dash.py classify --category 개발 --workspace 2
+python3 dash.py link-todo 3                               # 세션이 잡은 할일 연결
 ```
+
+세션 인자는 생략하면 `CLAUDE_CODE_SESSION_ID`(= 훅 stdin 의 `session_id` 와 같은 값)로 자기 세션을 찾는다. 주입 블록의 36자 UUID 를 매 명령에 옮겨 적지 않게 하려는 것 — 옮겨 적기 실패가 그대로 분류 누락이 된다. 값을 적으면 그 값이 우선이고, 환경변수도 없으면 인자를 적으라는 에러로 끝난다(사람이 터미널에서 직접 실행하는 경우).
+
+범위를 좁히는 쪽(`next`·`add-todo`·`show-todo`)은 `--session` 플래그를 아예 빼면 예전대로 전체가 대상이고, 값 없이 `--session` 만 적으면 이 세션이다.
 
 ### 웹 분류 시 할일 자동 생성
 
 세션 줄을 눌러 팝업에서 **워크스페이스로** 분류하면(`PATCH /api/sessions/<id>`) 그 자리에서 할일을 하나 만들고 세션에 연결한다(`app/services/session_todo.py`). 카테고리만 고르면 만들지 않는다 — 워크스페이스 없는 세션은 대개 단발 조회다.
 
+### 세션의 소속은 할일 하나뿐
+
+`sessions` 에는 워크스페이스 컬럼이 없다. 세션이 어느 워크스페이스 일감인지는 **연결된 할일**(`session_todos` → `todos.workspace_id`)에서 파생하고, 할일이 여럿이면 가장 최근 연결된 것이 이긴다. 소속을 세션과 할일 두 군데 두었더니 세션을 분류해도 보드는 `todos.workspace_id` 로만 그려서 그 워크스페이스에 아무것도 나타나지 않았다.
+
+그래서 분류는 **할일을 연결해야 끝난다**. `classify --workspace <id>` 는 카테고리만 세션에 넣고 그 워크스페이스에서 아직 아무도 안 잡은 할일을 후보로 출력한다. 그중 하나를 `link-todo` 로 잡거나, 없으면 `add-todo --workspace <id>` 로 만들어 연결한다. 무엇이 이 세션의 작업인지는 의미 판단이라 코드가 고르지 않는다.
+
+브랜치명 Jira 로 워크스페이스를 알 수 있으면 할일을 잡기 전에도 그 워크스페이스의 배경·목적·할일 목록을 주입한다. 이 값은 저장하지 않고 매번 다시 계산하며, 블록에 "미연결" 줄이 함께 붙는다.
+
 CLI 로 분류할 때는 Claude 가 지시를 읽고 직접 만들지만, 웹에서 누르는 순간에는 그 자리에 Claude 가 없다. 그러면 보드는 그 작업을 모르고 다음 세션도 무엇을 하던 중인지 알 수 없다. 그래서 **코드가 판단할 수 있는 것만** 만든다.
 
 | 항목 | 근거 | 규칙 |
-|------|------|------|
+| --- | --- | --- |
 | 제목 | 만들 때는 첫 지시의 첫 문장(60자에서 자름), 곧이어 **한 줄 요약**으로 교체 (아래) | 목록 표기로 시작하는 줄은 항목이라 제목이 못 된다 |
 | `note` | 지시 원문 앞 5건 | 위치·브랜치·세션 id + 원문. 요약하지 않는다 — 제목이 요약이므로 근거는 여기에만 남는다 |
 | 하위할일 | 목록 표기(`-`, `*`, `1.`) 항목 → 없으면 첫 지시의 요청 문장(`~해줘`, `~주고`) | 2개 미만이면 만들지 않고(할일과 같은 말), 8개에서 끊는다 |
@@ -251,7 +263,7 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 
 Claude Code 상태줄에 **이 세션이 잡은 할일과 상태, 작업 중인 워크트리, 그 위치를 서비스하는 서버 포트**를 붙인다. 워크트리를 여럿 띄워 놓으면 지금 창이 어느 작업·어느 워크트리이고 어느 포트를 보는 창인지가 상태줄만 봐도 갈린다.
 
-```
+```text
 Context ████░░░░░░ 42% │ Usage ███░░░░░░░ 30% │ Weekly ██████░░░░ 55%
 [doing | tab-underline | :9092] 보드에 할일·워크트리 탭 분리하고 워크트리 뷰 추가
 ```
@@ -297,7 +309,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 | `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
 | `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
 | `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
-| `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (둘 다 nullable = 미분류) |
+| `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
 | `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined` | `key`(PK), `value` | — |
 
@@ -345,7 +357,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 보드의 세션 줄과 할일 줄은 **같은 팝업**을 연다. 팝업은 탭 두 개다.
 
 | 탭 | 내용 | 기본 활성 |
-|---|---|---|
+| --- | --- | --- |
 | 개요 | 할일 제목, 생성·수정·완료 시각(최근 순), note 전문 | 할일에서 열 때 |
 | 세션 | 세션 id·위치·최근 대화 10건, 워크스페이스·카테고리 지정 | 세션에서 열 때 |
 
