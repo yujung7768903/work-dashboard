@@ -11,8 +11,10 @@ import os
 import re
 import subprocess
 
-from app.constants import MERGE_TEST_TIMEOUT_SEC
+from app.constants import MERGE_TEST_TIMEOUT_SEC, STATUS_DONE
+from app.errors import DomainError
 from app.repositories import sessions as session_repo
+from app.repositories import subtasks as subtask_repo
 from app.services import release, worktrees
 
 # 저장소마다 테스트 명령을 알 수 없다. 이 파일이 있으면 파이썬 unittest 관행으로 본다
@@ -46,6 +48,17 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
     steps.append(("위치", f"{root} — {branch} → {target} @ {main_root}"))
     if branch == target:
         return _aborted(steps, f"워크트리가 {target} 를 그대로 보고 있어 병합할 것이 없음")
+
+    # 해제까지 못 갈 것이 뻔하면 master 를 건드리기 전에 멈춘다 — 병합만 되고 할일이
+    # doing 으로 남으면 보드에서 끝난 일이 진행 중으로 보인다
+    open_subtasks = _open_subtasks(con, claude_session_id)
+    if open_subtasks:
+        return _aborted(
+            steps,
+            "연결된 할일을 done 으로 내릴 수 없음 — 하위할일이 남았음."
+            " 끝난 것은 dash.py set-status subtask <id> done, 남은 것은 이번 병합에 포함할지 판단할 것:\n"
+            + "\n".join(open_subtasks),
+        )
 
     # 이어받는 중이면 워크트리는 병합 상태라 당연히 더럽다 — 그것을 더럽다고 막으면
     # 충돌을 해결해도 진행할 방법이 없다
@@ -96,17 +109,33 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
         return _aborted(steps, f"{target} 병합 실패:\n{_tail(out)}")
     steps.append(("병합", _git_out(main_root, "log", "--oneline", "-1")))
 
+    try:
+        released = release.finish(con, claude_session_id, worktree=root)
+    except DomainError as error:
+        # 병합은 끝났다. 해제 실패를 그냥 올리면 단계 출력이 사라져 병합까지 실패한 것처럼 보인다
+        return _aborted(steps, f"병합은 됐고 해제만 실패함 — {error}")
+
     return {
         "steps": steps,
         "aborted": "",
         "branch": branch,
         "target": target,
-        "release": release.finish(con, claude_session_id, worktree=root),
+        "release": released,
     }
 
 
 def _aborted(steps, reason):
     return {"steps": steps, "aborted": reason, "branch": "", "target": "", "release": None}
+
+
+def _open_subtasks(con, claude_session_id):
+    """연결된 할일에 남은 하위할일 `#할일 하위할일제목`. 해제(todos.update)가 막히는 조건과 같다"""
+    return [
+        f"#{todo_id} {subtask['title']}"
+        for todo_id in session_repo.linked_todo_ids(con, claude_session_id)
+        for subtask in subtask_repo.list_by_todo(con, todo_id)
+        if subtask["status"] != STATUS_DONE
+    ]
 
 
 def _resume(root, target):
