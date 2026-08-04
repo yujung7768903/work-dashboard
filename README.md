@@ -6,9 +6,20 @@
 ## 실행
 
 ```bash
-python3 server.py                    # http://127.0.0.1:9080
+./run.sh                             # 백그라운드로 띄우고 logs/<날짜>.log 에 기록
+./run.sh --port 9081                 # 워크트리용 다른 포트
+./restart.sh                         # 돌던 서버를 죽이고 같은 포트로 다시
+python3 server.py                    # 포그라운드로 볼 때 (http://127.0.0.1:9080)
 python3 server.py --host 0.0.0.0     # 폰에서 볼 때 (인증 없음, LAN 노출 주의)
 ```
+
+`run.sh` 는 인자를 `server.py` 로 그대로 넘기고, pid 와 로그 경로를 출력한다.
+로그는 하루 한 파일(`logs/YYYY-MM-DD.log`)이고 7일 넘게 안 쓴 파일은 다음 실행 때 지운다.
+종료는 출력된 pid 로 `kill <pid>`.
+
+`restart.sh` 는 이 디렉토리를 cwd 로 돌던 서버만 죽이고 `run.sh` 로 다시 띄운다.
+인자를 안 주면 죽인 서버의 인자를 물려받아 포트를 다시 적지 않아도 되고, 인자를 주면 그 인자로 뜬다.
+다른 워크트리·메인 체크아웃의 서버는 cwd 가 달라 건드리지 않는다.
 
 ## 테스트
 
@@ -23,6 +34,8 @@ work-dashboard/
 │
 ├── dash.py                          # CLI 진입점. 파싱·위임·출력만
 ├── server.py                        # 웹 서버 진입점 (http.server, 프레임워크 없음)
+├── run.sh                           # 백그라운드 실행. 날짜별 로그 + 7일치 정리
+├── restart.sh                       # 이 디렉토리 서버만 죽이고 run.sh 로 재기동
 │
 ├── app/                             # 도메인 계층
 │   ├── constants.py                 # 전역 상수. 매직넘버는 전부 여기로
