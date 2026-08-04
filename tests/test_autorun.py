@@ -53,11 +53,16 @@ def _git_repo():
     return path
 
 
-def _limits_file(pct, age_seconds=0):
+def _limits_file(pct, age_seconds=0, resets_in=3600):
+    """사이드카 한 장. resets_in 이 음수면 그 5시간 창은 이미 리셋된 것"""
     path = os.path.join(tempfile.mkdtemp(), "rate-limits.json")
     stamp = int((time.time() - age_seconds) * 1000)
+    window = {
+        "used_percentage": pct,
+        "resets_at": int(time.time() + resets_in),
+    }
     with open(path, "w", encoding="utf-8") as handle:
-        json.dump({"five_hour": {"used_percentage": pct}, "timestamp": stamp}, handle)
+        json.dump({"five_hour": window, "timestamp": stamp}, handle)
     return path
 
 
@@ -137,13 +142,26 @@ class Gates(AutorunCase):
         self._use_limits(_limits_file(USAGE_CRITICAL_PCT))
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_USAGE)
 
-    def test_stale_usage_blocks_start(self):
+    def test_stale_usage_still_judges_by_last_value(self):
+        """낡음으로 막으면 사람 없는 시간에 영구히 안 돈다 — 마지막 값으로 판단한다"""
         self._use_limits(_limits_file(10, age_seconds=3600))
-        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_STALE)
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_READY)
+
+    def test_stale_usage_at_limit_still_blocks(self):
+        """창이 아직 안 리셋됐으면 낡은 값이라도 한도는 한도다"""
+        self._use_limits(_limits_file(USAGE_CRITICAL_PCT, age_seconds=3600))
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_USAGE)
+
+    def test_reset_window_clears_stale_limit(self):
+        """한도에 닿은 채 찍힌 사진 한 장으로 밤새 막히면 안 된다"""
+        self._use_limits(
+            _limits_file(USAGE_CRITICAL_PCT, age_seconds=6 * 3600, resets_in=-3600)
+        )
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_READY)
 
     def test_missing_usage_file_blocks_start(self):
         self._use_limits(os.path.join(tempfile.mkdtemp(), "없음.json"))
-        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_STALE)
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_USAGE)
 
     def test_no_candidate_only_skips_start(self):
         """후보가 비는 것은 일시적이다 — 다른 세션이 잡고 있기만 해도 그렇다. 끄면 안 된다"""
