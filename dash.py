@@ -269,7 +269,7 @@ def _build_parser():
     autorun_prompt.set_defaults(handler=_cmd_autorun_prompt)
 
     autorun_reopen = sub.add_parser(
-        "autorun-reopen", help="확인(완료)을 되돌려 다시 확인 필요로"
+        "autorun-reopen", help="확인(완료)을 되돌려 다시 검토 대기로"
     )
     autorun_reopen.add_argument("run_id", type=int)
     autorun_reopen.set_defaults(handler=_cmd_autorun_reopen)
