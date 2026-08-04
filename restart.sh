@@ -8,12 +8,16 @@ cd "$(dirname "$0")"
 
 EXIT_WAIT_TRIES=25 # 0.2초씩 — 포트가 풀리기 전에 새로 띄우면 bind 가 실패한다
 
+here=$(pwd -P) # lsof 는 심볼릭 링크를 푼 경로를 주므로 비교할 쪽도 풀어둔다
 args=("$@")
 for pid in $(pgrep -f 'python3 server\.py' || true); do
-  [ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)" = "$PWD" ] || continue
+  # macOS 에는 /proc 이 없다 — cwd·명령줄을 lsof·ps 로 읽는다 (worktrees.py 와 같은 방식)
+  cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
+  [ "$cwd" = "$here" ] || continue
   # 인자를 안 줬으면 죽는 서버의 인자를 물려받는다 — 포트를 매번 다시 적지 않게
   if [ ${#args[@]} -eq 0 ]; then
-    mapfile -d '' -t old <"/proc/$pid/cmdline"
+    # bash 3.2 에는 mapfile 이 없다. 인자에 공백이 없으니 IFS 분리로 충분하다
+    read -r -a old <<<"$(ps -p "$pid" -o command=)"
     args=("${old[@]:2}") # `python3 server.py` 다음부터가 인자
   fi
   kill "$pid"
@@ -24,4 +28,5 @@ for pid in $(pgrep -f 'python3 server\.py' || true); do
   done
 done
 
-exec ./run.sh "${args[@]}"
+# bash 3.2 는 set -u 에서 빈 배열의 "${args[@]}" 를 unbound 로 본다
+exec ./run.sh ${args[@]+"${args[@]}"}
