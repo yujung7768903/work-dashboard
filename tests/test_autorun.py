@@ -440,11 +440,74 @@ class RecentWithTodos(AutorunCase):
         row = autorun_repo.recent_with_todos(self.con)[0]
         self.assertIsNone(row["workspace_name"])
 
+    def test_carries_the_session_cwd(self):
+        """그 세션이 어디서 돌았는지 — 패널의 워크트리 칸이 여기서 나온다"""
+        path = os.path.join(self.repo, ".claude", "worktrees", "고침")
+        session_repo.register(self.con, CHILD, cwd=path)
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        self.assertEqual(autorun_repo.recent_with_todos(self.con)[0]["cwd"], path)
+
     def test_most_recent_run_comes_first(self):
         first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
         autorun_repo.close_run(self.con, first["id"], OUTCOME_DONE)
         second = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job2")
         self.assertEqual(autorun_repo.recent_with_todos(self.con)[0]["id"], second["id"])
+
+
+class PanelRuns(AutorunCase):
+    """패널이 받는 목록 — 실행 기록에 워크트리 이름과 그 위치의 포트가 붙어야 한다"""
+
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+        autorun._WORKTREE_CACHE.clear()
+        self.addCleanup(autorun._WORKTREE_CACHE.clear)
+        original = autorun.worktrees.processes_by_path
+        self.addCleanup(setattr, autorun.worktrees, "processes_by_path", original)
+        # lsof 를 부르지 않는다 — 무엇을 물었는지와 붙는 결과만 본다
+        autorun.worktrees.processes_by_path = self._lookup
+
+    def _lookup(self, paths):
+        self.calls.append(list(paths))
+        # 진짜 조회는 lsof 가 푼 경로로 돌려준다 — 키도 그렇게 맞춰 둔다
+        return {os.path.realpath(path):
+                [{"pid": 1, "command": "python3 server.py", "ports": [9081]}]
+                for path in paths}
+
+    def _run_at(self, cwd):
+        session_repo.register(self.con, CHILD, cwd=cwd)
+        return autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+
+    def _worktree_dir(self, name):
+        path = os.path.join(self.repo, ".claude", "worktrees", name)
+        os.makedirs(path)
+        return path
+
+    def test_worktree_name_and_ports_are_attached(self):
+        self._run_at(self._worktree_dir("고침"))
+        row = autorun.panel_runs(self.con)[0]
+        self.assertEqual(row["worktree"], "고침")
+        self.assertEqual(row["ports"], [9081])
+
+    def test_main_checkout_has_no_worktree_and_is_not_looked_up(self):
+        """메인 체크아웃에서 돈 실행은 워크트리가 없다 — lsof 도 부르지 않는다"""
+        self._run_at(self.repo)
+        row = autorun.panel_runs(self.con)[0]
+        self.assertEqual(row["worktree"], "")
+        self.assertEqual(row["ports"], [])
+        self.assertEqual(self.calls, [[]])
+
+    def test_finished_run_is_looked_up_once(self):
+        """끝난 실행의 워크트리는 안 바뀐다 — 5초 폴링이 transcript 를 다시 읽으면 안 된다"""
+        run = self._run_at(self._worktree_dir("끝난것"))
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_DONE)
+        reads = []
+        original = autorun.release.worktree_of
+        self.addCleanup(setattr, autorun.release, "worktree_of", original)
+        autorun.release.worktree_of = lambda *args: (reads.append(args), original(*args))[1]
+        autorun.panel_runs(self.con)
+        autorun.panel_runs(self.con)
+        self.assertEqual(len(reads), 1)
 
 
 class WebToggle(AutorunCase):

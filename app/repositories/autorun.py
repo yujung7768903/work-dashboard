@@ -126,12 +126,17 @@ def get(con, run_id):
 
 
 def recent_with_todos(con, limit=10):
-    """최근 실행 + 그 할일 제목·워크스페이스 이름. 자율 수행 패널이 그대로 뿌린다"""
+    """최근 실행 + 그 할일 제목·워크스페이스 이름·세션 위치.
+
+    cwd 는 그 자율 세션이 마지막으로 있던 위치다 — 잡이 EnterWorktree 로 워크트리에
+    들어가면 훅이 그 경로로 갱신하므로, 어느 워크트리에서 돌았는지가 여기서 나온다
+    """
     rows = con.execute(
-        """SELECT r.*, t.title AS todo_title, w.name AS workspace_name
+        """SELECT r.*, t.title AS todo_title, w.name AS workspace_name, s.cwd AS cwd
              FROM autorun_runs r
              JOIN todos t ON t.id = r.todo_id
              LEFT JOIN workspaces w ON w.id = t.workspace_id
+             LEFT JOIN sessions s ON s.claude_session_id = r.claude_session_id
             ORDER BY r.id DESC LIMIT ?""",
         (limit,),
     )
