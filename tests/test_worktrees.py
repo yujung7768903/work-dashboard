@@ -71,24 +71,23 @@ class ParseTest(unittest.TestCase):
         # 브랜치가 붙어 있지 않은(detached) 워크트리는 어느 브랜치로도 잡히지 않는다
         self.assertEqual(len(found), 2)
 
-    def test_base_branch_goes_first(self):
-        order = worktrees._base_first(["c", "master", "a"], "master")
-        self.assertEqual(order, ["master", "c", "a"])
+    def test_base_first_moves_base_to_the_front(self):
+        for why, names, base, expected in (
+            ("기준 브랜치가 앞으로", ["c", "master", "a"], "master", ["master", "c", "a"]),
+            ("목록에 기준이 없으면 그대로", ["a", "b"], "main", ["a", "b"]),
+        ):
+            with self.subTest(why=why):
+                self.assertEqual(worktrees._base_first(names, base), expected)
 
-    def test_base_first_survives_missing_base(self):
-        self.assertEqual(worktrees._base_first(["a", "b"], "main"), ["a", "b"])
-
-    def test_summary_prefers_todo_title_over_commit(self):
-        summary = worktrees._summary(
-            "/w", {"/w": "탭 분리"}, [{"subject": "fix: 오타"}]
-        )
-        self.assertEqual(summary, "탭 분리")
-
-    def test_summary_falls_back_to_latest_commit(self):
-        self.assertEqual(worktrees._summary("/w", {}, [{"subject": "fix: 오타"}]), "fix: 오타")
-
-    def test_summary_is_empty_without_todo_or_commit(self):
-        self.assertEqual(worktrees._summary(None, {}, []), "")
+    def test_summary_prefers_todo_then_commit_then_nothing(self):
+        commit = [{"subject": "fix: 오타"}]
+        for why, path, titles, commits, expected in (
+            ("할일 제목이 커밋을 이긴다", "/w", {"/w": "탭 분리"}, commit, "탭 분리"),
+            ("할일이 없으면 최신 커밋", "/w", {}, commit, "fix: 오타"),
+            ("둘 다 없으면 빈 문자열", None, {}, [], ""),
+        ):
+            with self.subTest(why=why):
+                self.assertEqual(worktrees._summary(path, titles, commits), expected)
 
     def test_command_is_shortened_to_basenames(self):
         self.assertEqual(
