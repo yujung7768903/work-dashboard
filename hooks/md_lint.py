@@ -4,9 +4,14 @@
 린트 에러가 있으면 exit 2 + stderr 에 에러 목록과 재저장 지시.
 markdownlint-cli2 미설치·타임아웃·그 외 예외는 fail-open(exit 0) — 훅 오류로
 저장을 막는 사고가 더 큼. worktree_guard.py 와 동일한 원칙.
+
+바이너리를 PATH 에서 직접 부른다. npx 경유는 비대화형 셸에서 매달릴 수 있고,
+패키지를 못 찾을 때도 exit 1 을 줘서 린트 실패와 구분되지 않는다.
+설치: npm i -g markdownlint-cli2
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -14,7 +19,7 @@ EXIT_OK = 0
 EXIT_BLOCK = 2
 LINT_TIMEOUT_SEC = 5
 LINT_TOOL_NAMES = {"Write", "Edit", "NotebookEdit"}
-SUMMARY_MARKER = "Summary:"  # markdownlint-cli2 가 실제로 실행됐다는 표시 (stdout)
+LINT_BINARY = "markdownlint-cli2"
 
 FIX_MESSAGE = """마크다운 린트 오류 발견: {path}
 
@@ -50,20 +55,19 @@ def _resolve_path(path, cwd):
 
 def _lint(path):
     """markdownlint-cli2 실행 결과 에러 텍스트. 통과·미설치·타임아웃이면 빈 문자열"""
+    binary = shutil.which(LINT_BINARY)
+    if not binary:  # 미설치면 관여하지 않는다
+        return ""
     try:
         result = subprocess.run(
-            ["npx", "--no-install", "markdownlint-cli2", path],
+            [binary, path],
             capture_output=True,
             text=True,
             timeout=LINT_TIMEOUT_SEC,
         )
     except Exception:
         return ""
-    # npm 이 패키지를 못 찾아도 exit 1 을 주므로, 실제로 린트가 돌았다는 표시(stdout 의
-    # Summary 줄)가 있을 때만 에러로 취급한다
-    if result.returncode == 0 or SUMMARY_MARKER not in result.stdout:
-        return ""
-    return result.stderr.strip()
+    return "" if result.returncode == 0 else result.stderr.strip()
 
 
 if __name__ == "__main__":

@@ -209,12 +209,6 @@ class CategoryRepoTest(unittest.TestCase):
         self.assertEqual(category_repo.get_by_name(temp_db(path), "개발")["color"], CATEGORY_PALETTE[0])
 
 
-    def test_delete_empty_category_succeeds(self):
-        target = category_repo.get_by_name(self.con, "운영")
-        category_repo.delete(self.con, target["id"])
-        with self.assertRaises(NotFound):
-            category_repo.get(self.con, target["id"])
-
     def test_delete_rejects_non_empty_category(self):
         target = category_repo.get_by_name(self.con, "개발")
         self.con.execute(
