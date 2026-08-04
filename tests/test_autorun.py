@@ -18,6 +18,7 @@ from app.constants import (
     STATE_ENDED,
     STATUS_DOING,
     STATUS_DONE,
+    STATUS_TODO,
     USAGE_CRITICAL_PCT,
 )
 from app.errors import NotFound, Validation
@@ -330,6 +331,43 @@ class Outcomes(AutorunCase):
         autorun_repo.close_run(self.con, run["id"], OUTCOME_FAILED)
         with self.assertRaises(Validation):
             autorun_repo.confirm_run(self.con, run["id"])
+
+    def test_status_change_blocked_while_review_pending(self):
+        """확인 필요인 동안은 사람이 상태를 직접 못 바꾼다 — 확인 버튼으로만 넘어간다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        with self.assertRaises(Validation):
+            todo_repo.update(self.con, self.todo["id"], status=STATUS_TODO)
+
+    def test_confirm_unlocks_status_change(self):
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        autorun_repo.confirm_run(self.con, run["id"])
+        updated = todo_repo.update(self.con, self.todo["id"], status=STATUS_TODO)
+        self.assertEqual(updated["status"], STATUS_TODO)
+
+    def test_open_run_does_not_block_the_job_s_own_completion(self):
+        """자율 세션이 끝에 스스로 부르는 set-status done 은 잡혀 있는 동안이라 안 잠긴다"""
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        updated = todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
+        self.assertEqual(updated["status"], STATUS_DONE)
+
+    def test_reopen_reverts_confirm_and_relocks_status(self):
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        autorun_repo.confirm_run(self.con, run["id"])
+        reopened = autorun_repo.reopen_run(self.con, run["id"])
+        self.assertEqual(reopened["outcome"], OUTCOME_REVIEW)
+        with self.assertRaises(Validation):
+            todo_repo.update(self.con, self.todo["id"], status=STATUS_TODO)
+
+    def test_reopen_rejects_anything_but_done(self):
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        with self.assertRaises(Validation):  # 진행 중
+            autorun_repo.reopen_run(self.con, run["id"])
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        with self.assertRaises(Validation):  # 아직 확인 전
+            autorun_repo.reopen_run(self.con, run["id"])
 
     def test_review_does_not_count_as_failure(self):
         """확인이 밀린 동안 그 할일이 blocked 로 올라가면 다음 tick 후보에서 빠진다"""
