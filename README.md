@@ -6,9 +6,15 @@
 ## 실행
 
 ```bash
-python3 server.py                    # http://127.0.0.1:9080
+./run.sh                             # 백그라운드로 띄우고 logs/<날짜>.log 에 기록
+./run.sh --port 9081                 # 워크트리용 다른 포트
+python3 server.py                    # 포그라운드로 볼 때 (http://127.0.0.1:9080)
 python3 server.py --host 0.0.0.0     # 폰에서 볼 때 (인증 없음, LAN 노출 주의)
 ```
+
+`run.sh` 는 인자를 `server.py` 로 그대로 넘기고, pid 와 로그 경로를 출력한다.
+로그는 하루 한 파일(`logs/YYYY-MM-DD.log`)이고 7일 넘게 안 쓴 파일은 다음 실행 때 지운다.
+종료는 출력된 pid 로 `kill <pid>`.
 
 ## 테스트
 
@@ -23,6 +29,7 @@ work-dashboard/
 │
 ├── dash.py                          # CLI 진입점. 파싱·위임·출력만
 ├── server.py                        # 웹 서버 진입점 (http.server, 프레임워크 없음)
+├── run.sh                           # 백그라운드 실행. 날짜별 로그 + 7일치 정리
 │
 ├── app/                             # 도메인 계층
 │   ├── constants.py                 # 전역 상수. 매직넘버는 전부 여기로
