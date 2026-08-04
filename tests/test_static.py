@@ -87,17 +87,19 @@ class RouteTest(unittest.TestCase):
         self.assertEqual(payload["workspace"]["name"], "KT")
         self.assertEqual(payload["todos"], [])
 
-    def test_unknown_endpoint_raises_not_found(self):
-        with self.assertRaises(NotFound):
-            server.route(self.con, "GET", "/api/nope", {}, {})
-
-    def test_unsupported_method_raises_validation(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "PUT", "/api/tree", {}, {})
-
-    def test_reorder_endpoint_rejects_unknown_kind(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "POST", "/api/reorder", {}, {"kind": "x", "ids": []})
+    def test_route_rejects_bad_requests(self):
+        """라우팅 거부 조건이 한자리에. 새 엔드포인트의 거부 규칙도 여기에 붙인다"""
+        for exc, why, method, path, body in (
+            (NotFound, "없는 엔드포인트", "GET", "/api/nope", {}),
+            (Validation, "지원 안 하는 메서드", "PUT", "/api/tree", {}),
+            (Validation, "reorder 의 알 수 없는 kind", "POST", "/api/reorder",
+             {"kind": "x", "ids": []}),
+            (Validation, "id 없이 할일 조회", "GET", "/api/todos", {}),
+            (Validation, "id 없이 세션 수정", "PATCH", "/api/sessions", {"category_id": 1}),
+        ):
+            with self.subTest(why=why):
+                with self.assertRaises(exc):
+                    server.route(self.con, method, path, {}, body)
 
     def test_sessions_endpoint_shape(self):
         from app.repositories import sessions as session_repo
@@ -123,10 +125,6 @@ class RouteTest(unittest.TestCase):
             [row["claude_session_id"] for row in payload["sessions"]], ["route-sess"]
         )
 
-    def test_todo_endpoint_requires_id(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "GET", "/api/todos", {}, {})
-
     def test_patch_session_classifies(self):
         from app.repositories import sessions as session_repo
 
@@ -137,10 +135,6 @@ class RouteTest(unittest.TestCase):
             self.con, "PATCH", f"/api/sessions/{row_id}", {}, {"category_id": ops}
         )
         self.assertEqual(payload["category_id"], ops)
-
-    def test_patch_session_without_id_is_validation(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "PATCH", "/api/sessions", {}, {"category_id": 1})
 
     def test_delete_todo_endpoint(self):
         ops = category_repo.get_by_name(self.con, "운영")["id"]

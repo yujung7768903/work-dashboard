@@ -268,13 +268,14 @@ class SummaryTitleTest(unittest.TestCase):
 class SummaryCallTest(unittest.TestCase):
     """요약 호출 자체. 실제 CLI 는 부르지 않는다"""
 
-    def test_clean_takes_first_line_without_quotes(self):
-        self.assertEqual(summary.clean('"할일 자동 생성".\n남는 말\n'), "할일 자동 생성")
-
-    def test_clean_rejects_explanation(self):
-        """설명을 늘어놓으면 요약이 아니므로 버린다"""
-        self.assertIsNone(summary.clean("가" * (SUMMARY_MAX_CHARS + 1)))
-        self.assertIsNone(summary.clean("  \n "))
+    def test_clean_keeps_only_a_real_one_line_summary(self):
+        for why, raw, expected in (
+            ("첫 줄만 남기고 따옴표·마침표 제거", '"할일 자동 생성".\n남는 말\n', "할일 자동 생성"),
+            ("설명을 늘어놓으면 요약이 아니다", "가" * (SUMMARY_MAX_CHARS + 1), None),
+            ("빈 텍스트", "  \n ", None),
+        ):
+            with self.subTest(why=why):
+                self.assertEqual(summary.clean(raw), expected)
 
     def test_no_cli_returns_none(self):
         with mock.patch.object(summary.shutil, "which", return_value=None):

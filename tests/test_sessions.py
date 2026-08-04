@@ -93,12 +93,18 @@ class SessionRepoTest(unittest.TestCase):
         with self.assertRaises(Validation):
             session_repo.register(self.con, "  ")
 
-    def test_get_missing_raises_not_found(self):
+    def test_missing_session_raises_on_read_and_is_ignored_on_write(self):
+        """조회는 예외를 내고, 상태·프롬프트 갱신은 조용히 넘긴다 — 훅이 이미 끝난
+        세션에 대해 늦게 도착해도 세션을 되살리거나 터지지 않아야 한다"""
         with self.assertRaises(NotFound):
             session_repo.get(self.con, "nope")
-
-    def test_find_missing_returns_none(self):
-        self.assertIsNone(session_repo.find(self.con, "nope"))
+        for why, call in (
+            ("find", lambda: session_repo.find(self.con, "nope")),
+            ("set_state", lambda: session_repo.set_state(self.con, "gone", STATE_WORKING)),
+            ("set_last_prompt", lambda: session_repo.set_last_prompt(self.con, "gone", "x")),
+        ):
+            with self.subTest(why=why):
+                self.assertIsNone(call())
 
     def test_set_state_transitions(self):
         session_repo.register(self.con, SID)
@@ -112,9 +118,6 @@ class SessionRepoTest(unittest.TestCase):
         with self.assertRaises(Validation):
             session_repo.set_state(self.con, SID, "paused")
 
-    def test_set_state_on_missing_session_is_ignored(self):
-        self.assertIsNone(session_repo.set_state(self.con, "gone", STATE_WORKING))
-
     def test_last_prompt_is_truncated(self):
         session_repo.register(self.con, SID)
         updated = session_repo.set_last_prompt(self.con, SID, "가" * 500)
@@ -124,9 +127,6 @@ class SessionRepoTest(unittest.TestCase):
         session_repo.register(self.con, SID)
         updated = session_repo.set_last_prompt(self.con, SID, "여러\n줄   지시")
         self.assertEqual(updated["last_prompt"], "여러 줄 지시")
-
-    def test_last_prompt_on_missing_session_is_ignored(self):
-        self.assertIsNone(session_repo.set_last_prompt(self.con, "gone", "x"))
 
 
 class SessionClassifyTest(unittest.TestCase):
@@ -166,35 +166,37 @@ class SessionClassifyTest(unittest.TestCase):
         session_repo.link_todo(self.con, SID, later["id"])
         self.assertEqual(session_repo.get(self.con, SID)["workspace_id"], other["id"])
 
-    def test_classify_requires_something(self):
-        with self.assertRaises(Validation):
-            session_repo.classify(self.con, SID)
-
-    def test_classify_rejects_unknown_category(self):
-        with self.assertRaises(NotFound):
-            session_repo.classify(self.con, SID, category_name="없는카테고리")
-
-    def test_classify_rejects_unknown_workspace(self):
-        with self.assertRaises(NotFound):
-            session_repo.classify(self.con, SID, workspace_id=MISSING_ID)
-
-    def test_classify_missing_session_raises(self):
-        with self.assertRaises(NotFound):
-            session_repo.classify(self.con, "gone", category_name="운영")
+    def test_classify_rejects_bad_input(self):
+        for exc, why, call in (
+            (Validation, "카테고리도 워크스페이스도 없음",
+             lambda: session_repo.classify(self.con, SID)),
+            (NotFound, "없는 카테고리",
+             lambda: session_repo.classify(self.con, SID, category_name="없는카테고리")),
+            (NotFound, "없는 워크스페이스",
+             lambda: session_repo.classify(self.con, SID, workspace_id=MISSING_ID)),
+            (NotFound, "없는 세션",
+             lambda: session_repo.classify(self.con, "gone", category_name="운영")),
+        ):
+            with self.subTest(why=why):
+                with self.assertRaises(exc):
+                    call()
 
     def test_classify_by_ids_for_dashboard(self):
         row_id = session_repo.get(self.con, SID)["id"]
         result = session_repo.classify_by_ids(self.con, row_id, category_id=self.ops)
         self.assertEqual(result["category_id"], self.ops)
 
-    def test_classify_by_ids_missing_session(self):
-        with self.assertRaises(NotFound):
-            session_repo.classify_by_ids(self.con, MISSING_ID, category_id=self.ops)
-
-    def test_classify_by_ids_requires_something(self):
+    def test_classify_by_ids_rejects_bad_input(self):
         row_id = session_repo.get(self.con, SID)["id"]
-        with self.assertRaises(Validation):
-            session_repo.classify_by_ids(self.con, row_id)
+        for exc, why, call in (
+            (NotFound, "없는 세션",
+             lambda: session_repo.classify_by_ids(self.con, MISSING_ID, category_id=self.ops)),
+            (Validation, "카테고리도 워크스페이스도 없음",
+             lambda: session_repo.classify_by_ids(self.con, row_id)),
+        ):
+            with self.subTest(why=why):
+                with self.assertRaises(exc):
+                    call()
 
     def test_link_todo_ignores_duplicate(self):
         todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
