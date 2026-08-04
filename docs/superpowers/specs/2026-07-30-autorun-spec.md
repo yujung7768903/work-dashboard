@@ -67,7 +67,7 @@ claude --bg --model <상수> --permission-mode acceptEdits <프롬프트>
 | autorun 이 꺼져 있음 | `autorun_state.enabled` | 시작 안 함 (기본 상태) |
 | 이미 자율 잡이 돌고 있음 | `autorun_runs` 에 `ended_at IS NULL` | 시작 안 함 (동시 1건) |
 | 5시간 창 사용률 ≥ 90% | `app/services/usage.py` (`RATE_LIMITS_PATH`), `USAGE_CRITICAL_PCT` | 시작 안 함. 다음 tick 재확인 |
-| 사용률 데이터가 15분 넘게 낡음 | `USAGE_STALE_SECONDS` | 시작 안 함 — 모르면 안 돎 |
+| 사용률 데이터가 아예 없음 | 사이드카에 `five_hour.used_percentage` 가 없음 | 시작 안 함 — 모르면 안 돎. 낡은 값은 그대로 쓴다(statusline 이 안 그려지면 늘 낡으므로) |
 | 대상 워크스페이스 워킹트리가 더러움 | `git status --porcelain` | 그 할일 건너뛰고 다음 후보 |
 | 사람이 그 잡에 프롬프트를 넣음 | `UserPromptSubmit` 훅 + 그 세션이 자율 세션 | autorun 즉시 off. 그 잡은 사람 것으로 인계 |
 | 같은 할일이 2회 연속 실패 | `autorun_runs.outcome` | 그 할일 `blocked` 처리, 다음 할일로 |
