@@ -180,6 +180,35 @@ def confirm_run(con, run_id):
     return get(con, run_id)
 
 
+def locked_todo_ids(con):
+    """확인 필요로 닫힌 실행이 있는 할일. 사람이 확인 버튼을 누르기 전까지 상태를 못 바꾼다.
+
+    돌고 있는 중(ended_at IS NULL)은 안 잠근다 — 자율 세션 자신이 끝에 `set-status
+    done` 을 부르는데, 그때는 아직 잡이 열려 있어 여기서 잠그면 그 호출이 막힌다
+    """
+    return {
+        row["todo_id"]
+        for row in con.execute(
+            "SELECT DISTINCT todo_id FROM autorun_runs WHERE outcome=?",
+            (OUTCOME_REVIEW,),
+        )
+    }
+
+
+def reopen_run(con, run_id):
+    """확인을 되돌린다 — done 을 review 로. confirm_run 의 역방향, 잘못 누른 확인을 무른다"""
+    run = get(con, run_id)
+    if not run:
+        raise NotFound(f"실행 기록 {run_id} 없음")
+    if run["outcome"] != OUTCOME_DONE:
+        raise Validation(f"완료 상태가 아님: {run['outcome'] or '진행 중'}")
+    with transaction(con):
+        con.execute(
+            "UPDATE autorun_runs SET outcome=? WHERE id=?", (OUTCOME_REVIEW, run_id)
+        )
+    return get(con, run_id)
+
+
 def blocked_todo_ids(con):
     """막힌 것으로 기록된 할일. 다음 tick 의 후보에서 뺀다.
 
