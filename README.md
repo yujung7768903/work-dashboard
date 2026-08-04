@@ -115,12 +115,16 @@ work-dashboard/
 | --- | --- | --- | --- |
 | `hooks/dash_hook.py` | `~/.claude/settings.json` (그 PC 전용, 절대 경로). 타임아웃 2초 | 세션 등록·상태 추적, 세션에 워크스페이스·분류·해제 블록 주입 | 인자로 받은 이벤트 이름 하나로 네 갈래 분기하는 단일 진입점. stdin JSON 의 `session_id`·`cwd` 로 DB 를 갱신하고 주입할 블록을 stdout 으로 뱉음. 차단은 하지 않음 |
 | `hooks/worktree_serve.py` | `.claude/settings.json`, 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9080–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
-| `hooks/worktree_guard.py` | `.claude/settings.json`, matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 10초 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
-| `hooks/commit_scope_guard.py` | `.claude/settings.json`, matcher `Bash`. 타임아웃 10초 | 범위를 넘는 스테이징·커밋 차단 | pathspec 없는 `git add -A`/`--all`/`-u`/`.` 와 `git commit -a`/`--all`/`-am` 이면 `exit 2`. `;`·`&&`·파이프로 이어진 복합 명령도 구간별로 검사한다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
-| `hooks/md_lint.py` | `.claude/settings.json`, matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 15초 | 저장된 `.md` 를 `.markdownlint.json` 기준으로 검사 | 린트 에러가 있으면 `exit 2` + stderr 에 에러 목록과 재저장 지시. `markdownlint-cli2` 를 PATH 에서 직접 부른다 — 없으면 조용히 통과하므로 새 PC 에서는 `npm i -g markdownlint-cli2` 를 먼저 한다 |
-| `hooks/stale_base.py` | `.claude/settings.json`, 타임아웃 10초 | 낡은 베이스 위 착수 경고 | 브랜치가 `@{u}` 또는 워크트리 기준 브랜치(`master`/`main`)보다 뒤처졌으면 최신화하라는 한 줄을 stdout 에 넣는다. 네트워크 fetch 없이 로컬 ref 만 비교하고, 같은 경고는 세션당 한 번만 낸다. 차단은 하지 않음 |
+| `hooks/worktree_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 10초 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
+| `hooks/commit_scope_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Bash`. 타임아웃 10초 | 범위를 넘는 스테이징·커밋 차단 | pathspec 없는 `git add -A`/`--all`/`-u`/`.` 와 `git commit -a`/`--all`/`-am` 이면 `exit 2`. `;`·`&&`·파이프로 이어진 복합 명령도 구간별로 검사한다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
+| `hooks/md_lint.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 15초 | 저장된 `.md` 를 markdownlint-cli2 로 검사 | 린트 에러가 있으면 `exit 2` + stderr 에 에러 목록과 재저장 지시. 바이너리를 PATH 에서 직접 부른다 — 없으면 조용히 통과하므로 새 PC 에서는 `npm i -g markdownlint-cli2` 를 먼저 한다. 설정은 아래 참고 |
+| `hooks/stale_base.py` | `~/.claude/settings.json` (전역, 절대 경로). 타임아웃 10초 | 낡은 베이스 위 착수 경고 | 브랜치가 `@{u}` 또는 워크트리 기준 브랜치(`master`/`main`)보다 뒤처졌으면 최신화하라는 한 줄을 stdout 에 넣는다. 네트워크 fetch 없이 로컬 ref 만 비교하고, 같은 경고는 세션당 한 번만 낸다. 차단은 하지 않음 |
 
-`dash_hook.py` 만 등록 위치가 다른 이유는 절대 경로가 필요해서다(아래 "다른 PC 에 설치" 참고). 나머지는 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준으로 들어가 clone 한 다른 PC 에서 따로 설정할 것이 없다.
+`worktree_serve.py` 만 등록 위치가 다른 이유는 clone 한 다른 PC 에서도 따로 설정할 것이 없어야 하기 때문이다 — 이 저장소 화면을 띄우는 훅이라 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준으로 들어간다. 나머지 다섯은 **프로젝트를 가리지 않아야 해서 전역에 절대 경로로 등록한다**. 절대 경로는 워크트리가 아니라 메인 체크아웃을 가리켜야 한다 — 워크트리는 병합 뒤 지워진다.
+
+`worktree_guard.py` 는 전역에 등록돼도 `~/work/` 아래만 본다(`WORK_ROOT`). 그 밖의 저장소는 워크트리 관례를 쓰지 않으므로 관여하지 않는다.
+
+`md_lint.py` 의 설정은 `markdownlint-cli2` 가 **cwd 에서만** 찾고 상위로 올라가지 않는다. 그래서 설정이 없는 프로젝트에서는 기본 규칙(`MD013` 줄 길이 80자)이 걸려 한글 문서 저장이 계속 막힌다 — 훅이 그럴 때 이 저장소 루트의 `.markdownlint.json` 을 `--config` 로 넘긴다. 프로젝트가 자기 설정(`.markdownlint.json` 등)을 갖고 있으면 그게 이긴다.
 
 `worktree_serve.py` 가 거는 조건은 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때. **이미 떠 있으면 관여하지 않는다** — 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다. 막으면서 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다. 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고).
 
