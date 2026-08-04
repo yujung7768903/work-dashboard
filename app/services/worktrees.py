@@ -1,19 +1,27 @@
 """보드 워크트리 탭 데이터. 워크스페이스마다 저장소 하나, 그 아래 브랜치·워크트리 행.
 
 저장소 경로는 워크스페이스에 저장돼 있지 않다 — 그 워크스페이스에서 돌았던 세션의
-cwd 로 유추한다. git·lsof 는 읽기 전용으로만 부르고 실패하면 그 칸만 비운다.
-조회 화면이라 한 저장소가 깨져도 나머지는 그려져야 한다.
+cwd 로 유추한다. 조회(overview)는 git·lsof 를 읽기 전용으로만 부르고 실패하면 그
+칸만 비운다 — 한 저장소가 깨져도 나머지는 그려져야 한다.
+
+apply() 만 예외적으로 상태를 바꾼다 — 케밥 메뉴의 "적용" 한 번으로 병합·서버
+종료·워크트리 및 브랜치 제거·할일 done 을 순서대로 실행한다.
 """
 import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-from app.constants import WORKSPACE_ACTIVE
+from app.constants import STATUS_DONE, WORKSPACE_ACTIVE
+from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
+from app.repositories import subtasks as subtask_repo
 from app.repositories import workspaces as workspace_repo
+from app.services import release
 
 GIT_TIMEOUT_SEC = 5
+# merge·worktree remove·branch delete 는 조회용 git 호출보다 오래 걸릴 수 있다
+APPLY_TIMEOUT_SEC = 30
 # 브랜치마다 git 을 두 번(격차·커밋) 부르므로 오래된 브랜치까지 다 보면 느려진다.
 # 최근 커밋 순 상위 30 개만 보고, 잘라낸 개수는 응답에 실어 화면에 알린다
 BRANCH_LIMIT = 30
@@ -53,6 +61,125 @@ def overview(con):
             }
         )
     return {"groups": groups}
+
+
+def apply(con, repo, branch):
+    """워크트리 브랜치를 기준 브랜치에 병합하고 뒷정리까지 마친다.
+
+    순서 — 되돌릴 수 없는 것부터 먼저 확인하고, 실행은 병합(실패하면 여기서 멈추고
+    아무것도 건드리지 않음) → 서버 종료 → 워크트리·브랜치 제거 → 할일 done.
+    할일을 마지막에 두는 게 아니라 먼저 "완료 가능한지"만 확인해 두는 이유는, 하위할일이
+    남아 done 처리가 막히는 경우를 워크트리를 지운 뒤에 알면 되돌릴 방법이 없어서다
+    """
+    root, base, path = _resolve_target(repo, branch, "적용")
+
+    todo_ids = _todo_ids_for_cwd(con, path)
+    _ensure_todos_completable(con, todo_ids)
+    _ensure_no_local_changes(root, "메인 체크아웃")
+    _ensure_checked_out(root, base)
+    _ensure_no_local_changes(path, "워크트리")
+
+    if not _merge(root, branch):
+        raise Conflict(f"{branch} 를 {base} 에 병합하지 못함 (충돌) — 손으로 정리 필요")
+
+    killed = release.kill_serving(path)
+    _git_write(root, "worktree", "remove", path)
+    _git_write(root, "branch", "-d", branch)
+    finished = release.finish_todo_ids(con, todo_ids)
+    return {
+        "branch": branch,
+        "base": base,
+        "killed": killed,
+        "removed": path,
+        "finished": finished,
+    }
+
+
+def discard(con, repo, branch):
+    """병합 없이 워크트리를 버린다 — 서버 종료 → 워크트리·브랜치 강제 제거.
+
+    적용과 달리 클린 여부·병합 가능 여부를 확인하지 않는다 — 버리는 게 목적이라
+    커밋되지 않았거나 아직 병합되지 않은 커밋도 그대로 사라진다. 되돌릴 수 없다는
+    경고는 프런트의 확인창이 맡는다
+    """
+    root, base, path = _resolve_target(repo, branch, "삭제")
+    killed = release.kill_serving(path)
+    _git_write(root, "worktree", "remove", "--force", path)
+    _git_write(root, "branch", "-D", branch)
+    return {"branch": branch, "base": base, "killed": killed, "removed": path}
+
+
+def _resolve_target(repo, branch, action):
+    """적용·삭제 공통 — 대상 워크트리를 찾고 없으면 그 자리에서 실패시킨다"""
+    if not repo or not branch:
+        raise Validation("repo·branch 는 필수")
+    root = os.path.abspath(repo)
+    branches = _branches(root)
+    if branch not in branches:
+        raise NotFound(f"브랜치 {branch} 없음")
+    base = _base_branch(root, branches)
+    if branch == base:
+        raise Validation(f"기준 브랜치는 {action} 대상이 아님")
+    path = _worktrees(root).get(branch)
+    if not path:
+        raise NotFound(f"브랜치 {branch} 의 워크트리를 찾을 수 없음")
+    return root, base, path
+
+
+def _todo_ids_for_cwd(con, path):
+    """이 워크트리에서 돈 세션들이 연결한 할일 id. 경로 비교는 realpath 로 맞춘다"""
+    target = os.path.realpath(path)
+    ids = set()
+    for cwd, todo_ids in session_repo.todo_ids_by_cwd(con).items():
+        if os.path.realpath(cwd) == target:
+            ids |= todo_ids
+    return sorted(ids)
+
+
+def _ensure_todos_completable(con, todo_ids):
+    """todo_repo.update 가 하는 검사와 같은 규칙을 먼저 확인만 해 둔다 — 병합·삭제가
+    다 끝난 뒤에야 이 검사에 걸리면 워크트리는 이미 없는데 할일만 done 이 안 된다"""
+    for todo_id in todo_ids:
+        remaining = [
+            row["title"] for row in subtask_repo.list_by_todo(con, todo_id)
+            if row["status"] != STATUS_DONE
+        ]
+        if remaining:
+            raise Validation("하위할일이 남아 완료할 수 없음: " + ", ".join(remaining))
+
+
+def _ensure_checked_out(root, base):
+    current = _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    if current != base:
+        raise Validation(f"메인 체크아웃이 {base} 가 아니라 {current} 임 — 먼저 체크아웃하세요")
+
+
+def _ensure_no_local_changes(path, label):
+    if _git(path, "status", "--porcelain").strip():
+        raise Validation(f"{label} 에 커밋되지 않은 변경사항이 있음")
+
+
+def _merge(root, branch):
+    result = _run_write(["git", "-C", root, "merge", "--no-edit", branch])
+    if result.returncode == 0:
+        return True
+    _run_write(["git", "-C", root, "merge", "--abort"])
+    return False
+
+
+def _git_write(root, *args):
+    result = _run_write(["git", "-C", root, *args])
+    if result.returncode:
+        raise Conflict(f"git {' '.join(args)} 실패: {result.stderr.strip()}")
+
+
+def _run_write(argv):
+    """조회용 _run 과 달리 실패를 예외로 올린다 — 정리 실패를 조용히 넘기면
+    워크트리가 반쯤 지워진 채로 화면에는 성공만 보인다"""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=APPLY_TIMEOUT_SEC)
+    except Exception as error:
+        raise Conflict(f"{' '.join(argv)} 실행 실패: {error}")
 
 
 def _repo_state(root, summaries, ports):

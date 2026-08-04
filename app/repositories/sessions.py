@@ -269,6 +269,22 @@ def todo_titles_by_cwd(con):
     return {row["cwd"]: row["title"] for row in rows}
 
 
+def todo_ids_by_cwd(con):
+    """작업 위치 → 거기서 돌던 세션들이 연결한 할일 id 전부(중복 없이).
+    워크트리 적용(병합 후 할일 done 처리)이 한 위치에 여러 세션이 걸쳐 있어도
+    다 잡아야 해서, 요약과 달리 최근 하나가 아니라 전체를 모은다"""
+    rows = con.execute(
+        """SELECT DISTINCT s.cwd AS cwd, st.todo_id AS todo_id
+             FROM sessions s
+             JOIN session_todos st ON st.session_id = s.id
+            WHERE COALESCE(s.cwd,'') <> ''"""
+    )
+    found = {}
+    for row in rows:
+        found.setdefault(row["cwd"], set()).add(row["todo_id"])
+    return found
+
+
 def get_by_row_id(con, session_row_id):
     """대시보드 팝업용. 목록과 같은 모양(이름 포함)으로 한 건"""
     row = con.execute(f"{WITH_NAMES} WHERE s.id=?", (session_row_id,)).fetchone()
