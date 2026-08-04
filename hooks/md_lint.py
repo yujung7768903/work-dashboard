@@ -8,6 +8,11 @@ markdownlint-cli2 미설치·타임아웃·그 외 예외는 fail-open(exit 0) �
 바이너리를 PATH 에서 직접 부른다. npx 경유는 비대화형 셸에서 매달릴 수 있고,
 패키지를 못 찾을 때도 exit 1 을 줘서 린트 실패와 구분되지 않는다.
 설치: npm i -g markdownlint-cli2
+
+전역 훅이라 다른 프로젝트에서도 돈다. markdownlint-cli2 는 설정을 cwd 에서만
+찾고 상위로 올라가지 않으므로, 설정이 없는 프로젝트에서는 기본 규칙(MD013 80자)이
+걸려 한글 문서 저장이 계속 막힌다. 그래서 없으면 이 저장소의 설정을 넘긴다.
+프로젝트가 자기 설정을 갖고 있으면 그게 이긴다.
 """
 import json
 import os
@@ -20,6 +25,23 @@ EXIT_BLOCK = 2
 LINT_TIMEOUT_SEC = 5
 LINT_TOOL_NAMES = {"Write", "Edit", "NotebookEdit"}
 LINT_BINARY = "markdownlint-cli2"
+# 설정이 없는 프로젝트에 넘길 기본값 — 이 저장소 루트의 것
+DEFAULT_CONFIG = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".markdownlint.json"
+)
+# markdownlint-cli2 가 cwd 에서 찾는 설정 파일 이름들
+CONFIG_NAMES = (
+    ".markdownlint-cli2.jsonc",
+    ".markdownlint-cli2.yaml",
+    ".markdownlint-cli2.cjs",
+    ".markdownlint-cli2.mjs",
+    ".markdownlint.jsonc",
+    ".markdownlint.json",
+    ".markdownlint.yaml",
+    ".markdownlint.yml",
+    ".markdownlint.cjs",
+    ".markdownlint.mjs",
+)
 
 FIX_MESSAGE = """마크다운 린트 오류 발견: {path}
 
@@ -37,8 +59,9 @@ def main(stdin=None):
         path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
         if not path or os.path.splitext(path)[1].lower() != ".md":
             return EXIT_OK
-        path = _resolve_path(path, payload.get("cwd"))
-        errors = _lint(path)
+        base = payload.get("cwd") or os.getcwd()
+        path = _resolve_path(path, base)
+        errors = _lint(path, base)
         if not errors:
             return EXIT_OK
     except Exception:  # 훅 실패로 저장을 막지 않음
@@ -53,14 +76,15 @@ def _resolve_path(path, cwd):
     return os.path.join(cwd or os.getcwd(), path)
 
 
-def _lint(path):
+def _lint(path, base):
     """markdownlint-cli2 실행 결과 에러 텍스트. 통과·미설치·타임아웃이면 빈 문자열"""
     binary = shutil.which(LINT_BINARY)
     if not binary:  # 미설치면 관여하지 않는다
         return ""
     try:
         result = subprocess.run(
-            [binary, path],
+            [binary, *_config_args(base), path],
+            cwd=base,  # cli2 는 설정을 cwd 에서 찾는다 — 판정 기준을 고정한다
             capture_output=True,
             text=True,
             timeout=LINT_TIMEOUT_SEC,
@@ -68,6 +92,15 @@ def _lint(path):
     except Exception:
         return ""
     return "" if result.returncode == 0 else result.stderr.strip()
+
+
+def _config_args(base):
+    """프로젝트에 설정이 있으면 빈 튜플(그게 이긴다), 없으면 이 저장소의 기본값"""
+    if any(os.path.exists(os.path.join(base, name)) for name in CONFIG_NAMES):
+        return ()
+    if not os.path.exists(DEFAULT_CONFIG):
+        return ()
+    return ("--config", DEFAULT_CONFIG)
 
 
 if __name__ == "__main__":
