@@ -1,8 +1,15 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from app.constants import STATE_ENDED, STATUS_DOING, STATUS_DONE, UNASSIGNED_LABEL
+from app.constants import (
+    OUTCOME_REVIEW,
+    STATE_ENDED,
+    STATUS_DOING,
+    STATUS_DONE,
+    UNASSIGNED_LABEL,
+)
 from app.errors import Validation
+from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
@@ -65,6 +72,17 @@ class BoardTreeTest(unittest.TestCase):
     def test_todos_carry_subtasks(self):
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         self.assertEqual(group["todos"][0]["subtasks"][0]["title"], "k6 시나리오")
+
+    def test_todos_default_to_not_autorun_locked(self):
+        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
+        self.assertFalse(group["todos"][0]["autorun_locked"])
+
+    def test_todo_pending_review_is_autorun_locked(self):
+        run = autorun_repo.start_run(self.con, self.todo["id"], "sess", "job")
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
+        todo = next(t for t in group["todos"] if t["id"] == self.todo["id"])
+        self.assertTrue(todo["autorun_locked"])
 
     def test_counts_reflect_done_state(self):
         subtask = subtask_repo.list_by_todo(self.con, self.todo["id"])[0]
