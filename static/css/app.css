@@ -595,14 +595,19 @@ button:disabled { color: var(--line); cursor: default; }
   cursor: pointer;
 }
 #autorun-list .scope { min-width: 12em; font-weight: 600; }
-#autorun-list .prompt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-/* 워크트리·포트는 폭이 들쭉날쭉해 자리를 못 박으면 상태·경과 칸이 줄마다 흔들린다 */
+/* 남는 폭을 이 칸이 다 먹는다 — 워크트리 칸을 넓히면 그만큼 여기가 줄어든다 */
+#autorun-list .prompt {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--muted);
+}
+/* 워크트리·포트는 폭이 들쭉날쭉해 자리를 못 박으면 상태·경과 칸이 줄마다 흔들린다.
+   워크트리 이름은 `worktree-click-todo-detail` 처럼 길어 20em 은 줘야 안 잘린다 */
 #autorun-list .wt {
-  flex: none; width: 10em; overflow: hidden; text-overflow: ellipsis;
+  flex: none; width: 20em; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--muted); font-size: var(--fs-sm);
 }
+/* 포트 알약은 워크트리 탭의 .wt-port 를 그대로 쓴다 — 같은 것이 두 곳에서 다르면 안 된다 */
 #autorun-list .ports { flex: none; width: 6em; display: flex; gap: var(--sp-4); }
-#autorun-list .port { color: var(--accent); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 #autorun-list .badge { flex: none; font-weight: 600; font-size: var(--fs-sm); }
 #autorun-list .outcome-done { color: var(--good); }
 /* 확인 필요만 버튼이다. 줄 안에서 글자처럼 보이게 기본 버튼 외양을 걷어낸다 */

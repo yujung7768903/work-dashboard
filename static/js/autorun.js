@@ -84,7 +84,7 @@ function runRow(run) {
 
 // 워크트리 탭과 같은 규칙 — 포트를 누르면 그 서버가 새 탭에서 열린다
 function portLink(port) {
-  const link = element("a", "port", `:${port}`);
+  const link = element("a", "wt-port", `:${port}`);
   link.href = `http://localhost:${port}`;
   link.target = "_blank";
   link.rel = "noopener";
