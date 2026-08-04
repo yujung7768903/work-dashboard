@@ -590,25 +590,23 @@ button:disabled { color: var(--line); cursor: default; }
 /* 자율 실행 기록이 없으면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
 #autorun-list:empty { display: none; }
 /* 어느 줄이든 눌러서 상세 팝업을 연다 — 세션 목록과 같은 규칙 */
+/* 표처럼 칸 시작 위치가 줄마다 같아야 한다. flex 로는 안 된다 — 워크스페이스 이름이
+   길거나 상태 글자('확인 필요' ↔ '완료')가 길면 그만큼 뒤 칸이 밀린다. 격자로 못박는다:
+   워크스페이스 / 할일(남는 폭) / 워크트리 / 포트 / 상태 / 경과 */
 #autorun-list li {
-  display: flex; gap: var(--sp-8); align-items: baseline; padding: var(--sp-4) 0;
+  display: grid;
+  grid-template-columns: 12em minmax(0, 1fr) 20em 6em 5em 4em;
+  gap: var(--sp-8); align-items: baseline; padding: var(--sp-4) 0;
   cursor: pointer;
 }
-#autorun-list .scope { min-width: 12em; font-weight: 600; }
-/* 남는 폭을 이 칸이 다 먹는다 — 워크트리 칸을 넓히면 그만큼 여기가 줄어든다 */
-#autorun-list .prompt {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; color: var(--muted);
-}
-/* 워크트리·포트는 폭이 들쭉날쭉해 자리를 못 박으면 상태·경과 칸이 줄마다 흔들린다.
-   워크트리 이름은 `worktree-click-todo-detail` 처럼 길어 20em 은 줘야 안 잘린다 */
-#autorun-list .wt {
-  flex: none; width: 20em; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; color: var(--muted); font-size: var(--fs-sm);
-}
+/* 칸을 넘치는 글자는 줄바꿈 없이 잘라낸다 — 한 줄 높이가 줄마다 달라지면 표가 아니다 */
+#autorun-list li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#autorun-list .scope { font-weight: 600; }
+#autorun-list .prompt { color: var(--muted); }
+#autorun-list .wt { color: var(--muted); font-size: var(--fs-sm); }
 /* 포트 알약은 워크트리 탭의 .wt-port 를 그대로 쓴다 — 같은 것이 두 곳에서 다르면 안 된다 */
-#autorun-list .ports { flex: none; width: 6em; display: flex; gap: var(--sp-4); }
-#autorun-list .badge { flex: none; font-weight: 600; font-size: var(--fs-sm); }
+#autorun-list .ports { display: flex; gap: var(--sp-4); }
+#autorun-list .badge { font-weight: 600; font-size: var(--fs-sm); }
 #autorun-list .outcome-done { color: var(--good); }
 /* 확인 필요만 버튼이다. 줄 안에서 글자처럼 보이게 기본 버튼 외양을 걷어낸다 */
 #autorun-list button.badge {
@@ -622,7 +620,7 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-list .outcome-requested { color: var(--warn); }
 #autorun-list .outcome-running { color: var(--accent); }
 #autorun-list .age {
-  flex: none; color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+  color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
 }
 
 /* ── 세션 패널 ────────────────────────────────────────────────────────────── */
