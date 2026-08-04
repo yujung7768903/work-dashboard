@@ -32,8 +32,11 @@ function paint(state, runs) {
   document.getElementById("autorun-toggle").checked = Boolean(state.enabled);
   // 주기만으로는 크론이 실제로 돌고 있는지 알 수 없다. 마지막 tick 이 5분을 한참
   // 넘겼으면 크론이 죽은 것이다 — 목록의 실행 이력과 달리 tick 은 여기서만 보인다
+  // 켜져 있는데 아무것도 안 뜨는 이유(후보 없음·사용률·워킹트리 더러움)는 tick 만 안다.
+  // 사유가 없으면 붙이지 않는다 — 이 열을 받기 전 DB 는 NULL 이다
+  const reason = state.last_tick_reason ? ` · ${state.last_tick_reason}` : "";
   document.getElementById("autorun-cycle").textContent = state.last_tick_at
-    ? `${TICK_LABEL} | 마지막 수행 ${formatAge(state.last_tick_at)} 전`
+    ? `${TICK_LABEL} | 마지막 수행 ${formatAge(state.last_tick_at)} 전${reason}`
     : `${TICK_LABEL} | ${NO_TICK}`;
 
   const list = document.getElementById("autorun-list");

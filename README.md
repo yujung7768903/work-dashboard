@@ -257,12 +257,14 @@ python3 dash.py autorun-request "<이유>"   # 판단 보류 — 자율 세션�
 | autorun off | `autorun_state.enabled` | 시작 안 함 (기본) |
 | 이미 자율 잡이 돎 | `autorun_runs.ended_at IS NULL` | 시작 안 함 (동시 1건) |
 | 5시간 창 사용률 ≥ `USAGE_CRITICAL_PCT` | 사이드카 `RATE_LIMITS_PATH` | 다음 tick 재확인 |
-| 사용률 데이터가 낡음 | `USAGE_STALE_SECONDS` | 시작 안 함 — 모르면 안 돈다 |
+| 사용률 데이터가 아예 없음 | 사이드카에 `five_hour.used_percentage` 가 없음 | 시작 안 함 — 모르면 안 돈다 |
 | 후보 없음 | `planning.next_todo` | autorun off |
 | 작업 위치를 모름 | 그 워크스페이스에서 돈 세션이 없음 | 시작 안 함 |
 | 작업 위치가 더러움 | `git status --porcelain` | 시작 안 함 |
 
 사용률은 `usage.snapshot()` 이 아니라 사이드카를 직접 읽는다 — 그 함수는 조회하면서 `usage_samples` 에 한 줄 적립하므로 tick 이 5분마다 부르면 추이 그래프에 tick 이 섞인다.
+
+사이드카가 **낡았다는 이유로는 막지 않는다.** 그 파일은 statusline 이 그려질 때만 갱신되므로(Claude Code 가 사용률을 statusline 페이로드로만 넘긴다) 대화창이 없는 동안은 늘 낡는다. 낡음을 금지 조건으로 뒀더니 자율 실행이 필요한 시간대에 영구히 안 돌았다. 대신 마지막 값으로 판단하고, 그 값의 5시간 창이 `resets_at` 을 지났으면 0으로 본다 — 한도에 닿은 채 찍힌 사진 한 장으로 밤새 막히지 않게.
 
 작업 위치는 **그 워크스페이스에서 세션이 가장 많이 돈 저장소**다(`sessions.cwd_counts_by_workspace`). 워크트리 경로는 `/.claude/worktrees/` 앞에서 잘라 본 저장소로 접고, `.git` 이 없는 위치(홈·scratch)는 걸러낸다. "가장 최근" 으로 골랐더니 다른 저장소에서 이 워크스페이스 할일을 하나 잡은 세션 때문에 1위가 그쪽으로 넘어갔다.
 

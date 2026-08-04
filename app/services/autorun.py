@@ -28,7 +28,6 @@ from app.constants import (
     RATE_LIMITS_PATH,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
-    USAGE_STALE_SECONDS,
 )
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
@@ -56,7 +55,7 @@ WORKSPACE_LABELS = (
 REASON_OFF = "autorun 이 꺼져 있음"
 REASON_RUNNING = "이미 자율 잡이 돌고 있음"
 REASON_USAGE = "5시간 창 사용률이 한도에 닿음"
-REASON_STALE = "사용률 데이터가 낡음 — 모르면 안 돈다"
+REASON_NO_USAGE = "사용률 데이터가 아예 없음 — 모르면 안 돈다"
 REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
 REASON_DIRTY = "작업 위치에 커밋 안 된 변경이 있음"
@@ -69,6 +68,7 @@ def tick(con, dry_run=False, launcher=None):
     closed = reconcile(con)
     decision = judge(con)
     decision["closed"] = closed
+    autorun_repo.set_tick_reason(con, decision["reason"])
     if dry_run or decision["reason"] != REASON_READY:
         return decision
     launched = (launcher or launch)(
@@ -94,8 +94,9 @@ def judge(con):
         return {"reason": usage["reason"], "state": state, "usage": usage}
     picked = pick(con)
     if not picked:
-        autorun_repo.set_enabled(con, False)
-        return {"reason": REASON_NO_TODO, "state": autorun_repo.state(con)}
+        # 끄지 않는다 — 후보가 비는 것은 일시적이다. 다른 세션이 그 할일을 잡고 있기만
+        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다
+        return {"reason": REASON_NO_TODO, "state": state}
     cwd = target_cwd(con, picked["workspace"])
     if not cwd:
         return dict(picked, reason=REASON_NO_CWD, state=state)
@@ -133,25 +134,41 @@ def eligible(con):
 
 
 def usage_gate(limits_path=RATE_LIMITS_PATH):
-    """사이드카를 읽어 5시간 창만 본다.
+    """사이드카를 읽어 5시간 창만 본다. 낡았어도 마지막 값으로 판단한다.
+
+    이 파일은 statusline 이 그려질 때만 갱신된다(usage.py 참고) — Claude Code 가 사용률을
+    statusline 페이로드로만 넘기기 때문이다. 그래서 대화창이 없는 동안은 늘 낡는다.
+    낡음을 이유로 막았더니 자율 실행이 필요한 시간대(사람 없는 시간)에 영구히 안 돌았다.
+
+    한도에 닿은 채 찍힌 사진 한 장으로 밤새 막히지도 않아야 하므로, 그 사진의 5시간
+    창이 이미 리셋됐으면 0으로 본다. 값이 아예 없을 때만 막는다.
 
     usage.snapshot() 을 쓰지 않는 이유 — 그 함수는 조회하면서 usage_samples 에 한 줄
     적립하므로 tick 이 5분마다 부르면 추이 그래프에 tick 이 섞인다
     """
     limits = _read_json(limits_path) or {}
-    stamp = limits.get("timestamp")
-    if not isinstance(stamp, (int, float)):
-        return {"reason": REASON_STALE, "pct": None, "age": None}
-    age = max(0, int(time.time() - stamp / MS_PER_SECOND))
-    if age > USAGE_STALE_SECONDS:
-        return {"reason": REASON_STALE, "pct": None, "age": age}
     window = limits.get(FIVE_HOUR_KEY)
-    pct = window.get("used_percentage") if isinstance(window, dict) else None
-    if not isinstance(pct, (int, float)):
-        return {"reason": REASON_STALE, "pct": None, "age": age}
+    last = window.get("used_percentage") if isinstance(window, dict) else None
+    if not isinstance(last, (int, float)):
+        return {"reason": REASON_NO_USAGE, "pct": None, "age": None}
+    age = _usage_age(limits.get("timestamp"))
+    pct = 0 if _window_reset(window) else last
     if pct >= USAGE_CRITICAL_PCT:
         return {"reason": REASON_USAGE, "pct": pct, "age": age}
     return {"reason": "", "pct": pct, "age": age}
+
+
+def _usage_age(stamp):
+    """사진이 찍힌 뒤 지난 초. 판정은 막지 않고 얼마나 낡았는지만 알려준다"""
+    if not isinstance(stamp, (int, float)):
+        return None
+    return max(0, int(time.time() - stamp / MS_PER_SECOND))
+
+
+def _window_reset(window):
+    """그 사진 이후 5시간 창이 새로 시작됐는지. resets_at 은 초 단위다"""
+    resets_at = window.get("resets_at")
+    return isinstance(resets_at, (int, float)) and time.time() >= resets_at
 
 
 def target_cwd(con, workspace):

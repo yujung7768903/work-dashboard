@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS autorun_state(
     enabled INTEGER NOT NULL DEFAULT 0,
     blocked_streak INTEGER NOT NULL DEFAULT 0,
     last_tick_at TEXT,
+    last_tick_reason TEXT,
     updated_at TEXT NOT NULL
 );
 -- 실행 1건 = 할일 1건. ended_at 이 NULL 이면 아직 도는 잡이라 다음 tick 이 시작하지 않는다
@@ -167,6 +168,7 @@ def connect(path=None):
     _add_precondition_columns(con)
     _add_usage_account_column(con)
     _add_requested_note_column(con)
+    _add_tick_reason_column(con)
     _drop_session_workspace_column(con)
     _seed_categories(con)
     return con
@@ -256,6 +258,14 @@ def _add_requested_note_column(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(autorun_runs)")}
     if "requested_note" not in columns:
         con.execute("ALTER TABLE autorun_runs ADD COLUMN requested_note TEXT")
+    con.commit()
+
+
+def _add_tick_reason_column(con):
+    """마지막 tick 의 판정 사유를 뒤늦게 붙임. 이 열을 받기 전 상태는 NULL 로 남는다"""
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(autorun_state)")}
+    if "last_tick_reason" not in columns:
+        con.execute("ALTER TABLE autorun_state ADD COLUMN last_tick_reason TEXT")
     con.commit()
 
 

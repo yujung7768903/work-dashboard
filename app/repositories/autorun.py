@@ -56,6 +56,17 @@ def touch_tick(con):
         )
 
 
+def set_tick_reason(con, reason):
+    """그 tick 이 왜 그렇게 판정했는지. 켜져 있는데 안 도는 이유를 화면에서 보려면 필요하다"""
+    state(con)
+    with transaction(con):
+        con.execute(
+            "UPDATE autorun_state SET last_tick_reason=?, updated_at=? WHERE id=?",
+            (reason, now(), STATE_ROW_ID),
+        )
+    return state(con)
+
+
 def bump_blocked_streak(con):
     """연속 blocked 하나 더"""
     current = state(con)
