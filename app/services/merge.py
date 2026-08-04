@@ -21,6 +21,8 @@ DEFAULT_TEST_COMMAND = "python3 -m tests"
 # 병합 커밋 제목에서 `feat: ` 같은 접두는 중복이라 뗀다
 COMMIT_TYPE_PREFIX = re.compile(r"^[a-z]+(\([^)]*\))?: ")
 RAN_TESTS = re.compile(r"Ran (\d+) tests?")
+# 해결했다고 스테이징했는데 이 표시가 그대로 남아 있는 실수를 막는다
+CONFLICT_MARKER = "<<<<<<< "
 # 실패 로그는 꼬리만. 전문을 올리면 중단 사유가 묻힌다
 TAIL_LINES = 15
 
@@ -45,7 +47,14 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
     if branch == target:
         return _aborted(steps, f"워크트리가 {target} 를 그대로 보고 있어 병합할 것이 없음")
 
-    for label, path in (("워크트리", root), ("메인 체크아웃", main_root)):
+    # 이어받는 중이면 워크트리는 병합 상태라 당연히 더럽다 — 그것을 더럽다고 막으면
+    # 충돌을 해결해도 진행할 방법이 없다
+    resuming = _merge_in_progress(root)
+    checks = [("메인 체크아웃", main_root)] if resuming else [
+        ("워크트리", root),
+        ("메인 체크아웃", main_root),
+    ]
+    for label, path in checks:
         # 추적 중인 변경만 본다. 미추적 파일은 병합이 건드리지 않고, 잔여물(빈 sqlite,
         # 워크트리 디렉토리)로 병합이 영구히 막히면 그게 더 큰 문제다
         dirty = _git_out(path, "status", "--porcelain", "--untracked-files=no")
@@ -56,17 +65,20 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
     if not ahead:
         return _aborted(steps, f"{target} 에 없는 커밋이 없음 — 병합할 것이 없음")
 
-    behind = _subjects(root, f"HEAD..{target}")
-    if behind:
-        ok, out = _git(root, "merge", target, "--no-edit")
-        if not ok:
-            return _aborted(
-                steps,
-                f"{target} 를 워크트리로 들이는 중 충돌 — 해결하고 다시 실행할 것:\n{_tail(out)}",
-            )
-        steps.append((f"{target} 들이기", f"{len(behind)}개 커밋"))
+    if resuming:
+        step, aborted = _resume(root, target)
+        steps.append(step)
+        if aborted:
+            return _aborted(steps, aborted)
     else:
-        steps.append((f"{target} 들이기", "이미 최신"))
+        behind = _subjects(root, f"HEAD..{target}")
+        if behind:
+            ok, _ = _git(root, "merge", target, "--no-edit")
+            if not ok:
+                return _aborted(steps, _conflict_reason(root, target))
+            steps.append((f"{target} 들이기", f"{len(behind)}개 커밋"))
+        else:
+            steps.append((f"{target} 들이기", "이미 최신"))
 
     command = _test_command(root, test, no_test)
     if command:
@@ -95,6 +107,57 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
 
 def _aborted(steps, reason):
     return {"steps": steps, "aborted": reason, "branch": "", "target": "", "release": None}
+
+
+def _resume(root, target):
+    """해결이 끝난 병합을 이어받아 커밋. (단계, 중단사유) 를 돌려준다.
+
+    충돌은 사람에게 넘기지 않는다 — 판단은 이 커맨드를 부른 쪽(LLM)이 하고, 여기서는
+    해결이 실제로 끝났는지만 기계적으로 확인한다. 양쪽 기능이 살아 있는지는 이어서 도는
+    테스트가 본다.
+    """
+    label = f"{target} 들이기"
+    unresolved = _unresolved(root)
+    if unresolved:
+        return (label, "충돌 미해결"), _conflict_reason(root, target)
+    left = _files_adding_markers(root)
+    if left:
+        return (label, "충돌 표시 남음"), (
+            "해결이 끝나지 않았음 — 충돌 표시(<<<<<<<)를 새로 들여온 파일:\n"
+            + "\n".join(left)
+        )
+    ok, out = _git(root, "commit", "--no-edit")
+    if not ok:
+        return (label, "커밋 실패"), f"해결분을 커밋하지 못함:\n{_tail(out)}"
+    return (label, "충돌 해결분 커밋"), ""
+
+
+def _conflict_reason(root, target):
+    """무엇을 어떻게 해결해야 하는지까지 적는다. 읽는 쪽이 판단해야 하므로 파일 목록이 핵심"""
+    files = _unresolved(root) or ["(git status 로 확인)"]
+    return (
+        f"{target} 를 워크트리로 들이는 중 충돌. 아래 파일을 해결하고 같은 명령을 다시 실행할 것"
+        f" — 한쪽을 버리지 않고 양쪽 기능이 모두 살아 있게, 최신 {target} 기준으로 맞춘다:\n"
+        + "\n".join(files)
+    )
+
+
+def _merge_in_progress(root):
+    """병합 커밋 전에 멈춘 상태. 워크트리마다 다른 git 디렉토리를 봐야 한다"""
+    path = _git_out(root, "rev-parse", "--git-path", "MERGE_HEAD")
+    if not path:
+        return False
+    return os.path.exists(path if os.path.isabs(path) else os.path.join(root, path))
+
+
+def _unresolved(root):
+    """아직 해결되지 않은(U) 파일"""
+    return _git_out(root, "diff", "--name-only", "--diff-filter=U").splitlines()
+
+
+def _files_adding_markers(root):
+    """충돌 표시를 새로 들여온 파일. 원래 그 표시가 있던 문서(-S 는 개수 변화만 본다)는 걸리지 않는다"""
+    return _git_out(root, "diff", "--cached", "-S", CONFLICT_MARKER, "--name-only").splitlines()
 
 
 def _test_command(root, test, no_test):

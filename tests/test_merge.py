@@ -118,11 +118,50 @@ class MergeTest(unittest.TestCase):
         result = self._merge(no_test=True)
         self.assertIn("없는 커밋이 없음", result["aborted"])
 
-    def test_conflict_leaves_the_worktree_for_a_human(self):
-        commit(self.worktree, "same.txt", "feat: 내 쪽", body="mine")
-        commit(self.repo, "same.txt", "fix: master 쪽", body="theirs")
+    def _conflict(self):
+        """양쪽이 같은 파일을 고쳐 병합이 멈춘 상태를 만든다"""
+        commit(self.worktree, "same.txt", "feat: 내 쪽", body="mine\n")
+        commit(self.repo, "same.txt", "fix: master 쪽", body="theirs\n")
+        return self._merge(no_test=True)
+
+    def test_conflict_reports_the_files_to_resolve(self):
+        """사람에게 넘기지 않고 해결할 수 있게 파일 목록과 방침을 준다"""
+        result = self._conflict()
+        self.assertIn("same.txt", result["aborted"])
+        self.assertIn("양쪽 기능이 모두 살아 있게", result["aborted"])
+        self.assertEqual(["fix: master 쪽", "chore: 초기"], self._master_subjects())
+
+    def test_resolved_conflict_is_resumed_on_the_next_run(self):
+        self._conflict()
+        with open(os.path.join(self.worktree, "same.txt"), "w") as handle:
+            handle.write("mine\ntheirs\n")  # 양쪽 다 살린 해결
+        git(self.worktree, "add", "same.txt")
         result = self._merge(no_test=True)
-        self.assertIn("충돌", result["aborted"])
+        self.assertEqual("", result["aborted"])
+        self.assertIn(("master 들이기", "충돌 해결분 커밋"), result["steps"])
+        self.assertEqual("merge: 내 쪽", self._master_subjects()[0])
+
+    def test_still_unresolved_conflict_aborts_again_with_the_file_list(self):
+        self._conflict()
+        result = self._merge(no_test=True)
+        self.assertIn("same.txt", result["aborted"])
+        self.assertEqual(["fix: master 쪽", "chore: 초기"], self._master_subjects())
+
+    def test_staged_conflict_markers_abort(self):
+        """`<<<<<<<` 를 그대로 두고 add 한 경우. 테스트가 못 잡는 실수라 기계로 막는다"""
+        self._conflict()
+        git(self.worktree, "add", "same.txt")
+        result = self._merge(no_test=True)
+        self.assertIn("충돌 표시", result["aborted"])
+        self.assertEqual(["fix: master 쪽", "chore: 초기"], self._master_subjects())
+
+    def test_resumed_merge_still_runs_the_test_before_master(self):
+        self._conflict()
+        with open(os.path.join(self.worktree, "same.txt"), "w") as handle:
+            handle.write("mine\ntheirs\n")
+        git(self.worktree, "add", "same.txt")
+        result = self._merge(test="exit 1")
+        self.assertIn("테스트가 실패해", result["aborted"])
         self.assertEqual(["fix: master 쪽", "chore: 초기"], self._master_subjects())
 
     def test_given_message_wins(self):
