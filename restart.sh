@@ -11,13 +11,22 @@ EXIT_WAIT_TRIES=25 # 0.2초씩 — 포트가 풀리기 전에 새로 띄우면 b
 here=$(pwd -P) # lsof 는 심볼릭 링크를 푼 경로를 주므로 비교할 쪽도 풀어둔다
 args=("$@")
 for pid in $(pgrep -f 'python3 server\.py' || true); do
-  # macOS 에는 /proc 이 없다 — cwd·명령줄을 lsof·ps 로 읽는다 (worktrees.py 와 같은 방식)
-  cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
+  # /proc 이 있으면 그걸로, 없으면(macOS) lsof·ps — release.py 와 같은 관례
+  if [ -e "/proc/$pid/cwd" ]; then
+    cwd=$(readlink -f "/proc/$pid/cwd")
+  else
+    cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
+  fi
   [ "$cwd" = "$here" ] || continue
   # 인자를 안 줬으면 죽는 서버의 인자를 물려받는다 — 포트를 매번 다시 적지 않게
   if [ ${#args[@]} -eq 0 ]; then
+    if [ -r "/proc/$pid/cmdline" ]; then
+      cmd=$(tr '\0' ' ' <"/proc/$pid/cmdline")
+    else
+      cmd=$(ps -p "$pid" -o command= || true)
+    fi
     # bash 3.2 에는 mapfile 이 없다. 인자에 공백이 없으니 IFS 분리로 충분하다
-    read -r -a old <<<"$(ps -p "$pid" -o command=)"
+    read -r -a old <<<"$cmd"
     args=("${old[@]:2}") # `python3 server.py` 다음부터가 인자
   fi
   kill "$pid"
