@@ -10,6 +10,12 @@ HOOK = os.path.join(ROOT, "hooks", "md_lint.py")
 
 BAD_MD = "# Title\n\n## Title\n- item\n-  item2\n"
 GOOD_MD = "# Title\n\nSome text.\n"
+# 다른 규칙은 다 지키고 줄 길이(MD013)만 80 자를 넘는 문서.
+# MD013 은 공백 없는 줄은 줄바꿈이 불가능하다고 보고 넘기므로 실제 문장이어야 한다
+LONG_LINE_MD = (
+    "# 메모\n\n오늘 논의한 내용은 인증 흐름을 어떻게 바꿀지, 그리고 그 변경이 기존 세션"
+    " 관리 코드에 어떤 영향을 주는지에 대한 것이었고 결론은 다음 주에 다시 보기로 했다.\n"
+)
 
 
 class MdLintTest(unittest.TestCase):
@@ -73,6 +79,41 @@ class MdLintTest(unittest.TestCase):
             [sys.executable, HOOK], input="{not json", capture_output=True, text=True
         )
         self.assertEqual(result.returncode, 0)
+
+    def test_long_line_passes_in_a_project_without_config(self):
+        """전역 훅이라 설정 없는 프로젝트에서도 돈다. 그때 이 저장소의 설정(MD013 off)을
+        물려받지 않으면 긴 한글 문장마다 저장이 막힌다"""
+        self._write("long.md", LONG_LINE_MD)
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "long.md"},
+            "cwd": self.tmpdir,  # .markdownlint.json 이 없는 디렉토리
+        }
+        result = subprocess.run(
+            [sys.executable, HOOK],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_project_config_wins_over_the_default(self):
+        """프로젝트가 자기 설정을 갖고 있으면 그게 이긴다 — MD013 을 켠 프로젝트는 막혀야 한다"""
+        self._write(".markdownlint.json", '{"default": true}')
+        self._write("long.md", LONG_LINE_MD)
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "long.md"},
+            "cwd": self.tmpdir,
+        }
+        result = subprocess.run(
+            [sys.executable, HOOK],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("MD013", result.stderr)
 
     def test_relative_path_resolved_against_cwd(self):
         self._write("bad.md", BAD_MD)
