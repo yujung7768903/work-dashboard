@@ -613,6 +613,8 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-list .outcome-review { color: var(--soft); }
 #autorun-list .outcome-failed { color: var(--danger); }
 #autorun-list .outcome-blocked { color: var(--warn); }
+/* 요청도 사람이 볼 때까지 후보에서 빠져 있다는 점에서 막힘과 같은 계열 색을 쓴다 */
+#autorun-list .outcome-requested { color: var(--warn); }
 #autorun-list .outcome-running { color: var(--accent); }
 #autorun-list .age {
   flex: none; color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;

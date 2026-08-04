@@ -240,6 +240,15 @@ def _build_parser():
     )
     autorun_prompt.set_defaults(handler=_cmd_autorun_prompt)
 
+    autorun_request = sub.add_parser(
+        "autorun-request", help="판단 보류 — 자율 수행을 멈추고 사람 결정을 요청"
+    )
+    _add_session_arg(autorun_request)
+    autorun_request.add_argument(
+        "note", help="무엇이 필요한지 한 문장 (기획 공백·방향 미정·토큰/Jira/문서 위치 등)"
+    )
+    autorun_request.set_defaults(handler=_cmd_autorun_request)
+
     return parser
 
 
@@ -714,6 +723,11 @@ def _cmd_autorun_prompt(con, args):
     if not cwd:
         raise Validation(autorun.REASON_NO_CWD + " — --cwd 로 지정할 것")
     print(autorun.build_prompt(todo, workspace, cwd))
+
+
+def _cmd_autorun_request(con, args):
+    run = autorun_repo.mark_requested(con, args.session, args.note)
+    print(f"요청 등록: 할일 {run['todo_id']} (실행 #{run['id']}) — 자율 수행 후보에서 빠짐")
 
 
 def _emit_json(payload):

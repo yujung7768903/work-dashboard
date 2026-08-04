@@ -143,8 +143,14 @@ AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun �
 # 남기므로, 잡이 끝난 시점의 그 작업은 '끝난 것'이 아니라 '사람이 보고 병합을 판정할 것'이다.
 # done 은 사람이 확인 필요 배지를 눌러 내렸을 때만 붙는다 — 진행 중과 확인 필요를 같은
 # 배지로 뭉개면 사람이 무엇을 봐야 하는지 목록에서 알 수 없다
-AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked")
-OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_FAILED, OUTCOME_BLOCKED = AUTORUN_OUTCOMES
+# requested(요청)는 blocked 와 달리 실패가 아니라 세션이 스스로 멈춘 것이다 — 기획이
+# 비었거나, 방향이 여럿인데 note 에 안 정해져 있거나, 토큰·Jira·문서 위치가 없어서
+# 추측 대신 사람 판단을 기다린다. blocked 처럼 다음 tick 후보에서 빠지지만 실패 횟수에는
+# 안 세고 blocked_streak 도 안 건드린다 — 오류가 아니라 의도적인 정지라서다
+AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked", "requested")
+OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_FAILED, OUTCOME_BLOCKED, OUTCOME_REQUESTED = (
+    AUTORUN_OUTCOMES
+)
 # --bg 잡의 상태 파일. 이 값들이면 잡이 끝난 것으로 보고 실행 기록을 닫는다.
 # blocked(리밋)는 열어 둔다 — resume-limited-jobs.py 가 다시 밀어 준다
 AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
