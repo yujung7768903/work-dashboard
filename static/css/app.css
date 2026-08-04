@@ -596,6 +596,13 @@ button:disabled { color: var(--line); cursor: default; }
 }
 #autorun-list .scope { min-width: 12em; font-weight: 600; }
 #autorun-list .prompt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+/* 워크트리·포트는 폭이 들쭉날쭉해 자리를 못 박으면 상태·경과 칸이 줄마다 흔들린다 */
+#autorun-list .wt {
+  flex: none; width: 10em; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--muted); font-size: var(--fs-sm);
+}
+#autorun-list .ports { flex: none; width: 6em; display: flex; gap: var(--sp-4); }
+#autorun-list .port { color: var(--accent); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 #autorun-list .badge { flex: none; font-weight: 600; font-size: var(--fs-sm); }
 #autorun-list .outcome-done { color: var(--good); }
 /* 확인 필요만 버튼이다. 줄 안에서 글자처럼 보이게 기본 버튼 외양을 걷어낸다 */

@@ -25,7 +25,15 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link, session_todo, usage, worktrees
+from app.services import (
+    autorun,
+    board,
+    planning,
+    session_link,
+    session_todo,
+    usage,
+    worktrees,
+)
 
 STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
@@ -127,7 +135,7 @@ def _route_get(con, head, item_id, query):
     if head == "worktrees":
         return worktrees.overview(con)
     if head == "autorun":
-        return {"state": autorun_repo.state(con), "runs": autorun_repo.recent_with_todos(con)}
+        return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -161,7 +169,7 @@ def _route_patch(con, head, item_id, body):
     if head == "autorun":
         # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
         state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
-        return {"state": state, "runs": autorun_repo.recent_with_todos(con)}
+        return {"state": state, "runs": autorun.panel_runs(con)}
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":
