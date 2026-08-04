@@ -157,3 +157,5 @@ AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
 AUTORUN_JOB_TERMINAL = ("done", "failed", "stopped")
 AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
 AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다
+# 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
+MERGE_TEST_TIMEOUT_SEC = 600

@@ -235,16 +235,18 @@ def _real(path):
     return os.path.realpath(path) if path else path
 
 
+def repo_root_of(cwd):
+    """그 위치가 속한 저장소의 루트. 워크트리 안이면 본 저장소로 올라간다. 못 읽으면 빈 문자열"""
+    if not os.path.isdir(cwd):
+        return ""
+    # 본 저장소는 '.git', 워크트리는 본 저장소의 절대경로를 돌려준다
+    common = _git(cwd, "rev-parse", "--git-common-dir").strip()
+    return os.path.dirname(os.path.abspath(os.path.join(cwd, common))) if common else ""
+
+
 def _repo_root(cwds):
-    """세션이 남긴 위치에서 저장소 루트. 워크트리 안이면 본 저장소로 올라간다"""
-    for cwd in cwds:
-        if not os.path.isdir(cwd):
-            continue
-        # 본 저장소는 '.git', 워크트리는 본 저장소의 절대경로를 돌려준다
-        common = _git(cwd, "rev-parse", "--git-common-dir").strip()
-        if common:
-            return os.path.dirname(os.path.abspath(os.path.join(cwd, common)))
-    return ""
+    """세션이 남긴 위치들 중 처음으로 저장소가 잡히는 곳의 루트"""
+    return next((root for root in map(repo_root_of, cwds) if root), "")
 
 
 def _git(root, *args):

@@ -22,7 +22,16 @@ from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
 from app.repositories import autorun as autorun_repo
-from app.services import autorun, board, history, planning, release, session_link, usage
+from app.services import (
+    autorun,
+    board,
+    history,
+    merge,
+    planning,
+    release,
+    session_link,
+    usage,
+)
 
 NONE_LITERAL = "none"
 REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
@@ -193,6 +202,25 @@ def _build_parser():
         " 없으면 ended 로 등록한다. 할일 상태는 바꾸지 않는다",
     )
     link_todo.set_defaults(handler=_cmd_link_todo)
+
+    merge_cmd = sub.add_parser(
+        "merge", help="워크트리 브랜치를 master 로 병합 (상태 확인·테스트·해제까지 한 번에)"
+    )
+    _add_session_arg(merge_cmd)
+    merge_cmd.add_argument("--worktree", default=None, help="기본값은 세션의 작업 위치")
+    merge_cmd.add_argument(
+        "--message", default=None, help="병합 커밋 제목. 기본값은 브랜치 첫 커밋 제목"
+    )
+    merge_cmd.add_argument(
+        "--test",
+        default=None,
+        help=f"테스트 명령. 기본값은 {merge.DEFAULT_TEST_ENTRY} 가 있으면"
+        f" '{merge.DEFAULT_TEST_COMMAND}'",
+    )
+    merge_cmd.add_argument(
+        "--no-test", action="store_true", help="테스트를 돌리지 않고 병합"
+    )
+    merge_cmd.set_defaults(handler=_cmd_merge)
 
     finish = sub.add_parser("finish", help="병합 후 리소스 해제 (할일 done·서버 종료)")
     _add_session_arg(finish)
@@ -515,9 +543,31 @@ def _todos_in_scope(con, args):
     ]
 
 
+def _cmd_merge(con, args):
+    """병합 파이프라인. 어디까지 갔는지 찍고, 중단 사유가 있으면 그것으로 실패한다"""
+    result = merge.merge(
+        con,
+        args.session,
+        worktree=args.worktree,
+        message=args.message,
+        test=args.test,
+        no_test=args.no_test,
+    )
+    for label, detail in result["steps"]:
+        # 중단 사유는 stderr 로 나간다 — 여기서 흘려보내지 않으면 사유가 단계보다 먼저 찍힌다
+        print(f"{label}: {detail}", flush=True)
+    if result["aborted"]:
+        raise Validation("중단 — " + result["aborted"])
+    _print_release(result["release"])
+
+
 def _cmd_finish(con, args):
     """병합으로 끝난 작업의 뒷정리. 워크트리 제거는 ExitWorktree 몫이라 안내만 한다"""
-    result = release.finish(con, args.session, worktree=args.worktree)
+    _print_release(release.finish(con, args.session, worktree=args.worktree))
+
+
+def _print_release(result):
+    """해제 결과. merge 와 finish 가 같은 형식으로 찍어야 읽는 쪽이 헷갈리지 않는다"""
     print("완료한 할일: " + (", ".join(str(i) for i in result["todos"]) or "(없음)"))
     for pid, command in result["killed"]:
         print(f"종료한 프로세스: {pid} {command}")
