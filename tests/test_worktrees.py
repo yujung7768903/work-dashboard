@@ -5,8 +5,11 @@ import subprocess
 import tempfile
 import unittest
 
+from app.constants import STATUS_DOING, STATUS_DONE
+from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
+from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import worktrees
@@ -68,6 +71,19 @@ class ParseTest(unittest.TestCase):
 
 def git(root, *args):
     subprocess.run(["git", "-C", root, *args], check=True, capture_output=True)
+
+
+def git_out(root, *args):
+    return subprocess.run(
+        ["git", "-C", root, *args], capture_output=True, text=True
+    ).stdout
+
+
+def write_commit(repo, name, content, message):
+    with open(os.path.join(repo, name), "w") as handle:
+        handle.write(content)
+    git(repo, "add", name)
+    git(repo, "commit", "-q", "-m", message)
 
 
 class RepoTest(unittest.TestCase):
@@ -155,6 +171,147 @@ class RepoTest(unittest.TestCase):
         """세션이 한 번도 안 돈 워크스페이스는 저장소를 모르므로 그리지 않는다"""
         groups = worktrees.overview(self.con)["groups"]
         self.assertEqual([group["id"] for group in groups], [])
+
+
+class ApplyTest(unittest.TestCase):
+    """워크트리 탭 케밥 메뉴의 "적용" — 병합·서버 종료·워크트리 및 브랜치 제거·할일 done.
+    apply 는 상태를 바꾸므로 RepoTest 와 저장소를 나눠 각 테스트마다 새로 만든다"""
+
+    def setUp(self):
+        self.con = temp_db()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+        self.repo = os.path.join(self.base, "repo")
+        os.makedirs(self.repo)
+        git(self.repo, "init", "-q", "-b", "master")
+        git(self.repo, "config", "user.email", "t@t")
+        git(self.repo, "config", "user.name", "t")
+        # 실제 저장소처럼 .claude/ 를 무시해야 워크트리 디렉토리가 메인 체크아웃에서
+        # 커밋되지 않은 변경사항으로 잡히지 않는다
+        write_commit(self.repo, ".gitignore", ".claude/\n", "기준 커밋")
+        write_commit(self.repo, "base.txt", "base\n", "base.txt 추가")
+        self.worktree = os.path.join(self.repo, ".claude", "worktrees", "feat")
+        git(self.repo, "worktree", "add", "-q", "-b", "worktree-feat", self.worktree)
+        write_commit(self.worktree, "base.txt", "워크트리 변경\n", "feat: base.txt 수정")
+        category = category_repo.list_all(self.con)[0]
+        self.workspace = workspace_repo.create(self.con, category["id"], "테스트")
+
+    def _link_todo(self, cwd, title="할일"):
+        session_id = f"sess-{title}"
+        session_repo.register(self.con, session_id, cwd=cwd)
+        todo = todo_repo.create(self.con, title, workspace_id=self.workspace["id"])
+        session_repo.link_todo(self.con, session_id, todo["id"])
+        return todo["id"]
+
+    def test_apply_merges_kills_removes_and_finishes_todo(self):
+        todo_id = self._link_todo(self.worktree)
+        result = worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertEqual("worktree-feat", result["branch"])
+        self.assertEqual([todo_id], result["finished"])
+        self.assertEqual(STATUS_DONE, todo_repo.get(self.con, todo_id)["status"])
+        self.assertFalse(os.path.isdir(self.worktree))
+        self.assertNotIn("worktree-feat", git_out(self.repo, "branch"))
+        self.assertIn("수정", git_out(self.repo, "log", "--oneline"))
+
+    def test_apply_rejects_the_base_branch(self):
+        with self.assertRaises(Validation):
+            worktrees.apply(self.con, self.repo, "master")
+
+    def test_apply_rejects_an_unknown_branch(self):
+        with self.assertRaises(NotFound):
+            worktrees.apply(self.con, self.repo, "nope")
+
+    def test_open_subtasks_block_apply_before_anything_is_touched(self):
+        """워크트리를 지운 뒤 done 처리가 막히면 되돌릴 수 없다 — 미리 확인하고 멈춰야 한다"""
+        todo_id = self._link_todo(self.worktree)
+        subtask_repo.create(self.con, todo_id, "하위 할일")
+        with self.assertRaises(Validation):
+            worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertTrue(os.path.isdir(self.worktree))
+        self.assertIn("worktree-feat", git_out(self.repo, "branch"))
+        self.assertEqual(STATUS_DOING, todo_repo.get(self.con, todo_id)["status"])
+
+    def test_merge_conflict_leaves_everything_in_place(self):
+        write_commit(self.repo, "base.txt", "마스터 변경\n", "마스터도 수정")
+        with self.assertRaises(Conflict):
+            worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertTrue(os.path.isdir(self.worktree))
+        self.assertIn("worktree-feat", git_out(self.repo, "branch"))
+        self.assertEqual("", git_out(self.repo, "status", "--porcelain"))
+
+    def test_dirty_main_checkout_blocks_apply(self):
+        with open(os.path.join(self.repo, "untracked.txt"), "w") as handle:
+            handle.write("x")
+        with self.assertRaises(Validation):
+            worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertTrue(os.path.isdir(self.worktree))
+
+    def test_dirty_worktree_blocks_apply(self):
+        with open(os.path.join(self.worktree, "untracked.txt"), "w") as handle:
+            handle.write("x")
+        with self.assertRaises(Validation):
+            worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertTrue(os.path.isdir(self.worktree))
+
+    def test_main_checkout_on_a_different_branch_blocks_apply(self):
+        git(self.repo, "checkout", "-q", "-b", "other")
+        with self.assertRaises(Validation):
+            worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertTrue(os.path.isdir(self.worktree))
+
+
+class DiscardTest(unittest.TestCase):
+    """케밥 메뉴의 "삭제" — 병합하지 않고 서버 종료·워크트리·브랜치만 강제로 버린다.
+    ApplyTest 와 같은 저장소 구성을 쓰되 병합 게이트가 없어 검사 항목이 다르다"""
+
+    def setUp(self):
+        self.con = temp_db()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+        self.repo = os.path.join(self.base, "repo")
+        os.makedirs(self.repo)
+        git(self.repo, "init", "-q", "-b", "master")
+        git(self.repo, "config", "user.email", "t@t")
+        git(self.repo, "config", "user.name", "t")
+        write_commit(self.repo, ".gitignore", ".claude/\n", "기준 커밋")
+        write_commit(self.repo, "base.txt", "base\n", "base.txt 추가")
+        self.worktree = os.path.join(self.repo, ".claude", "worktrees", "feat")
+        git(self.repo, "worktree", "add", "-q", "-b", "worktree-feat", self.worktree)
+        write_commit(self.worktree, "base.txt", "워크트리 변경\n", "feat: base.txt 수정")
+        category = category_repo.list_all(self.con)[0]
+        self.workspace = workspace_repo.create(self.con, category["id"], "테스트")
+
+    def test_discard_removes_worktree_and_branch_without_merging(self):
+        result = worktrees.discard(self.con, self.repo, "worktree-feat")
+        self.assertEqual("worktree-feat", result["branch"])
+        self.assertFalse(os.path.isdir(self.worktree))
+        self.assertNotIn("worktree-feat", git_out(self.repo, "branch"))
+        # 병합이 아니므로 그 커밋은 master 이력에 없어야 한다
+        self.assertNotIn("수정", git_out(self.repo, "log", "--oneline"))
+
+    def test_discard_ignores_open_subtasks(self):
+        """적용과 달리 완료 처리를 하지 않으므로 하위할일 여부를 보지 않는다"""
+        session_repo.register(self.con, "sess-1", cwd=self.worktree)
+        todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
+        session_repo.link_todo(self.con, "sess-1", todo["id"])
+        subtask_repo.create(self.con, todo["id"], "하위 할일")
+        worktrees.discard(self.con, self.repo, "worktree-feat")
+        self.assertFalse(os.path.isdir(self.worktree))
+        self.assertEqual(STATUS_DOING, todo_repo.get(self.con, todo["id"])["status"])
+
+    def test_discard_removes_a_dirty_worktree_without_complaint(self):
+        with open(os.path.join(self.worktree, "untracked.txt"), "w") as handle:
+            handle.write("x")
+        worktrees.discard(self.con, self.repo, "worktree-feat")
+        self.assertFalse(os.path.isdir(self.worktree))
+
+    def test_discard_rejects_the_base_branch(self):
+        with self.assertRaises(Validation):
+            worktrees.discard(self.con, self.repo, "master")
+
+    def test_discard_rejects_an_unknown_branch(self):
+        with self.assertRaises(NotFound):
+            worktrees.discard(self.con, self.repo, "nope")
 
 
 if __name__ == "__main__":

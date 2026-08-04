@@ -416,14 +416,14 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라벨이 이미 섹션 경계를 그으므로 그 아래 첫 줄은 선을 겹치지 않는다 */
 .wt-section > .label + .wt-row { border-top: none; }
 
-/* 표처럼 네 칸 — 이름 / 요약 / 커밋 변화 / 포트. 줄마다 같은 격자라 세로로 맞는다.
+/* 표처럼 다섯 칸 — 이름 / 요약 / 커밋 변화 / 포트 / 케밥 메뉴. 줄마다 같은 격자라 세로로 맞는다.
    포트는 배지 하나 폭(60px)만 잡고 남는 폭은 이름이 더 가져간다. 대신 이름은
    14em 아래로는 줄지 않는다 — 그 밑으로 가면 브랜치명이 말줄임뿐이라 못 읽는다.
    포트 칸을 auto 로 두면 포트가 둘인 줄만 칸이 넓어져 표가 어긋난다. 고정 폭으로
-   두고 넘치는 배지는 칸 안에서 아래로 내린다 */
+   두고 넘치는 배지는 칸 안에서 아래로 내린다. 메뉴 칸은 케밥 버튼 하나 폭만 */
 .wt-row {
   display: grid;
-  grid-template-columns: minmax(14em, 1.6fr) minmax(0, 1fr) 5em 60px;
+  grid-template-columns: minmax(14em, 1.6fr) minmax(0, 1fr) 5em 60px 1.5em;
   align-items: center; gap: var(--sp-8);
   padding: var(--sp-8) var(--pad-card);
   border-top: 1px solid var(--line);

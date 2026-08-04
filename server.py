@@ -162,6 +162,9 @@ def _route_post(con, head, body):
         return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
     if head == "reorder":
         return _reorder(con, body)
+    if head == "worktrees":
+        action = worktrees.discard if body.get("action") == "discard" else worktrees.apply
+        return action(con, body.get("repo"), body.get("branch"))
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
