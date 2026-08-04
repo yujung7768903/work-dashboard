@@ -10,8 +10,13 @@ const NO_WORKSPACE = "미분류";
 const RUNNING_LABEL = "진행 중";
 // review = 잡은 끝났고 사람이 diff 를 보고 병합을 판정할 차례. 진행 중(클로드가 아직
 // 돌고 있음)과 섞이면 목록에서 무엇을 봐야 하는지 알 수 없어 배지를 따로 둔다
-const OUTCOME_LABELS = { done: "완료", review: "확인 필요", failed: "실패", blocked: "막힘" };
+// requested = 세션이 실패한 게 아니라 판단(기획 공백·방향 미정·정보 부족)을 요청하고
+// 스스로 멈춘 것. 사유는 autorun-request 로 남긴 텍스트라 배지 마우스오버로 보여준다
+const OUTCOME_LABELS = {
+  done: "완료", review: "확인 필요", failed: "실패", blocked: "막힘", requested: "요청",
+};
 const REVIEW = "review";
+const REQUESTED = "requested";
 const REVIEW_HINT = "변경을 확인·병합했으면 눌러 완료로 내린다";
 const TOGGLE_HINT = "자율 수행 켜기·끄기";
 
@@ -76,6 +81,11 @@ function outcomeBadge(run) {
     ? (OUTCOME_LABELS[run.outcome] ?? run.outcome)
     : RUNNING_LABEL;
   const className = `badge outcome-${run.outcome || "running"}`;
+  if (run.outcome === REQUESTED) {
+    const badge = element("span", className, label);
+    if (run.requested_note) badge.title = run.requested_note;
+    return badge;
+  }
   if (run.outcome !== REVIEW) return element("span", className, label);
   const button = element("button", className, label);
   button.type = "button";

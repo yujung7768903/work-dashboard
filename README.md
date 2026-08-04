@@ -231,6 +231,7 @@ python3 dash.py finish <session> --worktree PATH # 자동으로 못 찾을 때 �
 python3 dash.py autorun on|off|status      # 기본 off. 자동으로 다시 켜지는 경로는 없다
 python3 dash.py autorun-tick --dry-run     # 띄우지 않고 판정 사유만
 python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어가는 지시 전문
+python3 dash.py autorun-request "<이유>"   # 판단 보류 — 자율 세션이 스스로 멈출 때 씀
 ```
 
 보드 화면의 "자율 수행" 옆 ON/OFF 스위치도 같은 설정을 켜고 끈다 — CLI 와 상태가 하나다.
@@ -245,7 +246,7 @@ python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어�
 | --- | --- | --- |
 | 라벨 | `auto` 라벨이 붙은 할일만 | 자율 실행 허가는 사람이 준다. 코드가 "이건 맡겨도 되겠다" 를 추정하지 않는다 |
 | 조건 | `precondition` 문장이 **없을** 것 | 조건은 자연어라 코드가 충족 여부를 판정할 수 없다. 조건이 붙은 할일은 사람이 풀어야 후보가 된다 |
-| 기록 | `autorun_runs.outcome='blocked'` 가 있는 할일은 제외 | 2회 연속 실패한 할일을 계속 다시 집으면 사용량만 태운다 |
+| 기록 | `autorun_runs.outcome` 이 `blocked`·`requested` 인 할일은 제외 | `blocked` 는 2회 연속 실패, `requested` 는 판단 보류 — 둘 다 사람이 봐야 다시 후보가 된다 |
 
 조건이 붙은 채로 후보에 오르는 경로는 지금 없지만, 프롬프트는 조건 전문과 재확인 지시를 싣는다 — ⑥(`waiting` 상태)이 들어와 조건 있는 할일도 후보가 되면 그 판단은 자율 세션이 첫 단계로 한다.
 
@@ -285,10 +286,19 @@ python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어�
 | `done` | 사람이 자율 수행 패널의 `확인 필요` 배지를 눌러 확인을 마침 |
 | `failed` | 잡이 끝났는데 할일이 안 끝남 |
 | `blocked` | 그 실패로 `AUTORUN_FAIL_LIMIT` 에 닿음. 그 할일은 이후 후보에서 빠진다 |
+| `requested` | 세션이 `autorun-request` 로 판단 보류를 남기고 멈춤. 실패가 아니라 **요청** — 그 할일은 이후 후보에서 빠진다 |
 
 성공한 잡이 곧바로 `done` 이 되지 않는 이유 — 자율 세션은 커밋하지 않고 변경을 워크트리에 남긴다. 그 시점의 작업은 끝난 것이 아니라 **사람이 봐야 하는 것**이고, 클로드가 아직 돌고 있는 `진행 중` 과는 다른 상태다. 확인은 코드가 판정할 수 없으므로(diff 를 읽고 병합할지 정하는 일이다) 배지 클릭(`PATCH /api/autorun-runs/<id>`)만 기록한다. `review` 는 실패로 세지 않는다 — 확인이 밀린 동안 그 할일이 `blocked` 로 올라가면 안 된다.
 
 `blocked` 가 `AUTORUN_BLOCKED_STREAK_LIMIT` 만큼 연속되면 autorun 자체를 끈다. 자율 잡에 사람이 프롬프트를 넣어도 끈다(`UserPromptSubmit` 훅) — 그 잡은 사람 것으로 인계된 것이다. 첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 `last_prompt` 가 이미 있을 때만 사람이 끼어든 것으로 본다.
+
+#### 판단 보류 (`requested`)
+
+자율 세션은 다음 중 하나면 추측 대신 멈춘다 — 기능을 추가·수정할 때 grill me·superpowers 로 검토(스펙 문서는 안 씀)해 기획 공백이 나올 때, 구현 방향이 여럿인데 어느 쪽인지 `note` 에 안 정해져 있을 때, 토큰·Jira·문서 위치가 필요한데 `note` 에 없을 때. `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 사유를 남기고 할일 상태는 건드리지 않은 채 끝낸다.
+
+`autorun-request` 는 실행 중인 기록에 사유만 적어 두고 **그 자리에서 닫지 않는다.** 여기서 바로 닫으면(`ended_at` 을 채우면) 아직 잡 프로세스가 안 끝났는데 다음 tick 이 동시 1건 규칙을 어기고 새 잡을 띄울 수 있다. 닫는 일은 다른 결과와 똑같이 tick 이 잡 종료(`state.json`)를 확인한 뒤에 한다 — 그때 `outcome_for_close` 가 이 사유를 보고 `failed`·`blocked` 대신 `requested` 로 닫는다. 사유는 자율 수행 패널의 `요청` 배지에 마우스오버로 뜬다.
+
+`blocked` 와 같은 이유로 자동으로는 안 풀린다 — 사람이 `note`·`precondition` 을 손보고 나서만 다시 후보가 된다. 지금은 ③ 결정 대기 큐(`dash.py ask`/`answer`)가 없어 웹에서 바로 답하는 경로는 없다 — 요청 사유를 읽고 할일을 손보는 것까지가 이번 범위다.
 
 ### 초기 설정 (⑤)
 

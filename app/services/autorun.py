@@ -116,16 +116,16 @@ def pick(con):
 
 
 def eligible(con):
-    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막힌 적이 없을 것"""
+    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류 상태가 아닐 것"""
     labeled = {
         todo_id
         for todo_id, labels in label_repo.map_by_todo(con).items()
         if any(label["name"] == AUTORUN_LABEL for label in labels)
     }
-    blocked = autorun_repo.blocked_todo_ids(con)
+    excluded = autorun_repo.blocked_todo_ids(con) | autorun_repo.requested_todo_ids(con)
 
     def keep(todo):
-        if todo["id"] not in labeled or todo["id"] in blocked:
+        if todo["id"] not in labeled or todo["id"] in excluded:
             return False
         return not (todo["precondition"] or "").strip()
 
@@ -224,6 +224,11 @@ def _rules(cwd, todo_id):
             "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다"
             " (이 저장소는 `python3 -m tests`).",
             "- 판단이 필요해 더 못 가면 멈추고 그 사실을 남긴다. 추측으로 진행하지 않는다.",
+            "- 기능을 추가·수정할 때 grill me·superpowers 로 검토해(스펙 문서 작성x)"
+            " 기획 공백이 나오거나, 구현 방향이 여럿인데 note 에 정해져 있지 않거나,"
+            " 토큰·Jira·문서 위치가 필요한데 note 에 없으면 추측하지 않는다."
+            ' `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 등록하고 끝낸다'
+            " — 할일 상태는 건드리지 않고, 이후 자율 수행 후보에서 빠진다.",
             f"- 다 끝냈으면 `python3 dash.py set-status todo {todo_id} done` 으로 내린다."
             " 끝내지 못했으면 상태를 건드리지 않는다.",
         ]
@@ -272,7 +277,7 @@ def reconcile(con):
             continue
         todo = todo_repo.get(con, run["todo_id"])
         outcome = autorun_repo.outcome_for_close(
-            con, run["todo_id"], todo["status"] == STATUS_DONE
+            con, run["todo_id"], todo["status"] == STATUS_DONE, run["requested_note"]
         )
         closed.append(autorun_repo.close_run(con, run["id"], outcome))
         _apply_streak(con, outcome)

@@ -13,13 +13,14 @@ from app.constants import (
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_REQUESTED,
     OUTCOME_REVIEW,
     STATE_ENDED,
     STATUS_DOING,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
 )
-from app.errors import Validation
+from app.errors import NotFound, Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
@@ -116,6 +117,12 @@ class Candidates(AutorunCase):
         autorun_repo.close_run(self.con, run["id"], OUTCOME_BLOCKED)
         self.assertIsNone(autorun.pick(self.con))
 
+    def test_skips_requested_todo(self):
+        """판단 보류로 멈춘 할일도 blocked 와 같이 후보에서 빠진다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REQUESTED)
+        self.assertIsNone(autorun.pick(self.con))
+
     def test_skips_done_todo(self):
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         self.assertIsNone(autorun.pick(self.con))
@@ -201,6 +208,9 @@ class Prompt(AutorunCase):
 
     def test_tells_how_to_finish(self):
         self.assertIn(f"set-status todo {self.todo['id']} done", self._text())
+
+    def test_tells_how_to_request_when_judgment_is_missing(self):
+        self.assertIn("autorun-request", self._text())
 
     def test_carries_precondition_and_recheck(self):
         text = self._text(precondition="포트 9080 이 비어 있을 것")
@@ -326,6 +336,30 @@ class Outcomes(AutorunCase):
     def test_missing_job_dir_closes_the_run(self):
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, "사라진잡")
         self.assertEqual(len(autorun.reconcile(self.con)), 1)
+
+    def test_requested_note_closes_as_requested_not_failed(self):
+        """세션이 판단을 요청하고 멈추면 실패가 아니라 요청으로 닫혀야 한다"""
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.mark_requested(self.con, CHILD, "이 방향으로 갈지 저 방향으로 갈지 note 에 없음")
+        self._job(JOB, "stopped")
+        run = autorun.reconcile(self.con)[0]
+        self.assertEqual(run["outcome"], OUTCOME_REQUESTED)
+        self.assertIn(self.todo["id"], autorun_repo.requested_todo_ids(self.con))
+
+    def test_requested_does_not_count_as_failure(self):
+        """요청 뒤에 다시 잡히더라도 실패 스트릭에 안 섞여야 blocked 로 잘못 안 넘어간다"""
+        first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
+        autorun_repo.close_run(self.con, first["id"], OUTCOME_REQUESTED)
+        self.assertEqual(autorun_repo.consecutive_failures(self.con, self.todo["id"]), 0)
+
+    def test_mark_requested_needs_a_reason(self):
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        with self.assertRaises(Validation):
+            autorun_repo.mark_requested(self.con, CHILD, "   ")
+
+    def test_mark_requested_needs_an_open_run(self):
+        with self.assertRaises(NotFound):
+            autorun_repo.mark_requested(self.con, "아무도 안 도는 세션", "이유")
 
 
 class Handover(AutorunCase):
