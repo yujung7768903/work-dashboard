@@ -611,9 +611,12 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-list .badge { font-weight: 600; font-size: var(--fs-sm); }
 #autorun-list .outcome-done { color: var(--good); }
 /* 확인 필요만 버튼이다. 줄 안에서 글자처럼 보이게 기본 버튼 외양을 걷어낸다 */
+/* text-align 은 버튼의 브라우저 기본값이 center 라 명시해야 한다 — 안 그러면 span 인
+   다른 결과(완료·실패)와 칸 안에서 시작 위치가 어긋난다 */
 #autorun-list button.badge {
   border: 0; background: none; padding: 0; font: inherit; font-weight: 600;
   font-size: var(--fs-sm); cursor: pointer; text-decoration: underline dotted;
+  text-align: left;
 }
 #autorun-list .outcome-review { color: var(--soft); }
 #autorun-list .outcome-failed { color: var(--danger); }
