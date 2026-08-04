@@ -280,6 +280,17 @@ def _commits(root, base, branch):
     return commits
 
 
+def processes_by_path(paths):
+    """경로 → 거기서 포트를 듣고 있는 프로세스. 자율 수행 패널도 같은 조회를 쓴다.
+
+    lsof 두 번이라 부르는 쪽에서 경로를 몰아서 넘긴다 — 비면 아예 부르지 않는다
+    """
+    live = [_real(path) for path in paths if path]
+    if not live:
+        return {}
+    return _process_map(live, _ports_by_pid())
+
+
 def _process_map(paths, ports):
     """워크트리 경로 → 거기서 포트를 듣고 있는 프로세스.
     셸·에디터까지 다 보이면 잡음이라 듣는 포트가 있는 것만 남긴다.
@@ -351,16 +362,18 @@ def _real(path):
     return os.path.realpath(path) if path else path
 
 
+def repo_root_of(cwd):
+    """그 위치가 속한 저장소의 루트. 워크트리 안이면 본 저장소로 올라간다. 못 읽으면 빈 문자열"""
+    if not os.path.isdir(cwd):
+        return ""
+    # 본 저장소는 '.git', 워크트리는 본 저장소의 절대경로를 돌려준다
+    common = _git(cwd, "rev-parse", "--git-common-dir").strip()
+    return os.path.dirname(os.path.abspath(os.path.join(cwd, common))) if common else ""
+
+
 def _repo_root(cwds):
-    """세션이 남긴 위치에서 저장소 루트. 워크트리 안이면 본 저장소로 올라간다"""
-    for cwd in cwds:
-        if not os.path.isdir(cwd):
-            continue
-        # 본 저장소는 '.git', 워크트리는 본 저장소의 절대경로를 돌려준다
-        common = _git(cwd, "rev-parse", "--git-common-dir").strip()
-        if common:
-            return os.path.dirname(os.path.abspath(os.path.join(cwd, common)))
-    return ""
+    """세션이 남긴 위치들 중 처음으로 저장소가 잡히는 곳의 루트"""
+    return next((root for root in map(repo_root_of, cwds) if root), "")
 
 
 def _git(root, *args):

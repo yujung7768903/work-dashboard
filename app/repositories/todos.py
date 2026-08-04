@@ -11,6 +11,7 @@ from app.constants import (
 )
 from app.db import now, transaction
 from app.errors import NotFound, Validation
+from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
 from app.repositories import workspaces as workspace_repo
@@ -188,6 +189,10 @@ def _validated_assignments(con, current, fields):
     if "title" in assignments:
         assignments["title"] = _clean_title(assignments["title"])
     if "status" in assignments:
+        if current["id"] in autorun_repo.locked_todo_ids(con):
+            raise Validation(
+                "자율 수행 확인 필요 상태 — 자율 수행 패널에서 확인 처리할 것"
+            )
         _validate_status(assignments["status"])
         if assignments["status"] == STATUS_DONE:
             _require_subtasks_done(con, current["id"])

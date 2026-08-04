@@ -28,13 +28,12 @@ from app.constants import (
     RATE_LIMITS_PATH,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
-    USAGE_STALE_SECONDS,
 )
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.services import planning, release
+from app.services import planning, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
 JOB_ID_PATTERN = re.compile(r"backgrounded[^\n]*?([0-9a-f]{8})")
@@ -56,11 +55,14 @@ WORKSPACE_LABELS = (
 REASON_OFF = "autorun 이 꺼져 있음"
 REASON_RUNNING = "이미 자율 잡이 돌고 있음"
 REASON_USAGE = "5시간 창 사용률이 한도에 닿음"
-REASON_STALE = "사용률 데이터가 낡음 — 모르면 안 돈다"
+REASON_NO_USAGE = "사용률 데이터가 아예 없음 — 모르면 안 돈다"
 REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
 REASON_DIRTY = "작업 위치에 커밋 안 된 변경이 있음"
 REASON_READY = "시작 가능"
+
+# 실행 id → 워크트리 경로. 끝난 실행만 담는다(그 뒤로 바뀌지 않는다)
+_WORKTREE_CACHE = {}
 
 
 def tick(con, dry_run=False, launcher=None):
@@ -69,6 +71,7 @@ def tick(con, dry_run=False, launcher=None):
     closed = reconcile(con)
     decision = judge(con)
     decision["closed"] = closed
+    autorun_repo.set_tick_reason(con, decision["reason"])
     if dry_run or decision["reason"] != REASON_READY:
         return decision
     launched = (launcher or launch)(
@@ -79,6 +82,47 @@ def tick(con, dry_run=False, launcher=None):
         return decision
     decision["run"] = _register_run(con, decision, launched)
     return decision
+
+
+def panel_runs(con, limit=10):
+    """자율 수행 패널이 그리는 실행 목록.
+
+    어느 워크트리에서 돌았는지와 거기서 열려 있는 포트를 붙인다 — 결과만 보고는 그
+    변경을 어디서 봐야 하는지, 띄워 둔 서버가 몇 번인지 알 수 없다
+    """
+    runs = autorun_repo.recent_with_todos(con, limit)
+    for run in runs:
+        path = _run_worktree(run)
+        run["worktree_path"] = path
+        run["worktree"] = _worktree_name(path)
+    processes = worktrees.processes_by_path(
+        sorted({run["worktree_path"] for run in runs if run["worktree_path"]})
+    )
+    for run in runs:
+        found = processes.get(os.path.realpath(run["worktree_path"] or "/")) or []
+        run["ports"] = sorted({port for entry in found for port in entry["ports"]})
+    return runs
+
+
+def _run_worktree(run):
+    """그 실행이 작업한 워크트리 경로. 메인 체크아웃에서 돌았으면 빈 문자열.
+
+    세션 cwd 로는 알 수 없다 — EnterWorktree 로 옮겨가도 훅이 받는 cwd 는 세션이 열린
+    위치 그대로다(release._candidates 참고). 그래서 transcript 를 봐야 하는데 꼬리
+    512KB 를 읽으므로, 5초마다 도는 폴링이 매번 읽지 않도록 끝난 실행은 기억해 둔다
+    """
+    if run["id"] in _WORKTREE_CACHE:
+        return _WORKTREE_CACHE[run["id"]]
+    path = release.worktree_of(run["claude_session_id"] or "", run["cwd"] or "")
+    if run["ended_at"]:
+        _WORKTREE_CACHE[run["id"]] = path
+    return path
+
+
+def _worktree_name(path):
+    """`…/.claude/worktrees/foo` → `foo`. 워크트리가 아니면 빈 문자열"""
+    _, mark, tail = (path or "").partition(release.WORKTREE_MARK)
+    return tail.split("/")[0] if mark else ""
 
 
 def judge(con):
@@ -94,8 +138,9 @@ def judge(con):
         return {"reason": usage["reason"], "state": state, "usage": usage}
     picked = pick(con)
     if not picked:
-        autorun_repo.set_enabled(con, False)
-        return {"reason": REASON_NO_TODO, "state": autorun_repo.state(con)}
+        # 끄지 않는다 — 후보가 비는 것은 일시적이다. 다른 세션이 그 할일을 잡고 있기만
+        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다
+        return {"reason": REASON_NO_TODO, "state": state}
     cwd = target_cwd(con, picked["workspace"])
     if not cwd:
         return dict(picked, reason=REASON_NO_CWD, state=state)
@@ -116,16 +161,16 @@ def pick(con):
 
 
 def eligible(con):
-    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막힌 적이 없을 것"""
+    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류 상태가 아닐 것"""
     labeled = {
         todo_id
         for todo_id, labels in label_repo.map_by_todo(con).items()
         if any(label["name"] == AUTORUN_LABEL for label in labels)
     }
-    blocked = autorun_repo.blocked_todo_ids(con)
+    excluded = autorun_repo.blocked_todo_ids(con) | autorun_repo.requested_todo_ids(con)
 
     def keep(todo):
-        if todo["id"] not in labeled or todo["id"] in blocked:
+        if todo["id"] not in labeled or todo["id"] in excluded:
             return False
         return not (todo["precondition"] or "").strip()
 
@@ -133,25 +178,41 @@ def eligible(con):
 
 
 def usage_gate(limits_path=RATE_LIMITS_PATH):
-    """사이드카를 읽어 5시간 창만 본다.
+    """사이드카를 읽어 5시간 창만 본다. 낡았어도 마지막 값으로 판단한다.
+
+    이 파일은 statusline 이 그려질 때만 갱신된다(usage.py 참고) — Claude Code 가 사용률을
+    statusline 페이로드로만 넘기기 때문이다. 그래서 대화창이 없는 동안은 늘 낡는다.
+    낡음을 이유로 막았더니 자율 실행이 필요한 시간대(사람 없는 시간)에 영구히 안 돌았다.
+
+    한도에 닿은 채 찍힌 사진 한 장으로 밤새 막히지도 않아야 하므로, 그 사진의 5시간
+    창이 이미 리셋됐으면 0으로 본다. 값이 아예 없을 때만 막는다.
 
     usage.snapshot() 을 쓰지 않는 이유 — 그 함수는 조회하면서 usage_samples 에 한 줄
     적립하므로 tick 이 5분마다 부르면 추이 그래프에 tick 이 섞인다
     """
     limits = _read_json(limits_path) or {}
-    stamp = limits.get("timestamp")
-    if not isinstance(stamp, (int, float)):
-        return {"reason": REASON_STALE, "pct": None, "age": None}
-    age = max(0, int(time.time() - stamp / MS_PER_SECOND))
-    if age > USAGE_STALE_SECONDS:
-        return {"reason": REASON_STALE, "pct": None, "age": age}
     window = limits.get(FIVE_HOUR_KEY)
-    pct = window.get("used_percentage") if isinstance(window, dict) else None
-    if not isinstance(pct, (int, float)):
-        return {"reason": REASON_STALE, "pct": None, "age": age}
+    last = window.get("used_percentage") if isinstance(window, dict) else None
+    if not isinstance(last, (int, float)):
+        return {"reason": REASON_NO_USAGE, "pct": None, "age": None}
+    age = _usage_age(limits.get("timestamp"))
+    pct = 0 if _window_reset(window) else last
     if pct >= USAGE_CRITICAL_PCT:
         return {"reason": REASON_USAGE, "pct": pct, "age": age}
     return {"reason": "", "pct": pct, "age": age}
+
+
+def _usage_age(stamp):
+    """사진이 찍힌 뒤 지난 초. 판정은 막지 않고 얼마나 낡았는지만 알려준다"""
+    if not isinstance(stamp, (int, float)):
+        return None
+    return max(0, int(time.time() - stamp / MS_PER_SECOND))
+
+
+def _window_reset(window):
+    """그 사진 이후 5시간 창이 새로 시작됐는지. resets_at 은 초 단위다"""
+    resets_at = window.get("resets_at")
+    return isinstance(resets_at, (int, float)) and time.time() >= resets_at
 
 
 def target_cwd(con, workspace):
@@ -224,6 +285,11 @@ def _rules(cwd, todo_id):
             "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다"
             " (이 저장소는 `python3 -m tests`).",
             "- 판단이 필요해 더 못 가면 멈추고 그 사실을 남긴다. 추측으로 진행하지 않는다.",
+            "- 기능을 추가·수정할 때 grill me·superpowers 로 검토해(스펙 문서 작성x)"
+            " 기획 공백이 나오거나, 구현 방향이 여럿인데 note 에 정해져 있지 않거나,"
+            " 토큰·Jira·문서 위치가 필요한데 note 에 없으면 추측하지 않는다."
+            ' `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 등록하고 끝낸다'
+            " — 할일 상태는 건드리지 않고, 이후 자율 수행 후보에서 빠진다.",
             f"- 다 끝냈으면 `python3 dash.py set-status todo {todo_id} done` 으로 내린다."
             " 끝내지 못했으면 상태를 건드리지 않는다.",
         ]
@@ -272,7 +338,7 @@ def reconcile(con):
             continue
         todo = todo_repo.get(con, run["todo_id"])
         outcome = autorun_repo.outcome_for_close(
-            con, run["todo_id"], todo["status"] == STATUS_DONE
+            con, run["todo_id"], todo["status"] == STATUS_DONE, run["requested_note"]
         )
         closed.append(autorun_repo.close_run(con, run["id"], outcome))
         _apply_streak(con, outcome)

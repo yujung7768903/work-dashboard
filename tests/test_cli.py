@@ -111,6 +111,42 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("done", out)
 
+    def test_autorun_request_uses_env_session_when_omitted(self):
+        """자율 세션이 `autorun-request "<이유>"` 한 인자만 줘도 자기 세션으로 찾아야 한다"""
+        from app.repositories import autorun as autorun_repo
+
+        con = connect()
+        self.run_cli("add-todo", "판단 필요한 일", "--category", "운영")
+        autorun_repo.start_run(con, 1, "env-sess", "job1")
+        os.environ[SESSION_ID_ENV] = "env-sess"
+        code, out, _ = self.run_cli("autorun-request", "방향이 여러 개인데 note 에 없음")
+        self.assertEqual(code, 0)
+        self.assertIn("요청 등록", out)
+        run = autorun_repo.recent(con, 1)[0]
+        self.assertEqual(run["requested_note"], "방향이 여러 개인데 note 에 없음")
+
+    def test_autorun_request_accepts_explicit_session(self):
+        from app.repositories import autorun as autorun_repo
+
+        con = connect()
+        self.run_cli("add-todo", "판단 필요한 일", "--category", "운영")
+        autorun_repo.start_run(con, 1, "다른세션", "job1")
+        code, _, _ = self.run_cli("autorun-request", "다른세션", "토큰이 필요함")
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            autorun_repo.recent(con, 1)[0]["requested_note"], "토큰이 필요함"
+        )
+
+    def test_autorun_request_without_reason_exits_one(self):
+        from app.repositories import autorun as autorun_repo
+
+        con = connect()
+        self.run_cli("add-todo", "판단 필요한 일", "--category", "운영")
+        autorun_repo.start_run(con, 1, "다른세션", "job1")
+        code, _, err = self.run_cli("autorun-request", "다른세션", "  ")
+        self.assertEqual(code, 1)
+        self.assertIn("이유", err)
+
     def test_sessions_empty(self):
         code, out, _ = self.run_cli("sessions")
         self.assertEqual(code, 0)
