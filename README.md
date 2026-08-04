@@ -67,7 +67,10 @@ work-dashboard/
 ├── hooks/
 │   ├── dash_hook.py                 # Claude Code 훅 단일 진입점
 │   ├── worktree_serve.py            # Stop: 고친 워크트리에 서버가 없으면 띄우라고 지시
-│   └── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단 (플래그 파일 있을 때만)
+│   ├── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단
+│   ├── commit_scope_guard.py        # PreToolUse: 범위 초과 스테이징·커밋 차단
+│   ├── md_lint.py                   # PostToolUse: 저장된 .md 린트
+│   └── stale_base.py                # UserPromptSubmit: 낡은 베이스 위 착수 경고
 │
 ├── static/                          # ES 모듈 프론트엔드 (번들러 없음)
 │   ├── index.html                   # 단일 페이지
@@ -98,29 +101,36 @@ work-dashboard/
 
 ## 훅 동작
 
-훅은 세 개다. **어떤 실패에서도 `exit 0` 무출력으로 끝난다** — 대시보드 문제로 Claude 세션이 안 열리거나 편집을 못 하게 되는 것이 최악의 실패이기 때문이다. 의도적으로 막을 때만 `exit 2` 를 쓴다.
+훅은 여섯 개다. **어떤 실패에서도 `exit 0` 무출력으로 끝난다** — 대시보드 문제로 Claude 세션이 안 열리거나 편집을 못 하게 되는 것이 최악의 실패이기 때문이다. 의도적으로 막을 때만 `exit 2` 를 쓴다.
 
 ### 훅 종류
 
 | 훅 | 등록 위치 | 하는 일 | 동작 방식 |
 | --- | --- | --- | --- |
 | `hooks/dash_hook.py` | `~/.claude/settings.json` (그 PC 전용, 절대 경로). 타임아웃 2초 | 세션 등록·상태 추적, 세션에 워크스페이스·분류·해제 블록 주입 | 인자로 받은 이벤트 이름 하나로 네 갈래 분기하는 단일 진입점. stdin JSON 의 `session_id`·`cwd` 로 DB 를 갱신하고 주입할 블록을 stdout 으로 뱉음. 차단은 하지 않음 |
-| `hooks/worktree_serve.py` | 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준. 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9080–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
-| `hooks/worktree_guard.py` | `~/.claude/settings.json`, matcher `Edit`·`Write`·`NotebookEdit`. 타임아웃 5초. `~/.claude/worktree-guard.on` 이 있을 때만 동작 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
+| `hooks/worktree_serve.py` | `.claude/settings.json`, 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9080–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
+| `hooks/worktree_guard.py` | `.claude/settings.json`, matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 10초 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
+| `hooks/commit_scope_guard.py` | `.claude/settings.json`, matcher `Bash`. 타임아웃 10초 | 범위를 넘는 스테이징·커밋 차단 | pathspec 없는 `git add -A`/`--all`/`-u`/`.` 와 `git commit -a`/`--all`/`-am` 이면 `exit 2`. `;`·`&&`·파이프로 이어진 복합 명령도 구간별로 검사한다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
+| `hooks/md_lint.py` | `.claude/settings.json`, matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 15초 | 저장된 `.md` 를 `.markdownlint.json` 기준으로 검사 | 린트 에러가 있으면 `exit 2` + stderr 에 에러 목록과 재저장 지시. `markdownlint-cli2` 를 PATH 에서 직접 부른다 — 없으면 조용히 통과하므로 새 PC 에서는 `npm i -g markdownlint-cli2` 를 먼저 한다 |
+| `hooks/stale_base.py` | `.claude/settings.json`, 타임아웃 10초 | 낡은 베이스 위 착수 경고 | 브랜치가 `@{u}` 또는 워크트리 기준 브랜치(`master`/`main`)보다 뒤처졌으면 최신화하라는 한 줄을 stdout 에 넣는다. 네트워크 fetch 없이 로컬 ref 만 비교하고, 같은 경고는 세션당 한 번만 낸다. 차단은 하지 않음 |
 
-`worktree_serve.py` 만 등록 위치가 다른 이유는 clone 한 다른 PC 에서도 따로 설정할 것이 없어야 하기 때문이다. 거는 조건은 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때. **이미 떠 있으면 관여하지 않는다** — 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다. 막으면서 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다. 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고).
+`dash_hook.py` 만 등록 위치가 다른 이유는 절대 경로가 필요해서다(아래 "다른 PC 에 설치" 참고). 나머지는 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준으로 들어가 clone 한 다른 PC 에서 따로 설정할 것이 없다.
+
+`worktree_serve.py` 가 거는 조건은 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때. **이미 떠 있으면 관여하지 않는다** — 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다. 막으면서 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다. 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고).
 
 ### 실행 단계
 
 | 이벤트 | 트리거 시점 | 훅 종류 |
 | --- | --- | --- |
 | `SessionStart` | 세션 시작/재개/초기화/압축 | `dash_hook.py` |
-| `UserPromptSubmit` | 사용자가 프롬프트 제출 | `dash_hook.py` |
-| `PreToolUse` | 도구 실행 전 (matcher `Edit`·`Write`·`NotebookEdit`) | `worktree_guard.py` |
+| `UserPromptSubmit` | 사용자가 프롬프트 제출 | `dash_hook.py`, `stale_base.py` |
+| `PreToolUse` | 도구 실행 전 (matcher `Write`·`Edit`·`NotebookEdit`) | `worktree_guard.py` |
+| `PreToolUse` | 도구 실행 전 (matcher `Bash`) | `commit_scope_guard.py` |
+| `PostToolUse` | 도구 실행 후 (matcher `Write`·`Edit`·`NotebookEdit`) | `md_lint.py` |
 | `Stop` | Claude 응답 완료 | `dash_hook.py`, `worktree_serve.py` |
 | `SessionEnd` | 세션 종료 | `dash_hook.py` |
 
-`Stop` 은 두 훅이 함께 걸린다 — 등록 위치가 달라 서로를 모른다. `dash_hook.py` 는 상태만 내리고 차단하지 않으므로, 막을지 여부는 `worktree_serve.py` 판정만으로 갈린다.
+`Stop` 은 두 훅이 함께 걸린다 — 등록 위치가 달라 서로를 모른다. `dash_hook.py` 는 상태만 내리고 차단하지 않으므로, 막을지 여부는 `worktree_serve.py` 판정만으로 갈린다. `UserPromptSubmit` 도 두 훅이 걸리는데 둘 다 stdout 에만 쓰므로 주입 블록과 경고가 함께 들어간다.
 
 `dash_hook.py` 가 이벤트별로 하는 일:
 
