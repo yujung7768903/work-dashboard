@@ -62,8 +62,8 @@ class MdLintTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
 
-    def test_missing_npx_fails_open(self):
-        """markdownlint-cli2(npx) 를 못 찾는 상황 — fail-open 으로 exit 0"""
+    def test_missing_binary_fails_open(self):
+        """markdownlint-cli2 가 PATH 에 없는 상황 — fail-open 으로 exit 0"""
         path = self._write("bad.md", BAD_MD)
         env = dict(os.environ)
         env["PATH"] = "/nonexistent-bin-dir"
