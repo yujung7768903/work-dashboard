@@ -104,17 +104,23 @@ class CategoryRepoTest(unittest.TestCase):
         self.assertEqual(created["name"], "신규")
         self.assertEqual(created["sort_order"], len(SEED_CATEGORIES) + 1)
 
-    def test_create_rejects_duplicate_name(self):
-        with self.assertRaises(Conflict):
-            category_repo.create(self.con, SEED_CATEGORIES[0])
-
-    def test_create_rejects_blank_name(self):
-        with self.assertRaises(Validation):
-            category_repo.create(self.con, "   ")
-
-    def test_get_missing_raises_not_found(self):
-        with self.assertRaises(NotFound):
-            category_repo.get(self.con, MISSING_ID)
+    def test_rejects_bad_input(self):
+        """거부 조건이 한자리에 모여 있다. 새 제약이 생기면 여기에 한 줄 추가한다"""
+        ops = category_repo.get_by_name(self.con, "운영")["id"]
+        for exc, why, call in (
+            (Conflict, "이미 있는 이름으로 생성",
+             lambda: category_repo.create(self.con, SEED_CATEGORIES[0])),
+            (Validation, "빈 이름", lambda: category_repo.create(self.con, "   ")),
+            (NotFound, "없는 id 조회", lambda: category_repo.get(self.con, MISSING_ID)),
+            (Conflict, "이미 있는 이름으로 개명",
+             lambda: category_repo.rename(self.con, ops, "개발")),
+            (Validation, "색 형식 오류",
+             lambda: category_repo.update(self.con, ops, color="red")),
+            (Validation, "고칠 필드 없음", lambda: category_repo.update(self.con, ops)),
+        ):
+            with self.subTest(why=why):
+                with self.assertRaises(exc):
+                    call()
 
     def test_get_by_name_finds_seeded(self):
         self.assertEqual(category_repo.get_by_name(self.con, "개발")["name"], "개발")
@@ -123,11 +129,6 @@ class CategoryRepoTest(unittest.TestCase):
         target = category_repo.get_by_name(self.con, "운영")
         renamed = category_repo.rename(self.con, target["id"], "운영업무")
         self.assertEqual(renamed["name"], "운영업무")
-
-    def test_rename_rejects_duplicate(self):
-        target = category_repo.get_by_name(self.con, "운영")
-        with self.assertRaises(Conflict):
-            category_repo.rename(self.con, target["id"], "개발")
 
     def test_seeded_category_gets_palette_color(self):
         self.assertEqual(category_repo.get_by_name(self.con, "개발")["color"], CATEGORY_PALETTE[0])
@@ -142,16 +143,6 @@ class CategoryRepoTest(unittest.TestCase):
         updated = category_repo.update(self.con, target["id"], color="#AABBCC")
         self.assertEqual(updated["color"], "#aabbcc")
         self.assertEqual(updated["name"], "운영")
-
-    def test_update_rejects_malformed_color(self):
-        target = category_repo.get_by_name(self.con, "운영")
-        with self.assertRaises(Validation):
-            category_repo.update(self.con, target["id"], color="red")
-
-    def test_update_without_fields_is_rejected(self):
-        target = category_repo.get_by_name(self.con, "운영")
-        with self.assertRaises(Validation):
-            category_repo.update(self.con, target["id"])
 
     def test_delete_without_occupants_needs_no_confirm(self):
         """붙은 게 없으면 되묻지 않고 바로 지운다"""
@@ -244,29 +235,27 @@ class WorkspaceRepoTest(unittest.TestCase):
         self.assertEqual(created["background"], "엑셀 동시 저장 충돌")
         self.assertEqual(created["considerations"], "웹소켓 영향 확인")
 
-    def test_create_rejects_missing_category(self):
-        with self.assertRaises(NotFound):
-            workspace_repo.create(self.con, MISSING_ID, "이름")
-
-    def test_create_rejects_blank_name(self):
-        with self.assertRaises(Validation):
-            workspace_repo.create(self.con, self.dev, "  ")
+    def test_rejects_bad_input(self):
+        created = workspace_repo.create(self.con, self.dev, "거부 검사용")
+        for exc, why, call in (
+            (NotFound, "없는 카테고리",
+             lambda: workspace_repo.create(self.con, MISSING_ID, "이름")),
+            (Validation, "빈 이름",
+             lambda: workspace_repo.create(self.con, self.dev, "  ")),
+            (Validation, "없는 상태",
+             lambda: workspace_repo.update(self.con, created["id"], status="종료됨")),
+            (Validation, "고칠 수 없는 필드",
+             lambda: workspace_repo.update(self.con, created["id"], sort_order=5)),
+        ):
+            with self.subTest(why=why):
+                with self.assertRaises(exc):
+                    call()
 
     def test_sort_order_is_global_across_categories(self):
         ops = category_repo.get_by_name(self.con, "운영")["id"]
         first = workspace_repo.create(self.con, self.dev, "첫번째")
         second = workspace_repo.create(self.con, ops, "두번째")
         self.assertEqual([first["sort_order"], second["sort_order"]], [1, 2])
-
-    def test_update_rejects_unknown_status(self):
-        created = workspace_repo.create(self.con, self.dev, "KT")
-        with self.assertRaises(Validation):
-            workspace_repo.update(self.con, created["id"], status="종료됨")
-
-    def test_update_rejects_unknown_field(self):
-        created = workspace_repo.create(self.con, self.dev, "KT")
-        with self.assertRaises(Validation):
-            workspace_repo.update(self.con, created["id"], sort_order=5)
 
     def test_update_touches_updated_at(self):
         created = workspace_repo.create(self.con, self.dev, "KT")
