@@ -13,6 +13,7 @@ from app.constants import (
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_REQUESTED,
     OUTCOME_REVIEW,
     STATE_ENDED,
     STATUS_DOING,
@@ -20,7 +21,7 @@ from app.constants import (
     STATUS_TODO,
     USAGE_CRITICAL_PCT,
 )
-from app.errors import Validation
+from app.errors import NotFound, Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
@@ -54,11 +55,16 @@ def _git_repo():
     return path
 
 
-def _limits_file(pct, age_seconds=0):
+def _limits_file(pct, age_seconds=0, resets_in=3600):
+    """사이드카 한 장. resets_in 이 음수면 그 5시간 창은 이미 리셋된 것"""
     path = os.path.join(tempfile.mkdtemp(), "rate-limits.json")
     stamp = int((time.time() - age_seconds) * 1000)
+    window = {
+        "used_percentage": pct,
+        "resets_at": int(time.time() + resets_in),
+    }
     with open(path, "w", encoding="utf-8") as handle:
-        json.dump({"five_hour": {"used_percentage": pct}, "timestamp": stamp}, handle)
+        json.dump({"five_hour": window, "timestamp": stamp}, handle)
     return path
 
 
@@ -117,6 +123,12 @@ class Candidates(AutorunCase):
         autorun_repo.close_run(self.con, run["id"], OUTCOME_BLOCKED)
         self.assertIsNone(autorun.pick(self.con))
 
+    def test_skips_requested_todo(self):
+        """판단 보류로 멈춘 할일도 blocked 와 같이 후보에서 빠진다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REQUESTED)
+        self.assertIsNone(autorun.pick(self.con))
+
     def test_skips_done_todo(self):
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         self.assertIsNone(autorun.pick(self.con))
@@ -138,18 +150,43 @@ class Gates(AutorunCase):
         self._use_limits(_limits_file(USAGE_CRITICAL_PCT))
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_USAGE)
 
-    def test_stale_usage_blocks_start(self):
+    def test_stale_usage_still_judges_by_last_value(self):
+        """낡음으로 막으면 사람 없는 시간에 영구히 안 돈다 — 마지막 값으로 판단한다"""
         self._use_limits(_limits_file(10, age_seconds=3600))
-        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_STALE)
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_READY)
+
+    def test_stale_usage_at_limit_still_blocks(self):
+        """창이 아직 안 리셋됐으면 낡은 값이라도 한도는 한도다"""
+        self._use_limits(_limits_file(USAGE_CRITICAL_PCT, age_seconds=3600))
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_USAGE)
+
+    def test_reset_window_clears_stale_limit(self):
+        """한도에 닿은 채 찍힌 사진 한 장으로 밤새 막히면 안 된다"""
+        self._use_limits(
+            _limits_file(USAGE_CRITICAL_PCT, age_seconds=6 * 3600, resets_in=-3600)
+        )
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_READY)
 
     def test_missing_usage_file_blocks_start(self):
         self._use_limits(os.path.join(tempfile.mkdtemp(), "없음.json"))
-        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_STALE)
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_USAGE)
 
-    def test_no_candidate_turns_autorun_off(self):
+    def test_no_candidate_only_skips_start(self):
+        """후보가 비는 것은 일시적이다 — 다른 세션이 잡고 있기만 해도 그렇다. 끄면 안 된다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
-        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_TODO)
-        self.assertFalse(autorun_repo.state(self.con)["enabled"])
+        launcher = Recorder()
+        result = autorun.tick(self.con, launcher=launcher)
+        self.assertEqual(result["reason"], autorun.REASON_NO_TODO)
+        self.assertEqual(launcher.calls, [])
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
+    def test_tick_records_its_reason(self):
+        """켜져 있는데 안 도는 이유를 화면에서 보려면 사유가 남아야 한다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        autorun.tick(self.con, launcher=Recorder())
+        state = autorun_repo.state(self.con)
+        self.assertEqual(state["last_tick_reason"], autorun.REASON_NO_TODO)
+        self.assertTrue(state["last_tick_at"])
 
     def test_busiest_repo_wins_over_the_most_recent(self):
         """다른 저장소에서 이 워크스페이스 할일을 하나 잡았다고 위치가 넘어가면 안 된다"""
@@ -202,6 +239,9 @@ class Prompt(AutorunCase):
 
     def test_tells_how_to_finish(self):
         self.assertIn(f"set-status todo {self.todo['id']} done", self._text())
+
+    def test_tells_how_to_request_when_judgment_is_missing(self):
+        self.assertIn("autorun-request", self._text())
 
     def test_carries_precondition_and_recheck(self):
         text = self._text(precondition="포트 9080 이 비어 있을 것")
@@ -365,6 +405,30 @@ class Outcomes(AutorunCase):
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, "사라진잡")
         self.assertEqual(len(autorun.reconcile(self.con)), 1)
 
+    def test_requested_note_closes_as_requested_not_failed(self):
+        """세션이 판단을 요청하고 멈추면 실패가 아니라 요청으로 닫혀야 한다"""
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.mark_requested(self.con, CHILD, "이 방향으로 갈지 저 방향으로 갈지 note 에 없음")
+        self._job(JOB, "stopped")
+        run = autorun.reconcile(self.con)[0]
+        self.assertEqual(run["outcome"], OUTCOME_REQUESTED)
+        self.assertIn(self.todo["id"], autorun_repo.requested_todo_ids(self.con))
+
+    def test_requested_does_not_count_as_failure(self):
+        """요청 뒤에 다시 잡히더라도 실패 스트릭에 안 섞여야 blocked 로 잘못 안 넘어간다"""
+        first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
+        autorun_repo.close_run(self.con, first["id"], OUTCOME_REQUESTED)
+        self.assertEqual(autorun_repo.consecutive_failures(self.con, self.todo["id"]), 0)
+
+    def test_mark_requested_needs_a_reason(self):
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        with self.assertRaises(Validation):
+            autorun_repo.mark_requested(self.con, CHILD, "   ")
+
+    def test_mark_requested_needs_an_open_run(self):
+        with self.assertRaises(NotFound):
+            autorun_repo.mark_requested(self.con, "아무도 안 도는 세션", "이유")
+
 
 class Handover(AutorunCase):
     def test_human_prompt_turns_autorun_off(self):
@@ -414,11 +478,74 @@ class RecentWithTodos(AutorunCase):
         row = autorun_repo.recent_with_todos(self.con)[0]
         self.assertIsNone(row["workspace_name"])
 
+    def test_carries_the_session_cwd(self):
+        """그 세션이 어디서 돌았는지 — 패널의 워크트리 칸이 여기서 나온다"""
+        path = os.path.join(self.repo, ".claude", "worktrees", "고침")
+        session_repo.register(self.con, CHILD, cwd=path)
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        self.assertEqual(autorun_repo.recent_with_todos(self.con)[0]["cwd"], path)
+
     def test_most_recent_run_comes_first(self):
         first = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job1")
         autorun_repo.close_run(self.con, first["id"], OUTCOME_DONE)
         second = autorun_repo.start_run(self.con, self.todo["id"], CHILD, "job2")
         self.assertEqual(autorun_repo.recent_with_todos(self.con)[0]["id"], second["id"])
+
+
+class PanelRuns(AutorunCase):
+    """패널이 받는 목록 — 실행 기록에 워크트리 이름과 그 위치의 포트가 붙어야 한다"""
+
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+        autorun._WORKTREE_CACHE.clear()
+        self.addCleanup(autorun._WORKTREE_CACHE.clear)
+        original = autorun.worktrees.processes_by_path
+        self.addCleanup(setattr, autorun.worktrees, "processes_by_path", original)
+        # lsof 를 부르지 않는다 — 무엇을 물었는지와 붙는 결과만 본다
+        autorun.worktrees.processes_by_path = self._lookup
+
+    def _lookup(self, paths):
+        self.calls.append(list(paths))
+        # 진짜 조회는 lsof 가 푼 경로로 돌려준다 — 키도 그렇게 맞춰 둔다
+        return {os.path.realpath(path):
+                [{"pid": 1, "command": "python3 server.py", "ports": [9081]}]
+                for path in paths}
+
+    def _run_at(self, cwd):
+        session_repo.register(self.con, CHILD, cwd=cwd)
+        return autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+
+    def _worktree_dir(self, name):
+        path = os.path.join(self.repo, ".claude", "worktrees", name)
+        os.makedirs(path)
+        return path
+
+    def test_worktree_name_and_ports_are_attached(self):
+        self._run_at(self._worktree_dir("고침"))
+        row = autorun.panel_runs(self.con)[0]
+        self.assertEqual(row["worktree"], "고침")
+        self.assertEqual(row["ports"], [9081])
+
+    def test_main_checkout_has_no_worktree_and_is_not_looked_up(self):
+        """메인 체크아웃에서 돈 실행은 워크트리가 없다 — lsof 도 부르지 않는다"""
+        self._run_at(self.repo)
+        row = autorun.panel_runs(self.con)[0]
+        self.assertEqual(row["worktree"], "")
+        self.assertEqual(row["ports"], [])
+        self.assertEqual(self.calls, [[]])
+
+    def test_finished_run_is_looked_up_once(self):
+        """끝난 실행의 워크트리는 안 바뀐다 — 5초 폴링이 transcript 를 다시 읽으면 안 된다"""
+        run = self._run_at(self._worktree_dir("끝난것"))
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_DONE)
+        reads = []
+        original = autorun.release.worktree_of
+        self.addCleanup(setattr, autorun.release, "worktree_of", original)
+        autorun.release.worktree_of = lambda *args: (reads.append(args), original(*args))[1]
+        autorun.panel_runs(self.con)
+        autorun.panel_runs(self.con)
+        self.assertEqual(len(reads), 1)
 
 
 class WebToggle(AutorunCase):

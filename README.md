@@ -6,9 +6,20 @@
 ## 실행
 
 ```bash
-python3 server.py                    # http://127.0.0.1:9080
+./run.sh                             # 백그라운드로 띄우고 logs/<날짜>.log 에 기록
+./run.sh --port 9081                 # 워크트리용 다른 포트
+./restart.sh                         # 돌던 서버를 죽이고 같은 포트로 다시
+python3 server.py                    # 포그라운드로 볼 때 (http://127.0.0.1:9080)
 python3 server.py --host 0.0.0.0     # 폰에서 볼 때 (인증 없음, LAN 노출 주의)
 ```
+
+`run.sh` 는 인자를 `server.py` 로 그대로 넘기고, pid 와 로그 경로를 출력한다.
+로그는 하루 한 파일(`logs/YYYY-MM-DD.log`)이고 7일 넘게 안 쓴 파일은 다음 실행 때 지운다.
+종료는 출력된 pid 로 `kill <pid>`.
+
+`restart.sh` 는 이 디렉토리를 cwd 로 돌던 서버만 죽이고 `run.sh` 로 다시 띄운다.
+인자를 안 주면 죽인 서버의 인자를 물려받아 포트를 다시 적지 않아도 되고, 인자를 주면 그 인자로 뜬다.
+다른 워크트리·메인 체크아웃의 서버는 cwd 가 달라 건드리지 않는다.
 
 ## 테스트
 
@@ -23,6 +34,8 @@ work-dashboard/
 │
 ├── dash.py                          # CLI 진입점. 파싱·위임·출력만
 ├── server.py                        # 웹 서버 진입점 (http.server, 프레임워크 없음)
+├── run.sh                           # 백그라운드 실행. 날짜별 로그 + 7일치 정리
+├── restart.sh                       # 이 디렉토리 서버만 죽이고 run.sh 로 재기동
 │
 ├── app/                             # 도메인 계층
 │   ├── constants.py                 # 전역 상수. 매직넘버는 전부 여기로
@@ -231,6 +244,7 @@ python3 dash.py finish <session> --worktree PATH # 자동으로 못 찾을 때 �
 python3 dash.py autorun on|off|status      # 기본 off. 자동으로 다시 켜지는 경로는 없다
 python3 dash.py autorun-tick --dry-run     # 띄우지 않고 판정 사유만
 python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어가는 지시 전문
+python3 dash.py autorun-request "<이유>"   # 판단 보류 — 자율 세션이 스스로 멈출 때 씀
 ```
 
 보드 화면의 "자율 수행" 옆 ON/OFF 스위치도 같은 설정을 켜고 끈다 — CLI 와 상태가 하나다.
@@ -245,7 +259,7 @@ python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어�
 | --- | --- | --- |
 | 라벨 | `auto` 라벨이 붙은 할일만 | 자율 실행 허가는 사람이 준다. 코드가 "이건 맡겨도 되겠다" 를 추정하지 않는다 |
 | 조건 | `precondition` 문장이 **없을** 것 | 조건은 자연어라 코드가 충족 여부를 판정할 수 없다. 조건이 붙은 할일은 사람이 풀어야 후보가 된다 |
-| 기록 | `autorun_runs.outcome='blocked'` 가 있는 할일은 제외 | 2회 연속 실패한 할일을 계속 다시 집으면 사용량만 태운다 |
+| 기록 | `autorun_runs.outcome` 이 `blocked`·`requested` 인 할일은 제외 | `blocked` 는 2회 연속 실패, `requested` 는 판단 보류 — 둘 다 사람이 봐야 다시 후보가 된다 |
 
 조건이 붙은 채로 후보에 오르는 경로는 지금 없지만, 프롬프트는 조건 전문과 재확인 지시를 싣는다 — ⑥(`waiting` 상태)이 들어와 조건 있는 할일도 후보가 되면 그 판단은 자율 세션이 첫 단계로 한다.
 
@@ -256,12 +270,14 @@ python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어�
 | autorun off | `autorun_state.enabled` | 시작 안 함 (기본) |
 | 이미 자율 잡이 돎 | `autorun_runs.ended_at IS NULL` | 시작 안 함 (동시 1건) |
 | 5시간 창 사용률 ≥ `USAGE_CRITICAL_PCT` | 사이드카 `RATE_LIMITS_PATH` | 다음 tick 재확인 |
-| 사용률 데이터가 낡음 | `USAGE_STALE_SECONDS` | 시작 안 함 — 모르면 안 돈다 |
+| 사용률 데이터가 아예 없음 | 사이드카에 `five_hour.used_percentage` 가 없음 | 시작 안 함 — 모르면 안 돈다 |
 | 후보 없음 | `planning.next_todo` | autorun off |
 | 작업 위치를 모름 | 그 워크스페이스에서 돈 세션이 없음 | 시작 안 함 |
 | 작업 위치가 더러움 | `git status --porcelain` | 시작 안 함 |
 
 사용률은 `usage.snapshot()` 이 아니라 사이드카를 직접 읽는다 — 그 함수는 조회하면서 `usage_samples` 에 한 줄 적립하므로 tick 이 5분마다 부르면 추이 그래프에 tick 이 섞인다.
+
+사이드카가 **낡았다는 이유로는 막지 않는다.** 그 파일은 statusline 이 그려질 때만 갱신되므로(Claude Code 가 사용률을 statusline 페이로드로만 넘긴다) 대화창이 없는 동안은 늘 낡는다. 낡음을 금지 조건으로 뒀더니 자율 실행이 필요한 시간대에 영구히 안 돌았다. 대신 마지막 값으로 판단하고, 그 값의 5시간 창이 `resets_at` 을 지났으면 0으로 본다 — 한도에 닿은 채 찍힌 사진 한 장으로 밤새 막히지 않게.
 
 작업 위치는 **그 워크스페이스에서 세션이 가장 많이 돈 저장소**다(`sessions.cwd_counts_by_workspace`). 워크트리 경로는 `/.claude/worktrees/` 앞에서 잘라 본 저장소로 접고, `.git` 이 없는 위치(홈·scratch)는 걸러낸다. "가장 최근" 으로 골랐더니 다른 저장소에서 이 워크스페이스 할일을 하나 잡은 세션 때문에 1위가 그쪽으로 넘어갔다.
 
@@ -285,10 +301,19 @@ python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어�
 | `done` | 사람이 자율 수행 패널의 `확인 필요` 배지를 눌러 확인을 마침 |
 | `failed` | 잡이 끝났는데 할일이 안 끝남 |
 | `blocked` | 그 실패로 `AUTORUN_FAIL_LIMIT` 에 닿음. 그 할일은 이후 후보에서 빠진다 |
+| `requested` | 세션이 `autorun-request` 로 판단 보류를 남기고 멈춤. 실패가 아니라 **요청** — 그 할일은 이후 후보에서 빠진다 |
 
 성공한 잡이 곧바로 `done` 이 되지 않는 이유 — 자율 세션은 커밋하지 않고 변경을 워크트리에 남긴다. 그 시점의 작업은 끝난 것이 아니라 **사람이 봐야 하는 것**이고, 클로드가 아직 돌고 있는 `진행 중` 과는 다른 상태다. 확인은 코드가 판정할 수 없으므로(diff 를 읽고 병합할지 정하는 일이다) 배지 클릭(`PATCH /api/autorun-runs/<id>`)만 기록한다. `review` 는 실패로 세지 않는다 — 확인이 밀린 동안 그 할일이 `blocked` 로 올라가면 안 된다.
 
 `blocked` 가 `AUTORUN_BLOCKED_STREAK_LIMIT` 만큼 연속되면 autorun 자체를 끈다. 자율 잡에 사람이 프롬프트를 넣어도 끈다(`UserPromptSubmit` 훅) — 그 잡은 사람 것으로 인계된 것이다. 첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 `last_prompt` 가 이미 있을 때만 사람이 끼어든 것으로 본다.
+
+#### 판단 보류 (`requested`)
+
+자율 세션은 다음 중 하나면 추측 대신 멈춘다 — 기능을 추가·수정할 때 grill me·superpowers 로 검토(스펙 문서는 안 씀)해 기획 공백이 나올 때, 구현 방향이 여럿인데 어느 쪽인지 `note` 에 안 정해져 있을 때, 토큰·Jira·문서 위치가 필요한데 `note` 에 없을 때. `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 사유를 남기고 할일 상태는 건드리지 않은 채 끝낸다.
+
+`autorun-request` 는 실행 중인 기록에 사유만 적어 두고 **그 자리에서 닫지 않는다.** 여기서 바로 닫으면(`ended_at` 을 채우면) 아직 잡 프로세스가 안 끝났는데 다음 tick 이 동시 1건 규칙을 어기고 새 잡을 띄울 수 있다. 닫는 일은 다른 결과와 똑같이 tick 이 잡 종료(`state.json`)를 확인한 뒤에 한다 — 그때 `outcome_for_close` 가 이 사유를 보고 `failed`·`blocked` 대신 `requested` 로 닫는다. 사유는 자율 수행 패널의 `요청` 배지에 마우스오버로 뜬다.
+
+`blocked` 와 같은 이유로 자동으로는 안 풀린다 — 사람이 `note`·`precondition` 을 손보고 나서만 다시 후보가 된다. 지금은 ③ 결정 대기 큐(`dash.py ask`/`answer`)가 없어 웹에서 바로 답하는 경로는 없다 — 요청 사유를 읽고 할일을 손보는 것까지가 이번 범위다.
 
 ### 초기 설정 (⑤)
 

@@ -5,6 +5,7 @@ from app.constants import (
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_REQUESTED,
     OUTCOME_REVIEW,
 )
 from app.db import now, transaction
@@ -53,6 +54,17 @@ def touch_tick(con):
             "UPDATE autorun_state SET last_tick_at=?, updated_at=? WHERE id=?",
             (stamp, stamp, STATE_ROW_ID),
         )
+
+
+def set_tick_reason(con, reason):
+    """그 tick 이 왜 그렇게 판정했는지. 켜져 있는데 안 도는 이유를 화면에서 보려면 필요하다"""
+    state(con)
+    with transaction(con):
+        con.execute(
+            "UPDATE autorun_state SET last_tick_reason=?, updated_at=? WHERE id=?",
+            (reason, now(), STATE_ROW_ID),
+        )
+    return state(con)
 
 
 def bump_blocked_streak(con):
@@ -114,12 +126,17 @@ def get(con, run_id):
 
 
 def recent_with_todos(con, limit=10):
-    """최근 실행 + 그 할일 제목·워크스페이스 이름. 자율 수행 패널이 그대로 뿌린다"""
+    """최근 실행 + 그 할일 제목·워크스페이스 이름·세션 위치.
+
+    cwd 는 그 자율 세션이 마지막으로 있던 위치다 — 잡이 EnterWorktree 로 워크트리에
+    들어가면 훅이 그 경로로 갱신하므로, 어느 워크트리에서 돌았는지가 여기서 나온다
+    """
     rows = con.execute(
-        """SELECT r.*, t.title AS todo_title, w.name AS workspace_name
+        """SELECT r.*, t.title AS todo_title, w.name AS workspace_name, s.cwd AS cwd
              FROM autorun_runs r
              JOIN todos t ON t.id = r.todo_id
              LEFT JOIN workspaces w ON w.id = t.workspace_id
+             LEFT JOIN sessions s ON s.claude_session_id = r.claude_session_id
             ORDER BY r.id DESC LIMIT ?""",
         (limit,),
     )
@@ -156,7 +173,7 @@ def consecutive_failures(con, todo_id):
         " ORDER BY id DESC",
         (todo_id,),
     ):
-        if row["outcome"] in (OUTCOME_DONE, OUTCOME_REVIEW):
+        if row["outcome"] in (OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_REQUESTED):
             break
         count += 1
     return count
@@ -224,9 +241,54 @@ def blocked_todo_ids(con):
     }
 
 
-def outcome_for_close(con, todo_id, todo_done):
-    """끝난 잡의 결과. 할일이 done 이면 확인 필요, 아니면 실패.
-    이 실패로 한도에 닿으면 그 자리에서 blocked 로 올린다"""
+def requested_todo_ids(con):
+    """판단 보류(요청)로 멈춘 할일. blocked 와 같은 이유로 다음 tick 후보에서 뺀다 —
+
+    사람이 결정을 남기고 note·precondition 을 손봐야 다시 후보가 된다. 자동으로는
+    안 풀린다 — 안 그러면 사람이 아직 안 본 사이에 같은 질문으로 다시 멈춘다
+    """
+    return {
+        row["todo_id"]
+        for row in con.execute(
+            "SELECT DISTINCT todo_id FROM autorun_runs WHERE outcome=?",
+            (OUTCOME_REQUESTED,),
+        )
+    }
+
+
+def mark_requested(con, claude_session_id, note):
+    """지금 도는 자율 실행이 판단에 막혔다는 표시.
+
+    바로 닫지 않고 실행 중인 행에 사유만 적어 둔다 — 여기서 닫으면(ended_at 을 채우면)
+    잡 프로세스가 아직 안 끝났는데 다음 tick 이 동시 1건 규칙을 어기고 새 잡을 띄울 수
+    있다. 닫는 일은 여느 결과와 같이 reconcile()이 잡 종료를 확인한 뒤에 한다
+    (outcome_for_close 가 이 값을 본다)
+    """
+    reason = (note or "").strip()
+    if not reason:
+        raise Validation("무엇이 필요한지 적을 것 — 이유 없는 요청은 사람이 판단할 수 없음")
+    run = con.execute(
+        "SELECT * FROM autorun_runs WHERE claude_session_id=? AND ended_at IS NULL"
+        " ORDER BY id DESC LIMIT 1",
+        (claude_session_id,),
+    ).fetchone()
+    if not run:
+        raise NotFound("이 세션의 진행 중인 자율 실행 기록이 없음")
+    with transaction(con):
+        con.execute(
+            "UPDATE autorun_runs SET requested_note=? WHERE id=?", (reason, run["id"])
+        )
+    return get(con, run["id"])
+
+
+def outcome_for_close(con, todo_id, todo_done, requested_note=None):
+    """끝난 잡의 결과. requested_note 가 있으면 판단 보류가 최우선이다 —
+
+    실패나 완료를 판정하기 전에, 세션이 스스로 멈춘 것인지부터 본다. 아니면 할일이
+    done 이면 확인 필요, 그것도 아니면 실패. 이 실패로 한도에 닿으면 blocked 로 올린다
+    """
+    if requested_note:
+        return OUTCOME_REQUESTED
     if todo_done:
         return OUTCOME_REVIEW
     if consecutive_failures(con, todo_id) + 1 >= AUTORUN_FAIL_LIMIT:
