@@ -33,7 +33,7 @@ from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.services import planning, release
+from app.services import planning, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
 JOB_ID_PATTERN = re.compile(r"backgrounded[^\n]*?([0-9a-f]{8})")
@@ -61,6 +61,9 @@ REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없
 REASON_DIRTY = "작업 위치에 커밋 안 된 변경이 있음"
 REASON_READY = "시작 가능"
 
+# 실행 id → 워크트리 경로. 끝난 실행만 담는다(그 뒤로 바뀌지 않는다)
+_WORKTREE_CACHE = {}
+
 
 def tick(con, dry_run=False, launcher=None):
     """5분 크론이 부르는 진입점. 판정만 하고 조건이 안 맞으면 아무것도 안 한다"""
@@ -79,6 +82,47 @@ def tick(con, dry_run=False, launcher=None):
         return decision
     decision["run"] = _register_run(con, decision, launched)
     return decision
+
+
+def panel_runs(con, limit=10):
+    """자율 수행 패널이 그리는 실행 목록.
+
+    어느 워크트리에서 돌았는지와 거기서 열려 있는 포트를 붙인다 — 결과만 보고는 그
+    변경을 어디서 봐야 하는지, 띄워 둔 서버가 몇 번인지 알 수 없다
+    """
+    runs = autorun_repo.recent_with_todos(con, limit)
+    for run in runs:
+        path = _run_worktree(run)
+        run["worktree_path"] = path
+        run["worktree"] = _worktree_name(path)
+    processes = worktrees.processes_by_path(
+        sorted({run["worktree_path"] for run in runs if run["worktree_path"]})
+    )
+    for run in runs:
+        found = processes.get(os.path.realpath(run["worktree_path"] or "/")) or []
+        run["ports"] = sorted({port for entry in found for port in entry["ports"]})
+    return runs
+
+
+def _run_worktree(run):
+    """그 실행이 작업한 워크트리 경로. 메인 체크아웃에서 돌았으면 빈 문자열.
+
+    세션 cwd 로는 알 수 없다 — EnterWorktree 로 옮겨가도 훅이 받는 cwd 는 세션이 열린
+    위치 그대로다(release._candidates 참고). 그래서 transcript 를 봐야 하는데 꼬리
+    512KB 를 읽으므로, 5초마다 도는 폴링이 매번 읽지 않도록 끝난 실행은 기억해 둔다
+    """
+    if run["id"] in _WORKTREE_CACHE:
+        return _WORKTREE_CACHE[run["id"]]
+    path = release.worktree_of(run["claude_session_id"] or "", run["cwd"] or "")
+    if run["ended_at"]:
+        _WORKTREE_CACHE[run["id"]] = path
+    return path
+
+
+def _worktree_name(path):
+    """`…/.claude/worktrees/foo` → `foo`. 워크트리가 아니면 빈 문자열"""
+    _, mark, tail = (path or "").partition(release.WORKTREE_MARK)
+    return tail.split("/")[0] if mark else ""
 
 
 def judge(con):

@@ -4,7 +4,15 @@
 // (tests/test_autorun_row_click.py 가 이걸 부른다)
 import assert from "node:assert/strict";
 
-const RUN = { id: 2, todo_id: 57, todo_title: "제목", workspace_name: "작업 대시보드" };
+const RUN = {
+  id: 2,
+  todo_id: 57,
+  todo_title: "제목",
+  workspace_name: "작업 대시보드",
+  worktree_path: "/home/u/work/work-dashboard/.claude/worktrees/고침",
+  worktree: "고침",
+  ports: [9081],
+};
 const REVIEW_RUN = { id: 3, todo_id: 58, todo_title: "확인 대기", outcome: "review" };
 const TICK_AT = new Date(Date.now() - 3 * 60 * 1000).toISOString(); // 3분 전 tick
 const REASON = "돌릴 수 있는 할일이 없음"; // 켜져 있는데 안 도는 이유. 주기 옆에 같이 보인다
@@ -33,7 +41,10 @@ const node = () => ({
   classList: { toggle() {}, remove() {}, add() {} },
   children: [],
   listeners: {},
-  append() {},
+  // 칸 순서를 보려면 붙은 것을 들고 있어야 한다
+  append(...items) {
+    this.children.push(...items);
+  },
   appendChild() {},
   replaceChildren() {},
   showModal() {
@@ -66,6 +77,21 @@ assert.equal(
   elements["autorun-cycle"].textContent,
   `5분마다 | 마지막 수행 3m 전 · ${REASON}`,
 );
+
+// 칸 순서 — 워크스페이스 / 할일 / 워크트리 / 포트 / 상태 / 경과
+assert.deepEqual(
+  rows[0].children.map((cell) => cell.className),
+  ["scope", "prompt", "wt", "ports", "badge outcome-running", "age"],
+);
+assert.equal(rows[0].children[2].textContent, "고침");
+
+// 포트는 그 서버로 가는 링크다. 눌러도 줄 클릭(팝업)으로 새면 안 된다
+const port = rows[0].children[3].children[0];
+assert.equal(port.textContent, ":9081");
+assert.equal(port.href, "http://localhost:9081");
+let portStopped = false;
+port.listeners.click({ stopPropagation: () => (portStopped = true) });
+assert.equal(portStopped, true);
 
 // 줄마다 클릭 핸들러가 붙어 있어야 한다 — 안 붙으면 눌러도 아무 일도 없다
 assert.equal(rows.length, 2);

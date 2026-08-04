@@ -70,12 +70,27 @@ function runRow(run) {
   const item = document.createElement("li");
   const scope = element("span", "scope", run.workspace_name || NO_WORKSPACE);
   const title = element("span", "prompt", run.todo_title);
+  const worktree = element("span", "wt", run.worktree || "");
+  worktree.title = run.worktree_path || "";
+  const ports = element("span", "ports");
+  ports.append(...(run.ports || []).map(portLink));
   const outcome = outcomeBadge(run);
   const age = element("span", "age", formatAge(run.started_at));
-  item.append(scope, title, outcome, age);
+  item.append(scope, title, worktree, ports, outcome, age);
   // 세션 줄·보드 카드와 같은 팝업. 실행 단위가 할일이라 할일로 열어 개요 탭부터 보여준다
   item.addEventListener("click", () => openDetail({ todo: { id: run.todo_id } }));
   return item;
+}
+
+// 워크트리 탭과 같은 규칙 — 포트를 누르면 그 서버가 새 탭에서 열린다
+function portLink(port) {
+  const link = element("a", "wt-port", `:${port}`);
+  link.href = `http://localhost:${port}`;
+  link.target = "_blank";
+  link.rel = "noopener";
+  // 줄 클릭은 상세 팝업이라 여기서 멈춘다 — 서버를 보려고 눌렀는데 팝업이 뜨면 안 된다
+  link.addEventListener("click", (event) => event.stopPropagation());
+  return link;
 }
 
 // 확인 필요만 누를 수 있는 버튼이다 — 다른 결과는 사람이 내릴 것이 없다
