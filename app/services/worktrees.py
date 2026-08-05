@@ -80,7 +80,7 @@ def apply(con, repo, branch):
     _ensure_no_local_changes(path, "워크트리")
 
     if not _merge(root, branch):
-        raise Conflict(f"{branch} 를 {base} 에 병합하지 못함 (충돌) — 손으로 정리 필요")
+        raise Conflict("충돌로 병합하지 못했습니다. 직접 정리가 필요합니다")
 
     killed = release.kill_serving(path)
     _git_write(root, "worktree", "remove", path)
@@ -116,13 +116,13 @@ def _resolve_target(repo, branch, action):
     root = os.path.abspath(repo)
     branches = _branches(root)
     if branch not in branches:
-        raise NotFound(f"브랜치 {branch} 없음")
+        raise NotFound(f"{branch} 브랜치를 찾을 수 없습니다")
     base = _base_branch(root, branches)
     if branch == base:
         raise Validation(f"기준 브랜치는 {action} 대상이 아님")
     path = _worktrees(root).get(branch)
     if not path:
-        raise NotFound(f"브랜치 {branch} 의 워크트리를 찾을 수 없음")
+        raise NotFound(f"{branch} 브랜치의 워크트리를 찾을 수 없습니다")
     return root, base, path
 
 
@@ -150,12 +150,14 @@ def _ensure_todos_completable(con, todo_ids):
 def _ensure_checked_out(root, base):
     current = _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     if current != base:
-        raise Validation(f"메인 체크아웃이 {base} 가 아니라 {current} 임 — 먼저 체크아웃하세요")
+        raise Validation(
+            f"메인 체크아웃이 {current} 입니다. 먼저 {base} 로 체크아웃해 주세요"
+        )
 
 
 def _ensure_no_local_changes(path, label):
     if _git(path, "status", "--porcelain").strip():
-        raise Validation(f"{label} 에 커밋되지 않은 변경사항이 있음")
+        raise Validation(f"{label} 에 커밋되지 않은 변경사항이 있습니다")
 
 
 def _merge(root, branch):
