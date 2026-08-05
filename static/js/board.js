@@ -416,19 +416,12 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
   event.preventDefault();
   const title = document.getElementById("quick-title");
   const categoryId = Number(document.getElementById("quick-category").value);
-  const precondition = document.getElementById("quick-precondition");
-  const note = document.getElementById("quick-note");
   run(async () => {
     await api.createTodo({
       title: title.value,
       category_id: categoryId,
-      precondition: precondition.value || null,
-      note: note.value || null,
     });
     title.value = "";
-    precondition.value = "";
-    note.value = "";
-    document.getElementById("quick-extra").open = false;
     await renderBoard();
   });
 });
