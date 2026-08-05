@@ -35,7 +35,7 @@ def list_by_todo(con, todo_id):
 def get(con, subtask_id):
     row = con.execute("SELECT * FROM subtasks WHERE id=?", (subtask_id,)).fetchone()
     if not row:
-        raise NotFound(f"하위할일 {subtask_id} 없음")
+        raise NotFound("하위 할 일을 찾을 수 없습니다")
     return dict(row)
 
 
@@ -78,5 +78,5 @@ def _group_scope(todo_id):
 def _clean_title(title):
     cleaned = (title or "").strip()
     if not cleaned:
-        raise Validation("하위할일 제목이 비어 있음")
+        raise Validation("하위 할 일 제목을 입력해 주세요")
     return cleaned

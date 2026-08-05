@@ -143,7 +143,7 @@ def clean_color(color):
     """#rrggbb 만 통과. 카테고리·라벨이 같은 규칙을 쓴다"""
     cleaned = (color or "").strip()
     if not re.match(COLOR_PATTERN, cleaned):
-        raise Validation(f"색은 #rrggbb 형식이어야 함: {color!r}")
+        raise Validation("색은 #rrggbb 형식으로 입력해 주세요")
     return cleaned.lower()
 
 

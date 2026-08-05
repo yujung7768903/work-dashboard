@@ -8,6 +8,7 @@ from app.constants import (
     STATUS_DOING,
     STATUS_DONE,
     STATUS_TODO,
+    SUBTASKS_REMAINING_MSG,
     WORKSPACE_ACTIVE,
 )
 from app.db import connect
@@ -350,7 +351,8 @@ class TodoRepoTest(unittest.TestCase):
         subtask_repo.create(self.con, created["id"], "k6 시나리오")
         with self.assertRaises(Validation) as caught:
             todo_repo.update(self.con, created["id"], status=STATUS_DONE)
-        self.assertIn("k6 시나리오", str(caught.exception))
+        # 남은 하위할일 제목은 싣지 않는다 — 사용자에게 보이는 문장이고 목록은 바로 아래 있다
+        self.assertEqual(SUBTASKS_REMAINING_MSG, str(caught.exception))
         self.assertEqual(todo_repo.get(self.con, created["id"])["status"], STATUS_TODO)
 
     def test_done_allowed_when_all_subtasks_done(self):

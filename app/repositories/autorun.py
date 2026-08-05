@@ -187,9 +187,9 @@ def confirm_run(con, run_id):
     """
     run = get(con, run_id)
     if not run:
-        raise NotFound(f"실행 기록 {run_id} 없음")
+        raise NotFound("실행 기록을 찾을 수 없습니다")
     if run["outcome"] != OUTCOME_REVIEW:
-        raise Validation(f"검토 대기 상태가 아님: {run['outcome'] or '진행 중'}")
+        raise Validation("이미 처리된 실행입니다")
     with transaction(con):
         con.execute(
             "UPDATE autorun_runs SET outcome=? WHERE id=?", (OUTCOME_DONE, run_id)
@@ -216,9 +216,9 @@ def reopen_run(con, run_id):
     """확인을 되돌린다 — done 을 review 로. confirm_run 의 역방향, 잘못 누른 확인을 무른다"""
     run = get(con, run_id)
     if not run:
-        raise NotFound(f"실행 기록 {run_id} 없음")
+        raise NotFound("실행 기록을 찾을 수 없습니다")
     if run["outcome"] != OUTCOME_DONE:
-        raise Validation(f"완료 상태가 아님: {run['outcome'] or '진행 중'}")
+        raise Validation("확인 처리된 실행이 아닙니다")
     with transaction(con):
         con.execute(
             "UPDATE autorun_runs SET outcome=? WHERE id=?", (OUTCOME_REVIEW, run_id)
