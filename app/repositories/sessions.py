@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from app.constants import (
     ENDED_RETENTION_DAYS,
     LAST_PROMPT_MAX_CHARS,
+    SCOPE_REQUIRED_MSG,
     SESSION_STATES,
     STALE_IDLE_HOURS,
     STATE_ENDED,
@@ -61,7 +62,7 @@ def register(con, claude_session_id, cwd=None, git_branch=None):
 def get(con, claude_session_id):
     found = find(con, claude_session_id)
     if not found:
-        raise NotFound(f"세션 {claude_session_id} 없음")
+        raise NotFound("세션을 찾을 수 없습니다")
     return found
 
 
@@ -118,13 +119,13 @@ def classify(con, claude_session_id, category_name=None, workspace_id=None):
 def classify_by_ids(con, session_row_id, category_id=None, workspace_id=None):
     """대시보드에서 손으로 고칠 때. 내부 정수 id 로 받음"""
     if not _row_by_id(con, session_row_id):
-        raise NotFound(f"세션 {session_row_id} 없음")
+        raise NotFound("세션을 찾을 수 없습니다")
     if workspace_id is not None:
         category_id = workspace_repo.get(con, workspace_id)["category_id"]
     elif category_id is not None:
         category_repo.get(con, category_id)
     else:
-        raise Validation("카테고리나 워크스페이스 중 하나는 필요함")
+        raise Validation(SCOPE_REQUIRED_MSG)
     with transaction(con):
         con.execute(
             "UPDATE sessions SET category_id=?, last_seen_at=? WHERE id=?",
@@ -289,7 +290,7 @@ def get_by_row_id(con, session_row_id):
     """대시보드 팝업용. 목록과 같은 모양(이름 포함)으로 한 건"""
     row = con.execute(f"{WITH_NAMES} WHERE s.id=?", (session_row_id,)).fetchone()
     if not row:
-        raise NotFound(f"세션 {session_row_id} 없음")
+        raise NotFound("세션을 찾을 수 없습니다")
     return dict(row)
 
 
@@ -320,14 +321,14 @@ def _resolve_category(con, category_name, workspace_id):
     if workspace_id is not None:
         return workspace_repo.get(con, workspace_id)["category_id"]
     if not category_name:
-        raise Validation("카테고리나 워크스페이스 중 하나는 필요함")
+        raise Validation(SCOPE_REQUIRED_MSG)
     return category_repo.get_by_name(con, category_name)["id"]
 
 
 def _require_todo(con, todo_id):
     row = con.execute("SELECT id FROM todos WHERE id=?", (todo_id,)).fetchone()
     if not row:
-        raise NotFound(f"할일 {todo_id} 없음")
+        raise NotFound("할 일을 찾을 수 없습니다")
 
 
 def _clean_id(claude_session_id):
