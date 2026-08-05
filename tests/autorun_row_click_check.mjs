@@ -1,4 +1,4 @@
-// 자율 수행 줄을 누르면 그 실행의 할일로 상세 팝업이 열리는지, '확인 필요' 배지를 누르면
+// 자율 수행 줄을 누르면 그 실행의 할일로 상세 팝업이 열리는지, '검토 대기' 배지를 누르면
 // 팝업 대신 확인 요청이 나가는지 본다. 브라우저 없이 돌려야 하므로 autorun.js 가 만지는
 // DOM 만 흉내낸다. 실행: node tests/autorun_row_click_check.mjs
 // (tests/test_autorun_row_click.py 가 이걸 부른다)
@@ -103,9 +103,9 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(asked.includes("GET /api/todos/57"), asked.join(", "));
 assert.equal(elements["session-modal"].open, true);
 
-// 확인 필요 배지는 눌리는 버튼이고, 눌러도 줄 클릭(팝업)으로 새지 않아야 한다
-const badge = created.find((made) => made.textContent === "확인 필요");
-assert.ok(badge, "확인 필요 배지가 없다");
+// 검토 대기 배지는 눌리는 버튼이고, 눌러도 줄 클릭(팝업)으로 새지 않아야 한다
+const badge = created.find((made) => made.textContent === "검토 대기");
+assert.ok(badge, "검토 대기 배지가 없다");
 assert.equal(typeof badge.listeners.click, "function");
 let stopped = false;
 badge.listeners.click({ stopPropagation: () => (stopped = true) });
