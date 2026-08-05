@@ -205,14 +205,16 @@ function runRowAction(call, confirmMessage) {
       draw(cached);
       return;
     }
-    // 끝난 것을 말로 알린다 — 병합의 반쪽 완료(kept) 와, 서버 실행·중지 결과(message).
-    // 실행은 몇 초 걸리고 끝나도 포트 배지만 조용히 붙어 완료 여부를 알 수 없다
     const result = await call();
-    const notice = result?.kept ?? result?.message;
-    if (notice) alert(notice);
     // 병합·삭제로 커밋·워크트리 목록 자체가 바뀌어 캐시로는 다시 그릴 수 없다
     cached = null;
     await renderWorktrees();
+    // 알림은 목록을 다시 그린 **뒤에**. alert 는 화면을 멈추므로 먼저 띄우면
+    // 확인을 누른 다음에야 포트 배지가 붙어 한 박자 늦게 보인다.
+    // 병합의 반쪽 완료(kept), 서버 실행·중지 결과(message) 가 이 길을 쓴다 —
+    // 실행은 몇 초 걸리고 끝나도 배지만 조용히 붙어 완료 여부를 알 수 없다
+    const notice = result?.kept ?? result?.message;
+    if (notice) alert(notice);
   });
 }
 

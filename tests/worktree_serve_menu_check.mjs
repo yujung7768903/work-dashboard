@@ -35,9 +35,12 @@ const GROUPS = [
 const DONE_MESSAGE = "실행했습니다 — http://127.0.0.1:9081/";
 
 const asked = [];
+// 알림과 목록 갱신의 순서를 봐야 한다 — alert 가 먼저면 확인을 누를 때까지 포트가 안 붙는다
+const order = [];
 globalThis.fetch = async (url, options) => {
   const method = options?.method ?? "GET";
   asked.push({ method, url, body: options?.body });
+  order.push(`${method} ${url}`);
   // 서버는 조작 결과에 사람이 읽을 문장을 실어 준다 (app/services/serve.py)
   const body =
     method === "POST" ? { message: DONE_MESSAGE } : { "/api/worktrees": { groups: GROUPS } }[url];
@@ -50,7 +53,10 @@ globalThis.confirm = (message) => {
   return true;
 };
 const alerts = [];
-globalThis.alert = (message) => alerts.push(message);
+globalThis.alert = (message) => {
+  alerts.push(message);
+  order.push("alert");
+};
 
 const node = () => {
   const made = {
@@ -130,8 +136,8 @@ assert.deepEqual(JSON.parse(posted[0].body), {
 assert.deepEqual(confirms, [], "실행은 되묻지 않는다");
 // 끝난 것을 팝업으로 알린다 — 포트 배지가 조용히 붙는 것만으로는 완료를 알 수 없다
 assert.deepEqual(alerts, [DONE_MESSAGE], alerts.join(" / "));
-// 목록을 다시 받아 포트 칸이 갱신돼야 한다
-assert.ok(asked.at(-1).url === "/api/worktrees" && asked.at(-1).method === "GET");
+// 목록을 다시 받은 **뒤에** 알린다. 순서가 뒤집히면 확인을 누를 때까지 포트가 안 붙는다
+assert.deepEqual(order.slice(-2), ["GET /api/worktrees", "alert"], order.join(" → "));
 
 // 안 떠 있는 줄의 확인창은 포트가 없으니 브랜치 이름을 가리킨다
 toggles()[1].listeners.click({ stopPropagation() {} });
