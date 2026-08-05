@@ -32,10 +32,15 @@ const GROUPS = [
   },
 ];
 
+const DONE_MESSAGE = "실행했습니다 — http://127.0.0.1:9081/";
+
 const asked = [];
 globalThis.fetch = async (url, options) => {
-  asked.push({ method: options?.method ?? "GET", url, body: options?.body });
-  const body = { "/api/worktrees": { groups: GROUPS } }[url];
+  const method = options?.method ?? "GET";
+  asked.push({ method, url, body: options?.body });
+  // 서버는 조작 결과에 사람이 읽을 문장을 실어 준다 (app/services/serve.py)
+  const body =
+    method === "POST" ? { message: DONE_MESSAGE } : { "/api/worktrees": { groups: GROUPS } }[url];
   return { ok: true, status: 200, json: async () => body ?? {} };
 };
 
@@ -44,7 +49,8 @@ globalThis.confirm = (message) => {
   confirms.push(message);
   return true;
 };
-globalThis.alert = () => {};
+const alerts = [];
+globalThis.alert = (message) => alerts.push(message);
 
 const node = () => {
   const made = {
@@ -122,6 +128,8 @@ assert.deepEqual(JSON.parse(posted[0].body), {
   action: "start",
 });
 assert.deepEqual(confirms, [], "실행은 되묻지 않는다");
+// 끝난 것을 팝업으로 알린다 — 포트 배지가 조용히 붙는 것만으로는 완료를 알 수 없다
+assert.deepEqual(alerts, [DONE_MESSAGE], alerts.join(" / "));
 // 목록을 다시 받아 포트 칸이 갱신돼야 한다
 assert.ok(asked.at(-1).url === "/api/worktrees" && asked.at(-1).method === "GET");
 

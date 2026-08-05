@@ -68,9 +68,12 @@ class StartTest(unittest.TestCase):
 
     def test_stop_without_a_server_is_not_an_error(self):
         """재실행이 같은 길을 지나가고, 안 떠 있는 줄에서도 중지를 누를 수 있다 —
-        떠 있는 게 없어도 오류로 끝나면 안 된다"""
+        떠 있는 게 없어도 오류로 끝나면 안 된다. 다만 "종료했습니다" 로 끝나면
+        안 죽인 것을 죽였다고 오해하므로 문장이 갈린다"""
         with tempfile.TemporaryDirectory() as path:
-            self.assertEqual(serve.stop(path), {"stopped": []})
+            result = serve.stop(path)
+        self.assertEqual(result["stopped"], [])
+        self.assertEqual(result["message"], "종료할 서버가 없었습니다")
 
 
 class ControlTest(unittest.TestCase):

@@ -7,12 +7,17 @@
 
 중지는 release.kill_serving 을 그대로 쓴다 — 병합(worktrees.apply) 이 죽이는 것과
 같은 판정이어야 화면에 보이는 포트와 어긋나지 않는다.
+
+셋 다 사람이 읽을 문장(message)을 함께 돌려준다 — 실행은 몇 초 걸리고 끝나도 화면에는
+포트 배지가 조용히 붙을 뿐이라, 수행 중인지 끝난 건지 구분이 안 된다. 화면은 그 문장을
+그대로 띄운다(병합의 kept 알림과 같은 경로).
 """
 import os
 import socket
 import subprocess
 import time
 
+from app.constants import DEFAULT_HOST
 from app.errors import Conflict, Validation
 from app.services import release
 
@@ -44,7 +49,7 @@ def start(path, prefer=0):
     output = _run_script(script, path, port)
     if not _wait(lambda: _is_listening(port), READY_WAIT_SEC):
         raise Conflict(f":{port} 가 열리지 않았습니다. {output}")
-    return {"port": port, "output": output}
+    return {"port": port, "output": output, "message": _url_message("실행했습니다", port)}
 
 
 def restart(path):
@@ -54,18 +59,30 @@ def restart(path):
     stopped = stop(path)["stopped"]
     if previous:
         _wait(lambda: not _is_listening(previous), FREE_WAIT_SEC)
-    return {**start(path, prefer=previous), "stopped": stopped}
+    started = start(path, prefer=previous)
+    return {
+        **started,
+        "stopped": stopped,
+        "message": _url_message("재실행했습니다", started["port"]),
+    }
 
 
 def stop(path):
     """그 워크트리를 cwd 로 쓰는 서버에 SIGTERM. 떠 있는 게 없으면 빈 목록"""
     _ensure_not_self(path)
+    stopped = [
+        {"pid": pid, "command": command} for pid, command in release.kill_serving(path)
+    ]
+    # 아무것도 안 죽였을 때 "종료했습니다" 로 끝나면 뭘 했는지 오해한다
     return {
-        "stopped": [
-            {"pid": pid, "command": command}
-            for pid, command in release.kill_serving(path)
-        ]
+        "stopped": stopped,
+        "message": "종료했습니다" if stopped else "종료할 서버가 없었습니다",
     }
+
+
+def _url_message(done, port):
+    """실행·재실행 안내. 주소를 함께 준다 — 포트만으로는 바로 열어볼 수 없다"""
+    return f"{done} — http://{DEFAULT_HOST}:{port}/"
 
 
 def _ensure_not_self(path):

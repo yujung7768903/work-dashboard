@@ -205,9 +205,11 @@ function runRowAction(call, confirmMessage) {
       draw(cached);
       return;
     }
-    // 병합은 됐지만 워크트리를 못 지운 경우 등, 반쪽만 끝난 결과는 알려야 한다
+    // 끝난 것을 말로 알린다 — 병합의 반쪽 완료(kept) 와, 서버 실행·중지 결과(message).
+    // 실행은 몇 초 걸리고 끝나도 포트 배지만 조용히 붙어 완료 여부를 알 수 없다
     const result = await call();
-    if (result?.kept) alert(result.kept);
+    const notice = result?.kept ?? result?.message;
+    if (notice) alert(notice);
     // 병합·삭제로 커밋·워크트리 목록 자체가 바뀌어 캐시로는 다시 그릴 수 없다
     cached = null;
     await renderWorktrees();
