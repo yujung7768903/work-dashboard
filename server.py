@@ -163,8 +163,12 @@ def _route_post(con, head, body):
     if head == "reorder":
         return _reorder(con, body)
     if head == "worktrees":
-        action = worktrees.discard if body.get("action") == "discard" else worktrees.apply
-        return action(con, body.get("repo"), body.get("branch"))
+        repo, branch, action = body.get("repo"), body.get("branch"), body.get("action")
+        # 서버 조작(띄우기·다시 띄우기·내리기)은 할일·세션을 건드리지 않아 con 을 받지 않는다
+        if action in worktrees.CONTROLS:
+            return worktrees.control(repo, branch, action)
+        writer = worktrees.discard if action == "discard" else worktrees.apply
+        return writer(con, repo, branch)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 

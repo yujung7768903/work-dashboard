@@ -36,6 +36,9 @@ export const applyWorktree = (repo, branch) =>
   request("POST", "/worktrees", { repo, branch, action: "apply" });
 export const discardWorktree = (repo, branch) =>
   request("POST", "/worktrees", { repo, branch, action: "discard" });
+// action: start(띄우기) · restart(다시 띄우기) · stop(내리기)
+export const controlWorktree = (repo, branch, action) =>
+  request("POST", "/worktrees", { repo, branch, action });
 export const getAutorun = () => request("GET", "/autorun");
 export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });
 export const confirmAutorunRun = (id) => request("PATCH", `/autorun-runs/${id}`);

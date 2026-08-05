@@ -4,8 +4,9 @@
 cwd 로 유추한다. 조회(overview)는 git·lsof 를 읽기 전용으로만 부르고 실패하면 그
 칸만 비운다 — 한 저장소가 깨져도 나머지는 그려져야 한다.
 
-apply() 만 예외적으로 상태를 바꾼다 — 케밥 메뉴의 "적용" 한 번으로 병합·서버
-종료·워크트리 및 브랜치 제거·할일 done 을 순서대로 실행한다.
+상태를 바꾸는 것은 케밥 메뉴에서 부르는 셋뿐이다 — apply() 는 병합·서버 종료·워크트리
+및 브랜치 제거·할일 done 을 순서대로, discard() 는 병합 없이 버리기, control() 은
+서버만 실행·재실행·중지(app/services/serve.py).
 """
 import os
 import subprocess
@@ -17,7 +18,7 @@ from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import release
+from app.services import release, serve
 
 GIT_TIMEOUT_SEC = 5
 # merge·worktree remove·branch delete 는 조회용 git 호출보다 오래 걸릴 수 있다
@@ -136,6 +137,26 @@ def discard(con, repo, branch):
     _git_write(root, "worktree", "remove", "--force", path)
     _git_write(root, "branch", "-D", branch)
     return {"branch": branch, "base": base, "killed": killed, "removed": path}
+
+
+# 케밥 메뉴의 서버 조작. 동작 → (사용자에게 보이는 이름, 실행할 것)
+CONTROLS = {
+    "start": ("실행", serve.start),
+    "restart": ("재실행", serve.restart),
+    "stop": ("중지", serve.stop),
+}
+
+
+def control(repo, branch, action):
+    """워크트리 서버를 실행·재실행·중지한다. 대상 판정은 적용·삭제와 같은 것을 쓴다.
+
+    con 을 받지 않는다 — 할일·세션을 건드리지 않고 프로세스만 다룬다
+    """
+    if action not in CONTROLS:
+        raise Validation(f"알 수 없는 동작: {action}")
+    label, run = CONTROLS[action]
+    _, _, path = _resolve_target(repo, branch, label)
+    return {"branch": branch, "action": action, **run(path)}
 
 
 def _resolve_target(repo, branch, action):

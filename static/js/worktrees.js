@@ -141,14 +141,14 @@ function actionCell(group, row) {
   return rowMenu(group, row);
 }
 
-// 적용(병합)·삭제(버림). 할일 카드의 ws-menu 재사용
+// 서버 실행·재실행·중지, 적용(병합)·삭제(버림). 할일 카드의 ws-menu 재사용
 function rowMenu(group, row) {
   const key = rowKey(group.repo, row.branch);
   const wrapper = document.createElement("div");
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "⋮";
-  toggle.title = "적용 · 삭제";
+  toggle.title = "실행 · 재실행 · 중지 · 적용 · 삭제";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuKey = openMenuKey === key ? null : key;
@@ -163,6 +163,7 @@ function rowMenuItems(group, row) {
   const items = document.createElement("div");
   items.className = "ws-menu-items";
   items.append(
+    ...serveItems(group, row),
     menuItem("적용", () =>
       runRowAction(() => api.applyWorktree(group.repo, row.branch),
         `"${row.branch}" 를 ${group.base} 에 병합하고, 서버 종료·워크트리·브랜치까지 정리할까요?`
@@ -178,20 +179,49 @@ function rowMenuItems(group, row) {
   return items;
 }
 
-// 적용·삭제 둘 다 확인창 → API 호출 → 목록 다시 받기라 흐름이 같다
+// 실행·재실행·중지 셋을 항상 보여준다. 지금 안 떠 있으면 재실행은 실행과 같고
+// 중지는 죽일 게 없어 아무 일도 일어나지 않는다 — 상태에 따라 항목이 사라지면
+// 눌러 보기 전에 무엇을 할 수 있는 메뉴인지 알 수 없다
+function serveItems(group, row) {
+  const item = (label, action, confirmMessage) =>
+    menuItem(label, () =>
+      runRowAction(() => api.controlWorktree(group.repo, row.branch, action), confirmMessage)
+    );
+  // 실행만 확인창이 없다. 나머지 둘은 남의 화면을 끊을 수 있다 —
+  // 다른 세션이 그 포트를 보고 있을 수 있어 되묻는다
+  const target = servingPorts(row) || `"${row.branch}"`;
+  return [
+    item("실행", "start"),
+    item("재실행", "restart", `${target} 를 중지하고 같은 포트로 다시 실행합니다. 계속할까요?`),
+    item("중지", "stop", `${target} 를 중지합니다. 계속할까요?`),
+  ];
+}
+
+// 그 줄이 지금 듣고 있는 포트 ":9081, :9082". 떠 있는 게 없으면 빈 문자열
+function servingPorts(row) {
+  const ports = row.processes.flatMap((process) => process.ports);
+  return ports.length ? `:${ports.join(", :")}` : "";
+}
+
+// 메뉴 항목 다섯 개가 확인창 → API 호출 → 목록 다시 받기로 흐름이 같다.
+// 확인창이 없는 항목(실행)은 confirmMessage 를 넘기지 않는다
 function runRowAction(call, confirmMessage) {
   return run(async () => {
     openMenuKey = null;
-    if (!confirm(confirmMessage)) {
+    if (confirmMessage && !confirm(confirmMessage)) {
       draw(cached);
       return;
     }
-    // 병합은 됐지만 워크트리를 못 지운 경우 등, 반쪽만 끝난 결과는 알려야 한다
     const result = await call();
-    if (result?.kept) alert(result.kept);
     // 병합·삭제로 커밋·워크트리 목록 자체가 바뀌어 캐시로는 다시 그릴 수 없다
     cached = null;
     await renderWorktrees();
+    // 알림은 목록을 다시 그린 **뒤에**. alert 는 화면을 멈추므로 먼저 띄우면
+    // 확인을 누른 다음에야 포트 배지가 붙어 한 박자 늦게 보인다.
+    // 병합의 반쪽 완료(kept), 서버 실행·중지 결과(message) 가 이 길을 쓴다 —
+    // 실행은 몇 초 걸리고 끝나도 배지만 조용히 붙어 완료 여부를 알 수 없다
+    const notice = result?.kept ?? result?.message;
+    if (notice) alert(notice);
   });
 }
 
