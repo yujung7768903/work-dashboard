@@ -13,6 +13,11 @@ async function request(method, path, body) {
     const error = new Error(payload?.error ?? `요청 실패 (${response.status})`);
     // 서버가 확인을 요구한 것과 진짜 실패를 호출부가 구분할 수 있게 넘긴다
     error.confirm = Boolean(payload?.confirm);
+    // 바꾸려던 게 안 바뀌었으면 반드시 눈에 띄어야 한다 — 호출부마다 에러 표시가
+    // 제각각(상단바 텍스트·툴팁·무시)이라 여기서 한 번에 띄운다.
+    // GET 은 제외 — 목록 폴링이 실패하면 몇 초마다 창이 뜬다.
+    // confirm 은 호출부가 되묻는 흐름이라 여기서 가로채면 창이 두 번 뜬다
+    if (method !== "GET" && !error.confirm) globalThis.alert?.(error.message);
     throw error;
   }
   return payload;

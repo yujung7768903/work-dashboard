@@ -190,8 +190,8 @@ def _route_patch(con, head, item_id, body):
     if head == "subtasks":
         return subtask_repo.update(con, item_id, **body)
     if head == "autorun-runs":
-        # 확인 필요 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
-        return autorun_repo.confirm_run(con, item_id)
+        # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
+        return autorun.confirm_run(con, item_id)
     if head == "sessions":
         session = session_repo.classify_by_ids(
             con,

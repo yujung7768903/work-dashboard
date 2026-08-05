@@ -13,7 +13,7 @@ const RUNNING_LABEL = "진행 중";
 // requested = 세션이 실패한 게 아니라 판단(기획 공백·방향 미정·정보 부족)을 요청하고
 // 스스로 멈춘 것. 사유는 autorun-request 로 남긴 텍스트라 배지 마우스오버로 보여준다
 const OUTCOME_LABELS = {
-  done: "완료", review: "확인 필요", failed: "실패", blocked: "막힘", requested: "요청",
+  done: "완료", review: "검토 대기", failed: "실패", blocked: "막힘", requested: "요청",
 };
 const REVIEW = "review";
 const REQUESTED = "requested";
@@ -93,7 +93,7 @@ function portLink(port) {
   return link;
 }
 
-// 확인 필요만 누를 수 있는 버튼이다 — 다른 결과는 사람이 내릴 것이 없다
+// 검토 대기만 누를 수 있는 버튼이다 — 다른 결과는 사람이 내릴 것이 없다
 function outcomeBadge(run) {
   const label = run.outcome
     ? (OUTCOME_LABELS[run.outcome] ?? run.outcome)

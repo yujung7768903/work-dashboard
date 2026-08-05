@@ -2,11 +2,13 @@
 from app import ordering
 from app.constants import (
     AUTO_TODO_NOTE_RAW_TITLE,
+    SCOPE_REQUIRED_MSG,
     STATE_IDLE,
     STATE_WORKING,
     STATUS_DOING,
     STATUS_DONE,
     STATUS_TODO,
+    SUBTASKS_REMAINING_MSG,
     TODO_STATUSES,
 )
 from app.db import now, transaction
@@ -51,7 +53,7 @@ def create(
 def get(con, todo_id):
     row = con.execute("SELECT * FROM todos WHERE id=?", (todo_id,)).fetchone()
     if not row:
-        raise NotFound(f"할일 {todo_id} 없음")
+        raise NotFound("할 일을 찾을 수 없습니다")
     return _shaped(row)
 
 
@@ -168,16 +170,12 @@ def list_doing_before(con, before_text):
 
 def _require_subtasks_done(con, todo_id):
     """하위할일이 남아 있으면 할일을 done 으로 올리지 못하게 막음"""
-    remaining = [
-        row["title"]
-        for row in con.execute(
-            "SELECT title FROM subtasks WHERE todo_id=? AND status<>?"
-            " ORDER BY sort_order, id",
-            (todo_id, STATUS_DONE),
-        )
-    ]
+    remaining = con.execute(
+        "SELECT 1 FROM subtasks WHERE todo_id=? AND status<>? LIMIT 1",
+        (todo_id, STATUS_DONE),
+    ).fetchone()
     if remaining:
-        raise Validation("하위할일이 남아 완료할 수 없음: " + ", ".join(remaining))
+        raise Validation(SUBTASKS_REMAINING_MSG)
 
 
 def _validated_assignments(con, current, fields):
@@ -191,7 +189,7 @@ def _validated_assignments(con, current, fields):
     if "status" in assignments:
         if current["id"] in autorun_repo.locked_todo_ids(con):
             raise Validation(
-                "자율 수행 확인 필요 상태 — 자율 수행 패널에서 확인 처리할 것"
+                "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요"
             )
         _validate_status(assignments["status"])
         if assignments["status"] == STATUS_DONE:
@@ -218,7 +216,7 @@ def _resolve_category(con, category_id, workspace_id):
     if workspace_id is not None:
         return workspace_repo.get(con, workspace_id)["category_id"]
     if category_id is None:
-        raise Validation("카테고리나 워크스페이스 중 하나는 필요함")
+        raise Validation(SCOPE_REQUIRED_MSG)
     category_repo.get(con, category_id)
     return category_id
 
@@ -237,7 +235,7 @@ def _shaped(row):
 def _clean_title(title):
     cleaned = (title or "").strip()
     if not cleaned:
-        raise Validation("할일 제목이 비어 있음")
+        raise Validation("할 일 제목을 입력해 주세요")
     return cleaned
 
 

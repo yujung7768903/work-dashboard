@@ -31,7 +31,7 @@ def list_all(con):
 def get(con, label_id):
     row = con.execute("SELECT * FROM labels WHERE id=?", (label_id,)).fetchone()
     if not row:
-        raise NotFound(f"라벨 {label_id} 없음")
+        raise NotFound("라벨을 찾을 수 없습니다")
     return dict(row)
 
 
@@ -111,7 +111,7 @@ def set_for_todo(con, todo_id, label_ids):
 def _clean_name(name):
     cleaned = (name or "").strip()
     if not cleaned:
-        raise Validation("라벨 이름이 비어 있음")
+        raise Validation("라벨 이름을 입력해 주세요")
     return cleaned
 
 
@@ -120,4 +120,4 @@ def _reject_duplicate(con, name, exclude_id=None):
         "SELECT id FROM labels WHERE name=? AND id IS NOT ?", (name, exclude_id)
     ).fetchone()
     if row:
-        raise Conflict(f"라벨 '{name}' 이미 있음")
+        raise Conflict(f"'{name}' 라벨이 이미 있습니다")

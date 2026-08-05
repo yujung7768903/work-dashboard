@@ -269,7 +269,7 @@ def _build_parser():
     autorun_prompt.set_defaults(handler=_cmd_autorun_prompt)
 
     autorun_reopen = sub.add_parser(
-        "autorun-reopen", help="확인(완료)을 되돌려 다시 확인 필요로"
+        "autorun-reopen", help="확인(완료)을 되돌려 다시 검토 대기로"
     )
     autorun_reopen.add_argument("run_id", type=int)
     autorun_reopen.set_defaults(handler=_cmd_autorun_reopen)
@@ -282,6 +282,12 @@ def _build_parser():
         "note", help="무엇이 필요한지 한 문장 (기획 공백·방향 미정·토큰/Jira/문서 위치 등)"
     )
     autorun_request.set_defaults(handler=_cmd_autorun_request)
+
+    autorun_finish = sub.add_parser(
+        "autorun-finish", help="자율 수행 완료 — 검토 대기로 전환 (할일 상태는 안 건드림)"
+    )
+    _add_session_arg(autorun_finish)
+    autorun_finish.set_defaults(handler=_cmd_autorun_finish)
 
     return parser
 
@@ -782,13 +788,18 @@ def _cmd_autorun_prompt(con, args):
 
 
 def _cmd_autorun_reopen(con, args):
-    run = autorun_repo.reopen_run(con, args.run_id)
+    run = autorun.reopen_run(con, args.run_id)
     print(f"실행 {run['id']} (할일 {run['todo_id']}) → {run['outcome']}")
 
 
 def _cmd_autorun_request(con, args):
     run = autorun_repo.mark_requested(con, args.session, args.note)
     print(f"요청 등록: 할일 {run['todo_id']} (실행 #{run['id']}) — 자율 수행 후보에서 빠짐")
+
+
+def _cmd_autorun_finish(con, args):
+    run = autorun_repo.mark_finished(con, args.session)
+    print(f"완료 표시: 할일 {run['todo_id']} (실행 #{run['id']}) — 검토 대기로 넘어감")
 
 
 def _emit_json(payload):

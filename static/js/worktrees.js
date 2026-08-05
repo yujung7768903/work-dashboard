@@ -197,7 +197,9 @@ function runRowAction(call, confirmMessage) {
       draw(cached);
       return;
     }
-    await call();
+    // 병합은 됐지만 워크트리를 못 지운 경우 등, 반쪽만 끝난 결과는 알려야 한다
+    const result = await call();
+    if (result?.kept) alert(result.kept);
     // 병합·삭제로 커밋·워크트리 목록 자체가 바뀌어 캐시로는 다시 그릴 수 없다
     cached = null;
     await renderWorktrees();

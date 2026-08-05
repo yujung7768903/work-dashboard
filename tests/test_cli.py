@@ -169,7 +169,7 @@ class CliTest(unittest.TestCase):
     def test_classify_unknown_session_exits_one(self):
         code, _, err = self.run_cli("classify", "nope", "--category", "운영")
         self.assertEqual(code, 1)
-        self.assertIn("없음", err)
+        self.assertIn("찾을 수 없습니다", err)
 
     def test_classify_without_session_uses_env(self):
         from app.db import connect
@@ -301,7 +301,7 @@ class CliTest(unittest.TestCase):
     def test_show_note_missing_exits_one(self):
         code, _, err = self.run_cli("show-note", "9999")
         self.assertEqual(code, 1)
-        self.assertIn("없음", err)
+        self.assertIn("찾을 수 없습니다", err)
 
     def test_show_todo_lists_ids_and_context_marker(self):
         self.run_cli("add-workspace", "개발", "KT")

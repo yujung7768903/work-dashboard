@@ -32,7 +32,7 @@ def list_all(con):
 def get(con, category_id):
     row = con.execute("SELECT * FROM categories WHERE id=?", (category_id,)).fetchone()
     if not row:
-        raise NotFound(f"카테고리 {category_id} 없음")
+        raise NotFound("카테고리를 찾을 수 없습니다")
     return dict(row)
 
 
@@ -41,7 +41,7 @@ def get_by_name(con, name):
         "SELECT * FROM categories WHERE name=?", (_clean_name(name),)
     ).fetchone()
     if not row:
-        raise NotFound(f"카테고리 '{name}' 없음")
+        raise NotFound(f"'{name}' 카테고리를 찾을 수 없습니다")
     return dict(row)
 
 
@@ -98,7 +98,7 @@ def reorder(con, ids):
 def _clean_name(name):
     cleaned = (name or "").strip()
     if not cleaned:
-        raise Validation("카테고리 이름이 비어 있음")
+        raise Validation("카테고리 이름을 입력해 주세요")
     return cleaned
 
 
@@ -107,7 +107,7 @@ def _reject_duplicate(con, name, exclude_id=None):
         "SELECT id FROM categories WHERE name=? AND id IS NOT ?", (name, exclude_id)
     ).fetchone()
     if row:
-        raise Conflict(f"카테고리 '{name}' 이미 있음")
+        raise Conflict(f"'{name}' 카테고리가 이미 있습니다")
 
 
 def _count_sessions(con, category_id):
@@ -123,5 +123,6 @@ def _reject_if_occupied(con, category_id):
         ).fetchone()["n"]
         if count:
             raise Conflict(
-                f"{label} {count}건이 남아 있어 삭제할 수 없음. 먼저 다른 카테고리로 옮기세요"
+                f"{label} {count}건이 남아 있어 삭제할 수 없습니다."
+                " 먼저 다른 카테고리로 옮겨 주세요"
             )

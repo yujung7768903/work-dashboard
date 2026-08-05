@@ -27,6 +27,14 @@ WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js")
 FIRST_SORT_ORDER = 1
 
+# 여러 자리에서 같은 말을 해야 하는 사용자용 문구. 화면에는 alert 로, CLI 에는
+# 그대로 찍히므로 설명이 아니라 사용자에게 보내는 문장으로 쓴다
+# 완료 차단: 할일 수정·워크트리 적용 두 곳.
+# 남은 하위할일 제목은 싣지 않는다 — 화면에도 CLI 에도 바로 아래 목록으로 보인다
+SUBTASKS_REMAINING_MSG = "하위 할 일이 남아 완료할 수 없습니다"
+# 분류 대상 누락: 할일 생성·세션 분류 세 곳
+SCOPE_REQUIRED_MSG = "카테고리나 워크스페이스 중 하나를 선택해 주세요"
+
 # 세션이 띄운 하위 프로세스에 실려오는 자기 세션 id. 훅 stdin 의 session_id 와 같은 값이라
 # CLI 가 이걸로 자기 세션을 안다 — 모델이 주입 블록의 UUID 를 옮겨 적지 않아도 된다
 SESSION_ID_ENV = "CLAUDE_CODE_SESSION_ID"
@@ -139,9 +147,10 @@ AUTORUN_MODEL = "claude-sonnet-5"  # 모델은 상수. 성공률 학습·자동 
 AUTORUN_MAX_CONCURRENT = 1  # 사용량 창을 나눠 쓰면 둘 다 리밋에 걸리고 diff 가 섞인다
 AUTORUN_FAIL_LIMIT = 2  # 같은 할일이 이만큼 연속 실패하면 막고 다음 할일로
 AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun 자체를 끈다
-# review(확인 필요)가 성공한 잡의 첫 결과다. 자율 세션은 커밋하지 않고 변경을 워크트리에
-# 남기므로, 잡이 끝난 시점의 그 작업은 '끝난 것'이 아니라 '사람이 보고 병합을 판정할 것'이다.
-# done 은 사람이 확인 필요 배지를 눌러 내렸을 때만 붙는다 — 진행 중과 확인 필요를 같은
+# review(검토 대기)가 성공한 잡의 첫 결과다. 다 끝냈고 확인할 것도 불분명한 것도 없을
+# 때만 자율 세션이 커밋하므로, 잡이 끝난 시점의 그 작업은 '끝난 것'이 아니라 '사람이 보고
+# 병합을 판정할 것'이다.
+# done 은 사람이 검토 대기 배지를 눌러 내렸을 때만 붙는다 — 진행 중과 검토 대기를 같은
 # 배지로 뭉개면 사람이 무엇을 봐야 하는지 목록에서 알 수 없다
 # requested(요청)는 blocked 와 달리 실패가 아니라 세션이 스스로 멈춘 것이다 — 기획이
 # 비었거나, 방향이 여럿인데 note 에 안 정해져 있거나, 토큰·Jira·문서 위치가 없어서
