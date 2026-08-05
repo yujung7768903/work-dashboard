@@ -191,7 +191,7 @@ def _validated_assignments(con, current, fields):
     if "status" in assignments:
         if current["id"] in autorun_repo.locked_todo_ids(con):
             raise Validation(
-                "자율 수행 확인 필요 상태 — 자율 수행 패널에서 확인 처리할 것"
+                "자율 수행 검토 대기 상태 — 자율 수행 패널에서 확인 처리할 것"
             )
         _validate_status(assignments["status"])
         if assignments["status"] == STATUS_DONE:

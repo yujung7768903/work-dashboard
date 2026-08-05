@@ -189,7 +189,7 @@ def confirm_run(con, run_id):
     if not run:
         raise NotFound(f"실행 기록 {run_id} 없음")
     if run["outcome"] != OUTCOME_REVIEW:
-        raise Validation(f"확인 필요 상태가 아님: {run['outcome'] or '진행 중'}")
+        raise Validation(f"검토 대기 상태가 아님: {run['outcome'] or '진행 중'}")
     with transaction(con):
         con.execute(
             "UPDATE autorun_runs SET outcome=? WHERE id=?", (OUTCOME_DONE, run_id)
@@ -198,7 +198,7 @@ def confirm_run(con, run_id):
 
 
 def locked_todo_ids(con):
-    """확인 필요로 닫힌 실행이 있는 할일. 사람이 확인 버튼을 누르기 전까지 상태를 못 바꾼다.
+    """검토 대기로 닫힌 실행이 있는 할일. 사람이 확인 버튼을 누르기 전까지 상태를 못 바꾼다.
 
     돌고 있는 중(ended_at IS NULL)은 안 잠근다 — 자율 세션 자신이 끝에 `set-status
     done` 을 부르는데, 그때는 아직 잡이 열려 있어 여기서 잠그면 그 호출이 막힌다
@@ -285,7 +285,7 @@ def outcome_for_close(con, todo_id, todo_done, requested_note=None):
     """끝난 잡의 결과. requested_note 가 있으면 판단 보류가 최우선이다 —
 
     실패나 완료를 판정하기 전에, 세션이 스스로 멈춘 것인지부터 본다. 아니면 할일이
-    done 이면 확인 필요, 그것도 아니면 실패. 이 실패로 한도에 닿으면 blocked 로 올린다
+    done 이면 검토 대기, 그것도 아니면 실패. 이 실패로 한도에 닿으면 blocked 로 올린다
     """
     if requested_note:
         return OUTCOME_REQUESTED

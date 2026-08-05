@@ -231,14 +231,23 @@ class Prompt(AutorunCase):
         self.assertIn("끝까지 돌리기", text)
         self.assertIn(self.todo["title"], text)
 
-    def test_cancels_harness_commit_instruction(self):
-        """--bg 하네스는 '끝나면 커밋·푸시·draft PR' 을 넣는다. 프롬프트가 취소해야 한다"""
+    def test_cancels_harness_push_pr_instruction(self):
+        """--bg 하네스는 '끝나면 커밋·푸시·draft PR' 을 넣는다. 푸시·PR 은 프롬프트가 취소해야 한다"""
         text = self._text()
-        self.assertIn("커밋·푸시·PR 을 하지 않는다", text)
+        self.assertIn("푸시·PR 을 하지 않는다", text)
         self.assertIn("EnterWorktree", text)
 
     def test_tells_how_to_finish(self):
         self.assertIn(f"set-status todo {self.todo['id']} done", self._text())
+
+    def test_commits_only_when_fully_done(self):
+        """확인할 것도 불분명한 것도 없을 때만 커밋 — 안 그러면 dash.py merge 가
+
+        '커밋 안 된 변경' 으로 막혀 워크트리의 결과물을 사람이 손으로 커밋해야 한다
+        """
+        text = self._text()
+        self.assertIn("커밋한 뒤", text)
+        self.assertIn("커밋하지 않고 상태도 건드리지 않는다", text)
 
     def test_tells_how_to_request_when_judgment_is_missing(self):
         self.assertIn("autorun-request", self._text())
@@ -314,7 +323,7 @@ class Outcomes(AutorunCase):
         self.assertEqual(autorun.reconcile(self.con), [])
 
     def test_done_job_with_done_todo_waits_for_review(self):
-        """성공한 잡은 완료가 아니라 확인 필요다 — 변경이 워크트리에 남아 있다"""
+        """성공한 잡은 완료가 아니라 검토 대기다 — 변경이 워크트리에 남아 있다"""
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         self._job(JOB, "done")
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
@@ -333,7 +342,7 @@ class Outcomes(AutorunCase):
             autorun_repo.confirm_run(self.con, run["id"])
 
     def test_status_change_blocked_while_review_pending(self):
-        """확인 필요인 동안은 사람이 상태를 직접 못 바꾼다 — 확인 버튼으로만 넘어간다"""
+        """검토 대기인 동안은 사람이 상태를 직접 못 바꾼다 — 확인 버튼으로만 넘어간다"""
         run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
         with self.assertRaises(Validation):

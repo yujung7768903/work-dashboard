@@ -223,11 +223,14 @@ function todoElement(todo) {
   row.draggable = true;
 
   const statusButton = document.createElement("button");
-  statusButton.textContent = todo.status;
   if (todo.autorun_locked) {
+    // 원본 상태(done)는 그대로 두고 화면에는 남은 동작(검토 대기)을 보여준다 —
+    // 안 그러면 자율 수행이 끝난 할일이 그냥 '완료'로 보여 아직 검토 전인 걸 놓친다
+    statusButton.textContent = "검토 대기";
     statusButton.disabled = true;
-    statusButton.title = "자율 수행 확인 필요 — 자율 수행 패널에서 확인 처리할 것";
+    statusButton.title = "자율 수행 검토 대기 — 자율 수행 패널에서 확인 처리할 것";
   } else {
+    statusButton.textContent = todo.status;
     statusButton.title = "상태 순환 (todo → doing → done)";
   }
   statusButton.addEventListener("click", (event) => {
