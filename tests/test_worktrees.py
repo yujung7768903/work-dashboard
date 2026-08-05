@@ -213,6 +213,23 @@ class ApplyTest(unittest.TestCase):
         self.assertNotIn("worktree-feat", git_out(self.repo, "branch"))
         self.assertIn("수정", git_out(self.repo, "log", "--oneline"))
 
+    def test_locked_worktree_is_merged_but_left_in_place(self):
+        """세션이 살아 있는 워크트리는 git 이 잠근다. 그걸 실패로 돌리면 병합까지
+        못 하고, 강제로 지우면 그 세션의 작업 디렉터리가 사라진다 — 남기고 알린다"""
+        todo_id = self._link_todo(self.worktree)
+        git(self.repo, "worktree", "lock", "--reason", "claude session feat", self.worktree)
+        result = worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertIn("수정", git_out(self.repo, "log", "--oneline"))
+        self.assertIsNone(result["removed"])
+        self.assertIn("claude session feat", result["kept"])
+        self.assertTrue(os.path.isdir(self.worktree))
+        self.assertIn("worktree-feat", git_out(self.repo, "branch"))
+        self.assertEqual(STATUS_DONE, todo_repo.get(self.con, todo_id)["status"])
+
+    def test_apply_reports_nothing_kept_when_cleanup_finishes(self):
+        self._link_todo(self.worktree)
+        self.assertIsNone(worktrees.apply(self.con, self.repo, "worktree-feat")["kept"])
+
     def test_apply_rejects_the_base_branch(self):
         with self.assertRaises(Validation):
             worktrees.apply(self.con, self.repo, "master")
