@@ -37,10 +37,13 @@ const DONE_MESSAGE = "실행했습니다 — http://127.0.0.1:9081/";
 const asked = [];
 // 알림과 목록 갱신의 순서를 봐야 한다 — alert 가 먼저면 확인을 누를 때까지 포트가 안 붙는다
 const order = [];
+// 값이 있으면 POST 가 그 약속이 풀릴 때까지 매달린다 — 조작이 도는 "중간" 을 잡아 본다
+let holdPost = null;
 globalThis.fetch = async (url, options) => {
   const method = options?.method ?? "GET";
   asked.push({ method, url, body: options?.body });
   order.push(`${method} ${url}`);
+  if (method === "POST" && holdPost) await holdPost;
   // 서버는 조작 결과에 사람이 읽을 문장을 실어 준다 (app/services/serve.py)
   const body =
     method === "POST" ? { message: DONE_MESSAGE } : { "/api/worktrees": { groups: GROUPS } }[url];
@@ -112,6 +115,13 @@ const labelsOfOpenMenu = () =>
     .pop()
     .children.map((kid) => kid.textContent);
 const buttonNamed = (label) => created.filter((made) => made.textContent === label).pop();
+const countOf = (name) => created.filter((made) => made.className === name).length;
+const barInPortCell = () =>
+  created.some(
+    (made) =>
+      made.className === "wt-ports" &&
+      made.children.some((kid) => kid.className === "wt-bar")
+  );
 
 assert.equal(toggles().length, 2, "워크트리 줄마다 케밥 메뉴가 하나씩 있어야 한다");
 assert.ok(toggles()[0].title.includes("실행"), toggles()[0].title);
@@ -123,9 +133,26 @@ assert.deepEqual(labelsOfOpenMenu(), SERVER_ITEMS);
 toggles()[1].listeners.click({ stopPropagation() {} });
 assert.deepEqual(labelsOfOpenMenu(), SERVER_ITEMS);
 
-// 실행은 확인창 없이 바로 그 브랜치로 POST 된다
-buttonNamed("실행").listeners.click({ stopPropagation() {} });
+// 조작이 도는 동안 — 그 줄에 진행 바가 뜨고 케밥은 감춰 두 번 걸리지 않게 한다.
+// created 를 비워 "이 다음에 그려진 것" 만 센다
+const startItem = buttonNamed("실행");
+let release;
+holdPost = new Promise((resolve) => (release = resolve));
+created.length = 0;
+startItem.listeners.click({ stopPropagation() {} });
 await settle();
+assert.equal(countOf("wt-bar"), 1, "진행 중인 줄에 진행 바가 떠야 한다");
+assert.equal(barInPortCell(), true, "진행 바는 포트 칸에 들어간다 — 결과가 붙을 자리다");
+assert.equal(countOf("ws-menu"), 1, "진행 중인 줄의 케밥은 감춘다 (두 줄 중 하나만 남는다)");
+
+created.length = 0;
+release();
+await settle();
+assert.equal(countOf("wt-bar"), 0, "끝나면 진행 바가 걷힌다");
+assert.equal(countOf("ws-menu"), 2, "케밥이 두 줄 다 돌아온다");
+holdPost = null;
+
+// 실행은 확인창 없이 바로 그 브랜치로 POST 된다
 const posted = asked.filter((call) => call.method === "POST");
 assert.equal(posted.length, 1, JSON.stringify(asked));
 assert.deepEqual(JSON.parse(posted[0].body), {
