@@ -426,6 +426,8 @@ button:disabled { color: var(--line); cursor: default; }
   border-top: 1px solid var(--line);
 }
 .wt-name { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
+/* 누를 수 있는 칸은 연결된 할일이 있는 이름 칸뿐 — 손 모양도 거기까지만 */
+.wt-name.linked { cursor: pointer; }
 .wt-row .title {
   min-width: 0; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

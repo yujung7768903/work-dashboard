@@ -256,18 +256,29 @@ def cwd_counts_by_workspace(con, workspace_id):
     return [(row["cwd"], row["sessions"]) for row in rows]
 
 
-def todo_titles_by_cwd(con):
-    """작업 위치 → 거기서 돌던 세션이 잡은 할일 제목. 워크트리 뷰의 작업 요약용.
-    오래된 것부터 훑어 같은 위치는 가장 최근 세션의 제목이 남는다"""
+def _latest_todo_by_cwd(con):
+    """작업 위치 → 거기서 마지막으로 돌던 세션이 잡은 할일 행.
+    오래된 것부터 훑어 같은 위치는 가장 최근 세션의 것이 남는다"""
     rows = con.execute(
-        """SELECT s.cwd AS cwd, t.title AS title
+        """SELECT s.cwd AS cwd, t.id AS todo_id, t.title AS title
              FROM sessions s
              JOIN session_todos st ON st.session_id = s.id
              JOIN todos t ON t.id = st.todo_id
             WHERE COALESCE(s.cwd,'') <> ''
             ORDER BY s.last_seen_at ASC"""
     )
-    return {row["cwd"]: row["title"] for row in rows}
+    return {row["cwd"]: row for row in rows}
+
+
+def todo_titles_by_cwd(con):
+    """워크트리 뷰의 작업 요약용 제목"""
+    return {cwd: row["title"] for cwd, row in _latest_todo_by_cwd(con).items()}
+
+
+def todo_id_by_cwd(con):
+    """워크트리 뷰가 줄 클릭으로 상세 팝업을 열 때 쓰는 할일 id.
+    제목과 같은 행에서 뽑으므로 보이는 요약과 열리는 할일이 어긋나지 않는다"""
+    return {cwd: row["todo_id"] for cwd, row in _latest_todo_by_cwd(con).items()}
 
 
 def todo_ids_by_cwd(con):

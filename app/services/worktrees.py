@@ -42,6 +42,10 @@ def overview(con):
     """저장소를 찾은 활성 워크스페이스만. 못 찾은 워크스페이스는 그리지 않는다"""
     summaries = {_real(cwd): title
                  for cwd, title in session_repo.todo_titles_by_cwd(con).items()}
+    # 줄 클릭으로 열 할일. 적용 로직이 쓰는 todo_ids_by_cwd(위치별 전체)와 달리
+    # 요약 제목과 같은 세션에서 뽑은 하나여야 해서 단수 조회를 쓴다
+    todo_id_by_path = {_real(cwd): todo_id
+                       for cwd, todo_id in session_repo.todo_id_by_cwd(con).items()}
     categories = {row["id"]: row for row in category_repo.list_all(con)}
     ports = _ports_by_pid()
     groups = []
@@ -58,7 +62,7 @@ def overview(con):
                 "category_name": category.get("name"),
                 "category_color": category.get("color"),
                 "repo": root,
-                **_repo_state(root, summaries, ports),
+                **_repo_state(root, summaries, todo_id_by_path, ports),
             }
         )
     return {"groups": groups}
@@ -229,7 +233,7 @@ def _run_write(argv):
         raise Conflict(f"{' '.join(argv)} 실행 실패: {error}")
 
 
-def _repo_state(root, summaries, ports):
+def _repo_state(root, summaries, todo_id_by_path, ports):
     branches = _branches(root)
     base = _base_branch(root, branches)
     shown = _base_first(branches, base)[:BRANCH_LIMIT]
@@ -240,7 +244,9 @@ def _repo_state(root, summaries, ports):
     with ThreadPoolExecutor(max_workers=GIT_WORKERS) as pool:
         rows = list(
             pool.map(
-                lambda name: _row(root, base, name, worktrees.get(name), summaries, processes),
+                lambda name: _row(
+                    root, base, name, worktrees.get(name), summaries, todo_id_by_path, processes
+                ),
                 shown,
             )
         )
@@ -257,7 +263,7 @@ def _base_first(branches, base):
     return ([base] if base in branches else []) + rest
 
 
-def _row(root, base, branch, path, summaries, processes):
+def _row(root, base, branch, path, summaries, todo_id_by_path, processes):
     is_base = branch == base
     commits = [] if is_base else _commits(root, base, branch)
     behind, ahead = (0, 0) if is_base else _divergence(root, base, branch)
@@ -268,6 +274,7 @@ def _row(root, base, branch, path, summaries, processes):
         "ahead": ahead,
         "behind": behind,
         "summary": _summary(path, summaries, commits),
+        "todo_id": todo_id_by_path.get(path),
         "processes": processes.get(path, []),
         "commits": commits,
     }

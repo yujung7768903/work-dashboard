@@ -63,6 +63,13 @@ def _on_prompt_submit(con, session_id, payload):
 
 
 def _on_stop(con, session_id, payload):
+    """위치도 다시 적는다 — SessionStart 에서만 잡으면 세션이 뒤에 EnterWorktree 해도
+    cwd 가 메인 체크아웃에 머문다. 그러면 워크트리 뷰가 할일을 워크트리 줄이 아니라
+    base 줄에 붙이므로, 그 줄을 눌러도 상세가 안 열린다. 자율 세션은 프롬프트가 한 번뿐
+    이라 이 훅이 유일한 갱신 지점이다"""
+    cwd = payload.get("cwd") or ""
+    if cwd:
+        session_repo.register(con, session_id, cwd=cwd, git_branch=_current_branch(cwd))
     session_repo.set_state(con, session_id, STATE_IDLE)
     return ""
 
