@@ -26,13 +26,14 @@ from app.constants import (
     AUTORUN_MODEL,
     OUTCOME_BLOCKED,
     RATE_LIMITS_PATH,
+    STATUS_DOING,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
 )
+from app.db import now, transaction
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
-from app.repositories import todos as todo_repo
 from app.services import planning, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
@@ -53,7 +54,7 @@ WORKSPACE_LABELS = (
 
 # 시작하지 않은 이유. 사람이 --dry-run 으로 읽는 문장이라 그대로 쓴다
 REASON_OFF = "autorun 이 꺼져 있음"
-REASON_RUNNING = "이미 자율 잡이 돌고 있음"
+REASON_RUNNING = "자율 잡 수행중"
 REASON_USAGE = "5시간 창 사용률이 한도에 닿음"
 REASON_NO_USAGE = "사용률 데이터가 아예 없음 — 모르면 안 돈다"
 REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
@@ -161,13 +162,22 @@ def pick(con):
 
 
 def eligible(con):
-    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류 상태가 아닐 것"""
+    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가 아닐 것
+
+    검토 대기(locked_todo_ids)를 빼는 이유 — 안 빼면 사람이 확인하기 전에 같은
+    할일에 잡을 또 띄워 diff 가 두 벌 생긴다. failed 는 안 뺀다 — AUTORUN_FAIL_LIMIT
+    이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다
+    """
     labeled = {
         todo_id
         for todo_id, labels in label_repo.map_by_todo(con).items()
         if any(label["name"] == AUTORUN_LABEL for label in labels)
     }
-    excluded = autorun_repo.blocked_todo_ids(con) | autorun_repo.requested_todo_ids(con)
+    excluded = (
+        autorun_repo.blocked_todo_ids(con)
+        | autorun_repo.requested_todo_ids(con)
+        | autorun_repo.locked_todo_ids(con)
+    )
 
     def keep(todo):
         if todo["id"] not in labeled or todo["id"] in excluded:
@@ -266,16 +276,13 @@ def build_prompt(todo, workspace, cwd):
         ]
     if todo.get("note"):
         lines += ["", "## 컨텍스트", todo["note"]]
-    lines += ["", _rules(cwd, todo["id"])]
+    lines += ["", _rules(cwd)]
     return "\n".join(lines)
 
 
-def _rules(cwd, todo_id):
-    """권한 규칙. --bg 하네스가 넣는 '끝나면 커밋·푸시·draft PR' 중 푸시·PR 만 취소한다.
-
-    커밋은 취소하지 않는다 — 커밋을 안 하면 dash.py merge 가 "커밋 안 된 변경이 있음"
-    으로 막혀, 워크트리에 남은 결과물을 사람이 손으로 커밋해야만 병합할 수 있게 된다
-    """
+def _rules(cwd):
+    """권한 규칙. --bg 하네스가 넣는 '끝나면 커밋·푸시·draft PR' 중 푸시·PR 만 취소한다 —
+    커밋은 조건부로 그대로 지시한다 (README "권한과 안전망" 참고)"""
     return "\n".join(
         [
             "# 규칙 (아래가 하네스 기본 지시보다 우선한다)",
@@ -296,10 +303,10 @@ def _rules(cwd, todo_id):
             " 후보에서 빠진다.",
             "- 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도"
             " 없다면, 이번 작업에 해당하는 변경만 diff 로 확인해 커밋한 뒤"
-            f" `python3 dash.py set-status todo {todo_id} done` 으로 내린다"
-            " (워크트리에 이전 작업이 남긴 미커밋 변경이 있다면 그것까지 같이"
-            " 커밋하지 않는다). 그렇지 않다면(확인이 필요하거나 끝내지 못했다면)"
-            " 커밋하지 않고 상태도 건드리지 않는다 — 변경은 워크트리에 남겨 둔 채"
+            " `python3 dash.py autorun-finish` 를 부른다 (워크트리에 이전 작업이"
+            " 남긴 미커밋 변경이 있다면 그것까지 같이 커밋하지 않는다). 그렇지"
+            " 않다면(확인이 필요하거나 끝내지 못했다면) 커밋하지 않고"
+            " `autorun-finish` 도 부르지 않는다 — 변경은 워크트리에 남겨 둔 채"
             " 끝낸다. 사람이 diff 로 검토한다.",
         ]
     )
@@ -345,13 +352,47 @@ def reconcile(con):
     for run in autorun_repo.open_runs(con):
         if not _job_finished(run["job_id"]):
             continue
-        todo = todo_repo.get(con, run["todo_id"])
         outcome = autorun_repo.outcome_for_close(
-            con, run["todo_id"], todo["status"] == STATUS_DONE, run["requested_note"]
+            con, run["todo_id"], bool(run["finished_at"]), run["requested_note"]
         )
         closed.append(autorun_repo.close_run(con, run["id"], outcome))
         _apply_streak(con, outcome)
     return closed
+
+
+def confirm_run(con, run_id):
+    """검토 대기를 확인 — run.outcome 만이 아니라 그 할일도 이제 진짜 done 이 된다.
+
+    autorun_repo.confirm_run 은 실행 기록만 건드린다(repo 간 순환 참조를 피하려고 —
+    todos.py 가 이미 autorun_repo 를 쓰므로 반대 방향은 여기 service 에서 잇는다).
+    지금까지는 status 가 done 인데도 사람이 확인 전이라 review 로 가려 왔다 —
+    확인이 끝난 지금이 status 를 진짜 done 으로 만들 시점이다
+    """
+    run = autorun_repo.confirm_run(con, run_id)
+    _set_todo_status(con, run["todo_id"], STATUS_DONE)
+    return run
+
+
+def reopen_run(con, run_id):
+    """확인을 되돌린다 — done→review, 할일도 doing 으로 되돌아간다 (confirm_run 의 역)"""
+    run = autorun_repo.reopen_run(con, run_id)
+    _set_todo_status(con, run["todo_id"], STATUS_DOING)
+    return run
+
+
+def _set_todo_status(con, todo_id, status):
+    """검증 없이 시스템이 직접 status 를 맞춘다 — session_repo.link_todo 와 같은 이유로
+
+    todos.update() 의 사람용 검증(하위할일 완료 확인, 검토 대기 잠금)을 거치지 않는다.
+    이 호출 자체가 그 잠금을 푸는 동작이라 여기서 또 잠금에 걸리면 안 된다
+    """
+    stamp = now()
+    completed_at = stamp if status == STATUS_DONE else None
+    with transaction(con):
+        con.execute(
+            "UPDATE todos SET status=?, completed_at=?, updated_at=? WHERE id=?",
+            (status, completed_at, stamp, todo_id),
+        )
 
 
 def handover_if_human(con, claude_session_id):

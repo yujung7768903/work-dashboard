@@ -279,6 +279,7 @@ python3 dash.py autorun on|off|status      # 기본 off. 자동으로 다시 켜
 python3 dash.py autorun-tick --dry-run     # 띄우지 않고 판정 사유만
 python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어가는 지시 전문
 python3 dash.py autorun-request "<이유>"   # 판단 보류 — 자율 세션이 스스로 멈출 때 씀
+python3 dash.py autorun-finish              # 완료 — 검토 대기로. 할일 상태는 안 건드림
 ```
 
 보드 화면의 "자율 수행" 옆 ON/OFF 스위치도 같은 설정을 켜고 끈다 — CLI 와 상태가 하나다.
@@ -331,13 +332,13 @@ python3 dash.py autorun-request "<이유>"   # 판단 보류 — 자율 세션�
 
 | `outcome` | 언제 |
 | --- | --- |
-| `review` | 잡이 끝났고 그 할일이 `done`. **검토 대기** — 사람이 diff 를 보고 병합을 판정할 차례 |
-| `done` | 사람이 자율 수행 패널의 `검토 대기` 배지를 눌러 확인을 마침 |
-| `failed` | 잡이 끝났는데 할일이 안 끝남 |
+| `review` | 잡이 끝났고 세션이 `autorun-finish` 로 "다 끝냈음"을 남김. **검토 대기** — 할일 상태는 아직 `doing`, 사람이 diff 를 보고 병합을 판정할 차례 |
+| `done` | 사람이 자율 수행 패널의 `검토 대기` 배지를 눌러 확인을 마침 — 이때 할일 상태도 `done` 으로 올라간다 |
+| `failed` | 잡이 끝났는데 `autorun-finish` 도 `autorun-request` 도 안 남기고 조용히 멈춤 |
 | `blocked` | 그 실패로 `AUTORUN_FAIL_LIMIT` 에 닿음. 그 할일은 이후 후보에서 빠진다 |
 | `requested` | 세션이 `autorun-request` 로 판단 보류를 남기고 멈춤. 실패가 아니라 **요청** — 그 할일은 이후 후보에서 빠진다 |
 
-성공한 잡이 곧바로 `done` 이 되지 않는 이유 — 자율 세션이 커밋까지 했더라도 그 결과는 아직 워크트리 브랜치에만 있고 `master` 에 병합되지 않았다. 그 시점의 작업은 끝난 것이 아니라 **사람이 봐야 하는 것**이고, 클로드가 아직 돌고 있는 `진행 중` 과는 다른 상태다. 확인은 코드가 판정할 수 없으므로(diff 를 읽고 병합할지 정하는 일이다) 배지 클릭(`PATCH /api/autorun-runs/<id>`)만 기록한다. `review` 는 실패로 세지 않는다 — 확인이 밀린 동안 그 할일이 `blocked` 로 올라가면 안 된다.
+성공 신호를 할일 상태가 아니라 실행 기록에 직접 남기는 이유 — `done` 은 "더 안 봐도 됨" 이라는 뜻이어야 하는데, 자율 세션이 끝냈다고 바로 `done` 을 찍으면 아직 사람이 diff 를 보지도 않은 작업이 "끝난 일"로 읽힌다. 그래서 세션은 `todo.status` 를 건드리지 않고 실행 기록에 `finished_at` 만 남기고(`autorun-finish`), 할일은 사람이 확인할 때까지 `doing` 으로 남아 있다 — "다음 할 일"에도 여전히 잡히고, 워크스페이스 완료 집계에도 안 들어가고, 24시간 넘게 `doing` 이면 뜨는 방치 경고도 그대로 적용된다. 방치 경고가 여기서는 "리뷰가 밀렸다"는 뜻이 되는 것도 의도한 것이다. 사람이 확인 버튼을 누르면(`confirm_run`) 그제서야 할일도 `done` 이 된다. 조용히 멈춰 아무 신호도 없으면 `review` 로 낙관하지 않고 `failed` 로 본다 — 미완성 작업이 검토 대상으로 둔갑하면 안 된다. `review` 는 실패로 세지 않는다 — 확인이 밀린 동안 그 할일이 `blocked` 로 올라가면 안 된다.
 
 `blocked` 가 `AUTORUN_BLOCKED_STREAK_LIMIT` 만큼 연속되면 autorun 자체를 끈다. 자율 잡에 사람이 프롬프트를 넣어도 끈다(`UserPromptSubmit` 훅) — 그 잡은 사람 것으로 인계된 것이다. 첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 `last_prompt` 가 이미 있을 때만 사람이 끼어든 것으로 본다.
 

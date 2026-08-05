@@ -283,6 +283,12 @@ def _build_parser():
     )
     autorun_request.set_defaults(handler=_cmd_autorun_request)
 
+    autorun_finish = sub.add_parser(
+        "autorun-finish", help="자율 수행 완료 — 검토 대기로 전환 (할일 상태는 안 건드림)"
+    )
+    _add_session_arg(autorun_finish)
+    autorun_finish.set_defaults(handler=_cmd_autorun_finish)
+
     return parser
 
 
@@ -782,13 +788,18 @@ def _cmd_autorun_prompt(con, args):
 
 
 def _cmd_autorun_reopen(con, args):
-    run = autorun_repo.reopen_run(con, args.run_id)
+    run = autorun.reopen_run(con, args.run_id)
     print(f"실행 {run['id']} (할일 {run['todo_id']}) → {run['outcome']}")
 
 
 def _cmd_autorun_request(con, args):
     run = autorun_repo.mark_requested(con, args.session, args.note)
     print(f"요청 등록: 할일 {run['todo_id']} (실행 #{run['id']}) — 자율 수행 후보에서 빠짐")
+
+
+def _cmd_autorun_finish(con, args):
+    run = autorun_repo.mark_finished(con, args.session)
+    print(f"완료 표시: 할일 {run['todo_id']} (실행 #{run['id']}) — 검토 대기로 넘어감")
 
 
 def _emit_json(payload):

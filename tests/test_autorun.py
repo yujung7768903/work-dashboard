@@ -129,6 +129,12 @@ class Candidates(AutorunCase):
         autorun_repo.close_run(self.con, run["id"], OUTCOME_REQUESTED)
         self.assertIsNone(autorun.pick(self.con))
 
+    def test_skips_review_locked_todo(self):
+        """검토 대기인 할일에 새 잡을 또 띄우면 사람이 확인하기 전에 diff 가 두 벌 생긴다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        self.assertIsNone(autorun.pick(self.con))
+
     def test_skips_done_todo(self):
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         self.assertIsNone(autorun.pick(self.con))
@@ -238,7 +244,8 @@ class Prompt(AutorunCase):
         self.assertIn("EnterWorktree", text)
 
     def test_tells_how_to_finish(self):
-        self.assertIn(f"set-status todo {self.todo['id']} done", self._text())
+        """할일 상태는 안 건드린다 — autorun-finish 는 검토 대기 표시만 남긴다"""
+        self.assertIn("autorun-finish", self._text())
 
     def test_commits_only_when_fully_done(self):
         """확인할 것도 불분명한 것도 없을 때만 커밋 — 안 그러면 dash.py merge 가
@@ -247,7 +254,7 @@ class Prompt(AutorunCase):
         """
         text = self._text()
         self.assertIn("커밋한 뒤", text)
-        self.assertIn("커밋하지 않고 상태도 건드리지 않는다", text)
+        self.assertIn("커밋하지 않고 `autorun-finish` 도 부르지 않는다", text)
 
     def test_tells_how_to_request_when_judgment_is_missing(self):
         self.assertIn("autorun-request", self._text())
@@ -322,16 +329,43 @@ class Outcomes(AutorunCase):
         self._job(JOB, "blocked")
         self.assertEqual(autorun.reconcile(self.con), [])
 
-    def test_done_job_with_done_todo_waits_for_review(self):
-        """성공한 잡은 완료가 아니라 검토 대기다 — 변경이 워크트리에 남아 있다"""
+    def test_finished_job_waits_for_review(self):
+        """성공한 잡은 완료가 아니라 검토 대기다 — 변경이 워크트리에 남아 있다.
+
+        완료 신호는 todo.status 가 아니라 세션이 직접 남긴 mark_finished 다 —
+        status 는 사람이 확인하기 전까지 doing 그대로여야 한다(done 은 더 안 봐도
+        된다는 뜻이라, 확인 전에 done 이면 그 뜻이 깨진다)
+        """
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.mark_finished(self.con, CHILD)
         self._job(JOB, "done")
-        todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         run = autorun.reconcile(self.con)[0]
         self.assertEqual(run["outcome"], OUTCOME_REVIEW)
-        self.assertEqual(
-            autorun_repo.confirm_run(self.con, run["id"])["outcome"], OUTCOME_DONE
-        )
+        self.assertEqual(todo_repo.get(self.con, self.todo["id"])["status"], STATUS_DOING)
+
+    def test_silent_finish_without_signal_counts_as_failure(self):
+        """아무 신호도 안 남기고 조용히 멈추면 낙관적으로 review 로 보지 않는다 —
+
+        review 로 잘못 보면 미완성 작업이 검토 대상으로 둔갑한다. 안전한 기본값은 실패다
+        """
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        self._job(JOB, "done")
+        self.assertEqual(autorun.reconcile(self.con)[0]["outcome"], OUTCOME_FAILED)
+
+    def test_confirm_promotes_todo_to_done(self):
+        """확인해야 비로소 done — 그 전엔 doing 이라 next·완료 집계에 그대로 잡힌다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        autorun.confirm_run(self.con, run["id"])
+        self.assertEqual(todo_repo.get(self.con, self.todo["id"])["status"], STATUS_DONE)
+
+    def test_reopen_reverts_todo_to_doing(self):
+        """확인을 취소하면(reopen) 할일도 doing 으로 되돌아간다 — confirm_run 의 역"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        autorun.confirm_run(self.con, run["id"])
+        autorun.reopen_run(self.con, run["id"])
+        self.assertEqual(todo_repo.get(self.con, self.todo["id"])["status"], STATUS_DOING)
 
     def test_confirm_rejects_anything_but_review(self):
         run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
@@ -356,7 +390,7 @@ class Outcomes(AutorunCase):
         self.assertEqual(updated["status"], STATUS_TODO)
 
     def test_open_run_does_not_block_the_job_s_own_completion(self):
-        """자율 세션이 끝에 스스로 부르는 set-status done 은 잡혀 있는 동안이라 안 잠긴다"""
+        """실행이 아직 열려 있는 동안(outcome 없음)은 그 할일의 상태 변경이 안 잠긴다"""
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         updated = todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         self.assertEqual(updated["status"], STATUS_DONE)
