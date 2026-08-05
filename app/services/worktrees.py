@@ -82,17 +82,42 @@ def apply(con, repo, branch):
     if not _merge(root, branch):
         raise Conflict("충돌로 병합하지 못했습니다. 직접 정리가 필요합니다")
 
-    killed = release.kill_serving(path)
-    _git_write(root, "worktree", "remove", path)
-    _git_write(root, "branch", "-d", branch)
+    # 잠긴 워크트리는 지울 수 없다 — Claude Code 는 세션이 쓰는 동안 잠가 둔다.
+    # 강제로 지우면 그 세션의 작업 디렉터리가 사라지므로 병합·할일까지만 하고 남긴다
+    lock = _lock_reason(root, path)
+    killed = [] if lock else release.kill_serving(path)
+    if not lock:
+        _git_write(root, "worktree", "remove", path)
+        _git_write(root, "branch", "-d", branch)
     finished = release.finish_todo_ids(con, todo_ids)
     return {
         "branch": branch,
         "base": base,
         "killed": killed,
-        "removed": path,
+        "removed": None if lock else path,
         "finished": finished,
+        "kept": _kept_message(base, path, lock) if lock else None,
     }
+
+
+def _kept_message(base, path, lock):
+    return (
+        f"{base} 병합은 끝냈습니다. 다만 {path} 는 잠겨 있어 남겼습니다 ({lock})."
+        " 그 세션을 끝낸 뒤 적용을 다시 누르면 정리됩니다"
+    )
+
+
+def _lock_reason(root, path):
+    """이 워크트리의 잠금 사유. 잠겨 있지 않으면 빈 문자열"""
+    target = _real(path)
+    current = None
+    for line in _git(root, "worktree", "list", "--porcelain").splitlines():
+        head, _, rest = line.partition(" ")
+        if head == "worktree":
+            current = _real(rest.strip())
+        elif head == "locked" and current == target:
+            return rest.strip() or "사유 없음"
+    return ""
 
 
 def discard(con, repo, branch):
