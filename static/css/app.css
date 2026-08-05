@@ -456,26 +456,6 @@ button:disabled { color: var(--line); cursor: default; }
   font-variant-numeric: tabular-nums; text-decoration: none;
 }
 .wt-port:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
-/* 실행·중지처럼 몇 초 걸리는 조작 동안 포트 칸에 띄우는 진행 바.
-   결과(포트 배지)가 붙을 자리에 그대로 띄워, 바가 배지로 바뀌는 것으로 읽히게 한다 */
-.wt-bar {
-  position: relative; overflow: hidden;
-  width: 48px; height: 4px;
-  border-radius: var(--r-pill); background: var(--softer);
-}
-.wt-bar::after {
-  content: ""; position: absolute; top: 0; bottom: 0; width: 40%;
-  border-radius: inherit; background: var(--accent);
-  animation: wt-bar 0.9s ease-in-out infinite;
-}
-@keyframes wt-bar {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(250%); }
-}
-/* 움직임을 줄이라는 설정이면 흐르지 않게 두고 칸만 채운다 — 진행 중임은 그대로 보인다 */
-@media (prefers-reduced-motion: reduce) {
-  .wt-bar::after { width: 100%; animation: none; }
-}
 /* 하위 할일 목록(.subtasks)의 모양은 쓰되, 들여쓰기는 셰브런 다음 칸 —
    브랜치 이름 세로줄 아래로 떨어진다 */
 .wt-commits {

@@ -20,9 +20,6 @@ const expandedRows = new Set();
 // 케밥 메뉴가 열려 있는 행 키. 한 번에 하나만 연다
 let openMenuKey = null;
 
-// 지금 조작이 돌고 있는 행 키. 그 줄에만 진행 바를 띄운다
-let busyKey = null;
-
 const rowKey = (repo, branch) => `${repo} ${branch}`;
 
 // 마지막으로 받아 둔 응답. 한 번 부르는 데 git·lsof 로 0.6 초가 걸리므로,
@@ -125,30 +122,15 @@ function rowElement(group, row) {
 
   const ports = document.createElement("span");
   ports.className = "wt-ports";
-  // 조작이 도는 동안은 포트 자리에 진행 바. 결과가 붙을 자리라 바가 배지로 바뀌어 보인다
-  if (isBusy(group, row)) ports.appendChild(progressBar());
-  else ports.append(...portLinks(row));
+  ports.append(...portLinks(row));
 
   element.append(name, summary, divergence(row), ports, actionCell(group, row));
   return element;
 }
 
-function isBusy(group, row) {
-  return busyKey === rowKey(group.repo, row.branch);
-}
-
-// 모양은 CSS(.wt-bar) 가 갖는다
-function progressBar() {
-  const element = document.createElement("span");
-  element.className = "wt-bar";
-  element.title = "진행 중";
-  return element;
-}
-
-// 다섯째 칸 — 워크트리 행에만 케밥 메뉴. 디폴트·브랜치 행은 지울 워크트리가 없어 빈 칸.
-// 조작이 도는 동안에도 감춘다 — 같은 줄에 두 번 걸면 포트가 엉킨다
+// 다섯째 칸 — 워크트리 행에만 케밥 메뉴. 디폴트·브랜치 행은 지울 워크트리가 없어 빈 칸
 function actionCell(group, row) {
-  if (!row.path || isBusy(group, row)) return document.createElement("span");
+  if (!row.path) return document.createElement("span");
   return rowMenu(group, row);
 }
 
@@ -171,18 +153,17 @@ function rowMenu(group, row) {
 }
 
 function rowMenuItems(group, row) {
-  const key = rowKey(group.repo, row.branch);
   const items = document.createElement("div");
   items.className = "ws-menu-items";
   items.append(
     ...serveItems(group, row),
     menuItem("적용", () =>
-      runRowAction(key, () => api.applyWorktree(group.repo, row.branch),
+      runRowAction(() => api.applyWorktree(group.repo, row.branch),
         `"${row.branch}" 를 ${group.base} 에 병합하고, 서버 종료·워크트리·브랜치까지 정리할까요?`
       )
     ),
     menuItem("삭제", () =>
-      runRowAction(key, () => api.discardWorktree(group.repo, row.branch),
+      runRowAction(() => api.discardWorktree(group.repo, row.branch),
         `"${row.branch}" 를 병합하지 않고 버립니다. 커밋되지 않았거나 아직 병합되지 않은`
           + " 변경도 함께 사라지고 되돌릴 수 없습니다. 계속할까요?"
       )
@@ -195,10 +176,9 @@ function rowMenuItems(group, row) {
 // 중지는 죽일 게 없어 아무 일도 일어나지 않는다 — 상태에 따라 항목이 사라지면
 // 눌러 보기 전에 무엇을 할 수 있는 메뉴인지 알 수 없다
 function serveItems(group, row) {
-  const key = rowKey(group.repo, row.branch);
   const item = (label, action, confirmMessage) =>
     menuItem(label, () =>
-      runRowAction(key, () => api.controlWorktree(group.repo, row.branch, action), confirmMessage)
+      runRowAction(() => api.controlWorktree(group.repo, row.branch, action), confirmMessage)
     );
   // 실행만 확인창이 없다. 나머지 둘은 남의 화면을 끊을 수 있다 —
   // 다른 세션이 그 포트를 보고 있을 수 있어 되묻는다
@@ -218,37 +198,24 @@ function servingPorts(row) {
 
 // 메뉴 항목 다섯 개가 확인창 → API 호출 → 목록 다시 받기로 흐름이 같다.
 // 확인창이 없는 항목(실행)은 confirmMessage 를 넘기지 않는다
-function runRowAction(key, call, confirmMessage) {
+function runRowAction(call, confirmMessage) {
   return run(async () => {
     openMenuKey = null;
     if (confirmMessage && !confirm(confirmMessage)) {
       draw(cached);
       return;
     }
-    // 실행·중지는 몇 초 걸린다. 그 줄에 진행 바를 먼저 띄우고 그리는 것부터 한다
-    busyKey = key;
-    draw(cached);
-    try {
-      const result = await call();
-      await refreshRows();
-      // 알림은 목록을 다시 그린 **뒤에**. alert 는 화면을 멈추므로 먼저 띄우면
-      // 확인을 누른 다음에야 포트 배지가 붙어 한 박자 늦게 보인다.
-      // 병합의 반쪽 완료(kept), 서버 실행·중지 결과(message) 가 이 길을 쓴다
-      const notice = result?.kept ?? result?.message;
-      if (notice) alert(notice);
-    } finally {
-      // 실패로 끝나도 진행 바는 걷는다 (사유는 run() 이 상단에 띄운다).
-      // 성공 경로에서는 이미 걷혀 있어 두 번 받지 않는다
-      if (busyKey === key) await refreshRows();
-    }
+    const result = await call();
+    // 병합·삭제로 커밋·워크트리 목록 자체가 바뀌어 캐시로는 다시 그릴 수 없다
+    cached = null;
+    await renderWorktrees();
+    // 알림은 목록을 다시 그린 **뒤에**. alert 는 화면을 멈추므로 먼저 띄우면
+    // 확인을 누른 다음에야 포트 배지가 붙어 한 박자 늦게 보인다.
+    // 병합의 반쪽 완료(kept), 서버 실행·중지 결과(message) 가 이 길을 쓴다 —
+    // 실행은 몇 초 걸리고 끝나도 배지만 조용히 붙어 완료 여부를 알 수 없다
+    const notice = result?.kept ?? result?.message;
+    if (notice) alert(notice);
   });
-}
-
-// 병합·삭제·서버 조작으로 커밋·워크트리 목록 자체가 바뀌어 캐시로는 다시 그릴 수 없다
-async function refreshRows() {
-  busyKey = null;
-  cached = null;
-  await renderWorktrees();
 }
 
 // 앞섬·뒤처짐이 각자 칸을 지킨다. 한쪽이 0 이면 칸만 비워 다른 쪽이 밀리지 않는다
