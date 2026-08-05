@@ -1,4 +1,4 @@
-"""워크트리 서버 띄우기·다시 띄우기·내리기.
+"""워크트리 서버 실행·재실행·중지.
 
 포트 판정은 실제로 소켓을 잡아 확인하고, 서버 기동은 여기서 하지 않는다 —
 테스트가 공유 대역(9080~9139) 을 물면 다른 워크트리가 못 뜬다.
@@ -18,7 +18,7 @@ from app.services import serve, worktrees
 HERE = pathlib.Path(__file__).resolve().parent
 WORKTREES_JS = HERE.parent / "static" / "js" / "worktrees.js"
 MENU_CHECK = HERE / "worktree_serve_menu_check.mjs"
-# serveItems 가 메뉴 항목을 만드는 모양: item("띄우기", "start", ...)
+# serveItems 가 메뉴 항목을 만드는 모양: item("실행", "start", ...)
 MENU_ITEM = re.compile(r'item\("[^"]+",\s*"(\w+)"')
 
 
@@ -60,14 +60,15 @@ class StartTest(unittest.TestCase):
         self.assertIn(serve.RUN_SCRIPT, str(caught.exception))
 
     def test_own_worktree_is_refused(self):
-        """자기를 서비스하는 서버는 자기를 못 내린다 — 죽이면 응답할 주체가 없다.
-        그 워크트리의 대시보드를 보면서 그 줄을 다시 띄우려 할 때 걸린다"""
+        """자기를 서비스하는 서버는 자기를 못 중지한다 — 죽이면 응답할 주체가 없다.
+        그 워크트리의 대시보드를 보면서 그 줄을 재실행하려 할 때 걸린다"""
         for action in (serve.restart, serve.stop):
             with self.assertRaises(Validation):
                 action(os.getcwd())
 
     def test_stop_without_a_server_is_not_an_error(self):
-        """다시 띄우기가 같은 길을 지나간다 — 떠 있는 게 없어도 멈추면 안 된다"""
+        """재실행이 같은 길을 지나가고, 안 떠 있는 줄에서도 중지를 누를 수 있다 —
+        떠 있는 게 없어도 오류로 끝나면 안 된다"""
         with tempfile.TemporaryDirectory() as path:
             self.assertEqual(serve.stop(path), {"stopped": []})
 

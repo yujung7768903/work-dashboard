@@ -1,5 +1,5 @@
-// 워크트리 케밥 메뉴의 서버 항목 검증 — 떠 있으면 "다시 띄우기·내리기", 없으면 "띄우기"
-// 하나만 나오고, 누르면 그 동작으로 POST 되는지 본다.
+// 워크트리 케밥 메뉴의 서버 항목 검증 — 실행·재실행·중지가 떠 있든 없든 항상 보이고,
+// 누르면 그 동작으로 POST 되는지, 확인창 문구가 대상(포트 또는 브랜치)을 가리키는지 본다.
 // 브라우저 없이 돌려야 하므로 worktrees.js 가 만지는 DOM 만 흉내낸다.
 // 실행: node tests/worktree_serve_menu_check.mjs  (tests/test_serve_menu.py 가 이걸 부른다)
 import assert from "node:assert/strict";
@@ -102,18 +102,17 @@ const labelsOfOpenMenu = () =>
 const buttonNamed = (label) => created.filter((made) => made.textContent === label).pop();
 
 assert.equal(toggles().length, 2, "워크트리 줄마다 케밥 메뉴가 하나씩 있어야 한다");
-assert.ok(toggles()[0].title.includes("띄우기"), toggles()[0].title);
+assert.ok(toggles()[0].title.includes("실행"), toggles()[0].title);
 
-// 떠 있는 줄 — 다시 띄우기·내리기. 아직 안 떴는데 내리라고 할 수는 없으므로 띄우기는 없다
+const SERVER_ITEMS = ["실행", "재실행", "중지", "적용", "삭제"];
+// 떠 있는 줄·안 떠 있는 줄 모두 항목 구성이 같다 — 상태에 따라 사라지지 않는다
 toggles()[0].listeners.click({ stopPropagation() {} });
-assert.deepEqual(labelsOfOpenMenu(), ["다시 띄우기", "내리기", "적용", "삭제"]);
-
-// 떠 있지 않은 줄 — 띄우기만
+assert.deepEqual(labelsOfOpenMenu(), SERVER_ITEMS);
 toggles()[1].listeners.click({ stopPropagation() {} });
-assert.deepEqual(labelsOfOpenMenu(), ["띄우기", "적용", "삭제"]);
+assert.deepEqual(labelsOfOpenMenu(), SERVER_ITEMS);
 
-// 띄우기는 확인창 없이 바로 그 브랜치로 POST 된다
-buttonNamed("띄우기").listeners.click({ stopPropagation() {} });
+// 실행은 확인창 없이 바로 그 브랜치로 POST 된다
+buttonNamed("실행").listeners.click({ stopPropagation() {} });
 await settle();
 const posted = asked.filter((call) => call.method === "POST");
 assert.equal(posted.length, 1, JSON.stringify(asked));
@@ -122,16 +121,22 @@ assert.deepEqual(JSON.parse(posted[0].body), {
   branch: "worktree-down",
   action: "start",
 });
-assert.deepEqual(confirms, [], "띄우기는 되묻지 않는다");
+assert.deepEqual(confirms, [], "실행은 되묻지 않는다");
 // 목록을 다시 받아 포트 칸이 갱신돼야 한다
 assert.ok(asked.at(-1).url === "/api/worktrees" && asked.at(-1).method === "GET");
 
-// 내리기는 남의 화면을 끊을 수 있어 확인을 받는다
-toggles()[0].listeners.click({ stopPropagation() {} });
-buttonNamed("내리기").listeners.click({ stopPropagation() {} });
+// 안 떠 있는 줄의 확인창은 포트가 없으니 브랜치 이름을 가리킨다
+toggles()[1].listeners.click({ stopPropagation() {} });
+buttonNamed("중지").listeners.click({ stopPropagation() {} });
 await settle();
-assert.equal(confirms.length, 1, confirms.join(" / "));
-assert.ok(confirms[0].includes("9091"), confirms[0]);
+assert.ok(confirms.at(-1).includes("worktree-down"), confirms.at(-1));
+
+// 중지는 남의 화면을 끊을 수 있어 확인을 받는다. 떠 있으면 그 포트를 가리킨다
+toggles()[0].listeners.click({ stopPropagation() {} });
+buttonNamed("중지").listeners.click({ stopPropagation() {} });
+await settle();
+assert.equal(confirms.length, 2, confirms.join(" / "));
+assert.ok(confirms[1].includes("9091"), confirms[1]);
 assert.deepEqual(JSON.parse(asked.filter((call) => call.method === "POST").at(-1).body), {
   repo: "/repo",
   branch: "worktree-up",

@@ -6,7 +6,7 @@ cwd 로 유추한다. 조회(overview)는 git·lsof 를 읽기 전용으로만 �
 
 상태를 바꾸는 것은 케밥 메뉴에서 부르는 셋뿐이다 — apply() 는 병합·서버 종료·워크트리
 및 브랜치 제거·할일 done 을 순서대로, discard() 는 병합 없이 버리기, control() 은
-서버만 띄우기·다시 띄우기·내리기(app/services/serve.py).
+서버만 실행·재실행·중지(app/services/serve.py).
 """
 import os
 import subprocess
@@ -137,14 +137,14 @@ def discard(con, repo, branch):
 
 # 케밥 메뉴의 서버 조작. 동작 → (사용자에게 보이는 이름, 실행할 것)
 CONTROLS = {
-    "start": ("띄우기", serve.start),
-    "restart": ("다시 띄우기", serve.restart),
-    "stop": ("내리기", serve.stop),
+    "start": ("실행", serve.start),
+    "restart": ("재실행", serve.restart),
+    "stop": ("중지", serve.stop),
 }
 
 
 def control(repo, branch, action):
-    """워크트리 서버를 띄우고·다시 띄우고·내린다. 대상 판정은 적용·삭제와 같은 것을 쓴다.
+    """워크트리 서버를 실행·재실행·중지한다. 대상 판정은 적용·삭제와 같은 것을 쓴다.
 
     con 을 받지 않는다 — 할일·세션을 건드리지 않고 프로세스만 다룬다
     """

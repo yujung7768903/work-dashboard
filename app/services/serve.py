@@ -1,11 +1,11 @@
-"""워크트리 서버 띄우기·다시 띄우기·내리기. 보드 워크트리 탭의 케밥 메뉴가 부른다.
+"""워크트리 서버 실행·재실행·중지. 보드 워크트리 탭의 케밥 메뉴가 부른다.
 
 실행 방법은 워크트리 루트의 `run.sh` 하나로 본다 — 이 저장소의 관행이고(README "실행"),
 백그라운드 실행·날짜별 로그·기동 대기까지 그 스크립트가 이미 한다. `run.sh` 가 없는
-저장소는 띄우지 않고 그 사실을 그대로 알린다 — 진입점을 추측해서 띄우면 엉뚱한
+저장소는 실행하지 않고 그 사실을 그대로 알린다 — 진입점을 추측해서 띄우면 엉뚱한
 프로세스가 포트를 문다.
 
-내리기는 release.kill_serving 을 그대로 쓴다 — 병합(worktrees.apply) 이 죽이는 것과
+중지는 release.kill_serving 을 그대로 쓴다 — 병합(worktrees.apply) 이 죽이는 것과
 같은 판정이어야 화면에 보이는 포트와 어긋나지 않는다.
 """
 import os
@@ -29,15 +29,13 @@ POLL_SEC = 0.2
 
 
 def start(path, prefer=0):
-    """그 워크트리에서 run.sh 로 서버를 띄운다. prefer 는 다시 띄우기가 물려주는 이전 포트"""
+    """그 워크트리에서 run.sh 로 서버를 띄운다. prefer 는 재실행이 물려주는 이전 포트"""
     running = release.serving_port(path)
     if running:
-        raise Conflict(
-            f"이미 :{running} 에 떠 있습니다. 다시 올리려면 '다시 띄우기' 를 쓰세요"
-        )
+        raise Conflict(f"이미 :{running} 에 떠 있습니다. 다시 올리려면 '재실행' 을 쓰세요")
     script = os.path.join(path, RUN_SCRIPT)
     if not os.path.isfile(script):
-        raise Validation(f"{RUN_SCRIPT} 이 없어 띄울 수 없습니다: {path}")
+        raise Validation(f"{RUN_SCRIPT} 이 없어 실행할 수 없습니다: {path}")
     port = prefer if prefer and _is_free(prefer) else free_port()
     if port is None:
         raise Conflict(
@@ -50,7 +48,7 @@ def start(path, prefer=0):
 
 
 def restart(path):
-    """내렸다 같은 포트로 다시. 떠 있는 게 없으면 그냥 띄우는 것과 같다"""
+    """중지했다 같은 포트로 다시. 떠 있는 게 없으면 실행과 같다"""
     _ensure_not_self(path)
     previous = release.serving_port(path)
     stopped = stop(path)["stopped"]
@@ -74,8 +72,8 @@ def _ensure_not_self(path):
     """지금 이 요청을 처리하는 서버가 그 워크트리의 서버면 손대지 않는다.
 
     자기를 죽이면 응답을 돌려줄 주체가 없고, release.kill_serving 은 자기 pid 를 건너뛰어
-    조용히 아무것도 죽이지 않는다 — 그 상태로 다시 띄우면 "이미 떠 있다" 로 끝난다.
-    그 워크트리의 대시보드를 보면서 자기 자신을 다시 띄우려 할 때 걸린다
+    조용히 아무것도 죽이지 않는다 — 그 상태로 다시 실행하면 "이미 떠 있다" 로 끝난다.
+    그 워크트리의 대시보드를 보면서 자기 자신을 재실행하려 할 때 걸린다
     """
     if os.path.realpath(path) == os.path.realpath(os.getcwd()):
         raise Validation(
