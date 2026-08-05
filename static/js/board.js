@@ -224,10 +224,16 @@ function todoElement(todo) {
 
   const statusButton = document.createElement("button");
   statusButton.textContent = todo.status;
-  statusButton.title = "상태 순환 (todo → doing → done)";
+  if (todo.autorun_locked) {
+    statusButton.disabled = true;
+    statusButton.title = "자율 수행 확인 필요 — 자율 수행 패널에서 확인 처리할 것";
+  } else {
+    statusButton.title = "상태 순환 (todo → doing → done)";
+  }
   statusButton.addEventListener("click", (event) => {
     // 행 전체가 팝업을 여는 클릭이라 버튼은 거기까지 올라가지 않게 막는다
     event.stopPropagation();
+    if (todo.autorun_locked) return;
     run(async () => {
       await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
       await renderBoard();

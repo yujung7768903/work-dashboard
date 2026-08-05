@@ -30,7 +30,7 @@
 
 ### D3. 실행 방식은 `claude --bg` 잡
 
-```
+```bash
 claude --bg --model <상수> --permission-mode acceptEdits <프롬프트>
 ```
 
@@ -67,13 +67,13 @@ claude --bg --model <상수> --permission-mode acceptEdits <프롬프트>
 | autorun 이 꺼져 있음 | `autorun_state.enabled` | 시작 안 함 (기본 상태) |
 | 이미 자율 잡이 돌고 있음 | `autorun_runs` 에 `ended_at IS NULL` | 시작 안 함 (동시 1건) |
 | 5시간 창 사용률 ≥ 90% | `app/services/usage.py` (`RATE_LIMITS_PATH`), `USAGE_CRITICAL_PCT` | 시작 안 함. 다음 tick 재확인 |
-| 사용률 데이터가 15분 넘게 낡음 | `USAGE_STALE_SECONDS` | 시작 안 함 — 모르면 안 돎 |
+| 사용률 데이터가 아예 없음 | 사이드카에 `five_hour.used_percentage` 가 없음 | 시작 안 함 — 모르면 안 돎. 낡은 값은 그대로 쓴다(statusline 이 안 그려지면 늘 낡으므로) |
 | 대상 워크스페이스 워킹트리가 더러움 | `git status --porcelain` | 그 할일 건너뛰고 다음 후보 |
 | 사람이 그 잡에 프롬프트를 넣음 | `UserPromptSubmit` 훅 + 그 세션이 자율 세션 | autorun 즉시 off. 그 잡은 사람 것으로 인계 |
 | 같은 할일이 2회 연속 실패 | `autorun_runs.outcome` | 그 할일 `blocked` 처리, 다음 할일로 |
 | `blocked` 가 연속 3건 | `autorun_state.blocked_streak` | autorun off + 대시보드 경고 |
 | ③ 큐에서 `blocked` 만료 | `decisions.status` | 그 할일을 `blocked` 로 두고 다음 할일로 |
-| `next` 가 뽑을 할일 없음 | `planning.next` | autorun off |
+| `next` 가 뽑을 할일 없음 | `planning.next` | 시작 안 함. 다음 tick 재확인 — 끄지 않음 |
 | 리밋으로 잡이 멈춤 | `~/.claude/jobs/*/state.json` | ④는 개입 안 함. `resume-limited-jobs.py` 가 재개 |
 
 할일의 `blocked` — ①의 상태는 `todo`/`doing`/`done` 3개임. 여기서 4번째 값을 추가하지 않고 **`autorun_runs.outcome='blocked'` 로만 기록**함. 할일 상태는 `doing` 에 머무르고 대시보드에서 "자율 실행이 막힘" 배지로 보임. 근거 — ①의 상태 집합을 늘리면 웹 UI·CLI·정렬 규칙이 다 따라 움직여야 함.
@@ -86,6 +86,7 @@ autorun_state(                 -- 단일 행
   enabled INTEGER NOT NULL DEFAULT 0,
   blocked_streak INTEGER NOT NULL DEFAULT 0,
   last_tick_at TEXT,
+  last_tick_reason TEXT,       -- 마지막 tick 의 판정 사유. 켜져 있는데 안 도는 이유를 화면에 보임
   updated_at TEXT NOT NULL);
 
 autorun_runs(
@@ -150,7 +151,7 @@ autorun_runs(
 4. 워킹트리 더러움 → 그 할일 건너뛰고 다음 후보
 5. 같은 할일 2회 실패 기록 → `blocked` 로 기록하고 다음 할일 선택
 6. `blocked` 연속 3건 → autorun off, 경고 플래그
-7. `next` 가 없음 → autorun off
+7. `next` 가 없음 → 시작만 안 하고 autorun 은 켜진 채. 판정 사유가 `last_tick_reason` 에 남음
 8. 자율 세션에 `UserPromptSubmit` → autorun off
 9. `autorun-tick --dry-run` 이 실행하지 않고 판정 사유만 출력
 10. 실행 기록의 `outcome` 전이 (`done`/`failed`/`blocked`)
