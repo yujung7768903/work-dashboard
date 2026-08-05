@@ -122,6 +122,8 @@ async function loadContext(target) {
     todos: [todo],
     ...common,
     tab: OVERVIEW_TAB,
+    // 할일에서 열면 세션 탭 머리도 개요와 같은 할일 표기를 쓴다
+    fromTodo: true,
   };
 }
 
@@ -222,17 +224,22 @@ function sessionPane(context, dialog) {
     return pane;
   }
   pane.append(
-    headBlock(context.session, context.categories),
+    headBlock(context.session, context.categories, context.fromTodo ? context.todos[0] : null),
     classifyRow(context.session, context.workspaces, context.categories, dialog),
     logSection(context.messages)
   );
   return pane;
 }
 
-function headBlock(session, categories) {
+function headBlock(session, categories, todo) {
   const head = element("div", "dlg-head");
-  const title = element("p", "dlg-title", session.workspace_name || UNCLASSIFIED_LABEL);
-  const category = categories.find((item) => item.id === session.category_id);
+  // 할일에서 열었으면 개요 탭과 같은 "#id | 제목". 세션 줄에서 열었으면 워크스페이스+카테고리
+  const title = element(
+    "p",
+    "dlg-title",
+    todo ? `#${todo.id} | ${todo.title}` : session.workspace_name || UNCLASSIFIED_LABEL
+  );
+  const category = todo ? null : categories.find((item) => item.id === session.category_id);
   if (category) {
     const pill = element("span", "session-cat", category.name);
     // 색은 보드 라벨과 같은 --cat 규약. 없으면 CSS 기본 회색
