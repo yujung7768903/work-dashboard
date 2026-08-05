@@ -134,14 +134,14 @@ function actionCell(group, row) {
   return rowMenu(group, row);
 }
 
-// 적용(병합)·삭제(버림). 할일 카드의 ws-menu 재사용
+// 서버 띄우기·다시 띄우기·내리기, 적용(병합)·삭제(버림). 할일 카드의 ws-menu 재사용
 function rowMenu(group, row) {
   const key = rowKey(group.repo, row.branch);
   const wrapper = document.createElement("div");
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "⋮";
-  toggle.title = "적용 · 삭제";
+  toggle.title = "띄우기 · 적용 · 삭제";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuKey = openMenuKey === key ? null : key;
@@ -156,6 +156,7 @@ function rowMenuItems(group, row) {
   const items = document.createElement("div");
   items.className = "ws-menu-items";
   items.append(
+    ...serveItems(group, row),
     menuItem("적용", () =>
       runRowAction(() => api.applyWorktree(group.repo, row.branch),
         `"${row.branch}" 를 ${group.base} 에 병합하고, 서버 종료·워크트리·브랜치까지 정리할까요?`
@@ -171,11 +172,28 @@ function rowMenuItems(group, row) {
   return items;
 }
 
-// 적용·삭제 둘 다 확인창 → API 호출 → 목록 다시 받기라 흐름이 같다
+// 떠 있으면 다시 띄우기·내리기, 없으면 띄우기. 지금 할 수 있는 것만 보여준다
+function serveItems(group, row) {
+  const item = (label, action, confirmMessage) =>
+    menuItem(label, () =>
+      runRowAction(() => api.controlWorktree(group.repo, row.branch, action), confirmMessage)
+    );
+  // 띄우기만 확인창이 없다. 나머지 둘은 남의 화면을 끊을 수 있다 —
+  // 다른 세션이 그 포트를 보고 있을 수 있어 되묻는다
+  if (!row.processes.length) return [item("띄우기", "start")];
+  const ports = row.processes.flatMap((process) => process.ports).join(", :");
+  return [
+    item("다시 띄우기", "restart", `":${ports}" 를 내렸다 같은 포트로 다시 띄웁니다. 계속할까요?`),
+    item("내리기", "stop", `":${ports}" 서버를 종료합니다. 계속할까요?`),
+  ];
+}
+
+// 메뉴 항목 다섯 개가 확인창 → API 호출 → 목록 다시 받기로 흐름이 같다.
+// 확인창이 없는 항목(띄우기)은 confirmMessage 를 넘기지 않는다
 function runRowAction(call, confirmMessage) {
   return run(async () => {
     openMenuKey = null;
-    if (!confirm(confirmMessage)) {
+    if (confirmMessage && !confirm(confirmMessage)) {
       draw(cached);
       return;
     }
