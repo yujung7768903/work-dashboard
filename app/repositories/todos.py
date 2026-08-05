@@ -7,6 +7,7 @@ from app.constants import (
     STATUS_DOING,
     STATUS_DONE,
     STATUS_TODO,
+    SUBTASKS_REMAINING_MSG,
     TODO_STATUSES,
 )
 from app.db import now, transaction
@@ -168,16 +169,12 @@ def list_doing_before(con, before_text):
 
 def _require_subtasks_done(con, todo_id):
     """하위할일이 남아 있으면 할일을 done 으로 올리지 못하게 막음"""
-    remaining = [
-        row["title"]
-        for row in con.execute(
-            "SELECT title FROM subtasks WHERE todo_id=? AND status<>?"
-            " ORDER BY sort_order, id",
-            (todo_id, STATUS_DONE),
-        )
-    ]
+    remaining = con.execute(
+        "SELECT 1 FROM subtasks WHERE todo_id=? AND status<>? LIMIT 1",
+        (todo_id, STATUS_DONE),
+    ).fetchone()
     if remaining:
-        raise Validation("하위할일이 남아 완료할 수 없음: " + ", ".join(remaining))
+        raise Validation(SUBTASKS_REMAINING_MSG)
 
 
 def _validated_assignments(con, current, fields):

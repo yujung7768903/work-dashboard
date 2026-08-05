@@ -27,6 +27,10 @@ WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js")
 FIRST_SORT_ORDER = 1
 
+# 완료를 막는 두 자리(할일 수정·워크트리 적용)가 같은 말을 하도록 한곳에 둔다.
+# 남은 하위할일 제목은 싣지 않는다 — 화면에도 CLI 에도 바로 아래 목록으로 보인다
+SUBTASKS_REMAINING_MSG = "하위 할 일이 남아 완료할 수 없습니다"
+
 # 세션이 띄운 하위 프로세스에 실려오는 자기 세션 id. 훅 stdin 의 session_id 와 같은 값이라
 # CLI 가 이걸로 자기 세션을 안다 — 모델이 주입 블록의 UUID 를 옮겨 적지 않아도 된다
 SESSION_ID_ENV = "CLAUDE_CODE_SESSION_ID"

@@ -11,7 +11,7 @@ import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-from app.constants import STATUS_DONE, WORKSPACE_ACTIVE
+from app.constants import STATUS_DONE, SUBTASKS_REMAINING_MSG, WORKSPACE_ACTIVE
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
@@ -140,12 +140,11 @@ def _ensure_todos_completable(con, todo_ids):
     """todo_repo.update 가 하는 검사와 같은 규칙을 먼저 확인만 해 둔다 — 병합·삭제가
     다 끝난 뒤에야 이 검사에 걸리면 워크트리는 이미 없는데 할일만 done 이 안 된다"""
     for todo_id in todo_ids:
-        remaining = [
-            row["title"] for row in subtask_repo.list_by_todo(con, todo_id)
-            if row["status"] != STATUS_DONE
-        ]
-        if remaining:
-            raise Validation("하위할일이 남아 완료할 수 없음: " + ", ".join(remaining))
+        if any(
+            row["status"] != STATUS_DONE
+            for row in subtask_repo.list_by_todo(con, todo_id)
+        ):
+            raise Validation(SUBTASKS_REMAINING_MSG)
 
 
 def _ensure_checked_out(root, base):
