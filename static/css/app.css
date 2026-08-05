@@ -236,9 +236,6 @@ select {
   background-color: var(--accent); color: #fff; font-weight: 400;
 }
 #quick-submit:hover { background-color: color-mix(in srgb, var(--accent) 84%, #000); }
-/* 기본 접힘. 펼치면 아래 새 줄로 — 제목 입력 폭을 건드리지 않는다 */
-#quick-extra { flex-basis: 100%; color: var(--muted); font-size: var(--fs-sm); }
-#quick-extra > .field:first-of-type { margin-top: var(--sp-8); }
 
 /* 기본 버튼은 옅은 면. 선 대신 면으로 눌리는 느낌을 준다.
    페이지 배경(--bg)과 같은 값을 쓰면 폼 위에서 버튼이 사라지므로 한 단 어둡게 섞는다 */
