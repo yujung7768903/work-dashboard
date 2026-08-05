@@ -200,8 +200,8 @@ def confirm_run(con, run_id):
 def locked_todo_ids(con):
     """검토 대기로 닫힌 실행이 있는 할일. 사람이 확인 버튼을 누르기 전까지 상태를 못 바꾼다.
 
-    돌고 있는 중(ended_at IS NULL)은 안 잠근다 — 자율 세션 자신이 끝에 `set-status
-    done` 을 부르는데, 그때는 아직 잡이 열려 있어 여기서 잠그면 그 호출이 막힌다
+    outcome 은 close_run 이 ended_at 과 함께 채우므로, 아직 도는 실행(ended_at IS
+    NULL)은 outcome 이 비어 있어 여기 자연히 안 잡힌다 — 따로 걸러낼 필요가 없다
     """
     return {
         row["todo_id"]
@@ -256,17 +256,13 @@ def requested_todo_ids(con):
     }
 
 
-def mark_requested(con, claude_session_id, note):
-    """지금 도는 자율 실행이 판단에 막혔다는 표시.
+def _open_run(con, claude_session_id):
+    """그 세션이 지금 돌리는 열린 실행. 세션이 스스로 남기는 신호(요청·완료)가
 
-    바로 닫지 않고 실행 중인 행에 사유만 적어 둔다 — 여기서 닫으면(ended_at 을 채우면)
-    잡 프로세스가 아직 안 끝났는데 다음 tick 이 동시 1건 규칙을 어기고 새 잡을 띄울 수
+    바로 닫지 않고 이 행에 적히는 이유 — 여기서 닫으면(ended_at 을 채우면) 잡
+    프로세스가 아직 안 끝났는데 다음 tick 이 동시 1건 규칙을 어기고 새 잡을 띄울 수
     있다. 닫는 일은 여느 결과와 같이 reconcile()이 잡 종료를 확인한 뒤에 한다
-    (outcome_for_close 가 이 값을 본다)
     """
-    reason = (note or "").strip()
-    if not reason:
-        raise Validation("무엇이 필요한지 적을 것 — 이유 없는 요청은 사람이 판단할 수 없음")
     run = con.execute(
         "SELECT * FROM autorun_runs WHERE claude_session_id=? AND ended_at IS NULL"
         " ORDER BY id DESC LIMIT 1",
@@ -274,6 +270,15 @@ def mark_requested(con, claude_session_id, note):
     ).fetchone()
     if not run:
         raise NotFound("이 세션의 진행 중인 자율 실행 기록이 없음")
+    return run
+
+
+def mark_requested(con, claude_session_id, note):
+    """지금 도는 자율 실행이 판단에 막혔다는 표시. outcome_for_close 가 이 값을 본다"""
+    reason = (note or "").strip()
+    if not reason:
+        raise Validation("무엇이 필요한지 적을 것 — 이유 없는 요청은 사람이 판단할 수 없음")
+    run = _open_run(con, claude_session_id)
     with transaction(con):
         con.execute(
             "UPDATE autorun_runs SET requested_note=? WHERE id=?", (reason, run["id"])
@@ -281,15 +286,31 @@ def mark_requested(con, claude_session_id, note):
     return get(con, run["id"])
 
 
-def outcome_for_close(con, todo_id, todo_done, requested_note=None):
+def mark_finished(con, claude_session_id):
+    """지금 도는 자율 실행이 할 일을 끝내고 검토를 기다린다는 표시.
+
+    todo.status 를 신호로 재사용하지 않는다 — status 는 '일이 남았는가' 축이고
+    이건 '이번 실행이 어떻게 됐는가' 축이라 서로 다르다. 섞으면 사람이 확인하기
+    전에도 status 가 done 이 되어 done 의 뜻('더 안 봐도 됨')이 깨진다
+    """
+    run = _open_run(con, claude_session_id)
+    with transaction(con):
+        con.execute(
+            "UPDATE autorun_runs SET finished_at=? WHERE id=?", (now(), run["id"])
+        )
+    return get(con, run["id"])
+
+
+def outcome_for_close(con, todo_id, finished, requested_note=None):
     """끝난 잡의 결과. requested_note 가 있으면 판단 보류가 최우선이다 —
 
-    실패나 완료를 판정하기 전에, 세션이 스스로 멈춘 것인지부터 본다. 아니면 할일이
-    done 이면 검토 대기, 그것도 아니면 실패. 이 실패로 한도에 닿으면 blocked 로 올린다
+    실패나 완료를 판정하기 전에, 세션이 스스로 멈춘 것인지부터 본다. 아니면 세션이
+    스스로 '끝냄'을 남겼으면(mark_finished) 검토 대기, 그것도 아니면 실패 — 조용히
+    멈춘 것은 낙관적으로 review 로 보지 않는다. 이 실패로 한도에 닿으면 blocked 로 올린다
     """
     if requested_note:
         return OUTCOME_REQUESTED
-    if todo_done:
+    if finished:
         return OUTCOME_REVIEW
     if consecutive_failures(con, todo_id) + 1 >= AUTORUN_FAIL_LIMIT:
         return OUTCOME_BLOCKED

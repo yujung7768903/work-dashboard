@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS autorun_runs(
     started_at TEXT NOT NULL,
     ended_at TEXT,
     outcome TEXT,
-    requested_note TEXT
+    requested_note TEXT,
+    finished_at TEXT
 );
 """
 
@@ -168,6 +169,7 @@ def connect(path=None):
     _add_precondition_columns(con)
     _add_usage_account_column(con)
     _add_requested_note_column(con)
+    _add_finished_at_column(con)
     _add_tick_reason_column(con)
     _drop_session_workspace_column(con)
     _seed_categories(con)
@@ -258,6 +260,18 @@ def _add_requested_note_column(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(autorun_runs)")}
     if "requested_note" not in columns:
         con.execute("ALTER TABLE autorun_runs ADD COLUMN requested_note TEXT")
+    con.commit()
+
+
+def _add_finished_at_column(con):
+    """자율 세션이 스스로 '다 끝냄'을 남기는 컬럼을 뒤늦게 붙임.
+
+    todo.status 로 성공 여부를 재구성하지 않으려고 만든 별도 신호다 — 이 세션이 직접
+    보고한 것만 review 로 본다(mark_finished/outcome_for_close 참고)
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(autorun_runs)")}
+    if "finished_at" not in columns:
+        con.execute("ALTER TABLE autorun_runs ADD COLUMN finished_at TEXT")
     con.commit()
 
 
