@@ -226,7 +226,7 @@ function todoElement(todo) {
   statusButton.textContent = todo.status;
   if (todo.autorun_locked) {
     statusButton.disabled = true;
-    statusButton.title = "자율 수행 확인 필요 — 자율 수행 패널에서 확인 처리할 것";
+    statusButton.title = "자율 수행 검토 대기 — 자율 수행 패널에서 확인 처리할 것";
   } else {
     statusButton.title = "상태 순환 (todo → doing → done)";
   }

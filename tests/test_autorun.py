@@ -314,7 +314,7 @@ class Outcomes(AutorunCase):
         self.assertEqual(autorun.reconcile(self.con), [])
 
     def test_done_job_with_done_todo_waits_for_review(self):
-        """성공한 잡은 완료가 아니라 확인 필요다 — 변경이 워크트리에 남아 있다"""
+        """성공한 잡은 완료가 아니라 검토 대기다 — 변경이 워크트리에 남아 있다"""
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         self._job(JOB, "done")
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
@@ -333,7 +333,7 @@ class Outcomes(AutorunCase):
             autorun_repo.confirm_run(self.con, run["id"])
 
     def test_status_change_blocked_while_review_pending(self):
-        """확인 필요인 동안은 사람이 상태를 직접 못 바꾼다 — 확인 버튼으로만 넘어간다"""
+        """검토 대기인 동안은 사람이 상태를 직접 못 바꾼다 — 확인 버튼으로만 넘어간다"""
         run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
         with self.assertRaises(Validation):

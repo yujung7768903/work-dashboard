@@ -588,7 +588,7 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-list:empty { display: none; }
 /* 어느 줄이든 눌러서 상세 팝업을 연다 — 세션 목록과 같은 규칙 */
 /* 표처럼 칸 시작 위치가 줄마다 같아야 한다. flex 로는 안 된다 — 워크스페이스 이름이
-   길거나 상태 글자('확인 필요' ↔ '완료')가 길면 그만큼 뒤 칸이 밀린다. 격자로 못박는다:
+   길거나 상태 글자('검토 대기' ↔ '완료')가 길면 그만큼 뒤 칸이 밀린다. 격자로 못박는다:
    워크스페이스 / 할일(남는 폭) / 워크트리 / 포트 / 상태 / 경과 */
 #autorun-list li {
   display: grid;
@@ -607,7 +607,7 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-list .wt-port { padding: 0 var(--sp-4); font-size: var(--fs-micro); }
 #autorun-list .badge { font-weight: 600; font-size: var(--fs-sm); }
 #autorun-list .outcome-done { color: var(--good); }
-/* 확인 필요만 버튼이다. 줄 안에서 글자처럼 보이게 기본 버튼 외양을 걷어낸다 */
+/* 검토 대기만 버튼이다. 줄 안에서 글자처럼 보이게 기본 버튼 외양을 걷어낸다 */
 /* text-align 은 버튼의 브라우저 기본값이 center 라 명시해야 한다 — 안 그러면 span 인
    다른 결과(완료·실패)와 칸 안에서 시작 위치가 어긋난다 */
 #autorun-list button.badge {
