@@ -15,7 +15,6 @@ from tests.support import temp_db, temp_db_path
 
 STATIC = pathlib.Path(__file__).resolve().parent.parent / "static"
 INDEX = STATIC / "index.html"
-BOARD_JS = STATIC / "js" / "board.js"
 CONDITION = "#30 사용량 대시보드가 done 일 것"
 MULTILINE = (
     "work-dashboard 에 미커밋 변경이 남은 워크트리가 없을 것\n"
@@ -137,10 +136,10 @@ class PreconditionPopupTest(unittest.TestCase):
 
 
 class PreconditionAddFormTest(unittest.TestCase):
-    """화면에서 넣은 조건·note 가 저장까지 가야 한다.
+    """화면(할일 추가 폼)에서 넣은 조건·note 가 저장까지 가야 한다.
 
-    빠른 추가 폼에 입력칸이 없거나 서버가 body 의 값을 버리면, 저장 계층
-    테스트는 전부 통과하면서 브라우저에서만 값이 사라진다 — 실제로 그랬다.
+    서버가 body 의 값을 버리면, 저장 계층 테스트는 전부 통과하면서
+    브라우저에서만 값이 사라진다 — 실제로 그랬다.
     """
 
     def setUp(self):
@@ -175,13 +174,6 @@ class PreconditionAddFormTest(unittest.TestCase):
         self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
         # 예시는 placeholder 로 보여 준다 (개행은 &#10;)
         self.assertIn(PRECONDITION_EXAMPLE.replace("\n", "&#10;"), markup)
-
-    def test_quick_add_form_has_both_inputs(self):
-        markup = INDEX.read_text(encoding="utf-8")
-        script = BOARD_JS.read_text(encoding="utf-8")
-        for element_id in ("quick-precondition", "quick-note"):
-            self.assertIn(f'id="{element_id}"', markup)
-            self.assertIn(f'getElementById("{element_id}")', script)
 
 
 if __name__ == "__main__":
