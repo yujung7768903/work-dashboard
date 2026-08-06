@@ -775,6 +775,21 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   padding: var(--sp-2) var(--sp-8); font-size: var(--fs-sm); color: var(--muted);
 }
 
+/* 팝업 워크트리 탭 — 이름 / 상태 / 커밋 차이 한 줄, 아래에 시각과 커밋 목록.
+   보드 워크트리 탭의 격자를 쓰지 않는다: 여기는 한 워크트리를 펼쳐 보는 자리다 */
+.dlg-wt-head { display: flex; align-items: center; gap: var(--sp-8); margin: 0; }
+.dlg-wt-head .title {
+  min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 상태는 글자만 읽지 않아도 구분돼야 한다 — 작업 중은 강조색, 병합은 완료색, 삭제는 취소선 */
+.wt-state.working { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
+.wt-state.merged { background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: var(--good); }
+.wt-state.deleted { text-decoration: line-through; }
+/* 커밋 차이는 줄 오른쪽 끝. 보드와 달리 칸을 고정할 필요가 없어 값만 붙여 놓는다 */
+#session-modal .wt-div { display: flex; gap: var(--sp-4); margin-left: auto; }
+#session-modal .wt-commits { padding: var(--sp-4) 0 0; }
+
 .session-id { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); }
 .session-id code {
   flex: 1; overflow: hidden; text-overflow: ellipsis;

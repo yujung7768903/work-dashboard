@@ -9,10 +9,19 @@ const UNCLASSIFIED_LABEL = "분류 전";
 const ROLE_LABELS = { user: "나", assistant: "클로드" };
 const OVERVIEW_TAB = "overview";
 const SESSION_TAB = "session";
+const WORKTREE_TAB = "worktree";
 const TABS = [
   [OVERVIEW_TAB, "개요"],
   [SESSION_TAB, "세션"],
+  [WORKTREE_TAB, "워크트리"],
 ];
+// 워크트리 상태 → (배지 글자, 설명). 병합·삭제된 워크트리도 이름과 상태로 남는다
+const WORKTREE_STATES = {
+  create: ["생성", "만들어졌지만 아직 작업이 없음"],
+  working: ["작업중", "기준 브랜치에 아직 없는 작업이 있음"],
+  merged: ["병합", "기준 브랜치에 병합돼 끝남"],
+  deleted: ["삭제", "병합하지 않고 버림"],
+};
 // 개요의 시각 목록. 실제 순서는 값으로 정렬하므로 여기 순서는 라벨 짝짓기용일 뿐
 const TIME_FIELDS = [
   ["created_at", "생성"],
@@ -113,13 +122,14 @@ async function loadContext(target) {
     // 분류 직후처럼 방금 만들어진 할일을 보여줘야 할 때만 개요로 열린다
     return { ...detail, ...common, tab: target.tab ?? SESSION_TAB };
   }
-  const { todo, sessions } = await api.getTodo(target.todo.id);
+  const { todo, sessions, worktrees } = await api.getTodo(target.todo.id);
   // 할일에서 열면 세션 탭은 그 할일을 마지막으로 잡은 세션을 보여준다
   const detail = sessions.length ? await api.getSession(sessions[0].id) : null;
   return {
     session: detail?.session ?? null,
     messages: detail?.messages ?? [],
     todos: [todo],
+    worktrees,
     ...common,
     tab: OVERVIEW_TAB,
     // 할일에서 열면 세션 탭 머리도 개요와 같은 할일 표기를 쓴다
@@ -131,6 +141,7 @@ function tabbed(context, dialog) {
   const panes = {
     [OVERVIEW_TAB]: overviewPane(context.todos),
     [SESSION_TAB]: sessionPane(context, dialog),
+    [WORKTREE_TAB]: worktreePane(context.worktrees),
   };
   Object.entries(panes).forEach(([key, pane]) => {
     pane.hidden = key !== context.tab;
@@ -215,6 +226,103 @@ function formatWhen(iso) {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return iso;
   return new Date(ms).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+}
+
+// 이 할일이 썼던 워크트리. 지금 살아 있는 것만이 아니라 병합·삭제로 끝난 것까지 남는다
+function worktreePane(rows) {
+  const pane = element("div", "dlg-pane");
+  if (!rows?.length) {
+    pane.appendChild(element("p", "muted", "이 할일에 붙은 워크트리가 없습니다."));
+    return pane;
+  }
+  rows.forEach((row) => pane.appendChild(worktreeBlock(row)));
+  return pane;
+}
+
+function worktreeBlock(row) {
+  const block = element("div", "dlg-section");
+  const head = element("p", "dlg-wt-head");
+  const name = element("span", "title", row.name);
+  // 이름 칸은 좁으므로 브랜치·경로는 툴팁으로
+  name.title = [row.branch, row.path].filter(Boolean).join("\n");
+  head.append(name, stateBadge(row.state), divergence(row));
+  block.append(head, worktreeTimes(row), commitBlock(row));
+  return block;
+}
+
+function stateBadge(state) {
+  const [label, hint] = WORKTREE_STATES[state] ?? [state, ""];
+  const badge = element("span", `dlg-badge wt-state ${state}`, label);
+  badge.title = hint;
+  return badge;
+}
+
+// 기준 브랜치와의 커밋 차이. 보드 워크트리 탭과 같은 ↑↓ 표기
+function divergence(row) {
+  const box = element("span", "wt-div");
+  box.append(
+    count("ahead", row.ahead, `${row.base} 에 없는 커밋 ${row.ahead}개`),
+    count("behind", row.behind, `${row.base} 보다 뒤처진 커밋 ${row.behind}개`)
+  );
+  return box;
+}
+
+function count(kind, value, title) {
+  const node = element("span", kind);
+  if (!value) return node;
+  node.textContent = `${kind === "ahead" ? "↑" : "↓"}${value}`;
+  node.title = title;
+  return node;
+}
+
+// 생성 시각과 끝난 시각. 병합됐으면 병합 시각, 병합 없이 지웠으면 삭제 시각이 온다 —
+// 둘이 함께 오는 일은 없다 (병합으로 끝난 워크트리에는 삭제 시각을 적지 않는다)
+function worktreeTimes(row) {
+  const fields = [
+    ["생성", row.created_at],
+    ["병합", row.merged_at],
+    ["삭제", row.deleted_at],
+  ];
+  const list = element("ul", "time-list");
+  fields
+    .filter(([, iso]) => iso)
+    .forEach(([label, iso]) => {
+      const item = document.createElement("li");
+      item.append(
+        element("span", "dlg-badge", label),
+        element("span", "when", formatWhen(iso)),
+        element("span", "age", formatAge(iso))
+      );
+      list.appendChild(item);
+    });
+  return list;
+}
+
+function commitBlock(row) {
+  const block = element("div");
+  block.appendChild(element("p", "label", `작업 커밋 ${row.commits.length}개`));
+  if (!row.commits.length) {
+    // 병합 없이 지운 워크트리는 커밋이 브랜치와 함께 사라져 되짚을 자국이 없다.
+    // 아직 살아 있는 워크트리면 그냥 커밋을 안 한 것이라 말이 달라야 한다
+    const reason =
+      row.state === "deleted"
+        ? "병합 없이 지운 워크트리라 커밋도 브랜치와 함께 사라졌습니다."
+        : "아직 커밋이 없습니다.";
+    block.appendChild(element("p", "muted", reason));
+    return block;
+  }
+  const list = element("ul", "subtasks wt-commits");
+  row.commits.forEach((commit) => {
+    const item = document.createElement("li");
+    item.append(
+      element("code", null, commit.hash),
+      document.createTextNode(` ${commit.subject} `),
+      element("span", "wt-when", commit.at.slice(5, 10)) // '2026-08-01T…' → '08-01'
+    );
+    list.appendChild(item);
+  });
+  block.appendChild(list);
+  return block;
 }
 
 function sessionPane(context, dialog) {

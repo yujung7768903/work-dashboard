@@ -55,15 +55,15 @@ const TODO = { id: 42, title: "세션 탭 머리글 정리", created_at: "2026-0
 const PAYLOAD = {
   "/api/workspaces": [],
   "/api/categories": [{ id: 4, name: "개발환경 개선" }],
-  "/api/todos/42": { todo: TODO, sessions: [{ id: 3 }] },
-  "/api/sessions/3": { session: SESSION, messages: [], todos: [TODO] },
+  "/api/todos/42": { todo: TODO, sessions: [{ id: 3 }], worktrees: [] },
+  "/api/sessions/3": { session: SESSION, messages: [], todos: [TODO], worktrees: [] },
 };
 globalThis.fetch = (url) =>
   Promise.resolve({ ok: true, json: () => Promise.resolve(PAYLOAD[url]) });
 
 const { openDetail } = await import("../static/js/sessions.js");
 
-// 팝업 본문은 [탭바, 개요, 세션] 세 덩어리. 각 탭의 첫 dlg-title 을 뽑아 비교한다
+// 팝업 본문은 [탭바, 개요, 세션, 워크트리] 네 덩어리. 각 탭의 첫 dlg-title 을 뽑아 비교한다
 const firstTitle = (pane) => {
   const stack = [...pane.children];
   while (stack.length) {
@@ -79,11 +79,11 @@ async function titles(target) {
   body.children = [];
   openDetail(target);
   // 팝업은 목록 fetch → 상세 fetch 두 단을 거쳐 그린다. 큐가 빌 때까지 기다린다
-  for (let i = 0; body.children.length !== 3 && i < 50; i += 1) {
+  for (let i = 0; body.children.length !== 4 && i < 50; i += 1) {
     await new Promise((done) => setTimeout(done, 0));
   }
   // 렌더가 실패하면 팝업은 본문을 에러 문구로 바꾼다 — 그걸 그대로 띄워 원인을 보인다
-  assert.equal(body.children.length, 3, `팝업이 안 그려졌다: ${body.textContent}`);
+  assert.equal(body.children.length, 4, `팝업이 안 그려졌다: ${body.textContent}`);
   const [, overview, session] = body.children;
   return [firstTitle(overview), firstTitle(session)];
 }

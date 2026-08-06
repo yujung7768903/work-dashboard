@@ -480,7 +480,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 - `PRAGMA foreign_keys=ON` — 참조 무결성 강제
 - `PRAGMA journal_mode=WAL` — 웹·CLI·훅 동시 접근 대비
 - `PRAGMA busy_timeout=5000` — 잠금 대기 5초
-- `CREATE TABLE IF NOT EXISTS` 로 테이블 9개 생성
+- `CREATE TABLE IF NOT EXISTS` 로 테이블 13개 생성
 - 카테고리 6개(개발 / 운영 / 장애 대응 / 개발환경 개선 / 스킬 개발 / 프로세스 개선) 시드. `meta` 의 `categories_seeded` 플래그로 **최초 1회만** — 사용자가 지운 카테고리가 되살아나면 안 되기 때문
 
 시각 컬럼(`*_at`)은 전부 TEXT 이며 ISO8601 UTC 초 단위(`2026-07-31T04:12:33+00:00`).
@@ -497,6 +497,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 | `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
+| `worktrees` | 워크트리 이력. 병합·삭제로 사라진 것도 이름·상태로 남긴다 (팝업 워크트리 탭) | `path`(PK), `repo`, `branch`, `created_at`, `merged_at`, `merge_hash`, `merge_from`, `deleted_at` | — (경로로 잇는다) |
 | `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined` | `key`(PK), `value` | — |
 
 ## 규칙 몇 가지
@@ -540,14 +541,31 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 코드·훅 등록 모두 적용됨 (2026-07-30 확인). 남은 항목은 `docs/superpowers/specs/2026-07-30-session-mapping-spec.md` 에 결정으로 적혀 있다 (세션 인자 env 폴백, fork 세션 분류 상속).
 
-보드의 세션 줄과 할일 줄은 **같은 팝업**을 연다. 팝업은 탭 두 개다.
+보드의 세션 줄과 할일 줄은 **같은 팝업**을 연다. 팝업은 탭 세 개다.
 
 | 탭 | 내용 | 기본 활성 |
 | --- | --- | --- |
 | 개요 | 할일 제목, 생성·수정·완료 시각(최근 순), note 전문 | 할일에서 열 때 |
 | 세션 | 세션 id·위치·최근 대화 10건, 워크스페이스·카테고리 지정 | 세션에서 열 때 |
+| 워크트리 | 그 할일이 썼던 워크트리 — 이름·상태·생성 시각·끝난 시각·기준 브랜치와의 커밋 차이·작업 커밋 | — |
 
 세션에서 열면 개요 탭에 그 세션이 `link-todo` 로 잡은 할일이 뜨고, 할일에서 열면 세션 탭에 그 할일을 마지막으로 잡은 세션이 뜬다. note 는 세션에 `(컨텍스트 #id)` 표시만 주입되므로 전문을 보는 자리는 이 팝업이다. 최근 대화는 `~/.claude/projects/*/<세션id>.jsonl` 꼬리에서 읽는다.
+
+### 팝업 워크트리 탭
+
+병합·삭제로 끝난 워크트리도 남는다 — git 은 지워진 워크트리를 기억하지 않으므로(`worktree list` 에서도, 브랜치 목록에서도 빠진다) 살아 있는 동안 본 것을 `worktrees` 테이블에 적어 둔다. 어느 워크트리가 이 할일의 것인지는 그 할일을 잡은 세션에서 찾는다 — 세션 `cwd`(워크트리 안에서 시작한 세션)와 transcript 꼬리의 마지막 워크트리 경로(`EnterWorktree` 로 옮겨간 세션) 둘 다 본다. 후자가 기본 흐름이다 — `cwd` 는 SessionStart 훅이 적은 값이라 대개 메인 체크아웃을 가리킨다.
+
+| 상태 | 판정 | 시각 |
+| --- | --- | --- |
+| `create` | 살아 있고 커밋도 변경도 없음 | 생성 |
+| `working` | 살아 있고 기준 브랜치에 없는 커밋 또는 커밋 안 된 변경이 있음 | 생성 |
+| `merged` | 기준 브랜치에 병합됨 (병합 뒤 커밋이 더 쌓이면 다시 `working`) | 생성 · **병합** |
+| `deleted` | 병합 없이 사라짐 | 생성 · **삭제** |
+
+- 끝난 시각은 하나만 붙는다 — 병합됐으면 병합 시각, 병합 없이 지웠으면 삭제 시각. 지우는 순간은 관측할 방법이 없어(`ExitWorktree` 는 대시보드를 거치지 않는다) **사라진 것을 처음 확인한 시각**을 삭제 시각으로 쓴다.
+- 병합 사실은 기준 브랜치 reflog 의 `merge <브랜치>:` 항목에서 되짚는다. 지워진 브랜치의 병합을 알 수 있는 유일한 자국이고, 이 기능을 붙이기 전에 끝난 워크트리도 그래서 상태가 채워진다. reflog 도 지워지므로(기본 90일) 처음 본 때 병합 전후 해시까지 저장해 커밋 목록을 계속 되짚는다.
+- 생성 시각은 워크트리 `.git` 파일의 mtime. 이미 사라진 워크트리면 그 위치에서 가장 먼저 돈 세션의 시작 시각으로 대신한다 (실제 생성보다 늦지만 그 워크트리가 있었던 시점은 된다).
+- 병합 없이 버린 워크트리의 커밋은 브랜치와 함께 사라져 목록이 비어 있다.
 
 ### 다른 PC 에 옮길 때
 
