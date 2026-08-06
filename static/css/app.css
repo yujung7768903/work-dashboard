@@ -731,13 +731,24 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 /* 탭 바로 아래 첫 블록은 이미 간격이 있어 위 여백을 지운다 */
 .dlg-pane > .dlg-section:first-child { margin-top: 0; }
 
-.time-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
-.time-list li {
-  display: flex; align-items: center; gap: var(--sp-8);
+/* 시각 + 내용 한 줄짜리 로그 목록. 개요의 History, 워크트리 탭의 History·Commit 이
+   같은 모양을 쓴다 — 시각 표기가 로그 파일과 같아야 두 탭을 나란히 읽을 수 있다 */
+.dlg-log { margin-top: var(--sp-12); }
+.dlg-log > .label { display: flex; align-items: center; gap: var(--sp-8); margin: 0 0 var(--sp-4); }
+.log-list { list-style: none; margin: 0; padding: 0; }
+.log-list li {
+  display: flex; align-items: baseline; gap: var(--sp-8);
   padding: var(--sp-2) 0; font-size: var(--fs-sm);
 }
-.time-list .when { flex: 1; }
-.time-list .age { color: var(--muted); }
+/* 시각·해시는 폭이 고정돼야 줄마다 같은 열에서 시작한다 */
+.log-list .when { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.log-list code { flex: none; color: var(--fg); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.log-list .text {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 경과 시간은 오른쪽 끝 */
+.log-list .age { flex: none; margin-left: auto; color: var(--muted); }
 /* note 는 세션에 그대로 주입되는 글이라 줄바꿈을 살려서 보여준다 */
 .note-body {
   margin: var(--sp-4) 0 0; padding: var(--sp-12); border-radius: var(--r-ctl);
@@ -786,9 +797,8 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 .wt-state.working { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
 .wt-state.merged { background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: var(--good); }
 .wt-state.deleted { text-decoration: line-through; }
-/* 커밋 차이는 줄 오른쪽 끝. 보드와 달리 칸을 고정할 필요가 없어 값만 붙여 놓는다 */
-#session-modal .wt-div { display: flex; gap: var(--sp-4); margin-left: auto; }
-#session-modal .wt-commits { padding: var(--sp-4) 0 0; }
+/* 커밋 차이는 Commit 섹션 이름 오른쪽. 보드와 달리 칸을 고정할 필요가 없어 값만 붙여 놓는다 */
+#session-modal .wt-div { display: flex; gap: var(--sp-4); }
 
 .session-id { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); }
 .session-id code {

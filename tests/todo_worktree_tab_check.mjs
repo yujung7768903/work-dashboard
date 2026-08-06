@@ -101,7 +101,8 @@ const texts = (pane) => {
   const stack = [...pane.children];
   while (stack.length) {
     const item = stack.shift();
-    if (item?.textContent && !item.children?.length) found.push(item.textContent);
+    // 자식이 있어도 자기 글자는 센다 — 'Commit' 라벨은 안에 커밋 차이 배지를 품고 있다
+    if (item?.textContent) found.push(item.textContent);
     if (item?.children) stack.push(...item.children);
   }
   return found;
@@ -109,16 +110,36 @@ const texts = (pane) => {
 
 const merged = texts(worktreePane.children[0]);
 assert.ok(merged.includes("done-thing"), `이름이 없다: ${merged}`);
-assert.ok(merged.includes("병합"), `병합 상태·시각 라벨이 없다: ${merged}`);
-assert.ok(!merged.includes("삭제"), `병합된 워크트리에 삭제 시각이 붙었다: ${merged}`);
-assert.ok(merged.includes("생성"), `생성 시각이 없다: ${merged}`);
+// 섹션은 텍스트 라벨로 — 개요의 '착수 조건'·'note' 와 같은 자리
+assert.deepEqual(
+  merged.filter((text) => ["History", "Commit"].includes(text)),
+  ["History", "Commit"]
+);
+assert.ok(merged.includes("병합"), `병합 이벤트가 없다: ${merged}`);
+assert.ok(!merged.includes("삭제"), `병합된 워크트리에 삭제 이벤트가 붙었다: ${merged}`);
+assert.ok(merged.includes("생성"), `생성 이벤트가 없다: ${merged}`);
+// 최신 먼저 — 병합(08-04)이 생성(08-03) 위에 온다
+assert.ok(
+  merged.findIndex((text) => text === "병합") < merged.findIndex((text) => text === "생성"),
+  `History 가 최신 순이 아니다: ${merged}`
+);
+// 시각은 로그 파일과 같은 표기
+const STAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+assert.ok(merged.some((text) => STAMP.test(text)), `로그 날짜 형식이 아니다: ${merged}`);
 assert.ok(merged.includes("↑2"), `커밋 차이가 없다: ${merged}`);
-assert.ok(merged.some((text) => text.includes("feat: 무언가")), `커밋 목록이 없다: ${merged}`);
+assert.ok(merged.includes("abc1234"), `커밋 sha 가 없다: ${merged}`);
+assert.ok(merged.includes("feat: 무언가"), `커밋 메시지가 없다: ${merged}`);
 
 const dropped = texts(worktreePane.children[1]);
 assert.ok(dropped.includes("gave-up"), `이름이 없다: ${dropped}`);
 // 병합 없이 지운 워크트리는 삭제 시각으로 남는다
-assert.ok(dropped.includes("삭제"), `삭제 시각 라벨이 없다: ${dropped}`);
+assert.ok(dropped.includes("삭제"), `삭제 이벤트가 없다: ${dropped}`);
 assert.ok(!dropped.includes("병합"), `병합하지 않은 워크트리에 병합이 붙었다: ${dropped}`);
+
+// 개요 탭도 같은 History 섹션·같은 시각 표기를 쓴다
+const overview = texts(body.children[1]);
+assert.ok(overview.includes("History"), `개요에 History 섹션이 없다: ${overview}`);
+assert.ok(overview.includes("생성"), `개요에 생성 이벤트가 없다: ${overview}`);
+assert.ok(overview.some((text) => STAMP.test(text)), `개요 시각이 로그 형식이 아니다: ${overview}`);
 
 console.log("ok");
