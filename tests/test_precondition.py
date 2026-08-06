@@ -10,7 +10,7 @@ from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import session_link
+from app.services import precondition, session_link
 from tests.support import temp_db, temp_db_path
 
 STATIC = pathlib.Path(__file__).resolve().parent.parent / "static"
@@ -133,6 +133,89 @@ class PreconditionPopupTest(unittest.TestCase):
         )
         payload = session_link.todo_detail(self.con, todo["id"])
         self.assertEqual(payload["todo"]["precondition"], MULTILINE)
+
+    def test_todo_detail_carries_parsed_items(self):
+        """팝업은 원문이 아니라 항목별 충족 여부를 그린다"""
+        todo = todo_repo.create(
+            self.con, "할일", workspace_id=self.workspace["id"], precondition=MULTILINE
+        )
+        items = session_link.todo_detail(self.con, todo["id"])["todo"][
+            "precondition_items"
+        ]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["kind"], precondition.KIND_COMMAND)
+        self.assertIsNone(items[0]["met"])
+
+
+class PreconditionParseTest(unittest.TestCase):
+    """항목별로 쪼개고, 코드가 판정할 수 있는 것만 판정한다"""
+
+    def setUp(self):
+        self.con = temp_db()
+        self.workspace = workspace_repo.create(self.con, 1, "테스트")
+
+    def _todo(self, title, status="todo"):
+        todo = todo_repo.create(self.con, title, workspace_id=self.workspace["id"])
+        if status != "todo":
+            todo_repo.update(self.con, todo["id"], status=status)
+        return todo
+
+    def test_each_line_is_one_item(self):
+        items = precondition.parse("첫 조건\n둘째 조건")
+        self.assertEqual([item["text"] for item in items], ["첫 조건", "둘째 조건"])
+
+    def test_check_line_attaches_to_the_item_above(self):
+        items = precondition.parse(MULTILINE)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(
+            items[0]["command"], "git -C ~/work/work-dashboard worktree list --porcelain"
+        )
+
+    def test_todo_reference_is_judged_by_status(self):
+        done = self._todo("먼저 할 것", status="done")
+        open_todo = self._todo("아직")
+        met = precondition.items(self.con, f"#{done['id']} 이 done 일 것")
+        unmet = precondition.items(self.con, f"#{open_todo['id']} 이 done 일 것")
+        self.assertTrue(met[0]["met"])
+        self.assertFalse(unmet[0]["met"])
+
+    def test_missing_todo_is_not_met(self):
+        """지워진 할일은 끝난 것과 구분되지 않는다 — 충족으로 보면 안 된다"""
+        self.assertFalse(precondition.items(self.con, "#9999 이 done 일 것")[0]["met"])
+
+    def test_free_sentence_is_not_judged(self):
+        item = precondition.items(self.con, "기획이 확정될 것")[0]
+        self.assertEqual(item["kind"], precondition.KIND_MANUAL)
+        self.assertIsNone(item["met"])
+
+    def test_todo_reference_with_a_command_stays_auto(self):
+        """힌트의 표준 예시(#id + 확인 명령)가 자동 판정에서 빠지면 안 된다"""
+        done = self._todo("먼저", status="done")
+        text = f"#{done['id']} 이 done 일 것\n확인: true"
+        self.assertEqual(
+            precondition.items(self.con, text)[0]["kind"], precondition.KIND_TODO
+        )
+        self.assertTrue(precondition.all_met(self.con, text))
+
+    def test_all_met_needs_every_item_auto_and_met(self):
+        done = self._todo("먼저", status="done")
+        self.assertTrue(precondition.all_met(self.con, f"#{done['id']} 끝났을 것"))
+        self.assertFalse(
+            precondition.all_met(self.con, f"#{done['id']} 끝났을 것\n기획 확정")
+        )
+        self.assertFalse(precondition.all_met(self.con, ""))
+
+    def test_summary_counts_met_and_manual(self):
+        done = self._todo("먼저", status="done")
+        summary = precondition.summary(
+            self.con, f"#{done['id']} 끝났을 것\n기획 확정\n확인: true"
+        )
+        self.assertEqual(summary, {"total": 2, "met": 1, "manual": 1})
+
+    def test_command_of_reads_from_the_stored_text(self):
+        """화면이 명령 문자열을 보내지 않는다 — 보내면 임의 실행 창구가 된다"""
+        self.assertEqual(precondition.command_of(MULTILINE, 0), MULTILINE.split("확인: ")[1])
+        self.assertEqual(precondition.command_of(MULTILINE, 5), "")
 
 
 class PreconditionAddFormTest(unittest.TestCase):

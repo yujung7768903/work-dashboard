@@ -14,6 +14,13 @@ const RUN = {
   ports: [9081],
 };
 const REVIEW_RUN = { id: 3, todo_id: 58, todo_title: "확인 대기", outcome: "review" };
+// 후보는 못 도는 것도 싣는다 — 왜 안 도는지가 이 목록의 존재 이유다
+const CANDIDATES = [
+  { todo_id: 57, title: "지금 돌 것", workspace_name: "작업 대시보드", blocker: "ready",
+    precondition: null },
+  { todo_id: 60, title: "조건 걸림", workspace_name: "작업 대시보드",
+    blocker: "precondition", precondition: { total: 3, met: 1, manual: 1 } },
+];
 const TICK_AT = new Date(Date.now() - 3 * 60 * 1000).toISOString(); // 3분 전 tick
 const REASON = "돌릴 수 있는 할일이 없음"; // 켜져 있는데 안 도는 이유. 주기 옆에 같이 보인다
 
@@ -24,6 +31,7 @@ globalThis.fetch = async (url, options) => {
     "/api/autorun": {
       state: { enabled: 1, last_tick_at: TICK_AT, last_tick_reason: REASON },
       runs: [RUN, REVIEW_RUN],
+      candidates: CANDIDATES,
     },
     "/api/workspaces": [],
     "/api/categories": [],
@@ -58,7 +66,9 @@ const node = () => ({
 const rows = [];
 const created = [];
 const list = { ...node(), appendChild: (item) => rows.push(item) };
-const elements = { "autorun-list": list };
+const cands = [];
+const candList = { ...node(), appendChild: (item) => cands.push(item) };
+const elements = { "autorun-list": list, "autorun-candidates": candList };
 globalThis.document = {
   getElementById: (id) => (elements[id] ??= node()),
   createElement: () => {
@@ -78,15 +88,41 @@ assert.equal(
   `5분마다 | 마지막 수행 3m 전 · ${REASON}`,
 );
 
+// 후보 줄 — 순위 / 워크스페이스 / 할일 / 사유 칩
+assert.deepEqual(
+  cands[0].children.map((cell) => cell.className),
+  ["rank", "scope", "prompt", "badge blocker-ready"],
+);
+assert.equal(cands[0].children[0].textContent, "1");
+assert.equal(cands[0].children[3].textContent, "시작 가능");
+// 조건에 막힌 줄은 몇 개 중 몇 개인지까지 적는다 — 무엇을 풀어야 도는지가 그 숫자다
+assert.equal(cands[1].children[3].textContent, "착수 조건 1/3 · 사람 확인 1");
+
+// 후보를 누르면 그 할일 상세가 열린다
+assert.equal(typeof cands[0].listeners.click, "function");
+
+// 실행 목록은 상태별로 끊는다. 사람이 손댈 것(확인 필요)이 맨 위 구획이라
+// 그 아래 검토 대기 줄이 오고, 진행 중 구획이 그다음이다
+assert.deepEqual(
+  rows.map((row) => row.className),
+  ["group", undefined, "group", undefined],
+);
+assert.deepEqual(
+  rows[0].children.map((cell) => cell.textContent),
+  ["확인 필요", "1"],
+);
+assert.equal(rows[2].children[0].textContent, "진행 중");
+
+const runRow = rows[3];
 // 칸 순서 — 워크스페이스 / 할일 / 워크트리 / 포트 / 상태 / 경과
 assert.deepEqual(
-  rows[0].children.map((cell) => cell.className),
+  runRow.children.map((cell) => cell.className),
   ["scope", "prompt", "wt", "ports", "badge outcome-running", "age"],
 );
-assert.equal(rows[0].children[2].textContent, "고침");
+assert.equal(runRow.children[2].textContent, "고침");
 
 // 포트는 그 서버로 가는 링크다. 눌러도 줄 클릭(팝업)으로 새면 안 된다
-const port = rows[0].children[3].children[0];
+const port = runRow.children[3].children[0];
 assert.equal(port.textContent, ":9081");
 assert.equal(port.href, "http://localhost:9081");
 let portStopped = false;
@@ -94,10 +130,9 @@ port.listeners.click({ stopPropagation: () => (portStopped = true) });
 assert.equal(portStopped, true);
 
 // 줄마다 클릭 핸들러가 붙어 있어야 한다 — 안 붙으면 눌러도 아무 일도 없다
-assert.equal(rows.length, 2);
-assert.equal(typeof rows[0].listeners.click, "function");
+assert.equal(typeof runRow.listeners.click, "function");
 
-rows[0].listeners.click();
+runRow.listeners.click();
 // 팝업이 읽는 것은 세션이 아니라 그 실행의 할일이다 (todo_id 57)
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(asked.includes("GET /api/todos/57"), asked.join(", "));

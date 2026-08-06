@@ -538,27 +538,42 @@ button:disabled { color: var(--line); cursor: default; }
   border: none; border-radius: var(--r-ctl); box-shadow: var(--shadow-card);
 }
 
-/* ── 자율 수행 패널 ──────────────────────────────────────────────────────── */
-#autorun-panel {
+/* ── 자율 수행 탭 ────────────────────────────────────────────────────────── */
+/* 스위치와 주기를 한 줄로 — 켜짐 여부와 마지막 tick 을 화면 맨 위에서 한 번에 읽는다 */
+.ar-state {
+  display: flex; align-items: center; gap: var(--sp-12);
   background: var(--surface); border-radius: var(--r-card);
   box-shadow: var(--shadow-card);
-  padding: var(--sp-12) var(--pad-card); margin: var(--gap) 0;
+  padding: var(--sp-12) var(--pad-card); margin: 0 0 var(--gap);
 }
-#autorun-panel > summary {
-  display: flex; align-items: center; gap: var(--sp-8);
-  cursor: pointer; list-style: none; font-weight: 600;
+.ar-head {
+  font-size: var(--fs-body); font-weight: 700; margin: var(--sp-24) 0 var(--sp-4);
 }
-#autorun-panel > summary::-webkit-details-marker { display: none; }
-#autorun-panel > summary::before {
-  content: ""; flex: none; width: 6px; height: 6px;
-  border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
-  transform: rotate(-45deg); transition: transform 0.12s;
+.ar-hint { color: var(--muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-8); }
+/* 후보 줄. 순위 / 워크스페이스 / 할일(남는 폭) / 사유 칩 */
+.ar-cands { list-style: none; margin: 0; padding: 0; }
+.ar-cands li {
+  display: grid; grid-template-columns: 2em 12em minmax(0, 1fr) 14em;
+  gap: var(--sp-8); align-items: baseline; cursor: pointer;
+  background: var(--surface); border-radius: var(--r-ctl);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-8) var(--pad-card); margin: 0 0 var(--sp-4);
 }
-#autorun-panel[open] > summary::before { transform: rotate(45deg); }
-/* 라벨·점·주기를 한 줄로 — 켜짐 여부와 주기를 제목 옆에서 한 번에 읽는다 */
-#autorun-head {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-12);
+.ar-cands li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-cands li.empty { grid-template-columns: 1fr; color: var(--muted); cursor: default; }
+.ar-cands .rank {
+  color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
 }
+.ar-cands .scope { font-weight: 600; }
+.ar-cands .prompt { color: var(--text); }
+.ar-cands .badge { font-weight: 600; font-size: var(--fs-sm); text-align: right; }
+/* 지금 돌 수 있는 것만 강조하고, 막힌 것은 왜 막혔는지 색으로 갈라 준다 */
+.ar-cands .blocker-ready { color: var(--good); }
+.ar-cands .blocker-precondition { color: var(--soft); }
+.ar-cands .blocker-claimed { color: var(--muted); }
+.ar-cands .blocker-review { color: var(--soft); }
+.ar-cands .blocker-blocked,
+.ar-cands .blocker-requested { color: var(--warn); }
 #autorun-cycle {
   font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
 }
@@ -585,9 +600,23 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-switch .state::after { content: "OFF"; }
 #autorun-toggle:checked ~ .state { color: var(--accent); }
 #autorun-toggle:checked ~ .state::after { content: "ON"; }
-#autorun-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
-/* 자율 실행 기록이 없으면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
-#autorun-list:empty { display: none; }
+#autorun-list {
+  list-style: none; margin: 0; padding: var(--sp-4) var(--pad-card) var(--sp-12);
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+/* 상태 구획 머리. 사람이 손댈 것(확인 필요)이 맨 위에 오도록 JS 가 순서를 정한다 */
+#autorun-list li.group {
+  display: flex; gap: var(--sp-8); align-items: baseline; cursor: default;
+  font-weight: 700; font-size: var(--fs-sm);
+  padding: var(--sp-12) 0 var(--sp-4); border-bottom: 1px solid var(--line);
+}
+#autorun-list li.group .count {
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+#autorun-list li.empty {
+  display: block; color: var(--muted); cursor: default; padding: var(--sp-8) 0;
+}
 /* 어느 줄이든 눌러서 상세 팝업을 연다 — 세션 목록과 같은 규칙 */
 /* 표처럼 칸 시작 위치가 줄마다 같아야 한다. flex 로는 안 된다 — 워크스페이스 이름이
    길거나 상태 글자('검토 대기' ↔ '완료')가 길면 그만큼 뒤 칸이 밀린다. 격자로 못박는다:
@@ -625,6 +654,31 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-list .outcome-running { color: var(--accent); }
 #autorun-list .age {
   color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+}
+
+/* ── 착수 조건 체크리스트 (상세 팝업) ─────────────────────────────────────── */
+.cond-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; }
+.cond-list li {
+  display: flex; align-items: baseline; gap: var(--sp-8);
+  padding: var(--sp-2) 0; font-size: var(--fs-sm);
+}
+.cond-list .text { flex: 1; min-width: 0; }
+.cond-mark { flex: none; width: var(--sp-12); font-weight: 700; }
+.cond-mark.met { color: var(--good); }
+.cond-mark.unmet { color: var(--danger); }
+/* 판정 못 하는 항목. 실패가 아니라 '코드가 모른다' 라서 색을 따로 쓴다 */
+.cond-mark.unknown { color: var(--muted); }
+.cond-check { display: inline-flex; align-items: baseline; gap: var(--sp-4); }
+.cond-check.met .cond-out { color: var(--good); }
+.cond-check.unmet .cond-out { color: var(--danger); }
+.cond-run {
+  border: 1px solid var(--line); background: none; color: inherit;
+  padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-micro); cursor: pointer;
+}
+.cond-out {
+  color: var(--muted); font-size: var(--fs-micro);
+  max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ── 세션 패널 ────────────────────────────────────────────────────────────── */

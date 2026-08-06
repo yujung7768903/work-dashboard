@@ -1,4 +1,5 @@
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
+import { startAutorunPolling, stopAutorunPolling } from "./autorun.js";
 import { renderBoard, renderShared } from "./board.js";
 import { renderSettings } from "./settings.js";
 import { renderUsage } from "./usage.js";
@@ -31,6 +32,7 @@ const RENDERERS = {
   workspace: renderWorkspaceTab,
   settings: renderSettings,
   usage: renderUsage,
+  autorun: startAutorunPolling,
 };
 
 // 사이드바 최상단과 일치시킨다 — 한도부터 확인하고 들어오는 흐름
@@ -42,6 +44,7 @@ const TITLES = {
   workspace: "워크스페이스",
   settings: "설정",
   usage: "사용량",
+  autorun: "자율 수행",
 };
 
 export function showError(message) {
@@ -74,6 +77,8 @@ function showTab(name, push = true) {
   Object.keys(RENDERERS).forEach((key) => {
     document.getElementById(`tab-${key}`).hidden = key !== name;
   });
+  // 자율 수행 폴링은 그 탭에서만 돈다 — 떠난 뒤에도 돌면 5초마다 헛 요청이 나간다
+  stopAutorunPolling();
   document.getElementById("page-title").textContent = TITLES[name];
   run(RENDERERS[name]);
 }

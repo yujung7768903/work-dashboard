@@ -32,6 +32,14 @@
           </svg>
           사용량
         </button>
+        <button data-tab="autorun">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6.7 5.9 10.4 8l-3.7 2.1z" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+          자율 수행
+        </button>
         <button data-tab="board" class="active">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
@@ -72,21 +80,6 @@
       <section id="tab-board" class="tab">
         <!-- 여기부터 카테고리 라벨까지는 두 하위 탭이 함께 쓴다 -->
         <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
-        <!-- 기본 접힘. 펼치면 자율 실행으로 돌린 할일 목록 -->
-        <details id="autorun-panel">
-          <summary>
-            <span id="autorun-head">
-              <span>자율 수행</span>
-              <label id="autorun-switch" title="자율 수행 켜기·끄기">
-                <input type="checkbox" id="autorun-toggle">
-                <span class="track"></span>
-                <span class="state"></span>
-              </label>
-              <span id="autorun-cycle"></span>
-            </span>
-          </summary>
-          <ul id="autorun-list"></ul>
-        </details>
         <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
         <details id="session-panel">
           <summary>
@@ -173,6 +166,25 @@
         <ul id="label-list" class="set-list"></ul>
       </section>
 
+      <!-- 자율 수행. 보드에서 떼어낸 이유 — 후보와 사람이 처리할 실행을 상태별로 봐야 한다 -->
+      <section id="tab-autorun" class="tab" hidden>
+        <div class="ar-state">
+          <label id="autorun-switch" title="자율 수행 켜기·끄기">
+            <input type="checkbox" id="autorun-toggle">
+            <span class="track"></span>
+            <span class="state"></span>
+          </label>
+          <span id="autorun-cycle"></span>
+        </div>
+
+        <h2 class="ar-head">후보</h2>
+        <p class="ar-hint">auto 라벨이 붙은 할일을 순위대로. 눌러 상세와 착수 조건을 본다</p>
+        <ul id="autorun-candidates" class="ar-cands"></ul>
+
+        <h2 class="ar-head">실행</h2>
+        <ul id="autorun-list" class="ar-runs"></ul>
+      </section>
+
       <section id="tab-usage" class="tab" hidden>
         <div class="u-shell">
           <div class="u-main">
@@ -218,7 +230,7 @@
         <label for="todo-add-precondition">착수 조건</label>
         <!-- 문구는 dash.py --precondition 도움말과 같아야 한다 (app.constants.PRECONDITION_HINT).
              tests/test_precondition.py 가 두 곳이 갈라지면 실패한다 -->
-        <p class="hint" id="todo-add-precondition-hint">참/거짓이 갈리는 한 문장을 첫 줄에 쓴다. 다른 할일이 조건이면 #id 로 적고, 명령으로 확인되면 둘째 줄에 '확인: &lt;명령&gt;'. 조건이 있는 할일은 자율 수행 후보에서 빠진다</p>
+        <p class="hint" id="todo-add-precondition-hint">참/거짓이 갈리는 한 문장을 한 줄에 하나씩 쓴다. 다른 할일이 조건이면 #id 로 적고, 명령으로 확인되면 다음 줄에 '확인: &lt;명령&gt;'. #id 조건은 그 할일이 done 이 되면 저절로 풀린다. 코드가 판정할 수 없는 문장이 하나라도 있으면 자율 수행 후보에서 빠진다</p>
         <textarea id="todo-add-precondition" aria-describedby="todo-add-precondition-hint"
                   placeholder="#57 이 done 일 것&#10;확인: git -C ~/work/work-dashboard status --short"></textarea>
       </div>

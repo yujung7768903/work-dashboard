@@ -42,6 +42,9 @@ export const controlWorktree = (repo, branch, action) =>
 export const getAutorun = () => request("GET", "/autorun");
 export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });
 export const confirmAutorunRun = (id) => request("PATCH", `/autorun-runs/${id}`);
+// 돌릴 명령은 서버가 저장된 조건 문장에서 읽는다 — 여기서는 몇 번째 항목인지만 보낸다
+export const checkPrecondition = (todoId, index) =>
+  request("POST", "/precondition-check", { todo_id: todoId, index });
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });

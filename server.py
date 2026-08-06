@@ -29,6 +29,7 @@ from app.services import (
     autorun,
     board,
     planning,
+    precondition,
     session_link,
     session_todo,
     usage,
@@ -135,7 +136,7 @@ def _route_get(con, head, item_id, query):
     if head == "worktrees":
         return worktrees.overview(con)
     if head == "autorun":
-        return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
+        return _autorun_payload(con)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -162,6 +163,9 @@ def _route_post(con, head, body):
         return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
     if head == "reorder":
         return _reorder(con, body)
+    if head == "precondition-check":
+        # 돌릴 명령은 저장된 조건 문장에서 서버가 읽는다 — 화면은 몇 번째 항목인지만 보낸다
+        return precondition.check(con, body.get("todo_id"), body.get("index"))
     if head == "worktrees":
         repo, branch, action = body.get("repo"), body.get("branch"), body.get("action")
         # 서버 조작(띄우기·다시 띄우기·내리기)은 할일·세션을 건드리지 않아 con 을 받지 않는다
@@ -175,8 +179,8 @@ def _route_post(con, head, body):
 def _route_patch(con, head, item_id, body):
     if head == "autorun":
         # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
-        state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
-        return {"state": state, "runs": autorun.panel_runs(con)}
+        autorun_repo.set_enabled(con, bool(body.get("enabled")))
+        return _autorun_payload(con)
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":
@@ -225,6 +229,15 @@ def _route_delete(con, head, item_id, query):
         raise UnknownEndpoint("알 수 없는 엔드포인트")
     deleters[head](con, item_id)
     return {"deleted": item_id}
+
+
+def _autorun_payload(con):
+    """자율 수행 화면이 한 번에 받는 것 — 설정·후보·실행. GET 과 스위치 응답이 같은 모양"""
+    return {
+        "state": autorun_repo.state(con),
+        "candidates": autorun.candidates(con),
+        "runs": autorun.panel_runs(con),
+    }
 
 
 def _reorder(con, body):
