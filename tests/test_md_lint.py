@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -14,7 +15,9 @@ GOOD_MD = "# Title\n\nSome text.\n"
 
 class MdLintTest(unittest.TestCase):
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
+        # 훅은 저장소 트리 안의 .md 만 검사하므로 tmpdir 도 ROOT 하위여야 한다
+        self.tmpdir = tempfile.mkdtemp(prefix=".test_md_lint_", dir=ROOT)
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
 
     def _write(self, name, content):
         path = os.path.join(self.tmpdir, name)
@@ -73,6 +76,27 @@ class MdLintTest(unittest.TestCase):
             [sys.executable, HOOK], input="{not json", capture_output=True, text=True
         )
         self.assertEqual(result.returncode, 0)
+
+    def test_outside_repo_skips_lint(self):
+        """저장소 밖의 .md 는 검사하지 않는다 — 외부 문서·임시 파일 오탐 방지"""
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, True)
+        path = os.path.join(outside, "bad.md")
+        with open(path, "w") as f:
+            f.write(BAD_MD)
+        code, stderr = self.run_hook("Write", path)
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+
+    def test_worktree_path_is_in_scope(self):
+        """.claude/worktrees/ 하위는 저장소 트리 안이므로 검사한다"""
+        wt = os.path.join(self.tmpdir, ".claude", "worktrees", "sample")
+        os.makedirs(wt)
+        path = os.path.join(wt, "bad.md")
+        with open(path, "w") as f:
+            f.write(BAD_MD)
+        code, _ = self.run_hook("Write", path)
+        self.assertEqual(code, 2)
 
     def test_relative_path_resolved_against_cwd(self):
         self._write("bad.md", BAD_MD)
