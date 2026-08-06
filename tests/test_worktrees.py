@@ -1,8 +1,10 @@
 """워크트리 탭 데이터. 파싱은 단위로, 격차·커밋·요약은 진짜 git 저장소를 만들어 확인한다"""
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 from app.constants import STATUS_DOING, STATUS_DONE
@@ -12,7 +14,7 @@ from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import worktrees
+from app.services import release, worktrees
 from tests.support import temp_db
 
 PORCELAIN = """worktree /repo
@@ -27,6 +29,32 @@ worktree /repo/.claude/worktrees/loose
 HEAD 999
 detached
 """
+
+
+def _fake_claude(worktree, case):
+    """워크트리를 cwd 로 도는 Claude 세션. 탐지는 명령 이름으로 하므로 이름만 맞추면 된다.
+
+    실행 파일은 워크트리 **밖에** 둔다 — 안에 두면 추적되지 않은 파일이 생겨 적용이
+    "커밋되지 않은 변경사항" 으로 먼저 막힌다
+    """
+    script = os.path.join(tempfile.mkdtemp(), "claude")
+    with open(script, "w") as handle:
+        handle.write("#!/bin/sh\nsleep 30\n")
+    os.chmod(script, 0o755)
+    proc = subprocess.Popen([script], cwd=worktree)
+    case.addCleanup(_stop, proc)
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if release.claude_processes(worktree):
+            return proc
+        time.sleep(0.1)
+    case.fail("워크트리에서 도는 세션을 찾지 못함")
+
+
+def _stop(proc):
+    if proc.poll() is None:
+        proc.kill()
+    proc.wait(timeout=5)
 
 
 class ParseTest(unittest.TestCase):
@@ -225,22 +253,44 @@ class ApplyTest(unittest.TestCase):
         self.assertNotIn("worktree-feat", git_out(self.repo, "branch"))
         self.assertIn("수정", git_out(self.repo, "log", "--oneline"))
 
-    def test_locked_worktree_is_merged_but_left_in_place(self):
-        """세션이 살아 있는 워크트리는 git 이 잠근다. 그걸 실패로 돌리면 병합까지
-        못 하고, 강제로 지우면 그 세션의 작업 디렉터리가 사라진다 — 남기고 알린다"""
+    def test_locked_worktree_is_unlocked_and_removed(self):
+        """세션이 살아 있는 워크트리는 git 이 잠근다. 병합이 끝났으면 그 세션은 할 일이
+        없으므로 잠금을 풀고 정리한다 — 남기면 세션이 끝날 때까지 정리가 밀린다.
+        여기서는 붙은 세션이 없으므로 잠금만 풀린다"""
         todo_id = self._link_todo(self.worktree)
         git(self.repo, "worktree", "lock", "--reason", "claude session feat", self.worktree)
         result = worktrees.apply(self.con, self.repo, "worktree-feat")
         self.assertIn("수정", git_out(self.repo, "log", "--oneline"))
-        self.assertIsNone(result["removed"])
-        self.assertIn("claude session feat", result["kept"])
-        self.assertTrue(os.path.isdir(self.worktree))
-        self.assertIn("worktree-feat", git_out(self.repo, "branch"))
+        self.assertEqual(self.worktree, result["removed"])
+        self.assertFalse(os.path.isdir(self.worktree))
+        self.assertNotIn("worktree-feat", git_out(self.repo, "branch"))
         self.assertEqual(STATUS_DONE, todo_repo.get(self.con, todo_id)["status"])
 
-    def test_apply_reports_nothing_kept_when_cleanup_finishes(self):
+    def test_stale_lock_of_a_dead_session_does_not_block_cleanup(self):
+        """세션이 비정상 종료되면 잠금 파일만 남는다 — git 은 pid 생존을 보지 않으므로
+        그걸 실패로 돌리면 적용이 영원히 막힌다"""
         self._link_todo(self.worktree)
-        self.assertIsNone(worktrees.apply(self.con, self.repo, "worktree-feat")["kept"])
+        git(self.repo, "worktree", "lock", "--reason",
+            "claude session feat (pid 999999 start 1)", self.worktree)
+        worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertFalse(os.path.isdir(self.worktree))
+
+    def test_apply_stays_quiet_when_no_session_was_ended(self):
+        """끊은 세션이 없으면 알림도 없다 — 매번 팝업이 뜨면 아무도 안 읽는다"""
+        self._link_todo(self.worktree)
+        self.assertIsNone(worktrees.apply(self.con, self.repo, "worktree-feat")["message"])
+
+    def test_claude_session_in_the_worktree_is_ended_and_reported(self):
+        """적용은 그 워크트리를 쓰던 Claude 세션을 끊고 정리까지 간다"""
+        self._link_todo(self.worktree)
+        proc = _fake_claude(self.worktree, self)
+        git(self.repo, "worktree", "lock", "--reason",
+            f"claude session feat (pid {proc.pid} start 1)", self.worktree)
+        result = worktrees.apply(self.con, self.repo, "worktree-feat")
+        self.assertEqual(-signal.SIGTERM, proc.wait(timeout=5))
+        self.assertIn(proc.pid, [pid for pid, _ in result["killed"]])
+        self.assertIn(str(proc.pid), result["message"])
+        self.assertFalse(os.path.isdir(self.worktree))
 
     def test_apply_rejects_the_base_branch(self):
         with self.assertRaises(Validation):

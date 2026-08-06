@@ -8,6 +8,7 @@ import os
 import re
 import signal
 import subprocess
+import time
 
 from app.constants import STATUS_DONE
 from app.repositories import sessions as session_repo
@@ -19,6 +20,12 @@ from app.services import transcript
 WORKTREE_MARK = "/.claude/worktrees/"
 # cwd 가 워크트리라도 서버 형태가 아니면 건드리지 않는다 (셸·에디터 등)
 SERVER_NAMES = ("server.py", "manage.py", "npm", "yarn", "pnpm", "vite", "next", "node")
+# 워크트리를 잡고 있는 Claude 세션. 서버와 따로 두는 이유 — finish 는 세션이 자기 자신에
+# 대해 부르므로 거기 섞으면 자기를 죽인다. 병합이 끝난 적용(apply)에서만 종료한다
+CLAUDE_NAME = "claude"
+# 죽기를 기다리는 상한. 안 죽어도 정리는 그대로 진행한다 — 잠금만 풀리면 제거는 된다
+EXIT_WAIT_SEC = 5
+EXIT_POLL_SEC = 0.1
 # 플래그를 걷어낸 앞 두 토큰만 본다 — `zsh -c '... server.py ...'` 같은 셸이 서버로 잡히면
 # 자기 자신을 죽인다
 COMMAND_TOKENS = 2
@@ -113,6 +120,74 @@ def kill_serving(root):
     return killed
 
 
+def kill_claude(root):
+    """워크트리를 cwd 로 쓰는 Claude 세션에 SIGTERM 하고 죽을 때까지 기다린다.
+
+    워크트리를 지우기 전에 기다리는 이유 — 세션이 종료 중에 파일을 더 쓰면 그 쓰기가
+    갓 지운 디렉토리를 되살린다. 죽인 [(pid, 명령)] 을 돌려준다
+    """
+    killed = []
+    for pid, command in claude_processes(root):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:  # 이미 죽었거나 권한 밖
+            continue
+        killed.append((pid, command))
+    _wait_gone([pid for pid, _ in killed])
+    return killed
+
+
+def claude_processes(root):
+    """cwd 가 root 인 Claude 세션 [(pid, 명령)]. 워크트리가 아니면 빈 목록"""
+    if not _is_worktree(root):
+        return []
+    mine = {os.getpid(), os.getppid()}
+    return [
+        (pid, command)
+        for pid, command in _processes_with_cwd(root)
+        if pid not in mine and _is_claude(command)
+    ]
+
+
+def _is_claude(command):
+    """`claude bg-spare --bg-spare ...`. 그 세션이 띄운 자식(mcp 서버 등)은 부모가
+    죽으면 같이 정리되므로 따로 찾지 않는다
+    """
+    return _named(command, (CLAUDE_NAME,))
+
+
+def _wait_gone(pids):
+    """다 죽었으면 True. 남의 자식이라 waitpid 를 못 쓰므로 신호 0 으로 확인한다"""
+    deadline = time.monotonic() + EXIT_WAIT_SEC
+    while pids and time.monotonic() < deadline:
+        pids = [pid for pid in pids if _alive(pid)]
+        if pids:
+            time.sleep(EXIT_POLL_SEC)
+    return not pids
+
+
+def _alive(pid):
+    """좀비는 죽은 것으로 본다 — 이미 끝났고 부모가 거둬가기만 기다리는 상태인데,
+    신호 0 은 그것도 살아 있다고 답한다
+    """
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return not _is_zombie(pid)
+
+
+def _is_zombie(pid):
+    """/proc 이 없는 곳(macOS)에서는 판정하지 않는다 — 대기 상한이 대신 받아낸다"""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as handle:
+            # 명령 이름에 공백·괄호가 들어갈 수 있어 마지막 ')' 뒤부터 읽는다
+            fields = handle.read().rsplit(b")", 1)[-1].split()
+    except OSError:
+        return False
+    return bool(fields) and fields[0] == b"Z"
+
+
 def serving_port(root):
     """그 디렉토리를 cwd 로 쓰는 프로세스가 듣고 있는 포트. 없으면 0.
 
@@ -190,8 +265,13 @@ def _is_worktree(path):
 
 
 def _is_server(command):
-    """어떻게 띄웠는지(상대·절대 경로, `-u` 같은 플래그, `env VAR=값` 래퍼)에 판정이
-    흔들리면 안 된다. 실행 위치는 이미 cwd 로 걸렀으므로 여기서는 명령 모양만 본다
+    return _named(command, SERVER_NAMES)
+
+
+def _named(command, names):
+    """어떻게 띄웠는지(상대·절대 경로, `-u` 같은 플래그, `env VAR=값` 래퍼, `/bin/sh` 같은
+    인터프리터)에 판정이 흔들리면 안 된다. 실행 위치는 이미 cwd 로 걸렀으므로 여기서는
+    명령 모양만 본다
     """
     tokens = [
         token
@@ -200,9 +280,7 @@ def _is_server(command):
         and "=" not in token
         and os.path.basename(token) not in COMMAND_WRAPPERS
     ]
-    return any(
-        os.path.basename(token) in SERVER_NAMES for token in tokens[:COMMAND_TOKENS]
-    )
+    return any(os.path.basename(token) in names for token in tokens[:COMMAND_TOKENS])
 
 
 def _processes_with_cwd(root):

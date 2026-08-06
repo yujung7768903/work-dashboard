@@ -300,28 +300,33 @@ def apply(con, repo, branch):
     if not _merge(root, branch):
         raise Conflict("충돌로 병합하지 못했습니다. 직접 정리가 필요합니다")
 
-    # 잠긴 워크트리는 지울 수 없다 — Claude Code 는 세션이 쓰는 동안 잠가 둔다.
-    # 강제로 지우면 그 세션의 작업 디렉터리가 사라지므로 병합·할일까지만 하고 남긴다
+    # Claude Code 는 세션이 쓰는 동안 워크트리를 잠근다. 병합이 끝난 시점이면 그 세션은
+    # 할 일이 없으므로 종료하고 잠금을 푼다 — 남겨 두면 세션이 끝날 때까지 정리가 밀린다.
+    # 잠금 파일은 세션이 죽어도 남으므로(git 은 pid 생존을 보지 않는다) unlock 이 필요하다
     lock = _lock_reason(root, path)
-    killed = [] if lock else release.kill_serving(path)
-    if not lock:
-        _git_write(root, "worktree", "remove", path)
-        _git_write(root, "branch", "-d", branch)
+    ended = release.kill_claude(path) if lock else []
+    if lock:
+        _git_write(root, "worktree", "unlock", path)
+    killed = release.kill_serving(path)
+    _git_write(root, "worktree", "remove", path)
+    _git_write(root, "branch", "-d", branch)
     finished = release.finish_todo_ids(con, todo_ids)
     return {
         "branch": branch,
         "base": base,
-        "killed": killed,
-        "removed": None if lock else path,
+        "killed": killed + ended,
+        "removed": path,
         "finished": finished,
-        "kept": _kept_message(base, path, lock) if lock else None,
+        # 세션을 끊은 것은 조용히 넘길 일이 아니다 — 프런트가 그대로 알림으로 띄운다
+        "message": _ended_message(ended) if ended else None,
     }
 
 
-def _kept_message(base, path, lock):
+def _ended_message(ended):
+    pids = ", ".join(str(pid) for pid, _ in ended)
     return (
-        f"{base} 병합은 끝냈습니다. 다만 {path} 는 잠겨 있어 남겼습니다 ({lock})."
-        " 그 세션을 끝낸 뒤 적용을 다시 누르면 정리됩니다"
+        f"워크트리를 쓰던 Claude 세션을 종료했습니다 (pid {pids})."
+        " 대화 기록은 남아 있어 claude --resume 으로 이어갈 수 있습니다"
     )
 
 
