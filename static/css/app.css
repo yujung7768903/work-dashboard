@@ -733,8 +733,8 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 
 /* 시각 + 내용 한 줄짜리 로그 목록. 개요의 History, 워크트리 탭의 History·Commit 이
    같은 모양을 쓴다 — 시각 표기가 로그 파일과 같아야 두 탭을 나란히 읽을 수 있다 */
-.dlg-log { margin-top: var(--sp-12); }
-.dlg-log > .label { display: flex; align-items: center; gap: var(--sp-8); margin: 0 0 var(--sp-4); }
+/* 여백은 섹션 이름(.label) 이 갖는다 — 감싼 div 에도 주면 두 배가 돼 다른 섹션과 어긋난다 */
+.dlg-log > .label { display: flex; align-items: center; gap: var(--sp-8); }
 .log-list { list-style: none; margin: 0; padding: 0; }
 .log-list li {
   display: flex; align-items: baseline; gap: var(--sp-8);
@@ -769,10 +769,10 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   font-size: var(--fs-micro); font-weight: 600; letter-spacing: 0;
 }
 .dlg-section { margin-top: var(--sp-20); }
-.dlg-section > .label {
-  margin: var(--sp-12) 0 var(--sp-4);
-  color: var(--muted); font-size: var(--fs-sm); font-weight: 500;
-}
+/* 팝업의 섹션 이름(History·착수 조건·note·Commit·최근 대화)은 같은 depth 라 같은 모양이다.
+   본문 크기·본문 색을 그대로 쓴다 — 옅게 줄이면 이름이 아니라 곁가지로 읽힌다.
+   깊이는 보지 않는다: History·Commit 은 목록을 감싼 .dlg-log 안에 있다 */
+.dlg-section .label { margin: var(--sp-12) 0 var(--sp-4); }
 /* 블록 첫 라벨은 위 여백이 겹치므로 지운다 */
 .dlg-section > .label:first-child { margin-top: 0; }
 .dlg-badge {
