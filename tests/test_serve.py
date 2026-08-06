@@ -53,11 +53,25 @@ class PortTest(unittest.TestCase):
 
 class StartTest(unittest.TestCase):
     def test_start_without_run_script_is_refused(self):
-        """진입점을 추측하지 않는다 — run.sh 가 없으면 그 사실을 그대로 알린다"""
+        """진입점을 추측하지 않는다 — 아는 이름이 하나도 없으면 그 사실을 그대로 알린다"""
         with tempfile.TemporaryDirectory() as path:
             with self.assertRaises(Validation) as caught:
                 serve.start(path)
-        self.assertIn(serve.RUN_SCRIPT, str(caught.exception))
+        for name in serve.RUN_SCRIPTS:
+            self.assertIn(name, str(caught.exception))
+
+    def test_old_run_script_is_still_found(self):
+        """이름을 바꾸기 전 브랜치로 만든 워크트리에는 아직 run.sh 가 있다"""
+        with tempfile.TemporaryDirectory() as path:
+            old = os.path.join(path, "run.sh")
+            open(old, "w").close()
+            self.assertEqual(old, serve.run_script(path))
+
+    def test_new_name_wins_when_both_exist(self):
+        with tempfile.TemporaryDirectory() as path:
+            for name in serve.RUN_SCRIPTS:
+                open(os.path.join(path, name), "w").close()
+            self.assertEqual(os.path.join(path, "start.sh"), serve.run_script(path))
 
     def test_own_worktree_is_refused(self):
         """자기를 서비스하는 서버는 자기를 못 중지한다 — 죽이면 응답할 주체가 없다.
