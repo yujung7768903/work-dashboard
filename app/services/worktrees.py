@@ -9,14 +9,18 @@ cwd 로 유추한다. 조회(overview)는 git·lsof 를 읽기 전용으로만 �
 서버만 실행·재실행·중지(app/services/serve.py).
 """
 import os
+import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 from app.constants import STATUS_DONE, SUBTASKS_REMAINING_MSG, WORKSPACE_ACTIVE
+from app.db import now
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import subtasks as subtask_repo
+from app.repositories import worktrees as worktree_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, serve
 
@@ -36,6 +40,15 @@ UNIT = "\x1f"
 BASE_FALLBACKS = ("master", "main")
 ORIGIN_HEAD = "refs/remotes/origin/HEAD"
 BRANCH_REF = "refs/heads/"
+# 할일 팝업의 워크트리 상태 4종. 살아 있는 워크트리는 지금 git 으로, 끝난 것은 남은 자국으로 정한다
+STATE_CREATE = "create"
+STATE_WORKING = "working"
+STATE_MERGED = "merged"
+STATE_DELETED = "deleted"
+# 세션 cwd 가 워크트리인지 가르고 저장소 루트를 잘라내는 표식
+WORKTREE_MARK = release.WORKTREE_MARK
+# 기준 브랜치 reflog 의 병합 항목 — `merge <브랜치>: Merge made by ...` / `...: Fast-forward`
+MERGE_ENTRY = re.compile(r"^merge (\S+):")
 
 
 def overview(con):
@@ -66,6 +79,206 @@ def overview(con):
             }
         )
     return {"groups": groups}
+
+
+def history(con, todo_ids):
+    """할일 팝업의 워크트리 탭. 그 할일을 잡은 세션이 돌았던 워크트리를 최근 생성 순으로.
+
+    병합·삭제로 사라진 워크트리도 남아야 한다 — git 은 그것을 기억하지 않으므로 이름·생성
+    시각은 worktrees 테이블에서, 병합 사실은 기준 브랜치 reflog 에서 되짚는다.
+    이력에 아직 없던 워크트리는 이 조회가 지나가면서 적힌다
+    """
+    rows = []
+    for repo, entries in _by_repo(_worktree_cwds(con, todo_ids)).items():
+        rows.extend(_history_rows(con, repo, entries))
+    return sorted(rows, key=lambda row: row["created_at"], reverse=True)
+
+
+def _worktree_cwds(con, todo_ids):
+    """워크트리 경로 → (브랜치 후보, 거기서 가장 먼저 돈 세션의 시작 시각).
+    시작 시각은 이력에 없던 워크트리의 생성 시각 대타로 쓴다 (디렉터리가 이미 없으면
+    stat 할 것이 없다 — 실제 생성보다 늦지만 그 워크트리가 있었던 시점은 된다)"""
+    found = {}
+    for todo_id in todo_ids:
+        for session in session_repo.list_by_todo(con, todo_id):
+            started = session["started_at"]
+            for path, branch in _session_worktrees(session):
+                current = found.get(path)
+                found[path] = (
+                    branch or (current[0] if current else ""),
+                    min(started, current[1]) if current else started,
+                )
+    return found
+
+
+def _session_worktrees(session):
+    """그 세션이 돌았던 워크트리 [(경로, 브랜치 후보)]. 두 군데를 본다 — 세션 cwd(워크트리
+    안에서 시작한 세션)와 transcript 꼬리(EnterWorktree 로 옮겨간 세션).
+
+    후자가 기본 흐름이다. cwd 는 SessionStart 훅이 세션이 열릴 때 적은 것이라 대개
+    메인 체크아웃을 가리키고, 그것만 보면 대부분의 할일에 워크트리가 하나도 안 붙는다
+    """
+    found = []
+    for path in (session["cwd"], release.last_worktree_cwd(session["claude_session_id"])):
+        real = _real(path or "")
+        if real and WORKTREE_MARK in real:
+            found.append((real, session["git_branch"] or ""))
+    return found
+
+
+def _by_repo(seen):
+    """저장소 루트 → [(경로, 브랜치, 첫 세션 시각)]. 워크트리 경로가 곧 저장소 위치를 담고 있다"""
+    grouped = {}
+    for path, (branch, started) in seen.items():
+        grouped.setdefault(path.split(WORKTREE_MARK)[0], []).append((path, branch, started))
+    return grouped
+
+
+def _history_rows(con, repo, entries):
+    """저장소마다 기준 브랜치·병합 이력·살아 있는 워크트리를 한 번만 읽고 줄을 만든다"""
+    base = _base_branch(repo, _branches(repo))
+    events = merge_events(repo, base)
+    live = {path: branch for branch, path in _worktrees(repo).items()}
+    return [_history_row(con, repo, base, events, live, *entry) for entry in entries]
+
+
+def _history_row(con, repo, base, events, live, path, hint, started):
+    branch = _resolve_branch(path, live, events, base, hint)
+    row = worktree_repo.remember(con, path, repo, branch, _created_at(path) or started)
+    row = _stamped(con, row, path, events.get(branch), path in live)
+    ahead, behind, commits = _history_commits(repo, base, branch, path in live, row)
+    return {
+        "path": path,
+        "name": os.path.basename(path),
+        "branch": row["branch"],
+        "repo": repo,
+        "base": base,
+        "state": _state(row, path in live, ahead),
+        "created_at": row["created_at"],
+        "merged_at": row["merged_at"],
+        "deleted_at": row["deleted_at"],
+        "ahead": ahead,
+        "behind": behind,
+        "commits": commits,
+    }
+
+
+def _resolve_branch(path, live, events, base, hint):
+    """이 워크트리의 브랜치. 살아 있으면 git 이 알려준다.
+
+    사라졌으면 이름에서 되짚는다 — EnterWorktree 는 디렉터리 `foo` 를 브랜치
+    `worktree-foo` 로 만들지만 손으로 만든 워크트리는 이름이 그대로일 수 있어 둘 다 본다.
+    세션이 준 브랜치는 대개 메인 체크아웃의 것(기준 브랜치)이라 그건 후보에서 뺀다
+    """
+    if path in live:
+        return live[path]
+    name = os.path.basename(path)
+    candidates = [hint if hint != base else "", f"worktree-{name}", name]
+    return next((item for item in candidates if item in events), candidates[0] or name)
+
+
+def _stamped(con, row, path, event, alive):
+    """끝난 워크트리에 병합·삭제 자국을 남긴다. 한 번 적힌 자국은 다시 쓰지 않는다"""
+    # 이 워크트리가 생기기 전의 병합은 같은 이름을 쓴 앞 워크트리의 것이다
+    if event and event["at"] >= row["created_at"] and not row["merged_at"]:
+        return worktree_repo.mark_merged(con, path, event["at"], event["hash"], event["from"])
+    if not alive and not row["merged_at"] and not row["deleted_at"]:
+        # 지우는 순간을 관측할 방법이 없다 — 사라진 것을 처음 확인한 시각을 삭제 시각으로 쓴다
+        return worktree_repo.mark_deleted(con, path, now())
+    return row
+
+
+def _state(row, alive, ahead):
+    """병합 뒤에 커밋이 더 쌓였으면 다시 working 이다 — 그 커밋은 아직 기준 브랜치에 없다"""
+    if alive and (ahead or _dirty(row["path"])):
+        return STATE_WORKING
+    if row["merged_at"]:
+        return STATE_MERGED
+    if not alive:
+        return STATE_DELETED
+    return STATE_CREATE
+
+
+def _history_commits(repo, base, branch, alive, row):
+    """(앞섬, 뒤처짐, 커밋).
+
+    아직 기준 브랜치에 없는 커밋이 있으면 그것이 이 워크트리의 지금 작업이다. 병합으로
+    끝났으면 기준 브랜치에서 본 격차는 0 이므로 병합 커밋 범위를 되짚어야 커밋이 남는다
+    """
+    behind, ahead = _divergence(repo, base, branch) if alive else (0, 0)
+    if alive and ahead:
+        return ahead, behind, _commits(repo, base, branch)
+    if row["merge_hash"] and row["merge_from"]:
+        revs = f"{row['merge_from']}..{row['merge_hash']}"
+        # 기준 브랜치를 워크트리로 들인 병합 커밋은 작업이 아니라 잡음이라 뺀다.
+        # 개수도 같은 조건으로 세야 ↑숫자와 펼친 목록 길이가 어긋나지 않는다
+        return _count(repo, revs, "--no-merges"), behind, _log(repo, revs, "--no-merges")
+    # 병합 없이 버린 워크트리의 커밋은 브랜치와 함께 사라졌다 — 되짚을 자국이 없다
+    return ahead, behind, _commits(repo, base, branch) if alive else []
+
+
+def _created_at(path):
+    """워크트리 디렉터리가 생긴 시각. `.git` 파일은 워크트리를 만들 때 한 번 쓰인다.
+    이미 사라진 워크트리면 빈 문자열"""
+    marker = os.path.join(path, ".git")
+    if not os.path.exists(marker):
+        return ""
+    return _stamp(os.path.getmtime(marker))
+
+
+def _dirty(path):
+    return bool(_git(path, "status", "--porcelain").strip())
+
+
+def merge_events(root, base):
+    """브랜치 → 마지막 병합 {at, hash, from}. 기준 브랜치 reflog 의 `merge <브랜치>:` 항목.
+
+    지워진 브랜치가 병합된 것인지 알 수 있는 유일한 자국이다. 병합 결과 커밋(hash)과 바로
+    앞 상태(from)를 함께 잡아 두면 `from..hash` 로 그 브랜치의 커밋까지 되짚을 수 있다 —
+    reflog 자체는 지워지므로(기본 90일) 처음 본 때 저장한다
+    """
+    if not base:
+        return {}
+    lines = _git(root, "reflog", "show", base, "--date=iso-strict",
+                 f"--format=%H{UNIT}%gd{UNIT}%gs").splitlines()
+    found = {}
+    for index, line in enumerate(lines):
+        parts = line.split(UNIT)
+        if len(parts) != 3:
+            continue
+        commit, when, message = parts
+        matched = MERGE_ENTRY.match(message)
+        # 최신 항목이 먼저 온다 — 같은 브랜치를 두 번 병합했으면 마지막 것만 남는다
+        if not matched or matched.group(1) in found:
+            continue
+        stamp = _utc(when)
+        if not stamp:
+            continue
+        found[matched.group(1)] = {
+            "at": stamp,
+            "hash": commit,
+            # 한 칸 아래(더 오래된) 항목이 그 병합 직전의 기준 브랜치 상태다
+            "from": _entry_hash(lines, index + 1) or f"{commit}^",
+        }
+    return found
+
+
+def _entry_hash(lines, index):
+    return lines[index].split(UNIT)[0] if 0 <= index < len(lines) else ""
+
+
+def _utc(reflog_date):
+    """`master@{2026-08-05T19:35:26+09:00}` → DB 와 같은 UTC ISO8601. 못 읽으면 빈 문자열"""
+    inside = reflog_date.partition("{")[2].rstrip("}")
+    try:
+        parsed = datetime.fromisoformat(inside)
+    except ValueError:
+        return ""
+    return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _stamp(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).isoformat(timespec="seconds")
 
 
 def apply(con, repo, branch):
@@ -329,8 +542,17 @@ def _divergence(root, base, branch):
 
 def _commits(root, base, branch):
     """기준 브랜치에서 갈라진 뒤의 커밋. 최신 순, COMMIT_LIMIT 개까지"""
-    out = _git(root, "log", f"--format=%h{UNIT}%s{UNIT}%cI",
-               f"-n{COMMIT_LIMIT}", f"{base}..{branch}")
+    return _log(root, f"{base}..{branch}")
+
+
+def _count(root, revs, *extra):
+    out = _git(root, "rev-list", "--count", *extra, revs).strip()
+    return int(out) if out.isdigit() else 0
+
+
+def _log(root, revs, *extra):
+    """커밋 목록. 범위 표기는 부르는 쪽이 만든다 (`base..branch`, `병합전..병합커밋`)"""
+    out = _git(root, "log", f"--format=%h{UNIT}%s{UNIT}%cI", f"-n{COMMIT_LIMIT}", *extra, revs)
     commits = []
     for line in out.splitlines():
         parts = line.split(UNIT)
