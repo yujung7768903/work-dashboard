@@ -72,7 +72,7 @@ async function dropTodo(todoElement, group) {
 }
 
 function movedOrder(all, source, target) {
-  // 화면에 없는(빈) 워크스페이스도 포함해야 서버 재정렬 검증을 통과함
+  // 카테고리 필터로 가려진 워크스페이스도 포함해야 서버 재정렬 검증을 통과함
   const ids = all.map((item) => item.id);
   const sourceId = Number(source.dataset.groupId);
   const targetId = Number(target.dataset.groupId);
