@@ -41,8 +41,9 @@ class BoardTreeTest(unittest.TestCase):
         with self.assertRaises(Validation):
             board.tree(self.con, "priority")
 
-    def test_workspace_grouping_hides_empty_workspace(self):
-        self.assertNotIn(self.empty["name"], self._names(board.GROUP_BY_WORKSPACE))
+    def test_workspace_grouping_shows_empty_workspace(self):
+        """할일 0개여도 카드가 떠야 거기에 할일을 추가할 수 있다"""
+        self.assertIn(self.empty["name"], self._names(board.GROUP_BY_WORKSPACE))
 
     def test_workspace_grouping_includes_unassigned_last(self):
         self.assertEqual(self._names(board.GROUP_BY_WORKSPACE)[-1], UNASSIGNED_LABEL)
