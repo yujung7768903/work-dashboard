@@ -47,7 +47,6 @@ export async function renderWorkspaceTab() {
 }
 
 function countsByWorkspace(tree) {
-  // 트리는 빈 워크스페이스를 숨기므로 없는 id 는 표시 생략
   const counts = {};
   tree.groups
     .filter((group) => group.kind === GROUP_BY_WORKSPACE)
