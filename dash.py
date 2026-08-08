@@ -29,6 +29,7 @@ from app.services import (
     merge,
     planning,
     release,
+    scheduler,
     session_link,
     usage,
 )
@@ -46,7 +47,7 @@ DETAIL_LABELS = (
 # 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다.
 # 문구는 팝업과 공유한다 (app.constants.PRECONDITION_HINT)
 PRECONDITION_HELP = f"착수 가능 조건. {PRECONDITION_HINT}"
-AUTORUN_ACTIONS = ("on", "off", "status")
+AUTORUN_ACTIONS = ("on", "off", "status", "install")
 AUTORUN_RECENT = 5  # 상태 출력에 붙이는 최근 실행 건수
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -249,7 +250,9 @@ def _build_parser():
     _add_json_flag(usage_cmd)
     usage_cmd.set_defaults(handler=_cmd_usage)
 
-    autorun_cmd = sub.add_parser("autorun", help="자율 실행 켜기·끄기·상태")
+    autorun_cmd = sub.add_parser(
+        "autorun", help="자율 실행 켜기·끄기·상태·스케줄러 등록(install)"
+    )
     autorun_cmd.add_argument("action", choices=AUTORUN_ACTIONS)
     _add_json_flag(autorun_cmd)
     autorun_cmd.set_defaults(handler=_cmd_autorun)
@@ -740,19 +743,39 @@ def _resolve_workspace(con, target):
 
 
 def _cmd_autorun(con, args):
-    """켜고 끄기는 명시적. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않는다"""
-    if args.action != "status":
+    """켜고 끄기는 명시적. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않는다.
+
+    스케줄러 상태를 늘 같이 찍는다 — on 과 '실제로 도는가' 는 다른 축이고, 둘이
+    갈라졌을 때 그것을 알 수 있는 곳이 여기뿐이다
+    """
+    if args.action in ("on", "off"):
         autorun_repo.set_enabled(con, args.action == "on")
+    agent = scheduler.install() if args.action == "install" else scheduler.status()
     state = autorun_repo.state(con)
     runs = autorun_repo.recent(con, AUTORUN_RECENT)
     if args.as_json:
-        _emit_json({"state": state, "recent": runs})
+        _emit_json({"state": state, "recent": runs, "scheduler": agent})
         return
     print(f"autorun: {'on' if state['enabled'] else 'off'}"
           f" (연속 막힘 {state['blocked_streak']}, 마지막 tick {state['last_tick_at'] or '없음'})")
+    print(_scheduler_line(agent))
     for run in runs:
         print(f"  #{run['id']} 할일 {run['todo_id']} [{run['outcome'] or '진행 중'}]"
               f" job={run['job_id'] or '?'} session={run['claude_session_id'] or '?'}")
+
+
+def _scheduler_line(agent):
+    """등록돼 있지 않다는 사실이 켜짐 표시 옆에 그대로 보여야 한다"""
+    if agent.get("error"):
+        return f"스케줄러: 등록 실패 — {agent['error']}"
+    if agent["written"] and agent["loaded"]:
+        return f"스케줄러: 등록됨 ({agent['interval_sec']}초 주기) {agent['plist']}"
+    if agent["written"]:
+        return "스케줄러: plist 는 있으나 로드 안 됨 — python3 dash.py autorun install"
+    return (
+        "스케줄러: 미등록 — tick 을 부르는 주체가 없어 켜 두어도 돌지 않음."
+        " python3 dash.py autorun install"
+    )
 
 
 def _cmd_autorun_tick(con, args):

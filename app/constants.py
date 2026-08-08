@@ -166,5 +166,15 @@ AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
 AUTORUN_JOB_TERMINAL = ("done", "failed", "stopped")
 AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
 AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다
+# tick 을 부르는 스케줄러. crontab 이 아니라 launchd 인 이유는 scheduler.py 주석 참고
+AUTORUN_AGENT_LABEL = "com.user.work-dashboard-autorun"
+AUTORUN_AGENT_PLIST = os.path.expanduser(
+    f"~/Library/LaunchAgents/{AUTORUN_AGENT_LABEL}.plist"
+)
+AUTORUN_AGENT_LOG = os.path.expanduser("~/.claude/work-dashboard/autorun.agent.log")
+AUTORUN_TICK_INTERVAL_SEC = 300  # 5분. tick 은 조건이 안 맞으면 아무것도 안 하고 끝난다
+# 시스템 파이썬. pyenv 경로를 박으면 그 버전을 지우는 순간 스케줄러가 조용히 죽는다
+AUTORUN_AGENT_PYTHON = "/usr/bin/python3"
+LAUNCHCTL_TIMEOUT_SEC = 10
 # 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
 MERGE_TEST_TIMEOUT_SEC = 600

@@ -313,7 +313,9 @@ python3 dash.py finish <session> --worktree PATH # 자동으로 못 찾을 때 �
 
 ### 자율 실행 (④)
 
-사람이 자리를 비운 사이 할일 1건을 `claude --bg` 잡으로 돌린다. 5분 크론이 `autorun-tick` 을 부르고, tick 은 판정만 하고 조건이 안 맞으면 아무것도 하지 않는다.
+사람이 자리를 비운 사이 할일 1건을 `claude --bg` 잡으로 돌린다. 5분 주기 LaunchAgent 가 `autorun-tick` 을 부르고, tick 은 판정만 하고 조건이 안 맞으면 아무것도 하지 않는다.
+
+`autorun on` 은 "돌아도 된다" 는 플래그일 뿐이고 tick 을 부르는 주체는 따로 등록해야 한다. 둘은 별개라 **등록하지 않으면 켜 두어도 아무 일도 일어나지 않는다** (아래 "스케줄러" 참고). `dash.py autorun status` 가 이 둘을 함께 찍는 이유다.
 
 ```bash
 python3 dash.py autorun on|off|status      # 기본 off. 자동으로 다시 켜지는 경로는 없다
@@ -325,7 +327,7 @@ python3 dash.py autorun-finish              # 완료 — 검토 대기로. 할�
 
 보드 화면의 "자율 수행" 옆 ON/OFF 스위치도 같은 설정을 켜고 끈다 — CLI 와 상태가 하나다.
 
-트리거는 5분 크론이다 (아래 "크론" 참고). 데몬을 따로 만들지 않는다 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
+트리거는 5분 주기 LaunchAgent 다 (아래 "스케줄러" 참고). 데몬을 따로 만들지 않는다 — 이미 5분마다 도는 리밋 재개(`~/.claude/scripts/claude-limit-watch.py`)가 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
 
 #### 대상은 두 겹으로 좁힌다
 
@@ -428,42 +430,61 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 
 `link-todo` 는 `session_todos` 에 연결만 하고 할일 상태는 바꾸지 않는다 — 착수 시 `doing` 전환은 아직 없다(할일 32).
 
-세션 정리는 별도 크론 없이 조회할 때 함께 수행한다 — `last_seen_at` 이 24시간 지난 `idle` 은 `ended` 로 간주하고, `ended` 이면서 연결된 할일이 없는 세션은 7일 뒤 삭제한다.
+세션 정리는 별도 스케줄러 없이 조회할 때 함께 수행한다 — `last_seen_at` 이 24시간 지난 `idle` 은 `ended` 로 간주하고, `ended` 이면서 연결된 할일이 없는 세션은 7일 뒤 삭제한다.
 
-## 크론
+## 스케줄러
 
-자리를 비운 사이 도는 것은 전부 crontab 한 곳에 모임. 상시 데몬은 만들지 않음 — 두 번째 프로세스는 감시 비용만 늘리고, 조건이 안 맞으면 아무것도 안 하고 끝나는 tick 은 5분 간격으로 충분함
+자리를 비운 사이 도는 것은 crontab 이 아니라 **launchd(LaunchAgent)** 로 등록함. 상시 데몬은 만들지 않음 — 두 번째 프로세스는 감시 비용만 늘리고, 조건이 안 맞으면 아무것도 안 하고 끝나는 tick 은 5분 간격으로 충분함
 
-### 크론 목록 확인
+crontab 을 쓰지 않는 이유는 취향이 아니라 실측임 — cron 은 사용자 로그인 세션 밖이라 키체인을 못 읽고, 거기서 띄운 `claude` 는 `Not logged in` 으로 죽음. 리밋 재개 스크립트가 같은 문제를 먼저 겪고 주석에 "반드시 LaunchAgent(gui/$UID) 로 띄울 것" 을 남겨 둠. crontab 에 걸면 등록은 되지만 잡이 인증에서 실패하므로, 켜 놓고도 아무것도 안 되는 상태가 그대로 재현됨
+
+### 등록 목록 확인
 
 ```bash
-crontab -l
+launchctl list | grep -i "work-dashboard\|claude"
+python3 dash.py autorun status          # 자율 실행 켜짐 여부와 스케줄러 등록 여부를 함께
 ```
 
-### 크론 종류
+### 종류
 
-| 크론 | 하는 일 | 크론식 | 주기 | 소속 |
+| 작업 | 하는 일 | 주기 | 등록 | 소속 |
 | --- | --- | --- | --- | --- |
-| `autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | `*/5 * * * *` | 5분마다 | 이 저장소 (④) |
-| `resume-limited-jobs` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 밂. 한 번에 1건 | `*/5 * * * *` | 5분마다 | Claude Code 설정 |
-| `skill-sync pull` | 스킬 저장소를 GitHub 에서 pull·자동병합 | `0 8,9,10 * * 1-5` | 평일 08·09·10시 | skill-sync 스킬 |
-| `skill-sync apply` | 사용자가 확인해 준 스킬 변경을 반영 | `0 9-20 * * 1-5` | 평일 09~20시 매시 | skill-sync 스킬 |
+| `autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | 5분마다 | LaunchAgent `com.user.work-dashboard-autorun` | 이 저장소 (④) |
+| 리밋 재개 (`claude-limit-watch.py`) | 리밋에 걸려 멈춘 `--bg` 잡을 다시 밂. 한 번에 1건 | 5분마다 | LaunchAgent `com.user.claude-limit-watch` | Claude Code 설정 |
+| `skill-sync pull` | 스킬 저장소를 GitHub 에서 pull·자동병합 | 평일 08·09·10시 | skill-sync 스킬이 관리 | skill-sync 스킬 |
+| `skill-sync apply` | 사용자가 확인해 준 스킬 변경을 반영 | 평일 09~20시 매시 | skill-sync 스킬이 관리 | skill-sync 스킬 |
 
 ### 자율 실행과 리밋 재개는 짝
 
 ④는 잡을 **띄우는 것까지**만 하고 리밋 처리를 다시 구현하지 않음 — `--bg` 로 띄우면 `~/.claude/jobs/<id>/state.json` 이 생기므로 재개는 `resume-limited-jobs.py` 가 그대로 담당함. 그래서 자율 잡이 리밋에 걸려도 `autorun_runs` 는 열린 채 두고, 재개된 잡이 끝나야 닫음
 
-### 크론 등록
-
-`autorun-tick` 은 아직 미등록 상태
+### 스케줄러 등록
 
 ```bash
-crontab -l > /tmp/ct
-echo '*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autorun-tick >/dev/null 2>&1' >> /tmp/ct
-crontab /tmp/ct
+python3 dash.py autorun install
 ```
 
-등록해도 `dash.py autorun on` 전에는 매 tick 이 "autorun 이 꺼져 있음" 으로 끝남. 기본 off 이고 자동으로 다시 켜지는 경로는 없음
+plist 를 `~/Library/LaunchAgents/com.user.work-dashboard-autorun.plist` 에 쓰고 바로 읽힘. 이미 등록돼 있어도 같은 명령이 덮어쓰므로 먼저 확인할 필요 없음 (저장소를 옮겼으면 경로가 이 명령으로 갱신됨). 초기 설정(`onboard`) 마지막 단계에도 이 명령이 들어 있어 새로 세팅하면 저절로 등록됨
+
+세부는 손으로 조립하지 않음 — 경로를 문서에 적어 두면 저장소를 옮기거나 워크트리에서 등록할 때 그대로 틀림. `install` 이 실행 시점의 위치를 읽고, 워크트리면 본 저장소로 되돌려 박음
+
+| plist 항목 | 값 | 이유 |
+| --- | --- | --- |
+| `ProgramArguments[0]` | `/usr/bin/python3` | pyenv 경로를 박으면 그 버전을 지우는 순간 조용히 죽음. dash.py 는 표준 라이브러리만 씀 |
+| `StartInterval` | `300` | 5분 |
+| `RunAtLoad` | `true` | 등록 직후 한 번 돌아 5분을 기다리지 않고 확인됨 |
+| `StandardOutPath` | `~/.claude/work-dashboard/autorun.agent.log` | tick 이 조용히 실패해도 여기 남음 |
+
+등록해도 `dash.py autorun on` 전에는 매 tick 이 "autorun 이 꺼져 있음" 으로 끝남. 기본 off 이고 자동으로 다시 켜지는 경로는 없음 — 등록(트리거가 있는가)과 켜기(돌아도 되는가)는 별개 축임
+
+### 등록됐는데 안 도는 것 같으면
+
+```bash
+python3 dash.py autorun-tick --dry-run   # 판정 사유만. 안 도는 이유가 한 줄로 나옴
+tail -20 ~/.claude/work-dashboard/autorun.agent.log
+```
+
+`작업 위치에 커밋 안 된 변경이 있음` 이 가장 흔함 — 대상 저장소에 untracked 파일 하나만 있어도 tick 이 멈춤(사람의 미완성 변경 위에 겹치지 않으려는 의도적 동작). `git status` 로 확인하고 정리하거나 `.gitignore` 에 넣으면 다음 tick 부터 돎
 
 ## 상태줄
 

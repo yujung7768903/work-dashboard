@@ -239,7 +239,7 @@ def target_cwd(con, workspace):
         return ""
     counted = {}
     for cwd, sessions in session_repo.cwd_counts_by_workspace(con, workspace["id"]):
-        root = _main_checkout(cwd)
+        root = release.main_checkout(cwd)
         if root and os.path.exists(os.path.join(root, ".git")):
             counted[root] = counted.get(root, 0) + sessions
     if not counted:
@@ -491,11 +491,6 @@ def _name_job(jobs_root, job_id, name):
                 return True
         time.sleep(NAME_RETRY_SLEEP_SEC)
     return False
-
-
-def _main_checkout(cwd):
-    index = (cwd or "").find(release.WORKTREE_MARK)
-    return cwd[:index] if index > 0 else (cwd or "")
 
 
 def _git(cwd, *args):

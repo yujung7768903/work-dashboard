@@ -184,6 +184,16 @@ def serving_processes(root):
     ]
 
 
+def main_checkout(path):
+    """워크트리 경로면 그 본 저장소로 되돌린다. 워크트리가 아니면 그대로.
+
+    `/.claude/worktrees/` 앞에서 자르는 것뿐이라 경로가 실제로 있는지는 보지 않는다 —
+    지워진 워크트리 경로도 본 저장소로 되돌려야 하기 때문이다
+    """
+    index = (path or "").find(WORKTREE_MARK)
+    return path[:index] if index > 0 else (path or "")
+
+
 def _is_worktree(path):
     """메인 체크아웃의 대시보드 서버를 죽이지 않기 위한 안전장치 — 경로 모양으로 판단"""
     return bool(path) and WORKTREE_MARK in path and os.path.isdir(path)
