@@ -214,7 +214,11 @@ function timeList(todo) {
 function formatWhen(iso) {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return iso;
-  return new Date(ms).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" });
+  return new Date(ms).toLocaleString("ko-KR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    hour12: false,
+  });
 }
 
 function sessionPane(context, dialog) {

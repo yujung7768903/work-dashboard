@@ -765,7 +765,11 @@ function nameOf(categories, id) {
 }
 
 function clockText(epochMs) {
-  return new Date(epochMs).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  return new Date(epochMs).toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function stampText(epochMs) {
@@ -778,6 +782,7 @@ function resetStamp(epochSeconds) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
