@@ -25,6 +25,7 @@
   "nav.board": "보드",
   "nav.workspace": "워크스페이스",
   "nav.settings": "설정",
+  "nav.repository": "GitHub 저장소",
   "nav.usage": "사용량",
   "board.nextLine": "다음에 할 일 ▸",
   "board.nextNone": "없음",

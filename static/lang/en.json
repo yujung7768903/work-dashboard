@@ -25,6 +25,7 @@
   "nav.board": "Board",
   "nav.workspace": "Workspaces",
   "nav.settings": "Settings",
+  "nav.repository": "GitHub repository",
   "nav.usage": "Usage",
   "board.nextLine": "Up next ▸",
   "board.nextNone": "None",
