@@ -6,9 +6,9 @@ import { LANGUAGES, language, t } from "./i18n.js";
 import { run } from "./main.js";
 
 // 레일 메뉴와 같은 16 격자 · currentColor 스트로크
-const GLOBE_SVG = `<svg viewBox="0 0 16 16" width="24" height="24" aria-hidden="true">
-  <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
-  <path d="M2.4 8h11.2M8 2.4c1.7 1.6 2.6 3.5 2.6 5.6S9.7 12 8 13.6C6.3 12 5.4 10.1 5.4 8S6.3 4 8 2.4z"
+const GLOBE_SVG = `<svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true">
+  <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M1.6 8h12.8M8 1.6c1.9 1.8 3 3.9 3 6.4s-1.1 4.6-3 6.4c-1.9-1.8-3-3.9-3-6.4s1.1-4.6 3-6.4z"
         fill="none" stroke="currentColor" stroke-width="1.5"
         stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
