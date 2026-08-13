@@ -360,6 +360,7 @@ def _config_file(
     seven_reset=None,
     tier="default_claude_max_5x",
     org_tier=None,
+    email="건드리면 안 되는 값",
 ):
     """~/.claude.json 흉내. 사용량 키 옆에 민감한 키를 같이 두어 그것까지 읽지 않는지 본다"""
     body = {
@@ -369,7 +370,7 @@ def _config_file(
             "userRateLimitTier": tier,
             "organizationRateLimitTier": org_tier,
             "seatTier": "team_tier_1",  # 좌석 등급. 한도 티어가 아니라 이걸 읽으면 안 된다
-            "emailAddress": "건드리면 안 되는 값",
+            "emailAddress": email,
         },
         "cachedUsageUtilization": {
             "fetchedAtMs": int(time.time() * MS),
@@ -493,6 +494,43 @@ class AccountMatchTest(unittest.TestCase):
             con, cost_path=_cost_file([]), config_path=_config_file(tier="default_claude_max_5x")
         )
         self.assertEqual(result["tracks"][0]["plan"], "Max 5x")
+
+    def test_active_track_shows_the_account_id_not_just_the_uuid(self):
+        """계정이 둘 다 같은 플랜이면 플랜으로는 안 갈린다. 지금 계정은 이메일
+        아이디를 알 수 있으므로 uuid 앞자리 대신 그걸 쓴다"""
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+        result = usage.weekly_windows(
+            con, cost_path=_cost_file([]), config_path=_config_file(email="yj06283l4@gmail.com")
+        )
+        self.assertEqual(result["tracks"][0]["account"], "yj06283l4")
+
+    def test_other_tracks_get_no_borrowed_account_id(self):
+        """지난 주차나 다른 계정에 지금 계정 아이디를 붙이면 남의 사용량이 된다"""
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+            _sample(con, 20 + offset, 70.0, reset + 40 * 3600)
+        result = usage.weekly_windows(
+            con, cost_path=_cost_file([]), config_path=_config_file(email="yj06283l4@gmail.com")
+        )
+        self.assertEqual(len(result["tracks"]), 2)
+        self.assertIsNone(result["tracks"][1]["account"])
+
+    def test_account_id_is_dropped_when_the_email_is_unusable(self):
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+        for label, email in (("이메일 없음", None), ("@ 없음", "그냥문자열")):
+            with self.subTest(label):
+                result = usage.weekly_windows(
+                    con, cost_path=_cost_file([]), config_path=_config_file(email=email)
+                )
+                self.assertIsNone(result["tracks"][0]["account"])
 
     def test_older_tracks_do_not_borrow_the_plan(self):
         """다른 계정의 지난 주차까지 지금 플랜으로 칠하면 없는 사실을 지어내는 것이다"""

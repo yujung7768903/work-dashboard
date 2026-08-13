@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from app.constants import (
     CLAUDE_CONFIG_PATH,
     CONFIG_ACCOUNT_KEY,
+    CONFIG_EMAIL_KEY,
     CONFIG_ORG_TIER_KEY,
     CONFIG_TIER_KEY,
     COST_FIELD,
@@ -153,7 +154,7 @@ def weekly_windows(
     """
     current = _epoch_ms() // MS_PER_SECOND
     tracks = _pct_tracks(con, current, limit)
-    _borrow_active_plan(tracks, config_path)
+    _borrow_active_identity(tracks, config_path)
     events = _spend_events(cost_path)
     return {
         "tracks": tracks,
@@ -191,7 +192,14 @@ def _pct_tracks(con, current, limit):
             plans[track] = row["account_plan"]
     return sorted(
         (
-            {"track": str(track), "plan": plans.get(track), "weeks": weeks[-limit:]}
+            # account 는 지금 로그인한 계정에만 채워진다 (_borrow_active_identity).
+            # 나머지 트랙은 uuid 밖에 없어 화면이 앞자리로 대신 적는다
+            {
+                "track": str(track),
+                "plan": plans.get(track),
+                "account": None,
+                "weeks": weeks[-limit:],
+            }
             for track, weeks in tracks.items()
             if sum(week["samples"] for week in weeks) >= USAGE_TRACK_MIN_SAMPLES
         ),
@@ -200,20 +208,30 @@ def _pct_tracks(con, current, limit):
     )
 
 
-def _borrow_active_plan(tracks, config_path):
-    """맨 앞 트랙(마지막 실측이 가장 늦은 것)에 지금 로그인한 계정의 플랜을 채운다
+def _borrow_active_identity(tracks, config_path):
+    """맨 앞 트랙(마지막 실측이 가장 늦은 것)에 지금 로그인한 계정의 이름표를 채운다
 
     계정 이름표는 설정 캐시가 사이드카와 같은 창을 가리킬 때만 붙는데, 그 캐시는
     갱신이 늦어 창을 확인해 주지 못하는 때가 많다. 그러면 지금 쓰는 계정의 주차조차
-    플랜이 빈다. 사이드카를 마지막에 덮은 것이 지금 로그인한 계정이므로 그 트랙에
-    한해 설정 파일의 플랜을 빌려 온다.
+    플랜도 계정도 빈다. 사이드카를 마지막에 덮은 것이 지금 로그인한 계정이므로 그
+    트랙에 한해 설정 파일의 값을 빌려 온다.
 
-    맨 앞 하나로 끝내는 이유 — 지난 주차나 다른 계정 트랙까지 같은 플랜으로 칠하면
-    확인한 적 없는 사실을 지어내는 것이 된다. 이미 이름표가 붙은 트랙도 건드리지 않는다
+    맨 앞 하나로 끝내는 이유 — 지난 주차나 다른 계정 트랙까지 같은 이름표로 칠하면
+    남의 사용량이 된다. 플랜이 이미 붙어 있으면 그쪽을 이긴다고 보지 않고 그대로 둔다
     """
-    if not tracks or tracks[0]["plan"]:
+    if not tracks:
         return
-    tracks[0]["plan"] = _plan_label(config_path)
+    if not tracks[0]["plan"]:
+        tracks[0]["plan"] = _plan_label(config_path)
+    tracks[0]["account"] = _account_name((_read_json(config_path) or {}).get(CONFIG_ACCOUNT_KEY))
+
+
+def _account_name(account):
+    """이메일 아이디 부분만. 못 읽으면 None 이고 화면은 uuid 앞자리로 물러선다"""
+    email = account.get(CONFIG_EMAIL_KEY) if isinstance(account, dict) else None
+    if not isinstance(email, str) or "@" not in email:
+        return None
+    return email.split("@", 1)[0] or None
 
 
 def _track_key(rows):

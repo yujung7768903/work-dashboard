@@ -121,6 +121,9 @@ CONFIG_TIER_KEY = "userRateLimitTier"  # 한도를 정하는 티어. seatTier �
 # Max 구독은 1인 조직으로 잡혀서 한도 티어가 조직 쪽에만 있는 계정이 있다. 그때 사용자
 # 키만 보면 플랜을 아는데도 "알 수 없음" 이 뜬다. 사용자 키가 이기고 이쪽은 폴백이다
 CONFIG_ORG_TIER_KEY = "organizationRateLimitTier"
+# 계정이 여럿이면 플랜이 같아 안 갈린다. 이메일 아이디 부분이 uuid 앞자리보다 읽기 쉽다.
+# 도메인은 버린다 — 화면에 남길 이유가 없고 계정을 가르는 데는 앞부분으로 충분하다
+CONFIG_EMAIL_KEY = "emailAddress"
 # 두 소스의 초기화 시각은 1초 어긋난다 — 한쪽은 :59.66 을 그대로, 다른 쪽은 정시로
 # 반올림한 값을 준다. 같은 창인지 보려면 초 단위 오차를 허용해야 한다
 RESET_MATCH_SECONDS = 5

@@ -69,8 +69,6 @@
 }
 .u-week-title { margin: 0; font-size: var(--fs-micro); font-weight: 600; color: var(--muted); }
 .u-week-plan { color: var(--accent); }
-/* 계정 uuid 앞자리. 16진수라 등폭이어야 자리수가 눈에 들어온다 */
-.u-week-account { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 /* ── 카드 ── */
 .u-card {
