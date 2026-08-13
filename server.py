@@ -23,6 +23,7 @@ from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
+from app.repositories import settings as settings_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import (
     autorun,
@@ -42,6 +43,7 @@ CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
 }
 STATUS_BY_ERROR = (
     (NotFound, HTTPStatus.NOT_FOUND),
@@ -135,6 +137,8 @@ def _route_get(con, head, item_id, query):
         return worktrees.overview(con)
     if head == "autorun":
         return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
+    if head == "settings":
+        return settings_repo.payload(con)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -174,6 +178,10 @@ def _route_patch(con, head, item_id, body):
         # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
         state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
         return {"state": state, "runs": autorun.panel_runs(con)}
+    if head == "settings":
+        # autorun 과 같은 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려준다
+        settings_repo.set_language(con, body.get("language"))
+        return settings_repo.payload(con)
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":

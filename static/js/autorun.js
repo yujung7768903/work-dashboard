@@ -1,24 +1,26 @@
 // 자율 수행 패널. 켜짐 여부와 최근 실행한 할일을 보여준다. 세션 패널과 같은 폴링 방식
 import * as api from "./api.js";
+import { t } from "./i18n.js";
 import { formatAge, openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 5000;
 // 크론 주기는 crontab 이 정하고 이 값은 화면 표시용 상수다 — README "크론" 참고
-const TICK_LABEL = "5분마다";
-const NO_TICK = "마지막 수행 없음";
-const NO_WORKSPACE = "미분류";
-const RUNNING_LABEL = "진행 중";
+const TICK_LABEL = t("autorun.cycle");
+const NO_TICK = t("autorun.noRun");
+const NO_WORKSPACE = t("common.unassigned");
+const RUNNING_LABEL = t("autorun.running");
 // review = 잡은 끝났고 사람이 diff 를 보고 병합을 판정할 차례. 진행 중(클로드가 아직
 // 돌고 있음)과 섞이면 목록에서 무엇을 봐야 하는지 알 수 없어 배지를 따로 둔다
 // requested = 세션이 실패한 게 아니라 판단(기획 공백·방향 미정·정보 부족)을 요청하고
 // 스스로 멈춘 것. 사유는 autorun-request 로 남긴 텍스트라 배지 마우스오버로 보여준다
 const OUTCOME_LABELS = {
-  done: "완료", review: "검토 대기", failed: "실패", blocked: "막힘", requested: "요청",
+  done: t("common.done"), review: t("common.review"), failed: t("autorun.outcomeFailed"),
+  blocked: t("autorun.outcomeBlocked"), requested: t("autorun.outcomeRequested"),
 };
 const REVIEW = "review";
 const REQUESTED = "requested";
-const REVIEW_HINT = "변경을 확인·병합했으면 눌러 완료로 내린다";
-const TOGGLE_HINT = "자율 수행 켜기·끄기";
+const REVIEW_HINT = t("autorun.reviewHint");
+const TOGGLE_HINT = t("autorun.toggleHint");
 
 let timer = null;
 let bound = false;
@@ -36,7 +38,7 @@ function paint(state, runs) {
   // 사유가 없으면 붙이지 않는다 — 이 열을 받기 전 DB 는 NULL 이다
   const reason = state.last_tick_reason ? ` · ${state.last_tick_reason}` : "";
   document.getElementById("autorun-cycle").textContent = state.last_tick_at
-    ? `${TICK_LABEL} | 마지막 수행 ${formatAge(state.last_tick_at)} 전${reason}`
+    ? `${TICK_LABEL} | ${t("autorun.lastRun", { age: formatAge(state.last_tick_at) })}${reason}`
     : `${TICK_LABEL} | ${NO_TICK}`;
 
   const list = document.getElementById("autorun-list");

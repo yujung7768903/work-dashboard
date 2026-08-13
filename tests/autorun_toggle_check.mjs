@@ -2,6 +2,7 @@
 // 되돌아오는지 본다. 브라우저 없이 돌려야 하므로 autorun.js 가 만지는 DOM 만 흉내낸다.
 // 실행: node tests/autorun_toggle_check.mjs (tests/test_autorun_toggle.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 let enabled = 0;
 let reject = false;
@@ -38,6 +39,7 @@ globalThis.document = {
 globalThis.setInterval = () => 0;
 globalThis.clearInterval = () => {};
 
+await bootKorean();
 const autorun = await import("../static/js/autorun.js");
 autorun.startAutorunPolling();
 await new Promise((resolve) => setTimeout(resolve, 0));

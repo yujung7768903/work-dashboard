@@ -1,4 +1,5 @@
 """착수 가능 조건(precondition) 저장·표시·주입."""
+import json
 import pathlib
 import sqlite3
 import unittest
@@ -153,15 +154,19 @@ class PreconditionAddFormTest(unittest.TestCase):
     def test_popup_hint_matches_cli_help(self):
         """안내 문구는 CLI 도움말과 같아야 한다.
 
-        두 곳에서 다르게 설명하면 어느 규약이 맞는지 알 수 없다. HTML 은 정적이라
-        상수를 끼워 넣을 수 없으므로 같은 문장인지 여기서 대조한다
+        두 곳에서 다르게 설명하면 어느 규약이 맞는지 알 수 없다. 화면 쪽 문구는
+        static/lang/ko.json 에 있고(index.html 은 키만 갖는다) 상수를 끼워 넣을 수
+        없으므로 같은 문장인지 여기서 대조한다
         """
-        markup = INDEX.read_text(encoding="utf-8")
-        # 부등호는 HTML 이라 이스케이프돼 있다
-        self.assertIn(PRECONDITION_HINT.replace("<", "&lt;").replace(">", "&gt;"), markup)
+        korean = json.loads((STATIC / "lang" / "ko.json").read_text(encoding="utf-8"))
+        self.assertEqual(korean["common.preconditionHint"], PRECONDITION_HINT)
+        self.assertIn("common.preconditionHint", INDEX.read_text(encoding="utf-8"))
         self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
-        # 예시는 placeholder 로 보여 준다 (개행은 &#10;)
-        self.assertIn(PRECONDITION_EXAMPLE.replace("\n", "&#10;"), markup)
+        # 예시는 placeholder 로 보여 준다 (개행은 &#10;). CLI 도움말과 같은 상수를
+        # 그대로 쓰므로 이 자리만 한국어로 남는다
+        self.assertIn(
+            PRECONDITION_EXAMPLE.replace("\n", "&#10;"), INDEX.read_text(encoding="utf-8")
+        )
 
 
 if __name__ == "__main__":

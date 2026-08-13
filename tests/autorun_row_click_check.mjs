@@ -3,6 +3,7 @@
 // DOM 만 흉내낸다. 실행: node tests/autorun_row_click_check.mjs
 // (tests/test_autorun_row_click.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 const RUN = {
   id: 2,
@@ -68,6 +69,7 @@ globalThis.document = {
   },
 };
 
+await bootKorean();
 const autorun = await import("../static/js/autorun.js");
 await autorun.renderAutorun();
 

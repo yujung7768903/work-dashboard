@@ -12,6 +12,16 @@ DB_PATH_ENV = "WORK_DASHBOARD_DB"
 UNASSIGNED_LABEL = "미분류"
 SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "스킬 개발", "프로세스 개선")
 
+# 화면 언어. 문구는 코드가 아니라 static/lang/<코드>.json 에 키-값으로 모여 있고,
+# 네 파일이 서로 같은 자격이다. 코드 목록이 화면과 갈라지거나 번역이 빠지면
+# tests/test_language.py 가 잡는다.
+# 기본값·폴백은 영어다 — 이 대시보드를 공개로 열 것이므로, 설정을 못 읽거나 번역이
+# 빠졌을 때 처음 보는 사람이 읽을 수 있는 쪽으로 떨어져야 한다.
+# CLI 출력·훅 주입 블록은 아직 한국어 고정 (README '초기 설정 (⑤) > 화면 언어' 참고)
+LANGUAGES = ("en", "ko", "ja", "zh")
+DEFAULT_LANGUAGE = LANGUAGES[0]
+LANGUAGE_KEY = "language"  # meta 테이블 키
+
 # 카테고리 색은 sort_order 로 팔레트에서 자동 배정하고 이후 사용자가 바꿀 수 있음.
 # 미분류는 팔레트 밖의 옅은 회색 (CSS .group 의 --cat 기본값과 같은 값)
 CATEGORY_PALETTE = (
@@ -25,7 +35,7 @@ WORKSPACE_STATUSES = ("active", "paused", "done")
 STATUS_TODO, STATUS_DOING, STATUS_DONE = TODO_STATUSES
 WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 
-ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js")
+ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js", ".json")  # .json 은 화면 문구 사전
 FIRST_SORT_ORDER = 1
 
 # 여러 자리에서 같은 말을 해야 하는 사용자용 문구. 화면에는 alert 로, CLI 에는
