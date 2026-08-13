@@ -154,6 +154,9 @@ h1 {
 /* 제목이 남는 자리를 먹어 오류 문구와 언어 아이콘을 오른쪽 끝으로 민다 */
 #page-title { margin-right: auto; }
 
+/* 상단바에 홀로 있는 버튼이라 목록 줄용 --icon-box 보다 한 단 크게 */
+#lang-menu > button { width: var(--sp-32); height: var(--sp-32); }
+
 #error {
   margin: 0;
   background: color-mix(in srgb, var(--danger) 10%, var(--surface));
@@ -843,7 +846,8 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   :root {
     --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
     --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
-    --rail: #14161f;
+    /* 어두운 테마에서는 판을 더 누를 수 없다 — 배경보다 밝게, 카드보다는 어둡게 */
+    --rail: #191c28;
     --danger: #e46b6b; --good: #3cbe86; --warn: #e5a838;
     /* 어두운 면에서는 그림자가 안 보이므로 옅은 링으로 카드 경계를 만든다 */
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
