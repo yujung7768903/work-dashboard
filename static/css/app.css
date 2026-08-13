@@ -253,7 +253,7 @@ button {
   transition: background 0.12s, box-shadow 0.12s, transform 0.06s;
 }
 button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 13%, var(--surface)); }
-button:active:not(:disabled) { transform: translateY(1px); }
+button:active:not(:disabled), #repo-link:active { transform: translateY(1px); }
 button:disabled { color: var(--line); cursor: default; }
 
 /* 아이콘·기호 하나뿐인 작은 버튼. 정사각으로 잡아 hover 면이 원으로 뜬다 —
@@ -277,6 +277,7 @@ button:disabled { color: var(--line); cursor: default; }
 .icon-btn:hover:not(:disabled),
 .group-add:hover:not(:disabled),
 .ws-menu > button:hover,
+#repo-link:hover,
 .modal-close:hover,
 .row-toggle:hover:not(:disabled) {
   background: color-mix(in srgb, var(--fg) 18%, transparent);
@@ -866,6 +867,7 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   .group, .ws-card { --cat: #444a5c; }
   button { background-color: #2a2e3f; }
   button:hover:not(:disabled) { background-color: #343950; }
+  #repo-link:hover { background-color: #343950; }
   button:disabled { color: #4a4b55; }
   .side-nav button, .ws-menu > button, .ws-menu-items button, .modal-close {
     background-color: transparent;
