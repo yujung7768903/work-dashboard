@@ -105,9 +105,8 @@ work-dashboard/
 │   ├── test_*.py                    # 계층별 테스트
 │   └── *_check.mjs                  # 화면 동작 검증 (node. 같은 이름의 테스트가 부른다)
 │
-└── docs/                            # 설계·계획 문서
-    ├── specs/                       # 단계별 설계와 확정 결정
-    └── plans/                       # 구현 계획
+└── docs/                            # 설계 문서
+    └── specs/                       # 단계별 설계와 확정 결정
 ```
 
 ## 훅 동작
@@ -623,8 +622,8 @@ cp ~/.claude/settings.json.bak ~/.claude/settings.json
 
 | 단계 | 문서 | 상태 |
 | --- | --- | --- |
-| ① 4계층 + 웹/CLI | `specs/2026-07-29-work-dashboard-design.md`, `plans/2026-07-29-work-dashboard.md` | 구현 완료 |
-| ② 세션 매핑 | `specs/2026-07-29-session-link-design.md` (설계) + `specs/2026-07-30-session-mapping-spec.md` (확정 결정) | 대부분 구현, 잔여 2건 |
+| ① 4계층 + 웹/CLI | `specs/2026-07-29-work-dashboard-design.md` | 구현 완료 |
+| ② 세션 매핑 | `specs/2026-07-29-session-link-design.md` (설계) + `specs/2026-07-30-session-mapping-spec.md` (확정 결정) + `specs/2026-08-03-session-todo-mapping-spec.md` (세션 소속을 할일 하나로 좁힌 델타) | 대부분 구현, 잔여 2건 |
 | ③ 결정 대기 큐 | `specs/2026-07-30-decision-queue-spec.md` | 결정 확정, 미구현 |
 | ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 1차 구현 완료 (③ 큐 연동·⑥ `waiting` 제외) |
 | ⑤ 초기 설정(온보딩) | `specs/2026-08-01-onboarding-spec.md` | 구현 완료 |
