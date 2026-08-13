@@ -173,7 +173,7 @@ function rowMenuItems(group, row) {
           { branch: row.branch, base: group.base })
       )
     ),
-    menuItem(t("common.delete"), () =>
+    menuItem(t("worktree.discard"), () =>
       runRowAction(() => api.discardWorktree(group.repo, row.branch),
         t("worktree.confirmDiscard",
           { branch: row.branch })

@@ -100,6 +100,7 @@
   "worktree.hiddenBranches": "+{count} 숨김",
   "worktree.rowMenu": "실행 · 재실행 · 중지 · 적용 · 삭제",
   "worktree.apply": "적용",
+  "worktree.discard": "삭제",
   "worktree.confirmApply": "\"{branch}\" 를 {base} 에 병합하고, 서버 종료·워크트리·브랜치까지 정리할까요?",
   "worktree.confirmDiscard": "\"{branch}\" 를 병합하지 않고 버립니다. 커밋되지 않았거나 아직 병합되지 않은 변경도 함께 사라지고 되돌릴 수 없습니다. 계속할까요?",
   "worktree.serveStart": "실행",
