@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from app.constants import (
     CLAUDE_CONFIG_PATH,
     CONFIG_ACCOUNT_KEY,
+    CONFIG_ORG_TIER_KEY,
     CONFIG_TIER_KEY,
     COST_FIELD,
     COST_LOG_PATH,
@@ -119,7 +120,7 @@ def snapshot(
         limits = None
     stale_seconds = _stale_seconds(limits)
     return {
-        "plan": _plan_label(),
+        "plan": _plan_label(config_path),
         "windows": _windows(limits),
         "snapshot_ts": (limits or {}).get("timestamp"),
         "stale_seconds": stale_seconds,
@@ -470,24 +471,35 @@ def _plan_of(config, uuid):
     account = config.get(CONFIG_ACCOUNT_KEY)
     if not isinstance(account, dict) or account.get("accountUuid") != uuid:
         return None
-    return _tier_label(account.get(CONFIG_TIER_KEY))
+    return _tier_from(account, (CONFIG_TIER_KEY, CONFIG_ORG_TIER_KEY))
 
 
-def _plan_label():
+def _tier_from(block, keys):
+    """앞의 키가 이긴다. 값이 비어 있으면 다음 키로 넘어간다"""
+    if not isinstance(block, dict):
+        return None
+    for key in keys:
+        label = _tier_label(block.get(key))
+        if label:
+            return label
+    return None
+
+
+def _plan_label(config_path=CLAUDE_CONFIG_PATH, credentials_path=CREDENTIALS_PATH):
     """플랜 이름만 뽑는다
 
     ~/.claude.json 의 계정 블록을 먼저 본다. 예전에는 .credentials.json 에 있었는데
     로그인 방식에 따라 그 키가 사라지므로(키체인으로 옮겨감) 양쪽을 다 본다.
+    사용자 티어가 비어 있고 조직 티어만 있는 계정도 있어(Max 구독) 그쪽까지 본다.
 
-    두 파일 모두 액세스 토큰·이메일이 같이 들어 있다. 그래서 티어 키 하나만 꺼내고,
+    두 파일 모두 액세스 토큰·이메일이 같이 들어 있다. 그래서 티어 키만 꺼내고,
     파일의 다른 내용은 읽지도 반환하지도 않는다.
     """
-    for path, holder, key in (
-        (CLAUDE_CONFIG_PATH, CONFIG_ACCOUNT_KEY, CONFIG_TIER_KEY),
-        (CREDENTIALS_PATH, OAUTH_KEY, TIER_KEY),
+    for path, holder, keys in (
+        (config_path, CONFIG_ACCOUNT_KEY, (CONFIG_TIER_KEY, CONFIG_ORG_TIER_KEY)),
+        (credentials_path, OAUTH_KEY, (TIER_KEY,)),
     ):
-        block = (_read_json(path) or {}).get(holder)
-        label = _tier_label(block.get(key) if isinstance(block, dict) else None)
+        label = _tier_from((_read_json(path) or {}).get(holder), keys)
         if label:
             return label
     return None

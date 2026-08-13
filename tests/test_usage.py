@@ -354,13 +354,20 @@ def _stamp_at(epoch_seconds):
     return datetime.fromtimestamp(epoch_seconds, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _config_file(uuid="acc-1", five_reset=None, seven_reset=None, tier="default_claude_max_5x"):
+def _config_file(
+    uuid="acc-1",
+    five_reset=None,
+    seven_reset=None,
+    tier="default_claude_max_5x",
+    org_tier=None,
+):
     """~/.claude.json 흉내. 사용량 키 옆에 민감한 키를 같이 두어 그것까지 읽지 않는지 본다"""
     body = {
         "primaryApiKey": "건드리면 안 되는 값",
         "oauthAccount": {
             "accountUuid": uuid,
             "userRateLimitTier": tier,
+            "organizationRateLimitTier": org_tier,
             "seatTier": "team_tier_1",  # 좌석 등급. 한도 티어가 아니라 이걸 읽으면 안 된다
             "emailAddress": "건드리면 안 되는 값",
         },
@@ -411,6 +418,31 @@ class AccountMatchTest(unittest.TestCase):
     def test_missing_config_is_not_fatal(self):
         limits = _limits_file()
         self.assertIsNone(self._stored_uuid(limits, "/nonexistent/.claude.json"))
+
+    def test_org_tier_fills_in_when_the_user_tier_is_empty(self):
+        """Max 구독은 1인 조직으로 잡혀서 한도 티어가 조직 키에만 있는 경우가 있다.
+        사용자 키만 보면 플랜을 아는데도 '알 수 없음' 이 뜬다"""
+        limits = _limits_file()
+        ours = usage._read_json(limits)["seven_day"]["resets_at"]
+        config = _config_file(seven_reset=ours, tier=None, org_tier="default_claude_max_5x")
+        con = temp_db()
+        payload = usage.snapshot(
+            con, limits_path=limits, cost_path=_cost_file([]), config_path=config
+        )
+        self.assertEqual(payload["plan"], "Max 5x")
+        row = con.execute("SELECT account_plan FROM usage_samples").fetchone()
+        self.assertEqual(row["account_plan"], "Max 5x")
+
+    def test_user_tier_wins_over_the_org_tier(self):
+        limits = _limits_file()
+        ours = usage._read_json(limits)["seven_day"]["resets_at"]
+        config = _config_file(
+            seven_reset=ours, tier="default_claude_pro", org_tier="default_claude_max_20x"
+        )
+        payload = usage.snapshot(
+            temp_db(), limits_path=limits, cost_path=_cost_file([]), config_path=config
+        )
+        self.assertEqual(payload["plan"], "Pro")
 
     def test_plan_rides_along_with_the_uuid(self):
         limits = _limits_file()
