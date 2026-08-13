@@ -117,7 +117,9 @@ class RepoTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.base = tempfile.mkdtemp()
+        # git 은 워크트리 경로를 실제 경로로 돌려준다. macOS 의 /var 는 /private/var
+        # 심볼릭 링크라, mkdtemp 결과를 그대로 쓰면 같은 자리를 가리키는 두 문자열이 갈린다
+        cls.base = os.path.realpath(tempfile.mkdtemp())
         cls.repo = os.path.join(cls.base, "repo")
         os.makedirs(cls.repo)
         git(cls.repo, "init", "-q", "-b", "master")
@@ -217,7 +219,7 @@ class ApplyTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.base = tempfile.mkdtemp()
+        self.base = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
         self.repo = os.path.join(self.base, "repo")
         os.makedirs(self.repo)
@@ -333,7 +335,7 @@ class DiscardTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.base = tempfile.mkdtemp()
+        self.base = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
         self.repo = os.path.join(self.base, "repo")
         os.makedirs(self.repo)
