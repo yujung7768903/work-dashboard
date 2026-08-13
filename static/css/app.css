@@ -155,7 +155,6 @@ h1 {
 #page-title { margin-right: auto; }
 
 /* 상단바에 홀로 있는 버튼이라 목록 줄용 --icon-box 보다 한 단 크게 */
-#lang-menu > button { width: var(--sp-32); height: var(--sp-32); }
 
 #error {
   margin: 0;
@@ -259,11 +258,15 @@ button:disabled { color: var(--line); cursor: default; }
 /* 아이콘·기호 하나뿐인 작은 버튼. 정사각으로 잡아 hover 면이 원으로 뜬다 —
    기본 버튼의 둥근 사각형은 아이콘 하나에는 폭이 남아 애매하게 보인다.
    면은 hover 에서만: 평소엔 아이콘만 떠 있다 */
-.icon-btn, .group-add, .ws-menu > button, .modal-close {
+.icon-btn, .group-add, .ws-menu > button, .modal-close, #repo-link {
   width: var(--icon-box); height: var(--icon-box); flex: none; padding: 0;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; background: none; color: var(--muted);
 }
+
+/* 상단바의 두 아이콘만 한 단 크게. 목록 줄 안에 들어가는 다른 아이콘과 달리 홀로 있다 */
+#lang-menu > button, #repo-link { width: var(--sp-32); height: var(--sp-32); }
+#repo-link { text-decoration: none; }
 /* 카드 상단은 카테고리 색이라 기본 hover 면(어두운 회색)이 다크모드에서 묻힌다.
    글자색을 섞은 반투명 면이라 밝은 테마에선 옅은 회색, 어두운 테마에선 옅은 흰빛으로 뜬다.
    :not(:disabled) 는 같은 조건의 기본 button:hover 규칙을 이기기 위한 것 */
