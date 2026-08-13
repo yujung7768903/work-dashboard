@@ -47,6 +47,8 @@ const WEEK_PCT_SERIES = [{ key: "peak_pct", name: t("usage.seriesPeak"), cls: "u
 const WEEK_NAMES = [null, t("usage.weekLast")];
 const WEEK_CURRENT = t("usage.weekCurrent");
 const PLAN_UNKNOWN = t("usage.planUnknown");
+// 계정 uuid 앞자리. 8자면 이 화면에 뜨는 계정 두셋을 가르기에 충분하다
+const ACCOUNT_ID_CHARS = 8;
 // Fable 이 빠져 있어 폴백(=Haiku)으로 떨어지면서 두 모델이 같은 회색이 되던 것을 갈랐다.
 // 폴백은 "기타" 몫으로 남긴다 — 이름을 모르는 모델까지 색을 배정할 수는 없다
 const MODEL_CLASS = {
@@ -421,8 +423,11 @@ function weekTrack(track) {
   // 플랜은 지금 로그인한 계정 것만 설정 파일에 있다. 아직 그 계정으로 들어온 적이 없는
   // 트랙은 알 수 없으므로, 빈 자리로 두지 않고 모른다는 사실을 적는다
   const head = tag("div", "u-week-head");
-  head.append(
-    tag("h3", "u-week-title", title),
+  head.appendChild(tag("h3", "u-week-title", title));
+  // 계정이 여럿인데 플랜이 같으면(둘 다 Max 5x) 플랜만으로는 어느 계정인지 안 갈린다
+  const account = accountText(track);
+  if (account) head.appendChild(tag("span", "u-flag u-week-account", account));
+  head.appendChild(
     tag("span", track.plan ? "u-flag u-week-plan" : "u-flag", track.plan || PLAN_UNKNOWN)
   );
   wrap.appendChild(head);
@@ -572,6 +577,13 @@ function weekSpan(week) {
 
 // 계정 식별자 겸 주 경계. "화 04:00"
 // ko-KR 은 요일만 뽑으면 "(화)" 로 괄호를 붙인다 — 뒤에 시각이 이어지므로 괄호를 뗀다
+// 트랙 키는 계정 uuid 이거나, uuid 를 못 받았을 때 쓰는 초기화 시각의 7일 나머지다.
+// 나머지는 계정 식별자가 아니므로 적지 않는다 — 그 트랙은 플랜도 미확인으로 뜬다
+function accountText(track) {
+  const key = String(track.track || "");
+  return key.includes("-") ? key.slice(0, ACCOUNT_ID_CHARS) : "";
+}
+
 function trackLabel(epochSeconds) {
   return new Date(epochSeconds * MS_PER_SECOND)
     .toLocaleString(LOCALE, {
