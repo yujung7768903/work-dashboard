@@ -12,7 +12,7 @@ Claude Code 세션과 할일을 한 화면에서 잇는 로컬 작업 관리 대
 
 ## 설치
 
-빌드 단계가 없음. 받아서 바로 실행함
+빌드 단계 없음
 
 ```bash
 git clone https://github.com/yujung7768903/work-dashboard.git
@@ -27,8 +27,8 @@ DB 는 첫 실행 때 `~/.claude/work-dashboard/dash.db`에 만들어지고 기�
 ./start.sh
 ```
 
-`http://127.0.0.1:9080`이 출력되면 그 주소를 브라우저로 여세요. 서버는 백그라운드로
-돌고 로그는 `logs/YYYY-MM-DD.log`에 쌓임
+주소는 `http://127.0.0.1:9080`. 서버는 백그라운드로 돌고 로그는
+`logs/YYYY-MM-DD.log`에 쌓임
 
 | 스크립트 | 하는 일 |
 | --- | --- |
@@ -36,7 +36,7 @@ DB 는 첫 실행 때 `~/.claude/work-dashboard/dash.db`에 만들어지고 기�
 | `./stop.sh` | 이 디렉토리를 cwd 로 돌던 서버만 종료 |
 | `./restart.sh` | 같은 인자(포트)를 물려받아 다시 실행 |
 
-워크트리에서 동시에 띄울 때는 포트를 나눠 쓰세요: `./start.sh --port 9081`
+워크트리에서 동시에 띄울 때는 포트 분리 — `./start.sh --port 9081`
 
 ## 사용법
 
@@ -69,11 +69,11 @@ python3 dash.py ls
 | `merge` · `finish` | 워크트리 브랜치 병합, 병합 후 리소스 해제 |
 | `usage` · `statusline` | 한도 사용률과 토큰 추이, 상태줄 한 줄 |
 
-전체 목록은 `python3 dash.py --help`로 확인하세요
+전체 목록은 `python3 dash.py --help`
 
 ### 훅
 
-저장소가 공유하는 등록은 `.claude/settings.json`의 Stop 훅 하나뿐임. 나머지는 사용자
+저장소가 공유하는 등록은 `.claude/settings.json`의 Stop 훅 하나뿐. 나머지는 사용자
 설정에 직접 등록해서 쓰고, 이벤트 이름을 인자로 받아 훅 페이로드를 stdin 으로 읽음
 
 | 훅 | 이벤트 | 하는 일 |
@@ -85,7 +85,7 @@ python3 dash.py ls
 | `stale_base.py` | UserPromptSubmit | 낡은 베이스 위 착수 경고 |
 | `md_lint.py` | PostToolUse | 저장된 `.md`를 markdownlint로 검사 |
 
-훅은 전부 fail-open 임. 훅 자체 오류로 세션이 막히지 않음
+훅은 전부 fail-open. 훅 자체 오류로 세션이 막히지 않음
 
 ### 자율 실행
 
@@ -133,12 +133,12 @@ python3 -m tests
 `tests/`를 전부 찾아 돌림. 화면 동작은 `.mjs` 검증 파일을 node 로 돌려 결과만 받아옴 —
 node 가 없으면 그 항목은 건너뜀
 
-코드를 고친 뒤에는 `./restart.sh`로 다시 띄우세요. 인자를 안 주면 돌던 서버의 포트를
+코드를 고친 뒤에는 `./restart.sh`로 다시 띄움. 인자를 안 주면 돌던 서버의 포트를
 그대로 물려받음
 
 ## 설정
 
-서버 인자는 `--host`와 `--port` 둘뿐이고 기본값은 `127.0.0.1:9080`임
+서버 인자는 `--host`와 `--port` 둘뿐이고 기본값은 `127.0.0.1:9080`
 
 | 환경변수 | 기본값 | 용도 |
 | --- | --- | --- |
