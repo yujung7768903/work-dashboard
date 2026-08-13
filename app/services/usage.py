@@ -177,27 +177,30 @@ def _pct_tracks(con, current, limit):
         "       MAX(source_ts) AS last_ts,"
         # 한 주차에 이름표가 붙은 행과 안 붙은 행이 섞이면 붙은 쪽을 그 주차의 계정으로 본다
         "       MAX(account_uuid) AS account_uuid,"
-        "       MAX(account_plan) AS account_plan"
+        "       MAX(account_plan) AS account_plan,"
+        "       MAX(account_label) AS account_label"
         "  FROM usage_samples"
         " WHERE seven_day_resets_at IS NOT NULL AND seven_day_pct IS NOT NULL"
         " GROUP BY seven_day_resets_at ORDER BY seven_day_resets_at",
     ).fetchall()
     key_of = _track_key(rows)
-    tracks, plans = {}, {}
+    tracks, plans, labels = {}, {}, {}
     for row in rows:
         track = key_of(row)
         tracks.setdefault(track, []).append(_week_row(row, current))
-        # reset_at 오름차순이라 늦은 주차의 플랜이 이긴다 — 플랜은 바뀔 수 있다
+        # reset_at 오름차순이라 늦은 주차의 값이 이긴다 — 플랜도 이메일도 바뀔 수 있다
         if row["account_plan"]:
             plans[track] = row["account_plan"]
+        if row["account_label"]:
+            labels[track] = row["account_label"]
     return sorted(
         (
-            # account 는 지금 로그인한 계정에만 채워진다 (_borrow_active_identity).
-            # 나머지 트랙은 uuid 밖에 없어 화면이 앞자리로 대신 적는다
+            # account 는 표본에 적립된 이메일 아이디. 적립 전에 쌓인 트랙은 비어 있고,
+            # 그때는 화면이 uuid 앞자리로 대신 적는다
             {
                 "track": str(track),
                 "plan": plans.get(track),
-                "account": None,
+                "account": labels.get(track),
                 "weeks": weeks[-limit:],
             }
             for track, weeks in tracks.items()
@@ -223,7 +226,10 @@ def _borrow_active_identity(tracks, config_path):
         return
     if not tracks[0]["plan"]:
         tracks[0]["plan"] = _plan_label(config_path)
-    tracks[0]["account"] = _account_name((_read_json(config_path) or {}).get(CONFIG_ACCOUNT_KEY))
+    if not tracks[0]["account"]:  # 적립된 값이 있으면 그쪽이 이긴다
+        tracks[0]["account"] = _account_name(
+            (_read_json(config_path) or {}).get(CONFIG_ACCOUNT_KEY)
+        )
 
 
 def _account_name(account):
@@ -451,8 +457,9 @@ def _record_sample(con, limits, config_path=CLAUDE_CONFIG_PATH):
         con.execute(
             "INSERT OR IGNORE INTO usage_samples("
             " source_ts, five_hour_pct, five_hour_resets_at,"
-            " seven_day_pct, seven_day_resets_at, account_uuid, account_plan, created_at)"
-            " VALUES(?,?,?,?,?,?,?,?)",
+            " seven_day_pct, seven_day_resets_at, account_uuid, account_plan,"
+            " account_label, created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
             (
                 stamp,
                 five.get("used_percentage"),
@@ -460,6 +467,9 @@ def _record_sample(con, limits, config_path=CLAUDE_CONFIG_PATH):
                 seven.get("used_percentage"),
                 seven.get("resets_at"),
                 *_account_of(limits, config_path),
+                # 이 사이드카를 방금 덮은 것이 지금 로그인한 계정이다. uuid 와 달리
+                # 설정 캐시를 거치지 않으므로 캐시가 낡아도 이름표는 남는다
+                _account_name((_read_json(config_path) or {}).get(CONFIG_ACCOUNT_KEY)),
                 now(),
             ),
         )

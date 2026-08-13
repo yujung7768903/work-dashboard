@@ -495,6 +495,41 @@ class AccountMatchTest(unittest.TestCase):
         )
         self.assertEqual(result["tracks"][0]["plan"], "Max 5x")
 
+    def test_sample_records_the_logged_in_account_id(self):
+        """계정 이름표(uuid)는 설정 캐시가 창을 확인해 줄 때만 붙지만, 사이드카를 방금
+        덮은 것은 지금 로그인한 계정이다. 이메일 아이디는 그 근거로 매 표본에 적어 둔다 —
+        그래야 나중에 계정을 바꿔도 지난 트랙이 uuid 로 남지 않는다"""
+        limits = _limits_file()
+        con = temp_db()
+        usage.snapshot(
+            con,
+            limits_path=limits,
+            cost_path=_cost_file([]),
+            config_path=_config_file(email="other-account@example.com"),
+        )
+        row = con.execute("SELECT account_label FROM usage_samples").fetchone()
+        self.assertEqual(row["account_label"], "other-account")
+
+    def test_stored_account_id_survives_a_later_login(self):
+        """지난 주차는 그때 적힌 아이디를 그대로 쓴다. 지금 로그인한 계정으로 덮으면
+        남의 사용량이 된다"""
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+            _sample(con, 20 + offset, 70.0, reset + 40 * 3600)
+        # 마지막 실측이 이른 쪽(=지금 계정이 아닌 트랙)에 예전 아이디가 적혀 있다
+        con.execute(
+            "UPDATE usage_samples SET account_label='old-one' WHERE seven_day_resets_at=?",
+            (reset,),
+        )
+        con.commit()
+        result = usage.weekly_windows(
+            con, cost_path=_cost_file([]), config_path=_config_file(email="now@example.com")
+        )
+        by_id = {t["account"] for t in result["tracks"]}
+        self.assertEqual(by_id, {"now", "old-one"})
+
     def test_active_track_shows_the_account_id_not_just_the_uuid(self):
         """계정이 둘 다 같은 플랜이면 플랜으로는 안 갈린다. 지금 계정은 이메일
         아이디를 알 수 있으므로 uuid 앞자리 대신 그걸 쓴다"""

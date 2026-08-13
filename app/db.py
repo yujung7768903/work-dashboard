@@ -260,7 +260,9 @@ def _add_usage_account_column(con):
     쓰는 동안 여기 쌓이면서 트랙별 플랜이 채워진다
     """
     columns = {row["name"] for row in con.execute("PRAGMA table_info(usage_samples)")}
-    for column in ("account_uuid", "account_plan"):
+    # account_label 은 이메일 아이디. uuid 는 설정 캐시가 창을 확인해 줄 때만 붙는데
+    # 그 캐시가 낡으면 영영 안 붙어서, 사람이 읽을 이름표는 따로 적어 둔다
+    for column in ("account_uuid", "account_plan", "account_label"):
         if column not in columns:
             con.execute(f"ALTER TABLE usage_samples ADD COLUMN {column} TEXT")
     con.commit()
