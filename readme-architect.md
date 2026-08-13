@@ -4,7 +4,7 @@ Claude Code 세션과 할일을 한 화면에서 잇는 로컬 작업 관리 대
 
 ## 요구 사항
 
-- Python 3 — 표준 라이브러리만 사용함. 설치할 의존성 없음
+- Python 3.9 이상 — 표준 라이브러리만 씀. 의존성 설치는 없고, 하한은 `str.removeprefix` 사용에서 옴
 - Claude Code — 세션 연동과 훅이 이 위에서 돎. `~/.claude/` 아래 경로를 읽음
 - `claude` CLI (`~/.local/bin/claude`) — 자율 실행과 할일 제목 요약에만 필요
 - Node — `static/js` 동작을 검증하는 테스트에만 필요. 없으면 그 테스트만 건너뜀
@@ -63,30 +63,18 @@ python3 dash.py ls
 | --- | --- |
 | `ls` | 카테고리·워크스페이스·할일 트리 개요 |
 | `next` | 다음에 할 일 1건 |
-| `show <id 또는 Jira ID>` | 워크스페이스 상세 |
 | `add-todo <제목>` | 할일 추가. `--note` `--precondition` 으로 컨텍스트 지정 |
 | `set-status <대상> <id> <상태>` | 할일·하위할일·워크스페이스 상태 변경 |
-| `sessions` · `classify` | 활성 세션 목록과 카테고리·워크스페이스 분류 |
-| `link-todo <할일 id>` | 이 세션이 잡은 할일 연결 |
-| `merge` · `finish` | 워크트리 브랜치 병합과 병합 후 리소스 해제 |
-| `usage` | 한도 사용률과 토큰 추이 |
-| `statusline` | 상태줄 한 줄 (연결된 할일·상태·워크트리 서버 포트) |
-| `autorun on off status` | 자율 실행 스위치와 상태 |
+| `classify` · `link-todo` | 세션을 카테고리·워크스페이스에 등록하고 할일 연결 |
+| `merge` · `finish` | 워크트리 브랜치 병합, 병합 후 리소스 해제 |
+| `usage` · `statusline` | 한도 사용률과 토큰 추이, 상태줄 한 줄 |
 
 전체 목록은 `python3 dash.py --help`로 확인하세요
 
 ### 훅
 
-저장소가 공유하는 등록은 `.claude/settings.json`의 Stop 훅 하나뿐임. 워크트리에서 웹
-프로젝트를 고쳤는데 그 워크트리를 서비스하는 프로세스가 없으면 종료를 막고 서버를
-띄우라고 지시함
-
-`hooks/`의 나머지는 사용자 설정에 직접 등록해서 씀. 이벤트 이름을 인자로 받고 훅
-페이로드를 stdin 으로 읽음
-
-```bash
-python3 hooks/dash_hook.py SessionStart
-```
+저장소가 공유하는 등록은 `.claude/settings.json`의 Stop 훅 하나뿐임. 나머지는 사용자
+설정에 직접 등록해서 쓰고, 이벤트 이름을 인자로 받아 훅 페이로드를 stdin 으로 읽음
 
 | 훅 | 이벤트 | 하는 일 |
 | --- | --- | --- |
