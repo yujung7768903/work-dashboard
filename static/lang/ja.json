@@ -25,6 +25,7 @@
   "nav.board": "ボード",
   "nav.workspace": "ワークスペース",
   "nav.settings": "設定",
+  "nav.repository": "GitHub リポジトリ",
   "nav.usage": "使用量",
   "board.nextLine": "次のタスク ▸",
   "board.nextNone": "なし",
