@@ -481,12 +481,41 @@ class AccountMatchTest(unittest.TestCase):
         result = usage.weekly_windows(con, cost_path=_cost_file([]))
         self.assertEqual(result["tracks"][0]["plan"], "Max 5x")
 
-    def test_track_without_a_known_plan_reports_none(self):
+    def test_active_track_borrows_the_plan_of_the_logged_in_account(self):
+        """계정 이름표는 설정 캐시가 창을 확인해 줄 때만 붙는데, 그 캐시가 낡으면
+        지금 쓰는 계정의 주차에도 안 붙는다. 마지막 실측이 가장 늦은 트랙은 지금
+        로그인한 계정 것이므로 그 플랜을 빌려 온다"""
         con = temp_db()
         reset = int(time.time()) + 3600
         for offset in range(3):
             _sample(con, 10 + offset, 40.0, reset)
-        result = usage.weekly_windows(con, cost_path=_cost_file([]))
+        result = usage.weekly_windows(
+            con, cost_path=_cost_file([]), config_path=_config_file(tier="default_claude_max_5x")
+        )
+        self.assertEqual(result["tracks"][0]["plan"], "Max 5x")
+
+    def test_older_tracks_do_not_borrow_the_plan(self):
+        """다른 계정의 지난 주차까지 지금 플랜으로 칠하면 없는 사실을 지어내는 것이다"""
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)  # 지금 계정
+            _sample(con, 20 + offset, 70.0, reset + 40 * 3600)  # 7일 배수가 아닌 다른 계정
+        result = usage.weekly_windows(
+            con, cost_path=_cost_file([]), config_path=_config_file(tier="default_claude_max_5x")
+        )
+        self.assertEqual(len(result["tracks"]), 2)
+        self.assertEqual([track["plan"] for track in result["tracks"]].count("Max 5x"), 1)
+
+    def test_track_without_a_known_plan_reports_none(self):
+        """빌려 올 플랜조차 없으면(로그인 계정에 티어가 없음) 비운 채로 둔다"""
+        con = temp_db()
+        reset = int(time.time()) + 3600
+        for offset in range(3):
+            _sample(con, 10 + offset, 40.0, reset)
+        result = usage.weekly_windows(
+            con, cost_path=_cost_file([]), config_path=_config_file(tier=None)
+        )
         self.assertIsNone(result["tracks"][0]["plan"])
 
 

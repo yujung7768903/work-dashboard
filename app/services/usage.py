@@ -129,11 +129,13 @@ def snapshot(
         "missing_windows": list(MISSING_WINDOW_LABELS),
         "pct_samples": pct_samples(con),
         "tokens": daily_tokens(cost_path=cost_path),
-        "weekly": weekly_windows(con, cost_path=cost_path),
+        "weekly": weekly_windows(con, cost_path=cost_path, config_path=config_path),
     }
 
 
-def weekly_windows(con, cost_path=COST_LOG_PATH, limit=USAGE_WEEK_LIMIT):
+def weekly_windows(
+    con, cost_path=COST_LOG_PATH, limit=USAGE_WEEK_LIMIT, config_path=CLAUDE_CONFIG_PATH
+):
     """닫힌 주간 창을 주차별로 모아 비교 가능한 형태로 돌려준다
 
     주간 %는 7일 내내 쌓이기만 하다 초기화되므로 시각 축에 올려두면 거의 평평한 선이
@@ -151,6 +153,7 @@ def weekly_windows(con, cost_path=COST_LOG_PATH, limit=USAGE_WEEK_LIMIT):
     """
     current = _epoch_ms() // MS_PER_SECOND
     tracks = _pct_tracks(con, current, limit)
+    _borrow_active_plan(tracks, config_path)
     events = _spend_events(cost_path)
     return {
         "tracks": tracks,
@@ -195,6 +198,22 @@ def _pct_tracks(con, current, limit):
         key=lambda item: item["weeks"][-1]["last_ts"],
         reverse=True,
     )
+
+
+def _borrow_active_plan(tracks, config_path):
+    """맨 앞 트랙(마지막 실측이 가장 늦은 것)에 지금 로그인한 계정의 플랜을 채운다
+
+    계정 이름표는 설정 캐시가 사이드카와 같은 창을 가리킬 때만 붙는데, 그 캐시는
+    갱신이 늦어 창을 확인해 주지 못하는 때가 많다. 그러면 지금 쓰는 계정의 주차조차
+    플랜이 빈다. 사이드카를 마지막에 덮은 것이 지금 로그인한 계정이므로 그 트랙에
+    한해 설정 파일의 플랜을 빌려 온다.
+
+    맨 앞 하나로 끝내는 이유 — 지난 주차나 다른 계정 트랙까지 같은 플랜으로 칠하면
+    확인한 적 없는 사실을 지어내는 것이 된다. 이미 이름표가 붙은 트랙도 건드리지 않는다
+    """
+    if not tracks or tracks[0]["plan"]:
+        return
+    tracks[0]["plan"] = _plan_label(config_path)
 
 
 def _track_key(rows):
