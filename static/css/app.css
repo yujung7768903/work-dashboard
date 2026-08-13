@@ -151,8 +151,11 @@ h1 {
   font-weight: 700; margin: 0; letter-spacing: -0.02em;
 }
 
+/* 제목이 남는 자리를 먹어 오류 문구와 언어 아이콘을 오른쪽 끝으로 민다 */
+#page-title { margin-right: auto; }
+
 #error {
-  margin: 0 0 0 auto;
+  margin: 0;
   background: color-mix(in srgb, var(--danger) 10%, var(--surface));
   color: var(--danger); padding: var(--sp-8) var(--sp-12);
   border-radius: var(--r-ctl); font-weight: 500; font-size: var(--fs-sm);

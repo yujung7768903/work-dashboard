@@ -1,7 +1,8 @@
-// 설정 탭. 언어와, 카테고리(소속·하나)·라벨(성격·여러 개)을 같은 모양의 줄로 관리한다.
+// 설정 탭. 카테고리(소속·하나)와 라벨(성격·여러 개)을 같은 모양의 줄로 관리한다.
+// 언어는 화면 전체에 걸려 있어 여기가 아니라 상단 우측 아이콘에 있다 (language.js)
 // 두 목록은 이름·색·순서·삭제가 똑같아 줄 만드는 코드를 공유하고, 다른 점만 설정으로 넘긴다
 import * as api from "./api.js";
-import { LANGUAGES, language, t } from "./i18n.js";
+import { t } from "./i18n.js";
 import { run } from "./main.js";
 
 const CATEGORIES = {
@@ -30,28 +31,7 @@ const LABELS = {
 };
 
 export async function renderSettings() {
-  renderLanguage();
   await Promise.all([renderList(CATEGORIES), renderList(LABELS)]);
-}
-
-// 언어 이름은 그 언어로 적는다 — 지금 화면 언어를 못 읽는 사람도 자기 것을 찾을 수 있어야 한다.
-// 바꾸면 화면을 다시 띄운다. 모듈 최상단에서 t() 로 만든 상수까지 다시 만들어야 하는데,
-// 그 상수들을 되돌리는 코드보다 새로고침 한 줄이 확실하다
-function renderLanguage() {
-  const select = document.getElementById("language-select");
-  select.innerHTML = "";
-  LANGUAGES.forEach((item) => {
-    const option = document.createElement("option");
-    option.value = item.code;
-    option.textContent = item.label;
-    option.selected = item.code === language();
-    select.appendChild(option);
-  });
-  select.onchange = () =>
-    run(async () => {
-      await api.updateSettings({ language: select.value });
-      location.reload();
-    });
 }
 
 async function renderList(config) {

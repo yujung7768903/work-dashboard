@@ -64,6 +64,8 @@
       <header class="topbar">
         <h1 id="page-title" data-i18n="nav.board"></h1>
         <p id="error" hidden></p>
+        <!-- 언어 메뉴. 지구본 아이콘 하나이고 목록은 language.js 가 채운다 -->
+        <div id="lang-menu" class="ws-menu"></div>
       </header>
 
       <section id="tab-board" class="tab">
@@ -155,10 +157,6 @@
       </section>
 
       <section id="tab-settings" class="tab" hidden>
-        <!-- 언어는 화면 전체에 걸리므로 맨 위. 고르면 저장하고 화면을 다시 띄운다 -->
-        <h2 class="set-head" data-i18n="settings.language"></h2>
-        <select id="language-select"></select>
-
         <!-- 카테고리는 소속(하나), 라벨은 성격(여러 개). 같은 화면에서 색까지 관리한다 -->
         <h2 class="set-head" data-i18n="common.category"></h2>
         <form id="category-add">
