@@ -695,8 +695,8 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
    세로로 쌓는다 — display 를 안 바꾸면 제목·세 칸·버튼이 한 줄에 흩어진다.
    여백은 세션 팝업 본문과 같은 값 */
 #todo-add-form { display: block; padding: var(--sp-20); overflow: auto; }
-/* textarea 는 .field 공통 규칙이 이미 100%. 한 줄 입력도 같은 폭이어야 줄이 맞는다 */
-#todo-add-form .field input { width: 100%; }
+/* textarea 는 .field 공통 규칙이 이미 100%. 한 줄 입력·선택도 같은 폭이어야 줄이 맞는다 */
+#todo-add-form .field input, #todo-add-form .field select { width: 100%; }
 /* 확인 버튼은 오른쪽 끝. 팝업의 마지막 동작 위치를 세션 팝업과 같게 둔다 */
 .dlg-actions { display: flex; justify-content: flex-end; margin-top: var(--sp-20); }
 .modal-close {

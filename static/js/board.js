@@ -8,6 +8,7 @@ import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
 const GROUP_BY_WORKSPACE = "workspace";
+const GROUP_BY_CATEGORY = "category";
 const UNASSIGNED_KIND = "unassigned";
 const UNASSIGNED_LABEL = "미분류";
 const DONE = "done";
@@ -78,12 +79,15 @@ function renderNext(next) {
   target.textContent = `${scope} / ${next.todo.title}`;
 }
 
+// 위 빠른 추가 폼과 미분류 추가 팝업이 같은 목록을 쓴다
 function renderQuickCategories(categories) {
-  const select = document.getElementById("quick-category");
   const rendered = categories
     .map((category) => `<option value="${category.id}">${category.name}</option>`)
     .join("");
-  if (select.innerHTML !== rendered) select.innerHTML = rendered;
+  ["quick-category", "todo-add-category"].forEach((id) => {
+    const select = document.getElementById(id);
+    if (select.innerHTML !== rendered) select.innerHTML = rendered;
+  });
 }
 
 // 목록이 그대로면 라벨을 다시 만들지 않는다. 통째로 새로 그리면 누른 라벨이
@@ -165,8 +169,8 @@ function groupElement(group, alwaysShowDone = false) {
   metaNode.className = "group-meta";
   metaNode.textContent = meta;
   summary.append(name, metaNode);
-  // 미분류는 위 빠른 추가 폼이 담당하므로 워크스페이스 카드에만 붙인다
-  if (group.kind === GROUP_BY_WORKSPACE) summary.appendChild(groupAddButton(group));
+  // 미분류에도 붙인다 — 워크스페이스를 만들 값 없는 자잘한 건은 여기서 끝낸다
+  if (group.kind !== GROUP_BY_CATEGORY) summary.appendChild(groupAddButton(group));
   details.appendChild(summary);
 
   group.todos
@@ -177,7 +181,8 @@ function groupElement(group, alwaysShowDone = false) {
   return details;
 }
 
-// 카드에서 그 워크스페이스로 바로 할일 추가. 카테고리는 서버가 워크스페이스에서 가져온다
+// 카드에서 바로 할일 추가. 워크스페이스 카드면 카테고리는 서버가 그쪽에서 가져오고,
+// 미분류 카드면 팝업에서 고른 카테고리로 넣는다
 function groupAddButton(group) {
   const button = document.createElement("button");
   button.className = "group-add";
@@ -201,6 +206,9 @@ function openAddDialog(group) {
   addDialogFields().forEach((field) => {
     field.value = "";
   });
+  // 워크스페이스가 카테고리를 결정하므로 미분류일 때만 고르게 한다
+  document.getElementById("todo-add-category-field").hidden =
+    group.kind !== UNASSIGNED_KIND;
   const dialog = document.getElementById("todo-add-modal");
   if (!dialog.open) dialog.showModal();
   document.getElementById("todo-add-title").focus();
@@ -372,11 +380,15 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
 document.getElementById("todo-add-form").addEventListener("submit", (event) => {
   event.preventDefault();
   const [title, precondition, note] = addDialogFields();
-  const workspaceId = addTarget?.id;
+  // 미분류는 워크스페이스가 없어 카테고리를 직접 실어야 한다 (서버가 둘 중 하나를 요구한다)
+  const scope =
+    addTarget?.kind === UNASSIGNED_KIND
+      ? { category_id: Number(document.getElementById("todo-add-category").value) }
+      : { workspace_id: addTarget?.id };
   run(async () => {
     await api.createTodo({
       title: title.value,
-      workspace_id: workspaceId,
+      ...scope,
       precondition: precondition.value || null,
       note: note.value || null,
     });

@@ -204,7 +204,7 @@
     <div id="session-modal-body"></div>
   </dialog>
 
-  <!-- 워크스페이스 카드의 + 버튼이 여는 추가 폼. 세 값을 한 번에 받는다 —
+  <!-- 카드의 + 버튼이 여는 추가 폼. 세 값을 한 번에 받는다 —
        prompt 를 연달아 띄우면 브라우저가 둘째부터 억제해 제목만 물어본 꼴이 된다 -->
   <dialog id="todo-add-modal">
     <form method="dialog"><button class="modal-close" aria-label="닫기">×</button></form>
@@ -213,6 +213,11 @@
       <div class="field">
         <label for="todo-add-title">제목</label>
         <input id="todo-add-title" required>
+      </div>
+      <!-- 미분류에 넣을 때만 보인다. 워크스페이스에 넣으면 카테고리는 그쪽을 따라간다 -->
+      <div class="field" id="todo-add-category-field" hidden>
+        <label for="todo-add-category">카테고리</label>
+        <select id="todo-add-category"></select>
       </div>
       <div class="field">
         <label for="todo-add-precondition">착수 조건</label>
