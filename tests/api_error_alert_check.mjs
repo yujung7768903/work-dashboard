@@ -2,6 +2,7 @@
 import assert from "node:assert";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { bootKorean } from "./i18n_boot.mjs";
 
 const API = pathToFileURL(
   path.join(import.meta.dirname, "..", "static", "js", "api.js")
@@ -10,6 +11,7 @@ const API = pathToFileURL(
 const alerts = [];
 globalThis.alert = (message) => alerts.push(message);
 
+await bootKorean();
 const api = await import(API);
 
 // 변경 요청 실패는 창으로 알린다 — 화면이 그대로면 사용자가 실패를 모른다

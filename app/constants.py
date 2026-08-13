@@ -12,10 +12,12 @@ UNASSIGNED_LABEL = "미분류"
 SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "스킬 개발", "프로세스 개선")
 
 # 화면 언어. 문구는 코드가 아니라 static/lang/<코드>.json 에 키-값으로 모여 있고,
-# 한국어(ko)도 다른 언어와 같은 자격의 파일이다. 코드 목록이 화면과 갈라지거나 번역이
-# 빠지면 tests/test_language.py 가 잡는다.
+# 네 파일이 서로 같은 자격이다. 코드 목록이 화면과 갈라지거나 번역이 빠지면
+# tests/test_language.py 가 잡는다.
+# 기본값·폴백은 영어다 — 이 대시보드를 공개로 열 것이므로, 설정을 못 읽거나 번역이
+# 빠졌을 때 처음 보는 사람이 읽을 수 있는 쪽으로 떨어져야 한다.
 # CLI 출력·훅 주입 블록은 아직 한국어 고정 (README '초기 설정 (⑤) > 화면 언어' 참고)
-LANGUAGES = ("ko", "en", "ja", "zh")
+LANGUAGES = ("en", "ko", "ja", "zh")
 DEFAULT_LANGUAGE = LANGUAGES[0]
 LANGUAGE_KEY = "language"  # meta 테이블 키
 

@@ -20,7 +20,7 @@
   "common.todos": "Todos",
   "common.worktree": "Worktrees",
   "common.precondition": "Start condition",
-  "common.preconditionHint": "Put one sentence that is clearly true or false on the first line. Refer to another todo as #id, and if a command can verify it, put '확인: <command>' on the second line. Todos with a condition are excluded from autorun.",
+  "common.preconditionHint": "Put one sentence that is clearly true or false on the first line. Refer to another todo as #id, and if a command can verify it, put 'Check: <command>' on the second line. Todos with a condition are excluded from autorun.",
   "app.title": "Work Dashboard",
   "nav.board": "Board",
   "nav.workspace": "Workspaces",

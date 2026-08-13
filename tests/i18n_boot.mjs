@@ -8,5 +8,5 @@ const KOREAN = new URL("../static/lang/ko.json", import.meta.url);
 export async function bootKorean() {
   const korean = JSON.parse(await readFile(KOREAN, "utf8"));
   const i18n = await import("../static/js/i18n.js");
-  i18n.useDictionary(korean);
+  i18n.useDictionary(korean, {}, "ko");
 }

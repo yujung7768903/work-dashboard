@@ -162,8 +162,8 @@ class PreconditionAddFormTest(unittest.TestCase):
         self.assertEqual(korean["common.preconditionHint"], PRECONDITION_HINT)
         self.assertIn("common.preconditionHint", INDEX.read_text(encoding="utf-8"))
         self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
-        # 예시는 placeholder 로 보여 준다 (개행은 &#10;). '확인:' 은 파서가 읽는
-        # 약속어라 번역하지 않는다 — 옮기면 그 줄이 조건 확인 명령으로 안 잡힌다
+        # 예시는 placeholder 로 보여 준다 (개행은 &#10;). CLI 도움말과 같은 상수를
+        # 그대로 쓰므로 이 자리만 한국어로 남는다
         self.assertIn(
             PRECONDITION_EXAMPLE.replace("\n", "&#10;"), INDEX.read_text(encoding="utf-8")
         )

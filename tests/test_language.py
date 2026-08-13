@@ -181,19 +181,16 @@ class DictionaryTest(unittest.TestCase):
                     )
 
     def test_nothing_is_left_untranslated(self):
-        """복사만 해두고 번역을 안 한 항목 찾기. 사람 이름·고유명사는 같아도 되지만
-        문장이 통째로 한국어면 그건 빠뜨린 것이다"""
-        korean = dictionary(DEFAULT_LANGUAGE)
+        """복사만 해두고 번역을 안 한 항목 찾기. 한국어 사전에서 베껴 오면 한글이
+        그대로 남으므로, ko 말고 다른 사전에 한글이 있으면 빠뜨린 것이다"""
         for code in LANGUAGES:
-            if code == DEFAULT_LANGUAGE:
+            if code == "ko":
                 continue
-            same = [
-                key
-                for key, value in dictionary(code).items()
-                if re.search(r"[가-힣]", value) and value == korean[key]
+            hangul = [
+                key for key, value in dictionary(code).items() if re.search(r"[가-힣]", value)
             ]
             with self.subTest(code=code):
-                self.assertEqual(same, [], f"{code}.json 이 한국어 그대로인 키: {same}")
+                self.assertEqual(hangul, [], f"{code}.json 에 한글이 남은 키: {hangul}")
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@
   "common.todos": "待办",
   "common.worktree": "工作树",
   "common.precondition": "开始条件",
-  "common.preconditionHint": "第一行写一句真假分明的话。若条件是另一个待办，写成 #id；若可用命令确认，第二行写 '확인: <命令>'。带条件的待办不会进入自主执行候选。",
+  "common.preconditionHint": "第一行写一句真假分明的话。若条件是另一个待办，写成 #id；若可用命令确认，第二行写 '确认: <命令>'。带条件的待办不会进入自主执行候选。",
   "app.title": "工作面板",
   "nav.board": "看板",
   "nav.workspace": "工作区",

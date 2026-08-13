@@ -17,7 +17,7 @@ async function request(method, path, body) {
     // 문장은 사전에 없으므로 원문 그대로 뜬다 (README '초기 설정 (⑤) > 화면 언어' 참고)
     const error = new Error(
       payload?.error
-        ? fromKorean(payload.error)
+        ? await fromKorean(payload.error)
         : t("error.requestFailed", { status: response.status })
     );
     // 서버가 확인을 요구한 것과 진짜 실패를 호출부가 구분할 수 있게 넘긴다

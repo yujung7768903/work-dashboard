@@ -2,6 +2,7 @@
 import assert from "node:assert";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { bootKorean } from "./i18n_boot.mjs";
 
 const API = pathToFileURL(
   path.join(import.meta.dirname, "..", "static", "js", "api.js")
@@ -20,6 +21,7 @@ globalThis.fetch = async (url, options) => {
   return { ok: true, status: 200, json: async () => ({ deleted: 7 }) };
 };
 
+await bootKorean();
 const api = await import(API);
 
 // 확인이 필요한 응답은 confirm 플래그를 에러에 실어 호출부로 넘긴다
