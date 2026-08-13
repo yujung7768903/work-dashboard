@@ -37,6 +37,7 @@ from app.constants import (
     USAGE_TRACK_MIN_SAMPLES,
     USAGE_TREND_DAYS,
     USAGE_WARN_PCT,
+    USAGE_WEEK_BLIND_SECONDS,
     USAGE_WEEK_LIMIT,
     USAGE_WINDOWS,
     WEEK_SECONDS,
@@ -198,8 +199,18 @@ def _track_key(rows):
 
 
 def _week_row(row, current):
-    """주차 한 칸. 기간은 초기화 시각에서 7일을 되짚어 잡는다"""
+    """주차 한 칸. 기간은 초기화 시각에서 7일을 되짚어 잡는다
+
+    최고치에 관측 공백을 같이 실어 보낸다 — 표본은 상태줄이 그려질 때만 쌓이므로,
+    창이 닫히기 한참 전이 마지막 관측이면 그 최고치는 실제보다 낮다. 그때는 정확한
+    값이 아니라 하한이라고 밝혀야 낮은 주차가 "적게 썼다"로 잘못 읽히지 않는다
+    """
     reset_at = int(row["reset_at"])
+    in_progress = reset_at > current
+    # 열린 창은 아직 끝나지 않았다. 초기화 시각까지를 공백으로 세면 이번 주차가 늘
+    # 관측 부족으로 보이므로 지금까지만 센다
+    observed_until = current if in_progress else reset_at
+    blind_seconds = max(0, observed_until - int(row["last_ts"]) // MS_PER_SECOND)
     return {
         "reset_at": reset_at,
         "starts_at": reset_at - WEEK_SECONDS,
@@ -207,7 +218,9 @@ def _week_row(row, current):
         "samples": row["samples"],
         "first_ts": row["first_ts"],
         "last_ts": row["last_ts"],
-        "in_progress": reset_at > current,
+        "in_progress": in_progress,
+        "blind_seconds": blind_seconds,
+        "peak_is_floor": blind_seconds > USAGE_WEEK_BLIND_SECONDS,
     }
 
 

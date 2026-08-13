@@ -135,6 +135,10 @@ USAGE_WARN_PCT = 70
 USAGE_CRITICAL_PCT = 90
 # /usage 가 보여주는 창 중 사이드카에 남는 두 개. 나머지는 MISSING_WINDOW_LABELS 로 알린다
 USAGE_WINDOWS = (("five_hour", "현재 세션 (5시간)"), ("seven_day", "이번 주 (전체 모델)"))
+# 주차 최고치를 정확한 값으로 볼지 하한으로 볼지 가르는 관측 공백. 7일 %는 창 안에서
+# 계속 오르기만 하므로 마지막 관측이 창 끝에서 멀수록 최고치가 실제보다 낮다. 상태줄이
+# 그려질 때만 표본이 쌓이는데 반나절을 통째로 못 봤으면 그 사이 얼마가 올랐는지 모른다
+USAGE_WEEK_BLIND_SECONDS = 12 * 3600
 MISSING_WINDOW_LABELS = ("이번 주 (Sonnet 전용)", "모델별 주간 창")
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 COST_FIELD = "estimated_cost_usd"

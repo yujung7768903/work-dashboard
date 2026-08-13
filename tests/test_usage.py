@@ -6,7 +6,12 @@ import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from app.constants import USAGE_SAMPLE_MIN_GAP_MS, USAGE_TREND_DAYS, WEEK_SECONDS
+from app.constants import (
+    USAGE_SAMPLE_MIN_GAP_MS,
+    USAGE_TREND_DAYS,
+    USAGE_WEEK_BLIND_SECONDS,
+    WEEK_SECONDS,
+)
 from app.services import usage
 from tests.support import temp_db
 
@@ -238,6 +243,39 @@ class WeeklyWindowTest(unittest.TestCase):
         result = usage.weekly_windows(con, cost_path=_cost_file([]))
         self.assertEqual(len(result["tracks"]), 2)
         self.assertTrue(result["multi_account"])
+
+    def test_peak_becomes_a_floor_when_the_window_closed_unobserved(self):
+        """7일 %는 창 안에서 단조 증가한다. 창이 닫히기 한참 전이 마지막 관측이면 그
+        주차의 최고치는 실제보다 낮다 — 정확한 값인 척하지 않고 하한으로 표시한다"""
+        con = temp_db()
+        reset = int(time.time()) - 3600  # 이미 닫힌 창
+        blind = USAGE_WEEK_BLIND_SECONDS + 3600
+        for offset in range(3):
+            _sample(con, (reset - blind - offset) * MS, 40.0, reset)
+        week = usage.weekly_windows(con, cost_path=_cost_file([]))["tracks"][0]["weeks"][-1]
+        self.assertTrue(week["peak_is_floor"])
+        self.assertGreater(week["blind_seconds"], USAGE_WEEK_BLIND_SECONDS)
+
+    def test_peak_is_exact_when_observed_up_to_the_reset(self):
+        con = temp_db()
+        reset = int(time.time()) - 3600
+        for offset in range(3):
+            _sample(con, (reset - 60 - offset) * MS, 40.0, reset)
+        week = usage.weekly_windows(con, cost_path=_cost_file([]))["tracks"][0]["weeks"][-1]
+        self.assertFalse(week["peak_is_floor"])
+        self.assertLess(week["blind_seconds"], USAGE_WEEK_BLIND_SECONDS)
+
+    def test_open_window_measures_the_gap_from_now_not_the_reset(self):
+        """진행 중인 주차는 아직 창이 안 닫혔다. 초기화 시각까지를 공백으로 세면
+        이번 주차가 늘 '관측 부족'으로 보인다 — 지금까지만 센다"""
+        con = temp_db()
+        reset = int(time.time()) + 3 * 86400  # 아직 열린 창
+        for offset in range(3):
+            _sample(con, (int(time.time()) - 60 - offset) * MS, 40.0, reset)
+        week = usage.weekly_windows(con, cost_path=_cost_file([]))["tracks"][0]["weeks"][-1]
+        self.assertTrue(week["in_progress"])
+        self.assertFalse(week["peak_is_floor"])
+        self.assertLess(week["blind_seconds"], 300)
 
     def test_track_below_sample_floor_is_dropped(self):
         con = temp_db()

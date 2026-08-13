@@ -378,6 +378,16 @@ function renderWeekly(weekly) {
     headRow("주간 한도 · 주차 비교", "초기화 직전 도달치", [legendRow(WEEK_PCT_SERIES)])
   );
   tracks.forEach((track) => box.appendChild(weekTrack(track)));
+  // 낮은 주차가 "적게 썼다" 로 읽히면 안 된다. 안 보고 있었을 수도 있다는 걸 밝힌다
+  if (tracks.some((track) => track.weeks.some((week) => week.peak_is_floor))) {
+    box.appendChild(
+      tag(
+        "p",
+        "u-caption",
+        "≥ 는 창이 닫히기 전 마지막 실측 이후를 못 봤다는 뜻 — 실제 최고치는 더 높을 수 있음"
+      )
+    );
+  }
   if (weekly.multi_account) {
     // 계정 이름은 어디에도 없다. 초기화 시각이 유일한 식별자라 그걸로 가른다
     box.appendChild(
@@ -436,8 +446,8 @@ function weekTable(tracks) {
             window,
             label,
             weekSpan(week),
-            `${Math.round(week.peak_pct)}%`,
-            `${week.samples}개`,
+            peakText(week),
+            week.peak_is_floor ? `${week.samples}개 · ${blindText(week)} 공백` : `${week.samples}개`,
           ])
         );
       });
@@ -515,7 +525,19 @@ export function weekLabels(weeks) {
 
 // 툴팁 꼬리말. 진행 중 주차는 값이 아직 자라는 중이라 그 사실을 붙인다
 function weekFoot(week) {
-  return `${weekSpan(week)}${week.in_progress ? " · 진행 중" : ""}`;
+  const blind = week.peak_is_floor ? ` · ${blindText(week)} 못 봄` : "";
+  return `${weekSpan(week)}${week.in_progress ? " · 진행 중" : ""}${blind}`;
+}
+
+// 표본은 상태줄이 그려질 때만 쌓인다. 창이 닫히기 전 마지막 관측 이후를 못 봤으면
+// 그 사이 얼마가 더 올랐는지 알 수 없으므로, 최고치를 정확한 값처럼 보이면 안 된다
+function blindText(week) {
+  const hours = Math.round(week.blind_seconds / 3600);
+  return hours >= 24 ? `${Math.round(hours / 24)}일` : `${hours}시간`;
+}
+
+function peakText(week) {
+  return `${week.peak_is_floor ? "≥" : ""}${Math.round(week.peak_pct)}%`;
 }
 
 // 주 경계는 자정이 아니라 초기화 시각이다. 날짜만 적으면 하루가 겹쳐 보인다
