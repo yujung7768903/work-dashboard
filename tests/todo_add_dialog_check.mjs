@@ -3,6 +3,7 @@
 // prompt 를 아예 호출하지 않는 것도 함께 본다.
 // 실행: node tests/todo_add_dialog_check.mjs (tests/test_todo_add_dialog.py 가 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 const GROUP = { id: 7, kind: "workspace", name: "작업 대시보드", todos: [], status: "doing" };
 const UNASSIGNED = { id: null, kind: "unassigned", name: "미분류", todos: [] };
@@ -77,6 +78,7 @@ globalThis.location = { pathname: "/board" };
 globalThis.window = { addEventListener() {}, location: globalThis.location };
 globalThis.history = { pushState() {}, replaceState() {} };
 
+await bootKorean();
 const board = await import("../static/js/board.js");
 await board.renderBoard();
 

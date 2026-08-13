@@ -1,6 +1,8 @@
 // SVG 차트. 라이브러리는 넣지 않는다 — 이 대시보드에 필요한 형태가 셋뿐이다.
 // 색은 반드시 CSS 클래스로 준다. getComputedStyle 로 변수를 읽어 SVG 속성에 넣으면
 // 테마가 바뀔 때 갱신되지 않는다.
+import { t } from "./i18n.js";
+
 const NS = "http://www.w3.org/2000/svg";
 const WIDTH = 620;
 // 플롯 여백도 CSS 와 같은 4px 격자 위에 둔다. left 는 축 라벨 폭이 정하는 값
@@ -25,7 +27,7 @@ const CJK_START = 0x2e80; // 이보다 크면 전각으로 본다 (한글·한�
 const END_LABEL_MIN_GAP = 12; // 끝점 라벨 두 줄이 겹치지 않는 최소 간격
 const CURSOR_DASH = "3 3";
 const TIP_GAP = 12; // 기준선과 툴팁 사이. 0 이면 툴팁이 선을 덮어 어디를 짚었는지 흐려진다
-const TOTAL_LABEL = "합계";
+const TOTAL_LABEL = t("common.total");
 const PERCENT_MAX = 100;
 // 한도 %는 축 상한이 100 이어야 한다. 최대값에 맞춰 늘리면 87% 막대가 꽉 찬 것처럼 보인다
 export const PCT_TICKS = [0, 25, 50, 75, 100];

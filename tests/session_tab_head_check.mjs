@@ -2,6 +2,7 @@
 // 세션 줄에서 열었을 때는 예전대로 워크스페이스+카테고리가 남아야 한다 (분류 UI 의 맥락).
 // 실행: node tests/session_tab_head_check.mjs (tests/test_session_tab_head.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 function node(tag) {
   const self = {
@@ -61,6 +62,7 @@ const PAYLOAD = {
 globalThis.fetch = (url) =>
   Promise.resolve({ ok: true, json: () => Promise.resolve(PAYLOAD[url]) });
 
+await bootKorean();
 const { openDetail } = await import("../static/js/sessions.js");
 
 // 팝업 본문은 [탭바, 개요, 세션, 워크트리] 네 덩어리. 각 탭의 첫 dlg-title 을 뽑아 비교한다

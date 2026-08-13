@@ -18,8 +18,8 @@ from app.services import serve, worktrees
 HERE = pathlib.Path(__file__).resolve().parent
 WORKTREES_JS = HERE.parent / "static" / "js" / "worktrees.js"
 MENU_CHECK = HERE / "worktree_serve_menu_check.mjs"
-# serveItems 가 메뉴 항목을 만드는 모양: item("실행", "start", ...)
-MENU_ITEM = re.compile(r'item\("[^"]+",\s*"(\w+)"')
+# serveItems 가 메뉴 항목을 만드는 모양: item(t("실행"), "start", ...)
+MENU_ITEM = re.compile(r'item\(t\("[^"]+"\),\s*"(\w+)"')
 
 
 class PortTest(unittest.TestCase):

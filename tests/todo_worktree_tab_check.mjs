@@ -2,6 +2,7 @@
 // 병합 시각으로(삭제 시각이 아니라) 보이는지 확인한다.
 // 실행: node tests/todo_worktree_tab_check.mjs (tests/test_todo_worktree_tab.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 function node(tag) {
   const self = {
@@ -78,6 +79,7 @@ const PAYLOAD = {
 globalThis.fetch = (url) =>
   Promise.resolve({ ok: true, json: () => Promise.resolve(PAYLOAD[url]) });
 
+await bootKorean();
 const { openDetail } = await import("../static/js/sessions.js");
 
 body.children = [];

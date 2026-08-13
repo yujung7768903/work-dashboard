@@ -1,6 +1,7 @@
 // 보드 탭 렌더. 카테고리 라벨 필터, 빠른 추가, 상태 토글, 완료 워크스페이스 이동
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
+import { t } from "./i18n.js";
 import { renderBoardTab, run } from "./main.js";
 import { startAutorunPolling } from "./autorun.js";
 import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
@@ -10,10 +11,10 @@ const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
 const GROUP_BY_WORKSPACE = "workspace";
 const GROUP_BY_CATEGORY = "category";
 const UNASSIGNED_KIND = "unassigned";
-const UNASSIGNED_LABEL = "미분류";
+const UNASSIGNED_LABEL = t("common.unassigned");
 const DONE = "done";
-const ALL_CATEGORIES = { id: null, name: "전체" };
-const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
+const ALL_CATEGORIES = { id: null, name: t("board.allCategories") };
+const NO_COMPLETED = t("board.noCompleted");
 
 // null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
 let activeCategoryId = null;
@@ -69,10 +70,16 @@ function inActiveCategory(group) {
   return activeCategoryId === null || group.category_id === activeCategoryId;
 }
 
+// 미분류 카드의 이름은 서버가 한국어로 내려준다 — 사용자가 지은 이름이 아니라
+// 화면 문구이므로 사전에서 가져온다. 워크스페이스 이름은 사용자 데이터라 그대로 쓴다
+function groupName(group) {
+  return group.kind === UNASSIGNED_KIND ? UNASSIGNED_LABEL : group.name;
+}
+
 function renderNext(next) {
   const target = document.getElementById("next-text");
   if (!next) {
-    target.textContent = "없음";
+    target.textContent = t("board.nextNone");
     return;
   }
   const scope = next.workspace ? next.workspace.name : UNASSIGNED_LABEL;
@@ -164,7 +171,7 @@ function groupElement(group, alwaysShowDone = false) {
     .join("  ");
   const name = document.createElement("span");
   name.className = "group-name";
-  name.textContent = group.name;
+  name.textContent = groupName(group);
   const metaNode = document.createElement("span");
   metaNode.className = "group-meta";
   metaNode.textContent = meta;
@@ -187,7 +194,7 @@ function groupAddButton(group) {
   const button = document.createElement("button");
   button.className = "group-add";
   button.innerHTML = PLUS_SVG;
-  button.title = `${group.name} 에 할일 추가`;
+  button.title = t("board.addTodoTitle", { name: groupName(group) });
   button.addEventListener("click", (event) => {
     // summary 클릭은 카드를 접으므로 기본 동작까지 막는다
     event.preventDefault();
@@ -202,7 +209,9 @@ let addTarget = null;
 
 function openAddDialog(group) {
   addTarget = group;
-  document.getElementById("todo-add-scope").textContent = `${group.name}에 할일 추가`;
+  document.getElementById("todo-add-scope").textContent = t("board.addTodoScope", {
+    name: groupName(group),
+  });
   addDialogFields().forEach((field) => {
     field.value = "";
   });
@@ -230,12 +239,12 @@ function todoElement(todo) {
   if (todo.autorun_locked) {
     // 원본 상태(done)는 그대로 두고 화면에는 남은 동작(검토 대기)을 보여준다 —
     // 안 그러면 자율 수행이 끝난 할일이 그냥 '완료'로 보여 아직 검토 전인 걸 놓친다
-    statusButton.textContent = "검토 대기";
+    statusButton.textContent = t("common.review");
     statusButton.disabled = true;
-    statusButton.title = "자율 수행 검토 대기 — 자율 수행 패널에서 확인 처리할 것";
+    statusButton.title = t("board.reviewLockedHint");
   } else {
     statusButton.textContent = todo.status;
-    statusButton.title = "상태 순환 (todo → doing → done)";
+    statusButton.title = t("board.statusCycle");
   }
   statusButton.addEventListener("click", (event) => {
     // 행 전체가 팝업을 여는 클릭이라 버튼은 거기까지 올라가지 않게 막는다
@@ -292,7 +301,7 @@ function todoMenu(todo) {
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "⋮";
-  toggle.title = "라벨 수정 · 삭제";
+  toggle.title = t("board.todoMenu");
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
@@ -309,7 +318,7 @@ function todoMenuItems(todo) {
   items.className = "ws-menu-items";
   if (labelMenuTodoId === todo.id) {
     items.append(
-      menuItem("← 라벨 수정", () => {
+      menuItem(t("board.labelBack"), () => {
         labelMenuTodoId = null;
         run(renderBoard);
       }),
@@ -318,14 +327,14 @@ function todoMenuItems(todo) {
     return items;
   }
   items.append(
-    menuItem("라벨 수정", () => {
+    menuItem(t("board.labelEdit"), () => {
       labelMenuTodoId = todo.id;
       run(renderBoard);
     }),
-    menuItem("삭제", () =>
+    menuItem(t("common.delete"), () =>
       run(async () => {
         openMenuTodoId = null;
-        if (confirm(`"${todo.title}" 삭제할까요?`)) {
+        if (confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
           await api.deleteTodo(todo.id);
         }
         await renderBoard();
@@ -358,7 +367,7 @@ function labelToggles(todo) {
 // 라벨을 아직 하나도 안 만들었으면 빈 메뉴가 열려 고장처럼 보인다. 어디서 만드는지 알려준다
 function emptyLabelHint() {
   const hint = document.createElement("button");
-  hint.textContent = "설정 탭에서 먼저 만드세요";
+  hint.textContent = t("board.noLabels");
   hint.disabled = true;
   return hint;
 }

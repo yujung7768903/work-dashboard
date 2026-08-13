@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.constants import (
     HISTORY_DAY_CHOICES,
+    LANGUAGES,
     PRECONDITION_HINT,
     SESSION_ID_ENV,
     STATUS_DOING,
@@ -19,6 +20,7 @@ from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
+from app.repositories import settings as settings_repo
 from app.repositories import workspaces as workspace_repo
 from app.repositories import autorun as autorun_repo
 from app.services import (
@@ -237,6 +239,10 @@ def _build_parser():
     onboard = sub.add_parser("onboard", help="초기 설정 상태")
     onboard.add_argument("--skip", action="store_true", help="자동 분류 거절. 다시 묻지 않음")
     onboard.set_defaults(handler=_cmd_onboard)
+
+    language_cmd = sub.add_parser("language", help="화면 언어 (인자 없으면 현재 값)")
+    language_cmd.add_argument("code", nargs="?", choices=LANGUAGES)
+    language_cmd.set_defaults(handler=_cmd_language)
 
     usage_cmd = sub.add_parser("usage", help="한도 사용률과 토큰 추이")
     _add_json_flag(usage_cmd)
@@ -661,6 +667,13 @@ def _cmd_onboard(con, args):
         print("자동 분류를 하지 않습니다. 초기 설정 안내가 다시 뜨지 않습니다.")
         return
     print("초기 설정 필요" if session_link.needs_onboarding(con) else "초기 설정 완료 또는 거절됨")
+
+
+def _cmd_language(con, args):
+    """초기 설정 때 물어본 언어를 여기 적는다. 웹 설정 탭과 같은 값을 본다"""
+    if args.code:
+        settings_repo.set_language(con, args.code)
+    print(settings_repo.language(con))
 
 
 def _cmd_usage(con, args):
