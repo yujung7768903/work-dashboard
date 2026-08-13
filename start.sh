@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 LOG_KEEP_DAYS=7
 
 mkdir -p logs
-# ponytail: mtime 기준. 아직 쓰이고 있는 로그(오래 떠 있는 서버)는 mtime 이 갱신돼 남는다
+# 의도적 단순화 — mtime 기준. 아직 쓰이는 로그(오래 떠 있는 서버)는 mtime 이 갱신돼 남는다
 find logs -maxdepth 1 -name '*.log' -mtime "+$LOG_KEEP_DAYS" -delete
 
 log="logs/$(date +%F).log"

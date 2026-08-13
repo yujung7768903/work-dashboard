@@ -1,8 +1,9 @@
 """사용량 집계. /usage 가 보여주는 한도 창과 일별 토큰 추이를 파일에서 읽어 모은다
 
 한도 %는 Claude Code 가 statusline 페이로드로만 넘기는 값이다(훅 페이로드에는 rate_limits
-가 없다). 그래서 token-optimizer statusline 이 떨어뜨린 사이드카 파일을 읽는다. 값이
-statusline 이 그려질 때만 갱신된다는 뜻이라, 세션이 조용한 동안 낡는 건 정상이다.
+가 없다). 그래서 `dash.py statusline` 이 그려질 때 record_limits() 로 사이드카에 떨어뜨려
+두고 여기서는 그 파일만 읽는다. 값이 statusline 이 그려질 때만 갱신된다는 뜻이라, 세션이
+조용한 동안 낡는 건 정상이다.
 
 토큰 추이는 트랜스크립트(500MB) 대신 cost 로그(수백KB)에서 뽑는다. 요청마다 원본
 트랜스크립트를 파싱하면 응답이 초 단위로 늘어진다.
@@ -23,6 +24,7 @@ from app.constants import (
     MISSING_WINDOW_LABELS,
     MODEL_FAMILIES,
     MODEL_FAMILY_OTHER,
+    RATE_LIMITS_KEY,
     RATE_LIMITS_PATH,
     TOKEN_FIELDS,
     USAGE_CRITICAL_PCT,
@@ -50,6 +52,34 @@ TIER_KEY = "rateLimitTier"
 LEVEL_OK, LEVEL_WARN, LEVEL_CRITICAL = "ok", "warn", "critical"
 COST_DECIMALS = 2
 PCT_DECIMALS = 1
+
+
+def record_limits(raw, limits_path=RATE_LIMITS_PATH):
+    """statusline 페이로드(JSON 한 덩어리)에서 한도 %만 떼어 사이드카에 남긴다
+
+    한도 %가 실려오는 곳이 statusline 페이로드뿐이라, 상태줄이 그려질 때 주워두지 않으면
+    화면에서는 영영 볼 수 없다. 페이로드에는 전사·경로 등 다른 값도 있으므로 rate_limits
+    키 하나만 꺼낸다. 못 읽거나 그 키가 없으면 아무것도 쓰지 않고 False — 상태줄은 사용량
+    때문에 깨지면 안 된다
+    """
+    try:
+        payload = json.loads(raw or "")
+    except ValueError:
+        return False
+    limits = payload.get(RATE_LIMITS_KEY) if isinstance(payload, dict) else None
+    if not isinstance(limits, dict):
+        return False
+    body = {**limits, "timestamp": _epoch_ms(), "source": "statusline"}
+    try:
+        os.makedirs(os.path.dirname(limits_path) or ".", exist_ok=True)
+        # 같은 파일을 화면이 동시에 읽는다. 덮어쓰는 중간 상태를 보이지 않게 rename 으로 바꾼다
+        temp = f"{limits_path}.tmp"
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(body, handle)
+        os.replace(temp, limits_path)
+    except OSError:
+        return False
+    return True
 
 
 def snapshot(

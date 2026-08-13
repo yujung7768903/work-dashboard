@@ -61,7 +61,7 @@
     css/app.css
     js/  api.js  board.js  workspace.js  categories.js  dnd.js  main.js
   tests/                     계층별 테스트
-  docs/superpowers/specs/2026-07-29-work-dashboard-design.md
+  docs/specs/2026-07-29-work-dashboard-design.md
 ~/.claude/work-dashboard/dash.db   # DB. 코드와 분리 (scope-guard 전례)
 ```
 

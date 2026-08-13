@@ -10,7 +10,7 @@
 | 항목 | 07-29 설계 | 2026-07-30 실제 | 남은 일 |
 | --- | --- | --- | --- |
 | sessions·session_todos 테이블 | 추가 | 적용 | 없음 |
-| dash_hook.py 4개 이벤트 | 등록 예정 | `settings.json` 에 4건 등록됨 (`/home/ujung/work/work-dashboard/hooks/dash_hook.py`) | 없음 |
+| dash_hook.py 4개 이벤트 | 등록 예정 | `settings.json` 에 4건 등록됨 (`<메인 체크아웃>/hooks/dash_hook.py`) | 없음 |
 | 컨텍스트 주입 (분류/분류 전) | 설계 | 동작 중 | 없음 |
 | scope-guard `scope_db.py` → dash.db 어댑터 | 교체 | 교체됨 (`scope_db.py.bak` 보존) | 없음 |
 | scope-guard `session-inject.sh` 훅 제거 | 제거 | `settings.json` 에 없음 | 없음 |

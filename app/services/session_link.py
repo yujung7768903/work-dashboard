@@ -256,7 +256,11 @@ def todo_detail(con, todo_id):
 
 
 def scope_guard_block(con, jira_id):
-    """scope-guard 가 쓰던 블록 형식 유지. SKILL.md 를 고치지 않기 위함"""
+    """Jira 키 하나로 그 워크스페이스의 범위를 세션에 주입할 블록. `dash.py scope-block` 이 쓴다
+
+    브랜치가 이슈에 일대일로 대응하는 흐름 전용이라 세션 분류 블록(render_context)과 따로
+    둔다 — 이쪽은 세션이 아니라 브랜치가 열쇠다
+    """
     normalized = (jira_id or "").upper()
     workspace = workspace_repo.get_by_jira(con, normalized)
     if not workspace:

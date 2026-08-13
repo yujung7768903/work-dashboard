@@ -23,7 +23,7 @@
 ### D2. 트리거는 기존 5분 크론에 한 줄 추가. 데몬 안 만듦
 
 ```cron
-*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autorun-tick >/dev/null 2>&1
+*/5 * * * * /usr/bin/python3 <메인 체크아웃>/dash.py autorun-tick >/dev/null 2>&1
 ```
 
 근거 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 잡을 띄우고 있음. 두 번째 상시 프로세스는 관리·감시 비용만 늘림. tick 은 판정만 하고 조건이 안 맞으면 아무것도 안 하고 끝남.

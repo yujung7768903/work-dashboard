@@ -229,6 +229,12 @@ def _build_parser():
     )
     status_line.set_defaults(handler=_cmd_statusline)
 
+    scope = sub.add_parser(
+        "scope-block", help="Jira 브랜치용 범위 블록. 세션 시작 훅에 물려 목표를 주입한다"
+    )
+    scope.add_argument("jira", help="Jira 이슈 키 (브랜치명에서 딴 값)")
+    scope.set_defaults(handler=_cmd_scope_block)
+
     scan = sub.add_parser("scan-history", help="초기 설정용 히스토리 요약 (세션당 한 줄)")
     scan.add_argument("--days", type=int, default=HISTORY_DAY_CHOICES[0])
     _add_json_flag(scan)
@@ -567,8 +573,12 @@ def _print_release(result):
 def _cmd_statusline(con, args):
     """상태줄용 한 줄. 보여줄 게 없으면 아무것도 찍지 않는다 — 빈 라벨이 폭만 잡아먹는다.
 
-    등록되지 않은 세션(훅이 아직 안 돌았거나 다른 프로젝트)에서도 조용히 끝난다
+    등록되지 않은 세션(훅이 아직 안 돌았거나 다른 프로젝트)에서도 조용히 끝난다.
+    stdin 으로 상태줄 페이로드가 들어오면 한도 %를 사이드카에 적립한다 — 그 값이 실려오는
+    곳이 여기뿐이라 지나가는 김에 주워두지 않으면 사용량 화면이 빈다
     """
+    if not sys.stdin.isatty():  # 파이프로 들어온 게 없으면 read() 가 막힌다
+        usage.record_limits(sys.stdin.read())
     session = session_repo.find(con, args.session)
     if not session:
         return
@@ -588,6 +598,15 @@ def _cmd_statusline(con, args):
         parts.append(f"+{len(todos) - 1}")
     if parts:
         print(" ".join(parts))
+
+
+def _cmd_scope_block(con, args):
+    """Jira 키로 그 워크스페이스의 배경·목적·목표·하위단계를 블록 하나로 찍는다.
+
+    브랜치 하나가 이슈 하나에 대응하는 흐름에서 쓴다 — 세션 시작 훅이 브랜치에서 키를
+    떼어 이 명령을 부르면 그 세션이 범위를 알고 시작한다
+    """
+    print(session_link.scope_guard_block(con, args.jira))
 
 
 def _linked_todos(con, claude_session_id):

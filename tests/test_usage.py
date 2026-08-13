@@ -76,6 +76,47 @@ class WindowTest(unittest.TestCase):
         self.assertGreater(payload["stale_seconds"], 3000)
 
 
+class RecordLimitsTest(unittest.TestCase):
+    """statusline 페이로드에서 한도 %만 사이드카로 떨어뜨린다 — 외부 도구 없이 자립"""
+
+    def _path(self):
+        return os.path.join(tempfile.mkdtemp(), "sub", "rate-limits.json")
+
+    def test_payload_becomes_a_readable_sidecar(self):
+        path = self._path()
+        raw = json.dumps(
+            {
+                "session_id": "s1",
+                "rate_limits": {
+                    "five_hour": {"used_percentage": 24, "resets_at": 111},
+                    "seven_day": {"used_percentage": 3, "resets_at": 222},
+                },
+            }
+        )
+        self.assertTrue(usage.record_limits(raw, limits_path=path))
+        with open(path, encoding="utf-8") as handle:
+            written = json.load(handle)
+        self.assertEqual(written["five_hour"]["used_percentage"], 24)
+        self.assertEqual(written["seven_day"]["resets_at"], 222)
+        self.assertIsInstance(written["timestamp"], int)
+        # 화면이 읽는 경로로 그대로 되돌아와야 의미가 있다
+        payload = usage.snapshot(temp_db(), limits_path=path, cost_path=_cost_file([]))
+        self.assertEqual([w["key"] for w in payload["windows"]], ["five_hour", "seven_day"])
+        self.assertFalse(payload["stale"])
+
+    def test_payloads_without_limits_write_nothing(self):
+        for label, raw in (
+            ("깨진 JSON", "{not json"),
+            ("빈 입력", ""),
+            ("키 없음", json.dumps({"session_id": "s1"})),
+            ("dict 아님", json.dumps({"rate_limits": []})),
+        ):
+            with self.subTest(label):
+                path = self._path()
+                self.assertFalse(usage.record_limits(raw, limits_path=path))
+                self.assertFalse(os.path.exists(path))
+
+
 class SampleTest(unittest.TestCase):
     def test_same_snapshot_is_not_stored_twice(self):
         con = temp_db()

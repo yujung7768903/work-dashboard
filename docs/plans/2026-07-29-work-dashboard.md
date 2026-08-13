@@ -1,6 +1,5 @@
 # 작업 대시보드 구현 계획
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 카테고리 > 워크스페이스 > 할일 > 하위할일 4계층 작업 관리 대시보드를 로컬 웹 + CLI 두 진입점으로 만든다.
 
@@ -3708,8 +3707,8 @@ static/               ES 모듈 프론트엔드 (번들러 없음)
 
 ## 설계 문서
 
-- 설계: `docs/superpowers/specs/2026-07-29-work-dashboard-design.md`
-- 구현 계획: `docs/superpowers/plans/2026-07-29-work-dashboard.md`
+- 설계: `docs/specs/2026-07-29-work-dashboard-design.md`
+- 구현 계획: `docs/plans/2026-07-29-work-dashboard.md`
 
 ## 아직 없는 것
 

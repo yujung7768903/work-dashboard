@@ -335,12 +335,12 @@ class SessionLinkTest(unittest.TestCase):
         self.assertIn("락 재설계", text)
 
     def test_unclassified_context_lists_catalog(self):
-        session_repo.register(self.con, SID, cwd="/home/ujung/work")
+        session_repo.register(self.con, SID, cwd="/home/user/work")
         text = session_link.render_context(self.con, SID)
         self.assertIn('state="unclassified"', text)
         self.assertIn("개발", text)
         self.assertIn("KT 동시성", text)
-        self.assertIn("/home/ujung/work", text)
+        self.assertIn("/home/user/work", text)
 
     def test_context_for_missing_session_is_empty(self):
         self.assertEqual(session_link.render_context(self.con, "gone"), "")

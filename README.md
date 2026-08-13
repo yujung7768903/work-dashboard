@@ -31,6 +31,9 @@ python3 server.py --host 0.0.0.0     # 폰에서 볼 때 (인증 없음, LAN 노
 python3 -m tests
 ```
 
+파이썬은 표준 라이브러리만 쓰므로 설치할 것이 없다. 화면 동작 검증(`tests/*_check.mjs`)만
+`node` 를 부르고, 없으면 그 테스트들은 자동으로 건너뛴다.
+
 ## 프로젝트 구조
 
 ```text
@@ -102,7 +105,7 @@ work-dashboard/
 │   ├── test_*.py                    # 계층별 테스트
 │   └── *_check.mjs                  # 화면 동작 검증 (node. 같은 이름의 테스트가 부른다)
 │
-└── docs/superpowers/                # 설계·계획 문서
+└── docs/                            # 설계·계획 문서
     ├── specs/                       # 단계별 설계와 확정 결정
     └── plans/                       # 구현 계획
 ```
@@ -383,7 +386,7 @@ python3 dash.py autorun-finish              # 완료 — 검토 대기로. 할�
 
 #### 판단 보류 (`requested`)
 
-자율 세션은 다음 중 하나면 추측 대신 멈춘다 — 기능을 추가·수정할 때 grill me·superpowers 로 검토(스펙 문서는 안 씀)해 기획 공백이 나올 때, 구현 방향이 여럿인데 어느 쪽인지 `note` 에 안 정해져 있을 때, 토큰·Jira·문서 위치가 필요한데 `note` 에 없을 때. `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 사유를 남기고 할일 상태는 건드리지 않은 채 끝낸다.
+자율 세션은 다음 중 하나면 추측 대신 멈춘다 — 기능을 추가·수정할 때 착수 전에 요구사항을 되짚어(스펙 문서는 안 씀) 기획 공백이 나올 때, 구현 방향이 여럿인데 어느 쪽인지 `note` 에 안 정해져 있을 때, 토큰·Jira·문서 위치가 필요한데 `note` 에 없을 때. `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 사유를 남기고 할일 상태는 건드리지 않은 채 끝낸다.
 
 `autorun-request` 는 실행 중인 기록에 사유만 적어 두고 **그 자리에서 닫지 않는다.** 여기서 바로 닫으면(`ended_at` 을 채우면) 아직 잡 프로세스가 안 끝났는데 다음 tick 이 동시 1건 규칙을 어기고 새 잡을 띄울 수 있다. 닫는 일은 다른 결과와 똑같이 tick 이 잡 종료(`state.json`)를 확인한 뒤에 한다 — 그때 `outcome_for_close` 가 이 사유를 보고 `failed`·`blocked` 대신 `requested` 로 닫는다. 사유는 자율 수행 패널의 `요청` 배지에 마우스오버로 뜬다.
 
@@ -440,16 +443,15 @@ crontab -l
 
 ### 크론 종류
 
-| 크론 | 하는 일 | 크론식 | 주기 | 소속 |
-| --- | --- | --- | --- | --- |
-| `autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | `*/5 * * * *` | 5분마다 | 이 저장소 (④) |
-| `resume-limited-jobs` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 밂. 한 번에 1건 | `*/5 * * * *` | 5분마다 | Claude Code 설정 |
-| `skill-sync pull` | 스킬 저장소를 GitHub 에서 pull·자동병합 | `0 8,9,10 * * 1-5` | 평일 08·09·10시 | skill-sync 스킬 |
-| `skill-sync apply` | 사용자가 확인해 준 스킬 변경을 반영 | `0 9-20 * * 1-5` | 평일 09~20시 매시 | skill-sync 스킬 |
+| 크론 | 하는 일 | 크론식 | 주기 |
+| --- | --- | --- | --- |
+| `autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | `*/5 * * * *` | 5분마다 |
 
-### 자율 실행과 리밋 재개는 짝
+이 저장소가 등록하는 크론은 이것 하나다.
 
-④는 잡을 **띄우는 것까지**만 하고 리밋 처리를 다시 구현하지 않음 — `--bg` 로 띄우면 `~/.claude/jobs/<id>/state.json` 이 생기므로 재개는 `resume-limited-jobs.py` 가 그대로 담당함. 그래서 자율 잡이 리밋에 걸려도 `autorun_runs` 는 열린 채 두고, 재개된 잡이 끝나야 닫음
+### 리밋 재개는 이 저장소 밖의 일
+
+④는 잡을 **띄우는 것까지**만 하고 리밋 처리를 다시 구현하지 않음 — `--bg` 로 띄우면 `~/.claude/jobs/<id>/state.json` 이 생기므로, 리밋에 걸린 잡을 `--resume` 으로 다시 미는 것은 그 상태 파일을 보는 쪽(직접 만든 크론이든 사람이든)이 담당함. 그래서 자율 잡이 리밋에 걸려도 `autorun_runs` 는 열린 채 두고, 재개된 잡이 끝나야 닫음. 재개하는 쪽이 아예 없으면 그 기록은 사람이 닫을 때까지 열려 있고 다음 tick 도 멈춘다
 
 ### 크론 등록
 
@@ -457,7 +459,7 @@ crontab -l
 
 ```bash
 crontab -l > /tmp/ct
-echo '*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autorun-tick >/dev/null 2>&1' >> /tmp/ct
+echo '*/5 * * * * /usr/bin/python3 <메인 체크아웃>/dash.py autorun-tick >/dev/null 2>&1' >> /tmp/ct
 crontab /tmp/ct
 ```
 
@@ -480,7 +482,8 @@ Context ████░░░░░░ 42% │ Usage ███░░░░░░
 python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여줄 게 없으면 무출력
 ```
 
-- **등록 위치**: `~/.claude/statusline-command.js`(그 PC 전용). 상태줄 슬롯은 하나뿐이라 이 스크립트가 사용률 막대까지 같이 그린다. 거기서 `python3 <메인 체크아웃>/dash.py statusline <세션> --cwd <현재 위치>` 를 부르고, **실패하면 빈 문자열로 넘긴다** — 대시보드 문제로 상태줄이 깨지면 안 된다. 워크트리가 아니라 메인 체크아웃 경로를 부르는 이유는 워크트리가 병합 뒤 지워지기 때문이다.
+- **등록**: `~/.claude/settings.json` 의 `statusLine.command` 로 `python3 <메인 체크아웃>/dash.py statusline <세션> --cwd <현재 위치>` 를 부른다. 워크트리가 아니라 메인 체크아웃 경로를 부르는 이유는 워크트리가 병합 뒤 지워지기 때문이다. 상태줄 슬롯은 하나뿐이므로 다른 스크립트를 이미 쓰고 있다면 거기서 이 명령을 부르고 **실패하면 빈 문자열로 넘긴다** — 대시보드 문제로 상태줄이 깨지면 안 된다.
+- **한도 %는 여기서만 들어온다.** Claude Code 는 사용률을 상태줄 페이로드로만 넘기므로(훅 페이로드에는 없다) 이 명령이 stdin 으로 받은 페이로드에서 `rate_limits` 만 떼어 `~/.claude/work-dashboard/rate-limits.json` 에 남긴다. 사용량 화면은 그 파일을 읽는다. 상태줄을 등록하지 않으면 사용량 화면의 한도 막대는 비고 토큰 추이만 나온다. 같은 형식의 파일을 이미 쓰는 도구가 있으면 `WORK_DASHBOARD_RATE_LIMITS` 로 그 경로를 가리켜도 된다.
 - **할일**: 연결된 것 중 안 끝난 첫 할일의 상태와 제목(40자에서 자름), 나머지는 뒤에 `+N` 으로. 끝난 것을 앞세우면 지금 뭘 하는지가 가려진다.
 - **워크트리**: 워크트리 디렉토리 이름. 워크트리가 아니면 세션 DB 의 브랜치 이름(메인 체크아웃은 보통 `master`). 브랜치가 아니라 디렉토리 이름을 먼저 쓰는 이유는 세션 DB 의 브랜치가 SessionStart 때 값이라 `EnterWorktree` 로 옮겨간 뒤에는 메인 것을 가리키기 때문이다.
 - **포트**: 그 디렉토리를 cwd 로 쓰는 프로세스가 듣고 있는 포트. 워크트리면 그 워크트리의 서버, 메인 체크아웃이면 거기서 도는 서버다. 위치는 `finish` 와 같은 순서(`--cwd` → transcript 의 마지막 워크트리 → 세션 DB 의 cwd)로 찾는다.
@@ -556,7 +559,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 ## 세션 연동 (②)
 
-코드·훅 등록 모두 적용됨 (2026-07-30 확인). 남은 항목은 `docs/superpowers/specs/2026-07-30-session-mapping-spec.md` 에 결정으로 적혀 있다 (세션 인자 env 폴백, fork 세션 분류 상속).
+코드·훅 등록 모두 적용됨 (2026-07-30 확인). 남은 항목은 `docs/specs/2026-07-30-session-mapping-spec.md` 에 결정으로 적혀 있다 (세션 인자 env 폴백, fork 세션 분류 상속).
 
 보드의 세션 줄과 할일 줄은 **같은 팝업**을 연다. 팝업은 탭 세 개다.
 
@@ -596,22 +599,24 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 {"hooks": [{"type": "command", "command": "python3 <절대경로>/hooks/dash_hook.py SessionStart", "timeout": 2}]}
 ```
 
-같은 작업에서 `hooks.SessionStart` 의 `bash ~/.claude/skills/scope-guard/session-inject.sh` 항목을 **제거**한다. 남겨두면 같은 내용이 두 번 주입된다.
+세션 시작 시 같은 내용을 주입하는 다른 훅이 이미 등록돼 있다면 그쪽을 **제거**한다. 남겨두면 같은 내용이 두 번 주입된다.
 
-### scope-guard 흡수 (적용 완료)
+### Jira 브랜치로 범위 주입
 
-`~/.claude/skills/scope-guard/scope_db.py` 가 `app/services/session_link.py` 의 `scope_guard_block()` 을 쓰는 dash.db 어댑터로 교체돼 있고(`scope_db.py.bak` 보존), `session-inject.sh` 훅은 `settings.json` 에서 제거됐다. 목표·하위단계는 대시보드의 워크스페이스·할일이다. 흡수 범위를 여기서 끝내는 근거는 ② 스펙 D4 참고.
+브랜치 하나가 이슈 하나에 대응하는 흐름이면, 세션 분류 대신 **브랜치의 Jira 키**로 범위를 주입할 수 있다.
 
-**주의** — `scope_db.py set-steps` 는 워크스페이스의 할일을 전부 지우고 다시 넣는다. 할일에 컨텍스트 노트가 붙은 워크스페이스에서는 실행하지 말 것.
+```bash
+python3 dash.py scope-block KT-1530   # 그 워크스페이스의 배경·목적·목표·하위단계를 블록으로
+```
+
+등록된 워크스페이스가 없으면 "사용자에게 배경·목적·목표를 물어 `add-workspace` 로 저장하라"는 블록이 대신 나온다. `SessionStart` 훅에서 브랜치명의 키를 떼어 이 명령을 부르면 세션이 범위를 알고 시작한다. `dash_hook.py` 의 세션 분류 주입과는 열쇠가 다르므로(세션 vs 브랜치) 둘 중 하나만 쓴다.
 
 ### 롤백
 
-훅 등록 후 문제가 생기면:
+훅 등록 후 문제가 생기면 백업해 둔 설정을 되돌린다:
 
 ```bash
 cp ~/.claude/settings.json.bak ~/.claude/settings.json
-cp ~/.claude/skills/scope-guard/scope_db.py.bak ~/.claude/skills/scope-guard/scope_db.py
-cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db
 ```
 
 ## 설계 문서
@@ -624,7 +629,7 @@ cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db
 | ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 1차 구현 완료 (③ 큐 연동·⑥ `waiting` 제외) |
 | ⑤ 초기 설정(온보딩) | `specs/2026-08-01-onboarding-spec.md` | 구현 완료 |
 
-경로는 모두 `docs/superpowers/` 기준. ②③④ 문서는 각각 (a) 문제 (b) 확정 결정과 근거 (c) 안 하는 것 (d) 파일 경계를 담고 있어 그대로 착수할 수 있다.
+경로는 모두 `docs/` 기준. ②③④ 문서는 각각 (a) 문제 (b) 확정 결정과 근거 (c) 안 하는 것 (d) 파일 경계를 담고 있어 그대로 착수할 수 있다.
 
 ## 아직 없는 것
 

@@ -95,6 +95,12 @@ class ParseTest(unittest.TestCase):
         )
 
 
+def temp_root():
+    """git 은 워크트리 경로를 실제 경로로 되돌려 준다. macOS 의 임시 디렉토리는
+    /var → /private/var 심볼릭 링크라 realpath 로 맞춰두지 않으면 비교가 어긋난다"""
+    return os.path.realpath(tempfile.mkdtemp())
+
+
 def git(root, *args):
     subprocess.run(["git", "-C", root, *args], check=True, capture_output=True)
 
@@ -117,7 +123,7 @@ class RepoTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.base = tempfile.mkdtemp()
+        cls.base = temp_root()
         cls.repo = os.path.join(cls.base, "repo")
         os.makedirs(cls.repo)
         git(cls.repo, "init", "-q", "-b", "master")
@@ -217,7 +223,7 @@ class ApplyTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.base = tempfile.mkdtemp()
+        self.base = temp_root()
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
         self.repo = os.path.join(self.base, "repo")
         os.makedirs(self.repo)
@@ -333,7 +339,7 @@ class DiscardTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.base = tempfile.mkdtemp()
+        self.base = temp_root()
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
         self.repo = os.path.join(self.base, "repo")
         os.makedirs(self.repo)

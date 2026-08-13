@@ -1,5 +1,6 @@
 """프로젝트 전역 상수. 매직넘버는 전부 여기로 모음"""
 import os
+import shutil
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9080
@@ -90,9 +91,14 @@ SUMMARY_MODEL = "claude-haiku-4-5-20251001"  # 제목 한 줄이라 가장 싼 �
 SUMMARY_TIMEOUT_SEC = 60
 SUMMARY_MAX_CHARS = 40  # 이보다 길면 요약이 아니라 설명이므로 버린다
 
-# 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라 파일에서 주워온다
-# (훅 페이로드에는 rate_limits 가 없다). token-optimizer statusline 이 떨어뜨리는 사이드카.
-RATE_LIMITS_PATH = os.path.expanduser("~/.claude/token-optimizer/rate-limits.json")
+# 사용량. 한도 %는 statusline 페이로드에만 실려오는 값이라(훅 페이로드에는 rate_limits 가
+# 없다) `dash.py statusline` 이 그려질 때 그 값만 이 사이드카로 떨어뜨리고, 화면은 파일에서
+# 읽는다. 같은 형식을 이미 쓰는 다른 도구가 있으면 환경변수로 그 경로를 가리켜도 된다
+RATE_LIMITS_PATH = os.environ.get(
+    "WORK_DASHBOARD_RATE_LIMITS",
+    os.path.expanduser("~/.claude/work-dashboard/rate-limits.json"),
+)
+RATE_LIMITS_KEY = "rate_limits"  # statusline 페이로드에서 이 키만 꺼낸다
 # 같은 값이 Claude Code 가 캐시하는 이 파일에도 있고, 그쪽에는 계정 uuid 가 붙어 온다.
 # 계정을 초기화 시각으로 추론하는 대신 못박기 위해 같이 읽는다. 이 파일에는 계정 설정
 # 전부가 들어 있으므로 사용량 키 하나만 꺼내고 다른 내용은 읽지도 반환하지도 않는다
@@ -156,10 +162,12 @@ OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_FAILED, OUTCOME_BLOCKED, OUTCOME_REQUESTED
     AUTORUN_OUTCOMES
 )
 # --bg 잡의 상태 파일. 이 값들이면 잡이 끝난 것으로 보고 실행 기록을 닫는다.
-# blocked(리밋)는 열어 둔다 — resume-limited-jobs.py 가 다시 밀어 준다
+# blocked(리밋)는 열어 둔다 — 리밋이 풀리면 사람이나 외부 스케줄러가 다시 민다
 AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
 AUTORUN_JOB_TERMINAL = ("done", "failed", "stopped")
-AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
+# 설치 경로는 PC마다 다르므로 PATH 에서 찾는다. 못 찾으면 이름만 넘겨 실행을 셸에 맡기고,
+# 그래도 없으면 launch() 가 잡을 못 띄운 것으로 기록한다
+AUTORUN_CLAUDE_BIN = shutil.which("claude") or "claude"
 AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다
 # 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
 MERGE_TEST_TIMEOUT_SEC = 600

@@ -1,6 +1,5 @@
 # ② Claude 세션 연동 구현 계획
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Claude 세션을 자동 등록·분류하고 워크스페이스 배경·목적을 주입하며, 활성 세션을 대시보드에 실시간 표시한다.
 
@@ -741,12 +740,12 @@ class SessionLinkTest(unittest.TestCase):
         self.assertIn("락 재설계", text)
 
     def test_unclassified_context_lists_catalog(self):
-        session_repo.register(self.con, SID, cwd="/home/ujung/work")
+        session_repo.register(self.con, SID, cwd="/home/user/work")
         text = session_link.render_context(self.con, SID)
         self.assertIn('state="unclassified"', text)
         self.assertIn("개발", text)
         self.assertIn("KT 동시성", text)
-        self.assertIn("/home/ujung/work", text)
+        self.assertIn("/home/user/work", text)
 
     def test_context_for_missing_session_is_empty(self):
         self.assertEqual(session_link.render_context(self.con, "gone"), "")
@@ -1775,7 +1774,7 @@ Expected: `<scope-guard active="KT-1530" status="active">` 블록에 배경·목
 `~/.claude/settings.json` 의 `hooks.SessionStart` 배열에서 `bash ~/.claude/skills/scope-guard/session-inject.sh` 항목을 **삭제**하고, 네 이벤트에 아래를 추가한다(마지막 인자만 이벤트명으로 바꿈).
 
 ```json
-{"hooks": [{"type": "command", "command": "python3 /home/ujung/work-dashboard/.claude/worktrees/work-dashboard-impl/hooks/dash_hook.py SessionStart", "timeout": 2}]}
+{"hooks": [{"type": "command", "command": "python3 <메인 체크아웃>/.claude/worktrees/work-dashboard-impl/hooks/dash_hook.py SessionStart", "timeout": 2}]}
 ```
 
 대상 이벤트: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd`.

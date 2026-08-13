@@ -139,7 +139,7 @@ tests/test_sessions.py
 
 ```
 <work-dashboard session="<session_id>" state="unclassified">
-현재 위치: /home/ujung/work/kt-cms-server (브랜치 master)
+현재 위치: /home/user/work/kt-cms-server (브랜치 master)
 카테고리: 개발 / 운영 / 장애 대응 / 개발환경 개선 / 스킬 개발 / 프로세스 개선
 진행 중 워크스페이스:
   1. KT 동시성 이슈 해결 (개발) — 1차: 잠금 구조 개편으로 동시 저장 충돌 차단

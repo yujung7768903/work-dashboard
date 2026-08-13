@@ -295,7 +295,7 @@ def _rules(cwd):
             "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다"
             " (이 저장소는 `python3 -m tests`).",
             "- 판단이 필요해 더 못 가면 멈추고 그 사실을 남긴다. 추측으로 진행하지 않는다.",
-            "- 기능을 추가·수정할 때 grill me·superpowers 로 검토해(스펙 문서 작성x)"
+            "- 기능을 추가·수정할 때는 착수 전에 요구사항을 스스로 되짚어(스펙 문서 작성x)"
             " 기획 공백이 나오거나, 구현 방향이 여럿인데 note 에 정해져 있지 않거나,"
             " 토큰·Jira·문서 위치가 필요한데 note 에 없으면 추측하지 않는다."
             ' `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 등록하고 끝낸다'
@@ -318,7 +318,7 @@ def launch(
     """`claude --bg` 로 띄우고 잡 id·세션 id 를 회수.
 
     --bg 를 쓰는 이유 — 터미널을 점유하지 않고, ~/.claude/jobs/<id>/state.json 이
-    생겨 리밋 재개를 resume-limited-jobs.py 가 그대로 담당한다
+    생겨 리밋 재개를 그 파일을 보는 쪽에 그대로 넘길 수 있다 (README "크론" 참고)
     """
     # 권한 모드는 넘기지 않고 사용자 설정(settings.json defaultMode)을 그대로 상속한다.
     # acceptEdits 로 못박으면 테스트·git 같은 Bash 가 승인 대기에 걸려 잡이 멈춘다 —
@@ -345,8 +345,8 @@ def launch(
 def reconcile(con):
     """끝난 잡의 실행 기록을 닫는다. 안 닫으면 '이미 돌고 있음' 에 영원히 걸린다.
 
-    리밋으로 blocked 인 잡은 열어 둔다 — resume-limited-jobs.py 가 다시 민다.
-    ponytail: 그 잡이 영영 안 풀리면 tick 도 멈춘다. 그때는 사람이 기록을 닫는다
+    리밋으로 blocked 인 잡은 열어 둔다 — 리밋이 풀린 뒤 다시 밀리면 그때 닫힌다.
+    의도적 단순화 — 그 잡이 영영 안 풀리면 tick 도 멈춘다. 그때는 사람이 기록을 닫는다
     """
     closed = []
     for run in autorun_repo.open_runs(con):

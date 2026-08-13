@@ -319,6 +319,22 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("없음", out)
 
+    def test_scope_block_renders_the_workspace_of_a_jira_branch(self):
+        """브랜치의 Jira 키만으로 범위를 꺼낼 수 있어야 외부 스킬 없이 훅에 물릴 수 있다"""
+        self.run_cli("add-workspace", "개발", "락 재설계", "--jira", "AB-12", "--goal", "락 제거")
+        self.run_cli("add-todo", "1단계", "--workspace", "1")
+        code, out, _ = self.run_cli("scope-block", "ab-12")  # 키는 대소문자를 안 가린다
+        self.assertEqual(code, 0)
+        self.assertIn('<scope-guard active="AB-12"', out)
+        self.assertIn("목표: 락 제거", out)
+        self.assertIn("1단계", out)
+
+    def test_scope_block_asks_for_a_workspace_when_the_key_is_unknown(self):
+        code, out, _ = self.run_cli("scope-block", "AB-99")
+        self.assertEqual(code, 0)
+        self.assertIn('missing="AB-99"', out)
+        self.assertIn("add-workspace", out)
+
     def test_statusline_shows_the_linked_todo_and_its_status(self):
         session_repo.register(connect(), "sess-line", cwd="/tmp")
         self.run_cli("add-todo", "락 재설계", "--category", "개발")
