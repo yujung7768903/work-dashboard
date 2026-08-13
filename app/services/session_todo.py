@@ -5,7 +5,7 @@ CLI 로 분류하면 Claude 가 지시를 읽고 할일을 만든다. 그런데 
 다음 세션도 무엇을 하던 중인지 알 수 없다.
 
 그래서 제목만 요약을 부르고(app/services/summary.py — claude CLI), 나머지는 코드가
-판단할 수 있는 것만 만든다: note 는 지시 원문 그대로, 하위할일은 목록 표기나 요청 문장.
+판단할 수 있는 것만 만든다: note 는 지시 원문 그대로.
 요약은 CLI 기동만 7~8초라 분류 응답을 붙잡지 않고 뒷일(스레드)로 돌린다. 할일은 지시
 첫 문장을 제목으로 먼저 만들어 두고, 요약이 오면 제목만 갈아 끼운다 — 요약 하나 때문에
 할일이 안 생기거나 저장이 멈춘 것처럼 보이면 안 된다
@@ -15,8 +15,6 @@ import re
 import threading
 
 from app.constants import (
-    AUTO_TODO_MAX_SUBTASKS,
-    AUTO_TODO_MIN_SUBTASKS,
     AUTO_TODO_NOTE_HEAD,
     AUTO_TODO_NOTE_PROMPTS,
     AUTO_TODO_NOTE_RAW_TITLE,
@@ -24,19 +22,12 @@ from app.constants import (
 )
 from app.db import connect
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.services import summary, transcript
 
 ITEM_PATTERN = re.compile(r"^\s*(?:[-*•·]|\d+[.)])\s+(?P<item>\S.*)$")
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
-# 목록 표기가 없는 지시는 요청 문장 여러 개를 한 문단에 붙여 쓴다
-# ("...연결해줘. ...추출해주고. note 도 채워주고"). 그 문장들만 하위할일로 본다.
-# ponytail: 요청 어미로 끝나는 문장만 — 아무 문장이나 쪼개면 설명·군더더기가 할일로 올라온다
-REQUEST_ENDINGS = ("줘", "주고", "줄래", "달라", "부탁", "싶어", "필요해")
-TRAILING_PUNCT = " .!?~"
 ELLIPSIS = "…"
-MIN_ITEM_CHARS = 2
 
 
 def schedule(work):
@@ -45,7 +36,7 @@ def schedule(work):
 
 
 def ensure_from_session(con, session_row_id, workspace_id, root=None):
-    """분류 직후 호출. 만든 할일(하위할일 포함) 또는 만들지 않았으면 None.
+    """분류 직후 호출. 만든 할일 또는 만들지 않았으면 None.
 
     워크스페이스를 인자로 받는 이유 — 세션에는 워크스페이스가 저장되지 않는다.
     세션의 소속은 여기서 만드는 할일 연결로 비로소 생긴다.
@@ -69,14 +60,9 @@ def ensure_from_session(con, session_row_id, workspace_id, root=None):
         workspace_id=workspace_id,
         note=_note(session, prompts),
     )
-    for title in _item_titles(prompts):
-        subtask_repo.create(con, todo["id"], title)
     session_repo.link_todo(con, session["claude_session_id"], todo["id"])
     # 응답은 여기서 확정한다 — 요약은 이 뒤에 붙으므로 사용자가 받는 제목은 첫 문장이다
-    created = {
-        **todo_repo.get(con, todo["id"]),
-        "subtasks": subtask_repo.list_by_todo(con, todo["id"]),
-    }
+    created = todo_repo.get(con, todo["id"])
     # 경로는 여기서 꺼낸다 — con 을 뒷일 스레드에서 만지면 sqlite 가 거부한다
     db_path = _db_path(con)
     schedule(lambda: retitle(db_path, todo["id"], prompts[0], raw_title))
@@ -159,40 +145,6 @@ def _without_raw_mark(note):
 def _reflow(prompt):
     """여러 줄 지시는 줄바꿈을 살리고 번호 아래로 들여쓴다 — 목록으로 적은 지시가 뭉개지지 않게"""
     return "\n   ".join(line.strip() for line in prompt.splitlines() if line.strip())
-
-
-def _item_titles(prompts):
-    """지시에서 뽑은 하위할일. 하나뿐이면 할일과 같은 말이라 버린다"""
-    items = _marked_items(prompts) or _request_sentences(prompts[0])
-    if len(items) < AUTO_TODO_MIN_SUBTASKS:
-        return []
-    return items[:AUTO_TODO_MAX_SUBTASKS]
-
-
-def _marked_items(prompts):
-    """목록 표기로 적은 항목들. 지시가 여러 건이면 전부 모은다"""
-    items = []
-    for prompt in prompts:
-        for line in prompt.splitlines():
-            match = ITEM_PATTERN.match(line)
-            item = match.group("item").strip() if match else ""
-            if len(item) >= MIN_ITEM_CHARS and item not in items:
-                items.append(item)
-    return items
-
-
-def _request_sentences(prompt):
-    """첫 지시의 둘째 문장부터 나오는 요청들.
-
-    첫 지시만 보는 이유 — 뒤따라오는 지시는 대개 수정·곁가지라 그것까지 하위할일로
-    올리면 '아니 그거 말고' 가 할일이 된다. 첫 문장을 건너뛰는 이유 — 그건 제목이 됐다
-    """
-    items = []
-    for sentence in _sentences(prompt)[1:]:
-        item = sentence.strip(TRAILING_PUNCT)
-        if item.endswith(REQUEST_ENDINGS) and len(item) >= MIN_ITEM_CHARS and item not in items:
-            items.append(item)
-    return items
 
 
 def _sentences(text):

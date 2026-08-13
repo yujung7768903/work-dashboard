@@ -14,12 +14,11 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from app.constants import STATUS_DONE, SUBTASKS_REMAINING_MSG, WORKSPACE_ACTIVE
+from app.constants import STATUS_DONE, WORKSPACE_ACTIVE
 from app.db import now
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import worktrees as worktree_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, serve
@@ -285,14 +284,11 @@ def apply(con, repo, branch):
     """워크트리 브랜치를 기준 브랜치에 병합하고 뒷정리까지 마친다.
 
     순서 — 되돌릴 수 없는 것부터 먼저 확인하고, 실행은 병합(실패하면 여기서 멈추고
-    아무것도 건드리지 않음) → 서버 종료 → 워크트리·브랜치 제거 → 할일 done.
-    할일을 마지막에 두는 게 아니라 먼저 "완료 가능한지"만 확인해 두는 이유는, 하위할일이
-    남아 done 처리가 막히는 경우를 워크트리를 지운 뒤에 알면 되돌릴 방법이 없어서다
+    아무것도 건드리지 않음) → 서버 종료 → 워크트리·브랜치 제거 → 할일 done
     """
     root, base, path = _resolve_target(repo, branch, "적용")
 
     todo_ids = _todo_ids_for_cwd(con, path)
-    _ensure_todos_completable(con, todo_ids)
     _ensure_no_local_changes(root, "메인 체크아웃")
     _ensure_checked_out(root, base)
     _ensure_no_local_changes(path, "워크트리")
@@ -402,17 +398,6 @@ def _todo_ids_for_cwd(con, path):
         if os.path.realpath(cwd) == target:
             ids |= todo_ids
     return sorted(ids)
-
-
-def _ensure_todos_completable(con, todo_ids):
-    """todo_repo.update 가 하는 검사와 같은 규칙을 먼저 확인만 해 둔다 — 병합·삭제가
-    다 끝난 뒤에야 이 검사에 걸리면 워크트리는 이미 없는데 할일만 done 이 안 된다"""
-    for todo_id in todo_ids:
-        if any(
-            row["status"] != STATUS_DONE
-            for row in subtask_repo.list_by_todo(con, todo_id)
-        ):
-            raise Validation(SUBTASKS_REMAINING_MSG)
 
 
 def _ensure_checked_out(root, base):

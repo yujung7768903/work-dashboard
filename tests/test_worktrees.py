@@ -11,7 +11,6 @@ from app.constants import STATUS_DOING, STATUS_DONE
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, worktrees
@@ -300,16 +299,6 @@ class ApplyTest(unittest.TestCase):
         with self.assertRaises(NotFound):
             worktrees.apply(self.con, self.repo, "nope")
 
-    def test_open_subtasks_block_apply_before_anything_is_touched(self):
-        """워크트리를 지운 뒤 done 처리가 막히면 되돌릴 수 없다 — 미리 확인하고 멈춰야 한다"""
-        todo_id = self._link_todo(self.worktree)
-        subtask_repo.create(self.con, todo_id, "하위 할일")
-        with self.assertRaises(Validation):
-            worktrees.apply(self.con, self.repo, "worktree-feat")
-        self.assertTrue(os.path.isdir(self.worktree))
-        self.assertIn("worktree-feat", git_out(self.repo, "branch"))
-        self.assertEqual(STATUS_DOING, todo_repo.get(self.con, todo_id)["status"])
-
     def test_merge_conflict_leaves_everything_in_place(self):
         write_commit(self.repo, "base.txt", "마스터 변경\n", "마스터도 수정")
         with self.assertRaises(Conflict):
@@ -368,12 +357,11 @@ class DiscardTest(unittest.TestCase):
         # 병합이 아니므로 그 커밋은 master 이력에 없어야 한다
         self.assertNotIn("수정", git_out(self.repo, "log", "--oneline"))
 
-    def test_discard_ignores_open_subtasks(self):
-        """적용과 달리 완료 처리를 하지 않으므로 하위할일 여부를 보지 않는다"""
+    def test_discard_leaves_linked_todos_alone(self):
+        """적용과 달리 완료 처리를 하지 않는다 — 붙어 있던 할일은 doing 으로 남는다"""
         session_repo.register(self.con, "sess-1", cwd=self.worktree)
         todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
         session_repo.link_todo(self.con, "sess-1", todo["id"])
-        subtask_repo.create(self.con, todo["id"], "하위 할일")
         worktrees.discard(self.con, self.repo, "worktree-feat")
         self.assertFalse(os.path.isdir(self.worktree))
         self.assertEqual(STATUS_DOING, todo_repo.get(self.con, todo["id"])["status"])

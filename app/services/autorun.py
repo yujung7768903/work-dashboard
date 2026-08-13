@@ -383,7 +383,7 @@ def reopen_run(con, run_id):
 def _set_todo_status(con, todo_id, status):
     """검증 없이 시스템이 직접 status 를 맞춘다 — session_repo.link_todo 와 같은 이유로
 
-    todos.update() 의 사람용 검증(하위할일 완료 확인, 검토 대기 잠금)을 거치지 않는다.
+    todos.update() 의 사람용 검증(검토 대기 잠금)을 거치지 않는다.
     이 호출 자체가 그 잠금을 푸는 동작이라 여기서 또 잠금에 걸리면 안 된다
     """
     stamp = now()

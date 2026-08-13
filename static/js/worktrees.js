@@ -265,10 +265,10 @@ function portLink(port, process) {
   return link;
 }
 
-// 하위 할일 토글과 같은 셰브런. 커밋이 없는 줄도 자리를 비워 브랜치 세로줄을 맞춘다
+// 커밋이 없는 줄도 자리를 비워 브랜치 세로줄을 맞춘다
 function commitToggle(group, row) {
   const button = document.createElement("button");
-  button.className = "subtask-toggle";
+  button.className = "row-toggle";
   button.innerHTML = CHEVRON_SVG;
   if (!row.commits.length) {
     button.classList.add("empty");
@@ -291,7 +291,7 @@ function commitToggle(group, row) {
 
 function commitList(row) {
   const list = document.createElement("ul");
-  list.className = "subtasks wt-commits";
+  list.className = "wt-commits";
   row.commits.forEach((commit) => {
     const item = document.createElement("li");
     const hash = document.createElement("code");

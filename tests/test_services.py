@@ -12,7 +12,6 @@ from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import board, planning
@@ -31,7 +30,6 @@ class BoardTreeTest(unittest.TestCase):
         self.kt = workspace_repo.create(self.con, self.dev, "KT 동시성")
         self.empty = workspace_repo.create(self.con, self.dev, "빈 워크스페이스")
         self.todo = todo_repo.create(self.con, "락 재설계", workspace_id=self.kt["id"])
-        subtask_repo.create(self.con, self.todo["id"], "k6 시나리오")
         todo_repo.create(self.con, "문의 회신", category_id=self.ops)
 
     def _names(self, group_by):
@@ -69,10 +67,6 @@ class BoardTreeTest(unittest.TestCase):
         self.assertEqual(group["kind"], board.KIND_UNASSIGNED)
         self.assertIsNone(group.get("category_color"))
 
-    def test_todos_carry_subtasks(self):
-        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
-        self.assertEqual(group["todos"][0]["subtasks"][0]["title"], "k6 시나리오")
-
     def test_todos_default_to_not_autorun_locked(self):
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         self.assertFalse(group["todos"][0]["autorun_locked"])
@@ -85,8 +79,6 @@ class BoardTreeTest(unittest.TestCase):
         self.assertTrue(todo["autorun_locked"])
 
     def test_counts_reflect_done_state(self):
-        subtask = subtask_repo.list_by_todo(self.con, self.todo["id"])[0]
-        subtask_repo.update(self.con, subtask["id"], status=STATUS_DONE)
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
         self.assertEqual((group["done_count"], group["total_count"]), (1, 1))

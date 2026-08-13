@@ -12,7 +12,6 @@ from app.constants import (
 from app.db import meta_get, meta_set
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import transcript, worktrees
@@ -240,21 +239,14 @@ def detail(con, session_row_id):
     return {
         "session": session,
         "messages": transcript.recent(session["claude_session_id"]),
-        # 하위할일까지 실어준다 — 분류 직후 자동 생성된 것을 팝업에서 바로 확인해야 함
-        "todos": [
-            {**todo_repo.get(con, todo_id), "subtasks": subtask_repo.list_by_todo(con, todo_id)}
-            for todo_id in todo_ids
-        ],
+        "todos": [todo_repo.get(con, todo_id) for todo_id in todo_ids],
         # 워크트리 탭도 같은 팝업에 있다 — 세션에서 열든 할일에서 열든 같은 이력을 본다
         "worktrees": worktrees.history(con, todo_ids),
     }
 
 
 def todo_detail(con, todo_id):
-    """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다.
-
-    하위할일은 싣지 않는다 — 개요 탭이 안 그리고, 펼쳐 보는 자리는 보드 카드다
-    """
+    """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다"""
     return {
         "todo": todo_repo.get(con, todo_id),
         "sessions": session_repo.list_by_todo(con, todo_id),

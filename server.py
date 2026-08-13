@@ -21,7 +21,6 @@ from app.errors import (
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
@@ -158,8 +157,6 @@ def _route_post(con, head, body):
             note=body.get("note"),
             precondition=body.get("precondition"),
         )
-    if head == "subtasks":
-        return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
     if head == "reorder":
         return _reorder(con, body)
     if head == "worktrees":
@@ -187,8 +184,6 @@ def _route_patch(con, head, item_id, body):
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
         return todo_repo.update(con, item_id, **body)
-    if head == "subtasks":
-        return subtask_repo.update(con, item_id, **body)
     if head == "autorun-runs":
         # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
         return autorun.confirm_run(con, item_id)
@@ -219,7 +214,6 @@ def _route_delete(con, head, item_id, query):
         "labels": lambda con, item_id: label_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
-        "subtasks": subtask_repo.delete,
     }
     if head not in deleters:
         raise UnknownEndpoint("알 수 없는 엔드포인트")
@@ -238,8 +232,6 @@ def _reorder(con, body):
         workspace_repo.reorder(con, ids)
     elif kind == "todos":
         todo_repo.reorder(con, ids, None if scope in (None, NONE_LITERAL) else scope)
-    elif kind == "subtasks":
-        subtask_repo.reorder(con, ids, scope)
     else:
         raise Validation(f"알 수 없는 reorder 종류: {kind}")
     return {"reordered": len(ids)}

@@ -4,7 +4,6 @@ from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 
@@ -90,7 +89,6 @@ def _enriched(con, todos, labels, locked):
     enriched = []
     for todo in todos:
         item = dict(todo)
-        item["subtasks"] = subtask_repo.list_by_todo(con, todo["id"])
         item["labels"] = labels.get(todo["id"], [])
         item["autorun_locked"] = todo["id"] in locked
         enriched.append(item)

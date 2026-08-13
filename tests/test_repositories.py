@@ -8,14 +8,12 @@ from app.constants import (
     STATUS_DOING,
     STATUS_DONE,
     STATUS_TODO,
-    SUBTASKS_REMAINING_MSG,
     WORKSPACE_ACTIVE,
 )
 from app.db import connect
 from app.errors import Conflict, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from tests.support import temp_db, temp_db_path
@@ -25,13 +23,13 @@ MISSING_ID = 9999
 
 
 class SchemaTest(unittest.TestCase):
-    def test_creates_four_tables(self):
+    def test_creates_core_tables(self):
         con = temp_db()
         names = {
             row["name"]
             for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
-        self.assertTrue({"categories", "workspaces", "todos", "subtasks"} <= names)
+        self.assertTrue({"categories", "workspaces", "todos"} <= names)
 
     def test_seeds_default_categories(self):
         con = temp_db()
@@ -346,33 +344,10 @@ class TodoRepoTest(unittest.TestCase):
         reopened = todo_repo.update(self.con, created["id"], status=STATUS_DOING)
         self.assertIsNone(reopened["completed_at"])
 
-    def test_done_rejected_while_subtasks_open(self):
-        created = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
-        subtask_repo.create(self.con, created["id"], "k6 시나리오")
-        with self.assertRaises(Validation) as caught:
-            todo_repo.update(self.con, created["id"], status=STATUS_DONE)
-        # 남은 하위할일 제목은 싣지 않는다 — 사용자에게 보이는 문장이고 목록은 바로 아래 있다
-        self.assertEqual(SUBTASKS_REMAINING_MSG, str(caught.exception))
-        self.assertEqual(todo_repo.get(self.con, created["id"])["status"], STATUS_TODO)
-
-    def test_done_allowed_when_all_subtasks_done(self):
-        created = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
-        subtask = subtask_repo.create(self.con, created["id"], "k6 시나리오")
-        subtask_repo.update(self.con, subtask["id"], status=STATUS_DONE)
-        done = todo_repo.update(self.con, created["id"], status=STATUS_DONE)
-        self.assertEqual(done["status"], STATUS_DONE)
-
     def test_update_rejects_unknown_status(self):
         created = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
         with self.assertRaises(Validation):
             todo_repo.update(self.con, created["id"], status="보류")
-
-    def test_delete_cascades_subtasks(self):
-        created = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
-        subtask_repo.create(self.con, created["id"], "k6 시나리오")
-        todo_repo.delete(self.con, created["id"])
-        left = self.con.execute("SELECT COUNT(*) AS n FROM subtasks").fetchone()["n"]
-        self.assertEqual(left, 0)
 
     def test_sort_order_is_per_group(self):
         first = todo_repo.create(self.con, "1", workspace_id=self.workspace["id"])
@@ -405,39 +380,6 @@ class TodoRepoTest(unittest.TestCase):
         self.con.commit()
         self.assertEqual(len(todo_repo.list_completed_on(self.con, "2026-07-28")), 1)
         self.assertEqual(len(todo_repo.list_completed_on(self.con, "2026-07-29")), 0)
-
-
-class SubtaskRepoTest(unittest.TestCase):
-    def setUp(self):
-        self.con = temp_db()
-        dev = category_repo.get_by_name(self.con, "개발")["id"]
-        workspace = workspace_repo.create(self.con, dev, "KT 동시성")
-        self.todo = todo_repo.create(self.con, "재현 테스트", workspace_id=workspace["id"])
-
-    def test_create_appends_within_todo(self):
-        first = subtask_repo.create(self.con, self.todo["id"], "k6 시나리오")
-        second = subtask_repo.create(self.con, self.todo["id"], "결과 정리")
-        self.assertEqual([first["sort_order"], second["sort_order"]], [1, 2])
-
-    def test_create_rejects_missing_todo(self):
-        with self.assertRaises(NotFound):
-            subtask_repo.create(self.con, MISSING_ID, "제목")
-
-    def test_create_rejects_blank_title(self):
-        with self.assertRaises(Validation):
-            subtask_repo.create(self.con, self.todo["id"], "")
-
-    def test_update_status_validated(self):
-        created = subtask_repo.create(self.con, self.todo["id"], "k6")
-        with self.assertRaises(Validation):
-            subtask_repo.update(self.con, created["id"], status="보류")
-
-    def test_delete_removes_only_target(self):
-        keep = subtask_repo.create(self.con, self.todo["id"], "유지")
-        drop = subtask_repo.create(self.con, self.todo["id"], "삭제")
-        subtask_repo.delete(self.con, drop["id"])
-        left = [item["id"] for item in subtask_repo.list_by_todo(self.con, self.todo["id"])]
-        self.assertEqual(left, [keep["id"]])
 
 
 class WorkspaceLifecycleTest(unittest.TestCase):

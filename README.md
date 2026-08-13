@@ -1,6 +1,6 @@
 # 작업 대시보드
 
-카테고리 > 워크스페이스 > 할일 > 하위할일 4계층으로 작업을 관리하는 1인용 로컬 도구.
+카테고리 > 워크스페이스 > 할일 3계층으로 작업을 관리하는 1인용 로컬 도구.
 사람은 웹으로, Claude는 CLI로 같은 sqlite DB를 쓴다. 외부 의존성 0.
 
 ## 실행
@@ -54,7 +54,6 @@ work-dashboard/
 │   │   ├── labels.py                # 라벨 (할일에 여러 개)
 │   │   ├── workspaces.py            # 워크스페이스
 │   │   ├── todos.py                 # 할일
-│   │   ├── subtasks.py              # 하위할일
 │   │   ├── sessions.py              # 세션 등록·분류·상태·할일 연결·정리
 │   │   └── autorun.py               # 자율 실행 설정(단일 행)과 실행 기록
 │   │
@@ -197,11 +196,10 @@ CLI 로 분류할 때는 Claude 가 지시를 읽고 직접 만들지만, 웹에
 | --- | --- | --- |
 | 제목 | 만들 때는 첫 지시의 첫 문장(60자에서 자름), 곧이어 **한 줄 요약**으로 교체 (아래) | 목록 표기로 시작하는 줄은 항목이라 제목이 못 된다 |
 | `note` | 지시 원문 앞 5건 | 위치·브랜치·세션 id + 원문. 요약하지 않는다 — 제목이 요약이므로 근거는 여기에만 남는다 |
-| 하위할일 | 목록 표기(`-`, `*`, `1.`) 항목 → 없으면 첫 지시의 요청 문장(`~해줘`, `~주고`) | 2개 미만이면 만들지 않고(할일과 같은 말), 8개에서 끊는다 |
 
 #### 제목 요약 (`app/services/summary.py`)
 
-지시 원문을 그대로 제목에 쓰면 보드가 구구절절해진다 — "워크스페이스에서 하위할일이 펼쳐진 상태로 보이는데, 너무 길어져서 기본적으로…". 어미만 떼는 식의 규칙으로는 줄지 않는다(요약은 의미 판단이다). 그래서 **이미 깔려 있는 `claude` CLI** 를 부른다.
+지시 원문을 그대로 제목에 쓰면 보드가 구구절절해진다 — "워크스페이스 카드가 완료된 것까지 다 보이는데, 너무 길어져서 기본적으로…". 어미만 떼는 식의 규칙으로는 줄지 않는다(요약은 의미 판단이다). 그래서 **이미 깔려 있는 `claude` CLI** 를 부른다.
 
 ```bash
 claude -p --model <haiku> --tools "" --strict-mcp-config --setting-sources "" \
@@ -215,11 +213,10 @@ claude -p --model <haiku> --tools "" --strict-mcp-config --setting-sources "" \
 - 만들 때 `note` 에 "제목: 요약이 붙지 않아 지시 첫 문장을 그대로 씀"(`AUTO_TODO_NOTE_RAW_TITLE`) 을 남기고, 요약이 붙으면 그 줄을 지운다. 남아 있으면 조회 결과에 `needs_title: true` 로 실려 **보드 줄과 팝업 개요에 `요약 안 됨` 배지**가 붙는다 — 손봐야 할 제목을 사용자가 알아야 하기 때문이다. 컬럼을 늘리지 않고 `note` 한 줄로 판단하므로 그 줄을 지우면 배지도 사라진다
 - 그 사이 사용자가 제목을 고쳤으면 요약이 덮지 않는다. 요약이 실패하면 제목·`note` 를 그대로 둔다 — 요약 하나 때문에 할일이 안 생기면 안 된다
 - **실패는 이유를 로그로 남긴다** (`제목 요약 실패: …`). 조용히 `None` 을 돌려주던 동안은 화면에 배지만 뜨고 왜 안 붙었는지 알 방법이 없었다. 실제로 첫 라이브 실행에서 조용히 실패한 원인이 타임아웃이었고, 뒷일은 아무도 기다리지 않으므로 `SUMMARY_TIMEOUT_SEC` 을 60초로 뒀다. CLI 는 stdin 을 3초 기다리다 경고를 뱉으므로 `stdin=DEVNULL` 로 넘긴다
-- 하위할일은 요약하지 않는다 — 제목만으로 보드 가독성 문제가 해결되고, 호출을 늘릴 이유가 없다
 
 지시 원문은 transcript 앞 64KB 에서 읽는다. 이때만 `parse_line(collapse=False)` 로 **줄바꿈을 살린다** — 목록 표기를 봐야 하기 때문이다(팝업 대화 목록은 한 줄로 뭉갠 기본값을 쓴다). transcript 를 못 찾으면 훅이 저장한 마지막 지시 한 줄로 대신하고, 그것도 없으면 만들지 않는다.
 
-이미 잡은 할일이 있는 세션은 건드리지 않는다 — 그게 이 세션의 작업이고, 새로 만들면 같은 일이 두 줄이 된다. 만들어진 뒤 팝업은 닫히지 않고 **개요 탭**으로 넘어가 제목·하위할일·`note` 를 보여준다. 추정으로 만든 것이므로 사용자가 바로 보고 고칠 수 있어야 한다.
+이미 잡은 할일이 있는 세션은 건드리지 않는다 — 그게 이 세션의 작업이고, 새로 만들면 같은 일이 두 줄이 된다. 만들어진 뒤 팝업은 닫히지 않고 **개요 탭**으로 넘어가 제목·`note` 를 보여준다. 추정으로 만든 것이므로 사용자가 바로 보고 고칠 수 있어야 한다.
 
 ### 병합 (한 커맨드)
 
@@ -501,7 +498,6 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 | `labels` | 할일 성격 표시. 한 할일에 여러 개 (github 이슈 라벨과 같은 뜻) | `id`, `name`(UNIQUE), `color`, `sort_order`, `created_at` | — |
 | `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
 | `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
-| `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
 | `worktrees` | 워크트리 이력. 병합·삭제로 사라진 것도 이름·상태로 남긴다 (팝업 워크트리 탭) | `path`(PK), `repo`, `branch`, `created_at`, `merged_at`, `merge_hash`, `merge_from`, `deleted_at` | — (경로로 잇는다) |
@@ -513,7 +509,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 - 카테고리는 그룹핑 분류일 뿐 우선순위 계산에 관여하지 않는다.
 - 카테고리는 소속이라 할일마다 하나, 라벨은 성격이라 여러 개 붙는다. 라벨 삭제는 붙어 있는 할일이 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/labels/<id>?force=1`) 연결만 끊고 지운다.
 - 카테고리 삭제는 워크스페이스·할일이 없을 때만(있으면 먼저 옮긴다). 분류된 세션만 남아 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/categories/<id>?force=1`) 그 세션들을 미분류로 내리고 지운다. 붙은 게 아무것도 없으면 되묻지 않는다.
-- 워크스페이스 삭제 시 소속 할일은 미분류로 내려간다. 할일 삭제는 하위할일까지 지운다.
+- 워크스페이스 삭제 시 소속 할일은 미분류로 내려간다. 할일 삭제는 붙어 있던 라벨 연결만 끊는다.
 - 웹과 CLI가 같은 DB를 쓴다. CLI 변경을 웹에서 보려면 새로고침한다. 세션 영역만 2초 폴링한다.
 - 마크다운은 루트 `.markdownlint.json` 을 따른다. 표 구분행은 `| --- | --- |`, 코드펜스에는 언어를 붙인다(`text`, `bash`, `json` 등).
 
@@ -592,7 +588,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 `~/.claude/skills/scope-guard/scope_db.py` 가 `app/services/session_link.py` 의 `scope_guard_block()` 을 쓰는 dash.db 어댑터로 교체돼 있고(`scope_db.py.bak` 보존), `session-inject.sh` 훅은 `settings.json` 에서 제거됐다. 목표·하위단계는 대시보드의 워크스페이스·할일이다. 흡수 범위를 여기서 끝내는 근거는 ② 스펙 D4 참고.
 
-**주의** — `scope_db.py set-steps` 는 워크스페이스의 할일을 전부 지우고 다시 넣는다. 할일에 하위할일·컨텍스트 노트가 붙은 워크스페이스에서는 실행하지 말 것.
+**주의** — `scope_db.py set-steps` 는 워크스페이스의 할일을 전부 지우고 다시 넣는다. 할일에 컨텍스트 노트가 붙은 워크스페이스에서는 실행하지 말 것.
 
 ### 롤백
 
