@@ -94,6 +94,19 @@ CREATE TABLE IF NOT EXISTS usage_samples(
     seven_day_resets_at INTEGER,
     created_at TEXT NOT NULL
 );
+-- 워크트리 이력. 병합·삭제된 워크트리는 git 에 아무 자국이 없어(브랜치도 디렉터리도
+-- 사라짐) 살아 있는 동안 본 것을 여기 적어 둔다. 병합 사실은 기준 브랜치 reflog 에서
+-- 되짚어 채운다 — 그것도 지워지므로(기본 90일) 처음 본 때 해시까지 남긴다
+CREATE TABLE IF NOT EXISTS worktrees(
+    path TEXT PRIMARY KEY,
+    repo TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    merged_at TEXT,
+    merge_hash TEXT,
+    merge_from TEXT,
+    deleted_at TEXT
+);
 -- ④ 자율 실행. 설정은 필드 셋뿐이라 키-값 테이블 대신 단일 행을 쓴다
 CREATE TABLE IF NOT EXISTS autorun_state(
     id INTEGER PRIMARY KEY CHECK (id = 1),

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 대시보드 서버를 백그라운드로 띄운다. 인자는 server.py 로 그대로 넘어간다 (--port, --host).
-#   ./run.sh              → 9080
-#   ./run.sh --port 9081  → 워크트리용 다른 포트
+#   ./start.sh              → 9080
+#   ./start.sh --port 9081  → 워크트리용 다른 포트
+# 멈추는 것은 ./stop.sh, 같은 인자로 다시 띄우는 것은 ./restart.sh.
 # 로그는 logs/YYYY-MM-DD.log 에 이어 쌓고, 7일 넘게 안 쓴 로그는 지운다.
 set -euo pipefail
 cd "$(dirname "$0")"

@@ -14,7 +14,7 @@ from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import transcript
+from app.services import transcript, worktrees
 
 BLOCK_OPEN = '<work-dashboard session="{session}" state="{state}">'
 BLOCK_CLOSE = "</work-dashboard>"
@@ -240,6 +240,8 @@ def detail(con, session_row_id):
         "session": session,
         "messages": transcript.recent(session["claude_session_id"]),
         "todos": [todo_repo.get(con, todo_id) for todo_id in todo_ids],
+        # 워크트리 탭도 같은 팝업에 있다 — 세션에서 열든 할일에서 열든 같은 이력을 본다
+        "worktrees": worktrees.history(con, todo_ids),
     }
 
 
@@ -248,6 +250,8 @@ def todo_detail(con, todo_id):
     return {
         "todo": todo_repo.get(con, todo_id),
         "sessions": session_repo.list_by_todo(con, todo_id),
+        # 워크트리 탭용 이력. 병합·삭제된 워크트리도 이름과 상태로 남는다
+        "worktrees": worktrees.history(con, [todo_id]),
     }
 
 

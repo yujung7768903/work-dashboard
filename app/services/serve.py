@@ -1,16 +1,16 @@
 """워크트리 서버 실행·재실행·중지. 보드 워크트리 탭의 케밥 메뉴가 부른다.
 
-실행 방법은 워크트리 루트의 `run.sh` 하나로 본다 — 이 저장소의 관행이고(README "실행"),
-백그라운드 실행·날짜별 로그·기동 대기까지 그 스크립트가 이미 한다. `run.sh` 가 없는
-저장소는 실행하지 않고 그 사실을 그대로 알린다 — 진입점을 추측해서 띄우면 엉뚱한
-프로세스가 포트를 문다.
+실행 방법은 워크트리 루트의 `start.sh`(옛 이름 `run.sh`) 로 본다 — 이 저장소의
+관행이고(README "실행"), 백그라운드 실행·날짜별 로그·기동 대기까지 그 스크립트가 이미
+한다. 둘 다 없는 저장소는 실행하지 않고 그 사실을 그대로 알린다 — 진입점을 추측해서
+띄우면 엉뚱한 프로세스가 포트를 문다.
 
 중지는 release.kill_serving 을 그대로 쓴다 — 병합(worktrees.apply) 이 죽이는 것과
 같은 판정이어야 화면에 보이는 포트와 어긋나지 않는다.
 
 셋 다 사람이 읽을 문장(message)을 함께 돌려준다 — 실행은 몇 초 걸리고 끝나도 화면에는
 포트 배지가 조용히 붙을 뿐이라, 수행 중인지 끝난 건지 구분이 안 된다. 화면은 그 문장을
-그대로 띄운다(병합의 kept 알림과 같은 경로).
+그대로 띄운다(병합이 세션을 끊었을 때의 알림과 같은 경로).
 """
 import os
 import socket
@@ -21,26 +21,36 @@ from app.constants import DEFAULT_HOST
 from app.errors import Conflict, Validation
 from app.services import release
 
-RUN_SCRIPT = "run.sh"
+# 두 이름을 다 본다 — 이 저장소는 start.sh 로 바꿨지만, 바꾸기 전 브랜치로 만든
+# 워크트리에는 아직 run.sh 가 있다. 앞의 것부터 찾는다 (없는 이름을 지어내지는 않는다)
+RUN_SCRIPTS = ("start.sh", "run.sh")
 # Stop 훅(hooks/worktree_serve.py) 이 고르는 범위와 같다 — 어느 쪽으로 띄웠든 한 대역에 모인다
 PORT_RANGE = range(9080, 9140)
-# run.sh 는 서버가 첫 줄(URL) 을 찍을 때까지 기다린 뒤 끝난다
+# 실행 스크립트는 서버가 첫 줄(URL) 을 찍을 때까지 기다린 뒤 끝난다
 START_TIMEOUT_SEC = 20
 # SIGTERM 뒤 포트가 풀릴 때까지. 안 풀린 포트로 다시 띄우면 bind 가 그대로 실패한다
 FREE_WAIT_SEC = 5
-# run.sh 가 0 으로 끝나도 서버가 곧바로 죽는 경우가 있어 실제 응답까지 확인한다
+# 스크립트가 0 으로 끝나도 서버가 곧바로 죽는 경우가 있어 실제 응답까지 확인한다
 READY_WAIT_SEC = 10
 POLL_SEC = 0.2
 
 
+def run_script(path):
+    """그 워크트리의 실행 스크립트 경로. 없으면 빈 문자열"""
+    found = (os.path.join(path, name) for name in RUN_SCRIPTS)
+    return next((script for script in found if os.path.isfile(script)), "")
+
+
 def start(path, prefer=0):
-    """그 워크트리에서 run.sh 로 서버를 띄운다. prefer 는 재실행이 물려주는 이전 포트"""
+    """그 워크트리의 실행 스크립트로 서버를 띄운다. prefer 는 재실행이 물려주는 이전 포트"""
     running = release.serving_port(path)
     if running:
         raise Conflict(f"이미 :{running} 에 떠 있습니다. 다시 올리려면 '재실행' 을 쓰세요")
-    script = os.path.join(path, RUN_SCRIPT)
-    if not os.path.isfile(script):
-        raise Validation(f"{RUN_SCRIPT} 이 없어 실행할 수 없습니다: {path}")
+    script = run_script(path)
+    if not script:
+        raise Validation(
+            f"{'·'.join(RUN_SCRIPTS)} 중 아무것도 없어 실행할 수 없습니다: {path}"
+        )
     port = prefer if prefer and _is_free(prefer) else free_port()
     if port is None:
         raise Conflict(
@@ -105,8 +115,9 @@ def free_port():
 
 
 def _run_script(script, path, port):
-    """run.sh 를 그 워크트리에서. 서버는 스크립트가 nohup 으로 띄우므로 여기서
+    """실행 스크립트를 그 워크트리에서. 서버는 스크립트가 nohup 으로 띄우므로 여기서
     기다려도 응답이 끝난 뒤에 남는다"""
+    name = os.path.basename(script)
     try:
         result = subprocess.run(
             [script, "--port", str(port)],
@@ -116,10 +127,10 @@ def _run_script(script, path, port):
             timeout=START_TIMEOUT_SEC,
         )
     except Exception as error:
-        raise Conflict(f"{RUN_SCRIPT} 실행 실패: {error}")
+        raise Conflict(f"{name} 실행 실패: {error}")
     if result.returncode:
         raise Conflict(
-            f"{RUN_SCRIPT} 가 실패했습니다: {(result.stderr or result.stdout).strip()}"
+            f"{name} 가 실패했습니다: {(result.stderr or result.stdout).strip()}"
         )
     return result.stdout.strip()
 
