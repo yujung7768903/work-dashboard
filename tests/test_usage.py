@@ -109,6 +109,33 @@ class RecordLimitsTest(unittest.TestCase):
         self.assertEqual([w["key"] for w in payload["windows"]], ["five_hour", "seven_day"])
         self.assertFalse(payload["stale"])
 
+    def test_iso_reset_stamps_become_epoch_seconds(self):
+        """resets_at 이 ISO 문자열로 오는 경우가 있다. 그대로 적으면 주차 그룹이
+        문자열과 정수로 갈리고 화면의 날짜 계산도 깨진다 — 초 단위로 통일한다"""
+        path = self._path()
+        raw = json.dumps(
+            {
+                "rate_limits": {
+                    "five_hour": {"used_percentage": 24, "resets_at": "2026-08-14T00:50:00Z"},
+                    "seven_day": {"used_percentage": 3, "resets_at": 1786993200},
+                }
+            }
+        )
+        self.assertTrue(usage.record_limits(raw, limits_path=path))
+        with open(path, encoding="utf-8") as handle:
+            written = json.load(handle)
+        self.assertEqual(written["five_hour"]["resets_at"], 1786668600)
+        self.assertEqual(written["seven_day"]["resets_at"], 1786993200)  # 숫자는 그대로
+
+    def test_unreadable_reset_stamp_is_dropped_not_kept_raw(self):
+        path = self._path()
+        raw = json.dumps({"rate_limits": {"five_hour": {"used_percentage": 5, "resets_at": "몰라"}}})
+        self.assertTrue(usage.record_limits(raw, limits_path=path))
+        with open(path, encoding="utf-8") as handle:
+            written = json.load(handle)
+        self.assertIsNone(written["five_hour"]["resets_at"])
+        self.assertEqual(written["five_hour"]["used_percentage"], 5)
+
     def test_payloads_without_limits_write_nothing(self):
         for label, raw in (
             ("깨진 JSON", "{not json"),

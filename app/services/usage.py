@@ -70,7 +70,8 @@ def record_limits(raw, limits_path=RATE_LIMITS_PATH):
     limits = payload.get(RATE_LIMITS_KEY) if isinstance(payload, dict) else None
     if not isinstance(limits, dict):
         return False
-    body = {**limits, "timestamp": _epoch_ms(), "source": "statusline"}
+    body = {key: _normalized_window(value) for key, value in limits.items()}
+    body.update(timestamp=_epoch_ms(), source="statusline")
     try:
         os.makedirs(os.path.dirname(limits_path) or ".", exist_ok=True)
         # 같은 파일을 화면이 동시에 읽는다. 덮어쓰는 중간 상태를 보이지 않게 rename 으로 바꾼다
@@ -81,6 +82,26 @@ def record_limits(raw, limits_path=RATE_LIMITS_PATH):
     except OSError:
         return False
     return True
+
+
+def _normalized_window(window):
+    """창 하나. resets_at 을 초 단위 정수로 통일한다
+
+    이 값은 숫자로 올 때도 ISO 문자열로 올 때도 있다. 섞인 채로 적으면 주차 그룹이
+    문자열과 정수로 갈리고(둘은 같은 창인데 따로 세어진다) 화면의 날짜 계산도 깨진다.
+    못 읽는 값은 원문을 남기지 않고 버린다 — 창 하나가 비는 편이 낫다
+    """
+    if not isinstance(window, dict):
+        return window
+    stamp = window.get("resets_at")
+    if isinstance(stamp, str):
+        parsed = _parse_stamp(stamp)
+        stamp = int(parsed.timestamp()) if parsed else None
+    elif isinstance(stamp, (int, float)):
+        stamp = int(stamp)
+    elif stamp is not None:
+        stamp = None
+    return {**window, "resets_at": stamp}
 
 
 def snapshot(

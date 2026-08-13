@@ -126,8 +126,20 @@ function renderTop(usage) {
   if (usage.stale) {
     top.appendChild(tag("span", "u-stale", `⚠ ${durationText(usage.stale_seconds)} 전 값`));
   }
+  // 경로만 적어두면 "왜 비었는지" 를 모른다. 한도 %는 상태줄 페이로드로만 오므로,
+  // 채우는 방법을 같이 알려준다 (README "상태줄" 참고)
   if (!usage.windows.length) {
-    top.appendChild(tag("p", "u-caption", `한도 정보를 읽을 수 없음 — ${usage.limit_source}`));
+    top.appendChild(
+      tag("p", "u-caption", `한도 정보 없음 — ${usage.limit_source} 이 아직 없습니다.`)
+    );
+    top.appendChild(
+      tag(
+        "p",
+        "u-caption",
+        "한도 %는 상태줄 페이로드로만 들어옵니다. settings.json 의 statusLine 에" +
+          " dash.py statusline 을 등록하면 채워집니다. 아래 토큰 추이는 등록 전에도 나옵니다."
+      )
+    );
   }
 }
 
