@@ -1,13 +1,14 @@
-// 설정 탭. 카테고리(소속·하나)와 라벨(성격·여러 개)을 같은 모양의 줄로 관리한다.
+// 설정 탭. 언어와, 카테고리(소속·하나)·라벨(성격·여러 개)을 같은 모양의 줄로 관리한다.
 // 두 목록은 이름·색·순서·삭제가 똑같아 줄 만드는 코드를 공유하고, 다른 점만 설정으로 넘긴다
 import * as api from "./api.js";
+import { LANGUAGES, language, t } from "./i18n.js";
 import { run } from "./main.js";
 
 const CATEGORIES = {
   listId: "category-list",
   formId: "category-add",
   inputId: "category-name",
-  colorTitle: "카드 상단 배경색",
+  colorTitle: t("settings.categoryColor"),
   load: api.getCategories,
   create: api.createCategory,
   update: api.updateCategory,
@@ -20,7 +21,7 @@ const LABELS = {
   listId: "label-list",
   formId: "label-add",
   inputId: "label-name",
-  colorTitle: "라벨 색",
+  colorTitle: t("settings.labelColor"),
   load: api.getLabels,
   create: api.createLabel,
   update: api.updateLabel,
@@ -29,7 +30,28 @@ const LABELS = {
 };
 
 export async function renderSettings() {
+  renderLanguage();
   await Promise.all([renderList(CATEGORIES), renderList(LABELS)]);
+}
+
+// 언어 이름은 그 언어로 적는다 — 지금 화면 언어를 못 읽는 사람도 자기 것을 찾을 수 있어야 한다.
+// 바꾸면 화면을 다시 띄운다. 모듈 최상단에서 t() 로 만든 상수까지 다시 만들어야 하는데,
+// 그 상수들을 되돌리는 코드보다 새로고침 한 줄이 확실하다
+function renderLanguage() {
+  const select = document.getElementById("language-select");
+  select.innerHTML = "";
+  LANGUAGES.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.code;
+    option.textContent = item.label;
+    option.selected = item.code === language();
+    select.appendChild(option);
+  });
+  select.onchange = () =>
+    run(async () => {
+      await api.updateSettings({ language: select.value });
+      location.reload();
+    });
 }
 
 async function renderList(config) {
@@ -100,13 +122,13 @@ function moveButton(config, index, items, offset) {
 
 function addWorkspaceButton(category) {
   const button = document.createElement("button");
-  button.textContent = "워크스페이스 추가";
+  button.textContent = t("settings.addWorkspace");
   button.addEventListener("click", () =>
     run(async () => {
-      const name = prompt(`"${category.name}" 에 만들 워크스페이스 이름`);
+      const name = prompt(t("settings.workspaceNamePrompt", { category: category.name }));
       if (!name) return;
       await api.createWorkspace({ category_id: category.id, name });
-      alert("생성됨. 워크스페이스 탭에서 배경·목적·목표를 채우세요.");
+      alert(t("settings.workspaceCreated"));
     })
   );
   return button;

@@ -89,7 +89,11 @@ UNCLASSIFIED_GUIDE = (
 )
 ONBOARDING_GUIDE = (
     "지침: 등록된 워크스페이스가 하나도 없다. 초기 설정을 진행한다. "
-    "(1) 먼저 사용자에게 묻는다 — 최근 며칠 치 Claude 히스토리를 보고 자동 분류할지. "
+    "(0) 먼저 화면 언어를 묻는다 — 한국어(ko) / English(en) / 日本語(ja) / 中文(zh). "
+    "고른 값을 python3 dash.py language <코드> 로 적는다. 자동 분류를 거절해도 "
+    "이 질문은 먼저 한다 — 화면 언어는 초기 설정 여부와 무관하게 필요하다. "
+    "이후 언제든 설정 탭에서 바꿀 수 있다는 것도 알린다. "
+    "(1) 다음으로 사용자에게 묻는다 — 최근 며칠 치 Claude 히스토리를 보고 자동 분류할지. "
     f"{' / '.join(f'{days}일' for days in HISTORY_DAY_CHOICES)} / 자동 분류 안 함. "
     "'안 함' 이면 python3 dash.py onboard --skip 을 실행하고 여기서 끝낸다 "
     "— 이후 이 질문은 다시 뜨지 않는다. "

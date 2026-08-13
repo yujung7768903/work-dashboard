@@ -3,8 +3,12 @@
 // 실행: node tests/chart_hover_check.mjs (tests/test_chart_hover.py 가 이걸 부른다)
 import assert from "node:assert/strict";
 
-import { labelStride, nearestSlot, placeTip, spreadEnds } from "../static/js/chart.js";
-import { isHoliday, weekLabels } from "../static/js/usage.js";
+import { bootKorean } from "./i18n_boot.mjs";
+
+// 주차 라벨이 사전에서 오므로 사전을 먼저 들인다 (정적 import 는 그보다 먼저 돈다)
+await bootKorean();
+const { labelStride, nearestSlot, placeTip, spreadEnds } = await import("../static/js/chart.js");
+const { isHoliday, weekLabels } = await import("../static/js/usage.js");
 
 const slots = [10, 30, 50, 70].map((x) => ({ x, title: `t${x}` }));
 

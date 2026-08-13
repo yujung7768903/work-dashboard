@@ -51,6 +51,7 @@ work-dashboard/
 │   │
 │   ├── repositories/                # 엔티티별 저장·조회와 정합성 규칙
 │   │   ├── categories.py            # 카테고리
+│   │   ├── settings.py              # 화면 언어처럼 앱에 하나뿐인 설정 (meta 키-값)
 │   │   ├── labels.py                # 라벨 (할일에 여러 개)
 │   │   ├── workspaces.py            # 워크스페이스
 │   │   ├── todos.py                 # 할일
@@ -80,15 +81,19 @@ work-dashboard/
 │   └── stale_base.py                # UserPromptSubmit: 낡은 베이스 위 착수 경고
 │
 ├── static/                          # ES 모듈 프론트엔드 (번들러 없음)
-│   ├── index.html                   # 단일 페이지
+│   ├── index.html                   # 단일 페이지. 문구는 갖지 않고 data-i18n 키만 붙는다
+│   ├── lang/                        # 화면 문구. 언어마다 파일 하나, 키는 네 파일이 같다
+│   │   └── ko.json · en.json · ja.json · zh.json
 │   ├── css/
 │   │   ├── app.css                  # 디자인 토큰 정의 + 공통·보드 스타일
 │   │   └── usage.css                # 사용량 화면 전용 (토큰은 app.css 것을 참조)
 │   └── js/
-│       ├── main.js                  # 부트스트랩·탭 전환 (/usage /board 등 경로 = 탭)
+│       ├── boot.js                  # 진입점. 언어를 확정한 뒤 main.js 를 들인다
+│       ├── i18n.js                  # 사전 적재와 t(키) — 문구는 여기로만 나온다
+│       ├── main.js                  # 탭 전환 (/usage /board 등 경로 = 탭)
 │       ├── api.js                   # fetch 래퍼
 │       ├── board.js                 # 보드 렌더
-│       ├── settings.js              # 설정 탭 — 카테고리·라벨 관리
+│       ├── settings.js              # 설정 탭 — 언어·카테고리·라벨 관리
 │       ├── workspace.js             # 워크스페이스 상세
 │       ├── sessions.js              # 활성 세션 (2초 폴링)
 │       ├── autorun.js               # 자율 수행 패널 (5초 폴링)
@@ -391,9 +396,11 @@ python3 dash.py autorun-finish              # 완료 — 검토 대기로. 할�
 
 ### 초기 설정 (⑤)
 
-워크스페이스가 하나도 없는 상태에서 세션을 열면 분류 대신 **초기 설정 블록**이 주입된다. Claude 가 사용자에게 최근 며칠 치 히스토리를 볼지(7일 / 14일 / 안 함) 묻고, 스캔 결과로 카테고리·워크스페이스를 제안한 뒤 확인받아 등록한다.
+워크스페이스가 하나도 없는 상태에서 세션을 열면 분류 대신 **초기 설정 블록**이 주입된다. Claude 가 먼저 화면 언어를 묻고(한국어 / English / 日本語 / 中文), 이어서 최근 며칠 치 히스토리를 볼지(7일 / 14일 / 안 함) 묻고, 스캔 결과로 카테고리·워크스페이스를 제안한 뒤 확인받아 등록한다. 언어는 자동 분류를 거절해도 먼저 묻는다 — 화면 언어는 초기 설정 여부와 무관하게 필요하기 때문이다.
 
 ```bash
+python3 dash.py language                  # 지금 화면 언어
+python3 dash.py language en               # 초기 설정 때 사용자가 고른 언어를 적는다
 python3 dash.py scan-history --days 7     # 세션당 한 줄 요약 (Claude 가 읽는 입력)
 python3 dash.py onboard                   # 초기 설정이 필요한 상태인지
 python3 dash.py onboard --skip            # 자동 분류 거절. 이후 다시 묻지 않음
@@ -401,6 +408,27 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 ```
 
 각 줄 맨 앞의 8자가 세션 id 앞머리이고, 그대로 `link-todo ... --past` 에 넘긴다. `--past` 는 `sessions` 에 없는 세션을 **`state=ended` 로** 등록한다 — `register()` 를 쓰면 `idle` + 지금 시각이 되어 이미 끝난 세션 수십 개가 활성 목록에 살아 있는 것처럼 뜬다. 앞머리가 둘 이상 맞으면 실패한다. 또 `--past` 는 할일 상태를 바꾸지 않는다. 보통의 `link-todo` 는 착수 선언이라 `todo` → `doing` 으로 올리지만, 끝난 세션 연결은 기록이지 착수가 아니기 때문이다.
+
+#### 화면 언어
+
+한국어 / 영어 / 일본어 / 중국어. 고른 값은 `meta.language` 한 줄로 남아 브라우저를 바꾸거나 서버를 내렸다 올려도 유지되고, 웹 설정 탭과 `dash.py language` 가 같은 값을 본다. 나중에 바꾸는 곳은 **설정 탭 맨 위**다.
+
+**문구는 코드에 두지 않는다.** `static/lang/<코드>.json` 에 키-값으로 모여 있고 화면은 키만 부른다 (`t("board.nextNone")`, `index.html` 은 `data-i18n="키"`). 한국어도 다른 언어와 같은 자격의 파일이라, 문구를 고치려면 코드가 아니라 이 파일들을 고친다. 값 자리는 `{count}` 처럼 이름으로 적는다 (ICU MessageFormat 의 부분집합이라 나중에 라이브러리로 옮겨도 사전은 그대로 쓴다).
+
+```text
+static/lang/ko.json   ← 원문. 늘 먼저 깔린다
+static/lang/en.json   ← 그 위에 덮는다. 빠진 키는 한국어로 뜬다 (화면에 키가 노출되지 않게)
+```
+
+`static/js/boot.js` 가 언어를 확정한 **뒤에** 화면 모듈을 들인다 — 여러 모듈이 최상단에서 `t()` 로 라벨 표를 만들기 때문에 순서가 뒤집히면 그것들만 번역이 안 된다. 날짜·시각 표기도 고른 언어를 따른다(`Intl` 의 locale).
+
+키를 늘리고 사전 하나를 빠뜨리면 `tests/test_language.py` 가 실패한다 — 화면(JS·HTML)에서 키를 뽑아 네 사전과 대조하고, `{자리}` 개수와 "번역 안 하고 한국어를 복사한 항목"까지 본다.
+
+아직 한국어 고정인 것:
+
+- CLI(`dash.py`) 출력과 훅이 주입하는 세션 블록 — 읽는 쪽이 Claude 라 옮길 이유가 없다
+- 서버가 내려주는 오류 문구 중 **값이 박힌 문장**(`'개발' 카테고리가 이미 있습니다`). 값이 없는 문장은 `api.js` 가 한국어 원문을 사전에서 되짚어 옮긴다
+- 시드 카테고리 6개와 착수 조건 예시(`확인:` 은 파서가 읽는 약속어라 옮기면 안 된다)
 
 `scan-history` 는 `~/.claude/projects/*/*.jsonl` **전체**에서 mtime 이 기간 안인 파일만 골라 **앞 64KB** 만 읽고, 프로젝트 위치별로 묶어 세션당 한 줄(시작~최근 날짜 + 첫 지시 200자)로 뱉는다. 전문은 수백 MB 라 세션에 넣을 수 없기 때문이다. 슬래시 명령·자동 압축 요청은 첫 지시에서 걸러낸다.
 
@@ -515,7 +543,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
 | `worktrees` | 워크트리 이력. 병합·삭제로 사라진 것도 이름·상태로 남긴다 (팝업 워크트리 탭) | `path`(PK), `repo`, `branch`, `created_at`, `merged_at`, `merge_hash`, `merge_from`, `deleted_at` | — (경로로 잇는다) |
-| `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined` | `key`(PK), `value` | — |
+| `meta` | 내부 플래그·단일 설정 저장소. `categories_seeded`, `onboarding_declined`, `language` | `key`(PK), `value` | — |
 
 ## 규칙 몇 가지
 

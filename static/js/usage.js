@@ -9,6 +9,7 @@ import {
   stackedColumnChart,
   thousands,
 } from "./chart.js";
+import { language, t } from "./i18n.js";
 import { openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 60_000; // 5시간 창은 전력으로 써도 분당 0.3%대로 움직인다
@@ -22,28 +23,30 @@ const HOURS_PER_DAY = 24;
 const DATE_SLICE = 5; // "2026-07-31" → "07-31"
 const TREND_HOURS = 24;
 const WORKING = "working";
-const UNCLASSIFIED_LABEL = "분류 전";
-const UNKNOWN = "알 수 없음";
+const UNCLASSIFIED_LABEL = t("session.unclassified");
+const UNKNOWN = t("common.unknown");
+// 날짜·시각 표기도 고른 언어를 따른다. ko 는 지역까지 붙여 기존 표기를 그대로 둔다
+const LOCALE = language() === "ko" ? "ko-KR" : language();
 
 // 사이드카(rate-limits.json)에는 five_hour·seven_day 만 남는다.
 // Fable 세션 창은 그 파일에 없어 자리만 두고 미수집으로 표시한다.
 const LIMIT_CARDS = [
-  { key: "five_hour", label: "현재 세션 · 5시간 창", sample: "five_hour_pct" },
-  { key: "seven_day", label: "이번 주 · 전체 모델", sample: "seven_day_pct" },
-  { key: "fable_session", label: "Fable 세션 창", sample: null },
+  { key: "five_hour", label: t("usage.cardFiveHour"), sample: "five_hour_pct" },
+  { key: "seven_day", label: t("usage.cardSevenDay"), sample: "seven_day_pct" },
+  { key: "fable_session", label: t("usage.cardFable"), sample: null },
 ];
 // 5시간 창만 시각 축에 올린다. 주간 창은 7일 내내 쌓이기만 해서 24시간 구간에서는
 // 거의 평평한 선이 되고, 5시간 톱니와 축을 나눠 쓰면 둘 다 읽히지 않는다 —
 // 주간은 주차끼리 견주는 게 맞아 renderWeekly 로 뺐다
 const PCT_SERIES = [
-  { key: "five_hour_pct", name: "5시간", tipName: "현재 세션 · 5시간", cls: "u-c-five" },
+  { key: "five_hour_pct", name: t("usage.seriesFiveHour"), tipName: t("usage.seriesFiveHourTip"), cls: "u-c-five" },
 ];
 // 주차 막대. 시리즈 하나뿐이라 쌓이지 않고 그냥 막대가 된다
-const WEEK_PCT_SERIES = [{ key: "peak_pct", name: "최고 사용률", cls: "u-c-seven" }];
+const WEEK_PCT_SERIES = [{ key: "peak_pct", name: t("usage.seriesPeak"), cls: "u-c-seven" }];
 // 닫힌 주차를 최근부터 부르는 이름. 표에서 밀려나면 "N주 전"
-const WEEK_NAMES = [null, "지난주"];
-const WEEK_CURRENT = "이번 주";
-const PLAN_UNKNOWN = "플랜 미확인";
+const WEEK_NAMES = [null, t("usage.weekLast")];
+const WEEK_CURRENT = t("usage.weekCurrent");
+const PLAN_UNKNOWN = t("usage.planUnknown");
 // Fable 이 빠져 있어 폴백(=Haiku)으로 떨어지면서 두 모델이 같은 회색이 되던 것을 갈랐다.
 // 폴백은 "기타" 몫으로 남긴다 — 이름을 모르는 모델까지 색을 배정할 수는 없다
 const MODEL_CLASS = {
@@ -54,9 +57,9 @@ const MODEL_CLASS = {
 };
 const FALLBACK_CLASS = "u-c-other";
 const BREAKDOWN_ROWS = [
-  ["output_tokens", "출력"],
-  ["cache_write_tokens", "캐시 쓰기"],
-  ["cache_read_tokens", "캐시 읽기"],
+  ["output_tokens", t("usage.output")],
+  ["cache_write_tokens", t("usage.cacheWrite")],
+  ["cache_read_tokens", t("usage.cacheRead")],
 ];
 const LEVEL_CLASS = { warn: "u-warn", critical: "u-crit" };
 // 휴일 판정용. 음력 명절(설·추석)·부처님오신날·대체공휴일은 이 표로 잡히지 않는다 —
@@ -65,7 +68,7 @@ const FIXED_HOLIDAYS = new Set([
   "01-01", "03-01", "05-05", "06-06", "08-15", "10-03", "10-09", "12-25",
 ]);
 const WEEKEND_DAYS = new Set([0, 6]);
-const STATUS_LABEL = { todo: "대기", doing: "진행중", done: "완료" };
+const STATUS_LABEL = { todo: t("usage.statusTodo"), doing: t("usage.statusDoing"), done: t("common.done") };
 
 let timer = null;
 // 전체보기로 펼친 상태. 모듈 변수라 60초 폴링이 다시 그려도 접히지 않는다
@@ -124,10 +127,13 @@ function renderTop(usage) {
   plan.append(tag("i"), tag("span", null, usage.plan || UNKNOWN));
   top.append(plan, tag("span", "u-stamp", stampText(usage.snapshot_ts)));
   if (usage.stale) {
-    top.appendChild(tag("span", "u-stale", `⚠ ${durationText(usage.stale_seconds)} 전 값`));
+    const age = durationText(usage.stale_seconds);
+    top.appendChild(tag("span", "u-stale", t("usage.stale", { age })));
   }
   if (!usage.windows.length) {
-    top.appendChild(tag("p", "u-caption", `한도 정보를 읽을 수 없음 — ${usage.limit_source}`));
+    top.appendChild(
+      tag("p", "u-caption", t("usage.limitUnavailable", { source: usage.limit_source }))
+    );
   }
 }
 
@@ -142,7 +148,9 @@ function limitCard(spec, usage) {
   const found = usage.windows.find((window) => window.key === spec.key);
   const card = tag("div", found ? "u-card" : "u-card u-dim");
   const head = tag("div", "u-lim-head");
-  head.append(tag("span", "u-lim-label", found ? found.title : spec.label), arrowMark());
+  // 제목은 서버가 준 문구(한국어 고정)가 아니라 화면 사전에서 가져온다 — 창을 가르는
+  // 것은 key 이고, 서버 title 을 쓰면 이 카드만 언어를 안 따라간다
+  head.append(tag("span", "u-lim-label", spec.label), arrowMark());
   card.appendChild(head);
 
   // 값 줄 · 게이지 · 하단 줄 세 단으로 고정한다. 수집 안 된 창도 같은 세 단을
@@ -150,8 +158,8 @@ function limitCard(spec, usage) {
   if (!found) {
     const note = tag("p", "u-reset");
     note.append(
-      tag("span", "u-flag", "미수집"),
-      document.createTextNode(" 사이드카에 이 창이 없음")
+      tag("span", "u-flag", t("usage.notCollected")),
+      document.createTextNode(` ${t("usage.windowMissing")}`)
     );
     card.append(
       valueRow(tag("p", "u-lim-value u-lim-empty", "―"), null),
@@ -228,11 +236,11 @@ function deltaLine(delta, suffix) {
 function resetLine(epochSeconds) {
   const line = tag("p", "u-reset");
   if (!epochSeconds) {
-    line.textContent = "초기화 시각 미확인";
+    line.textContent = t("usage.resetUnknown");
     return line;
   }
   line.append(
-    document.createTextNode("초기화까지 "),
+    document.createTextNode(`${t("usage.resetIn")} `),
     tag("b", null, remainingText(epochSeconds)),
     document.createTextNode(` · ${resetStamp(epochSeconds)}`)
   );
@@ -246,11 +254,11 @@ function renderDaily(tokens) {
   const models = activeModels(tokens);
   const days = tokens.days || [];
   if (!tokens.available || !models.length) {
-    box.append(headRow("일별 토큰"), emptyState(noTokenText(tokens)));
+    box.append(headRow(t("usage.dailyTokens")), emptyState(noTokenText(tokens)));
     return;
   }
   box.appendChild(
-    headRow("일별 토큰", `최근 ${days.length}일`, [
+    headRow(t("usage.dailyTokens"), t("usage.lastDays", { days: days.length }), [
       legendRow(models.map((model) => ({ name: model, cls: classOf(model) }))),
     ])
   );
@@ -262,19 +270,19 @@ function renderDaily(tokens) {
     holiday: isHoliday(day.date),
     values: day.by_model || {},
     // 툴팁이 합계·모델별 토큰을 정확한 수로 보여주므로 여기 남는 건 비용뿐
-    detail: `정가환산 $${day.cost_usd}`,
+    detail: t("usage.listPriceValue", { cost: day.cost_usd }),
   }));
-  box.appendChild(stackedColumnChart({ points, series, label: "일별 토큰" }));
+  box.appendChild(stackedColumnChart({ points, series, label: t("usage.dailyTokens") }));
 
   const details = document.createElement("details");
-  details.appendChild(tag("summary", null, "표로 보기"));
+  details.appendChild(tag("summary", null, t("usage.asTable")));
   details.appendChild(dayTable(tokens, models));
   box.appendChild(details);
 }
 
 function dayTable(tokens, models) {
   const table = document.createElement("table");
-  table.appendChild(tableRow("th", ["날짜", "합계", ...models, "정가환산"]));
+  table.appendChild(tableRow("th", [t("usage.date"), t("common.total"), ...models, t("usage.listPrice")]));
   tokens.days
     .filter((day) => day.total > 0)
     .slice()
@@ -300,7 +308,7 @@ function renderToday(tokens) {
   if (!box) return;
   const days = tokens.days || [];
   const today = days[days.length - 1];
-  box.appendChild(headRow("오늘 토큰", today ? today.date.slice(DATE_SLICE) : ""));
+  box.appendChild(headRow(t("usage.todayTokens"), today ? today.date.slice(DATE_SLICE) : ""));
   if (!tokens.available || !today) {
     box.appendChild(emptyState(noTokenText(tokens)));
     return;
@@ -308,14 +316,14 @@ function renderToday(tokens) {
 
   box.appendChild(bigNumber(today.total));
   const change = dayOverDay(days);
-  if (change) box.appendChild(deltaLine(change, "어제 대비"));
+  if (change) box.appendChild(deltaLine(change, t("usage.vsYesterday")));
 
   const rows = tag("div", "u-rows");
   BREAKDOWN_ROWS.forEach(([field, label]) => {
     rows.appendChild(labelledRow(label, compact(today.breakdown?.[field] || 0)));
   });
-  rows.appendChild(labelledRow("정가환산", `$${today.cost_usd}`));
-  box.append(rows, tag("p", "u-caption", "정가환산은 API 정가 기준이며 구독 청구액이 아님"));
+  rows.appendChild(labelledRow(t("usage.listPrice"), `$${today.cost_usd}`));
+  box.append(rows, tag("p", "u-caption", t("usage.listPriceNote")));
 }
 
 // 압축 표기의 단위 문자만 작게 — "248.2M" 의 M
@@ -344,19 +352,27 @@ function renderTrend(usage) {
   if (samples.length < MIN_TREND_POINTS) {
     // 한도 %는 어디에도 이력이 남지 않아 이 대시보드가 모으기 시작한 시점부터 그려진다
     box.append(
-      headRow("5시간 세션 추이"),
-      emptyState("한도 %는 이력이 남지 않아 지금부터 모읍니다. 몇 분 뒤 추이가 그려집니다.")
+      headRow(t("usage.trendTitle")),
+      emptyState(t("usage.trendEmpty"))
     );
     return;
   }
-  box.appendChild(headRow("5시간 세션 추이", `최근 ${TREND_HOURS}시간`, [legendRow(PCT_SERIES)]));
+  box.appendChild(
+    headRow(t("usage.trendTitle"), t("usage.lastHours", { hours: TREND_HOURS }), [
+      legendRow(PCT_SERIES),
+    ])
+  );
   const points = samples.map((sample) => ({
     label: clockText(sample.bucket_ts),
     values: { five_hour_pct: sample.five_hour_pct, seven_day_pct: sample.seven_day_pct },
   }));
   box.append(
-    percentLineChart({ points, series: PCT_SERIES, label: "5시간 세션 사용률 추이" }),
-    tag("p", "u-caption", `실측 ${samples.length}개 · 대시보드가 모으기 시작한 뒤부터 쌓임`)
+    percentLineChart({ points, series: PCT_SERIES, label: t("usage.trendChartLabel") }),
+    tag(
+      "p",
+      "u-caption",
+      t("usage.trendCaption", { count: samples.length })
+    )
   );
 }
 
@@ -369,23 +385,23 @@ function renderWeekly(weekly) {
   const tracks = weekly?.tracks || [];
   if (!tracks.length) {
     box.append(
-      headRow("주간 한도 · 주차 비교"),
-      emptyState("주간 창 실측이 아직 없습니다. 한도 %는 이력이 남지 않아 지금부터 모읍니다.")
+      headRow(t("usage.weeklyTitle")),
+      emptyState(t("usage.weeklyEmpty"))
     );
     return;
   }
   box.appendChild(
-    headRow("주간 한도 · 주차 비교", "초기화 직전 도달치", [legendRow(WEEK_PCT_SERIES)])
+    headRow(t("usage.weeklyTitle"), t("usage.weeklySub"), [legendRow(WEEK_PCT_SERIES)])
   );
   tracks.forEach((track) => box.appendChild(weekTrack(track)));
   if (weekly.multi_account) {
     // 계정 이름은 어디에도 없다. 초기화 시각이 유일한 식별자라 그걸로 가른다
     box.appendChild(
-      tag("p", "u-caption", "초기화 시각이 다른 창은 서로 다른 계정 — 창끼리는 합산되지 않음")
+      tag("p", "u-caption", t("usage.multiAccountNote"))
     );
   }
   const details = document.createElement("details");
-  details.appendChild(tag("summary", null, "표로 보기"));
+  details.appendChild(tag("summary", null, t("usage.asTable")));
   details.appendChild(weekTable(tracks));
   box.appendChild(details);
 }
@@ -394,7 +410,7 @@ function weekTrack(track) {
   const wrap = tag("div", "u-week-track");
   const weeks = track.weeks;
   const labels = weekLabels(weeks);
-  const title = `${trackLabel(weeks[weeks.length - 1].reset_at)} 초기화`;
+  const title = t("usage.trackTitle", { at: trackLabel(weeks[weeks.length - 1].reset_at) });
   // 플랜은 지금 로그인한 계정 것만 설정 파일에 있다. 아직 그 계정으로 들어온 적이 없는
   // 트랙은 알 수 없으므로, 빈 자리로 두지 않고 모른다는 사실을 적는다
   const head = tag("div", "u-week-head");
@@ -413,7 +429,7 @@ function weekTrack(track) {
       series: WEEK_PCT_SERIES,
       ticks: PCT_TICKS,
       format: (value) => `${Math.round(value)}%`,
-      label: `주차별 최고 사용률 · ${title}`,
+      label: t("usage.weekChartLabel", { title }),
     })
   );
   return wrap;
@@ -423,7 +439,9 @@ function weekTrack(track) {
 // 어느 계정의 주차인지 표에서 가릴 수 없다
 function weekTable(tracks) {
   const table = document.createElement("table");
-  table.appendChild(tableRow("th", ["창", "주차", "기간", "최고", "실측"]));
+  table.appendChild(
+    tableRow("th", [t("usage.colWindow"), t("usage.colWeek"), t("usage.colSpan"), t("usage.colPeak"), t("usage.colSamples")])
+  );
   tracks.forEach((track) => {
     const labels = weekLabels(track.weeks);
     const window = trackLabel(track.weeks[track.weeks.length - 1].reset_at);
@@ -437,7 +455,7 @@ function weekTable(tracks) {
             label,
             weekSpan(week),
             `${Math.round(week.peak_pct)}%`,
-            `${week.samples}개`,
+            t("usage.sampleCount", { count: week.samples }),
           ])
         );
       });
@@ -455,11 +473,11 @@ function renderWeeklyTokens(weekly) {
   const weeks = weekly?.token_weeks || [];
   if (!weeks.length) {
     box.append(
-      headRow("주차별 토큰"),
+      headRow(t("usage.weeklyTokens")),
       emptyState(
         weekly?.token_available
-          ? "주 경계를 알 수 없음 — 주간 창 실측이 쌓이면 그려집니다"
-          : `토큰 기록이 없음 — ${weekly?.token_source || ""}`
+          ? t("usage.weeklyTokensEmpty")
+          : t("usage.noTokenSource", { source: weekly?.token_source || "" })
       )
     );
     return;
@@ -469,25 +487,25 @@ function renderWeeklyTokens(weekly) {
   const labels = weekLabels(weeks);
   const rows = weeks.map((week, index) => ({ week, label: labels[index] }));
   const latest = rows[rows.length - 1];
-  box.appendChild(headRow("주차별 토큰", latest.label));
+  box.appendChild(headRow(t("usage.weeklyTokens"), latest.label));
   box.appendChild(bigNumber(latest.week.tokens));
   const change = weekOverWeek(weeks);
-  if (change) box.appendChild(deltaLine(change, "지난주 대비"));
+  if (change) box.appendChild(deltaLine(change, t("usage.vsLastWeek")));
 
   const list = tag("div", "u-rows");
   rows
     .slice(0, -1)
     .reverse()
     .forEach(({ week, label }) => list.appendChild(labelledRow(label, compact(week.tokens))));
-  list.appendChild(labelledRow("정가환산", `$${latest.week.cost_usd}`));
+  list.appendChild(labelledRow(t("usage.listPrice"), `$${latest.week.cost_usd}`));
   box.appendChild(list);
   box.appendChild(
     tag(
       "p",
       "u-caption",
       weekly.token_shared
-        ? "주 경계는 주 창 기준 · 계정별로 나눌 수 없어 전 계정 합산"
-        : "주 경계는 한도 창 초기화 시각 기준"
+        ? t("usage.weekBoundaryShared")
+        : t("usage.weekBoundaryReset")
     )
   );
 }
@@ -509,13 +527,15 @@ export function weekLabels(weeks) {
   return weeks
     .slice()
     .reverse()
-    .map((week) => (week.in_progress ? WEEK_CURRENT : WEEK_NAMES[++back] || `${back}주 전`))
+    .map((week) =>
+      week.in_progress ? WEEK_CURRENT : WEEK_NAMES[++back] || t("usage.weeksAgo", { count: back })
+    )
     .reverse();
 }
 
 // 툴팁 꼬리말. 진행 중 주차는 값이 아직 자라는 중이라 그 사실을 붙인다
 function weekFoot(week) {
-  return `${weekSpan(week)}${week.in_progress ? " · 진행 중" : ""}`;
+  return `${weekSpan(week)}${week.in_progress ? ` · ${t("usage.inProgress")}` : ""}`;
 }
 
 // 주 경계는 자정이 아니라 초기화 시각이다. 날짜만 적으면 하루가 겹쳐 보인다
@@ -527,7 +547,7 @@ function weekSpan(week) {
 // ko-KR 은 요일만 뽑으면 "(화)" 로 괄호를 붙인다 — 뒤에 시각이 이어지므로 괄호를 뗀다
 function trackLabel(epochSeconds) {
   return new Date(epochSeconds * MS_PER_SECOND)
-    .toLocaleString("ko-KR", {
+    .toLocaleString(LOCALE, {
       weekday: "short",
       hour: "2-digit",
       minute: "2-digit",
@@ -549,10 +569,10 @@ function renderShare(tokens) {
   }));
   const sum = shares.reduce((acc, share) => acc + share.value, 0);
   if (!tokens.available || !sum) {
-    box.append(headRow("모델 구성"), emptyState(noTokenText(tokens)));
+    box.append(headRow(t("usage.modelMix")), emptyState(noTokenText(tokens)));
     return;
   }
-  box.appendChild(headRow("모델 구성", `${days.length}일`));
+  box.appendChild(headRow(t("usage.modelMix"), t("usage.days", { days: days.length })));
 
   const wrap = tag("div", "u-donut-wrap");
   const legend = tag("div", "u-donut-legend");
@@ -569,7 +589,7 @@ function renderShare(tokens) {
     donutChart({
       slices: shares,
       centerValue: compact(sum),
-      centerLabel: `${days.length}일 합계`,
+      centerLabel: t("usage.daysTotal", { days: days.length }),
     }),
     legend
   );
@@ -580,9 +600,9 @@ function renderShare(tokens) {
 function renderNext(next, categories) {
   const box = slot("u-next");
   if (!box) return;
-  box.appendChild(railHead("다음에 할일", boardLink()));
+  box.appendChild(railHead(t("usage.nextTodo"), boardLink()));
   if (!next?.todo) {
-    box.appendChild(railCard(tag("p", "u-caption", "대기 중인 할일이 없음")));
+    box.appendChild(railCard(tag("p", "u-caption", t("usage.noNextTodo"))));
     return;
   }
 
@@ -608,7 +628,7 @@ function renderNext(next, categories) {
 function boardLink() {
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = "보드로";
+  button.textContent = t("usage.toBoard");
   // 탭 전환은 main.js 가 #tabs 클릭으로 처리한다. 그 버튼을 그대로 누른다
   button.addEventListener("click", () => {
     document.querySelector("#tabs [data-tab=board]")?.click();
@@ -628,9 +648,9 @@ function renderSessions(payload) {
   const folded = Math.max(0, ordered.length - RAIL_SESSION_LIMIT);
   const shown = sessionsExpanded ? ordered : ordered.slice(0, RAIL_SESSION_LIMIT);
 
-  box.appendChild(railHead("돌고 있는 세션", folded ? expandToggle(payload) : null));
+  box.appendChild(railHead(t("usage.runningSessions"), folded ? expandToggle(payload) : null));
   if (!all.length) {
-    box.appendChild(railCard(tag("p", "u-caption", "돌고 있는 세션이 없음")));
+    box.appendChild(railCard(tag("p", "u-caption", t("usage.noRunningSessions"))));
     return;
   }
 
@@ -644,16 +664,18 @@ function renderSessions(payload) {
       tag("span", "u-sess-cat", session.category_name || ""),
       tag("span", "u-sess-ago", agoText(session.last_seen_at) || "")
     );
-    body.append(scope, tag("p", "u-sess-prompt", session.last_prompt || "지시 없음"));
+    body.append(scope, tag("p", "u-sess-prompt", session.last_prompt || t("usage.noPrompt")));
     item.appendChild(body);
     item.addEventListener("click", () => openDetail({ session }));
     box.appendChild(item);
   });
   if (folded && !sessionsExpanded) {
-    box.appendChild(tag("p", "u-caption", `그 외 ${folded}건`));
+    box.appendChild(tag("p", "u-caption", t("usage.moreSessions", { count: folded })));
   }
   if (payload.unclassified_count) {
-    box.appendChild(tag("p", "u-sess-warn", `분류 전 ${payload.unclassified_count}건 ⚠`));
+    box.appendChild(
+      tag("p", "u-sess-warn", t("session.unclassifiedCount", { count: payload.unclassified_count }))
+    );
   }
 }
 
@@ -661,7 +683,7 @@ function renderSessions(payload) {
 function expandToggle(payload) {
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = sessionsExpanded ? "접기" : "전체보기";
+  button.textContent = sessionsExpanded ? t("usage.collapse") : t("usage.expand");
   button.setAttribute("aria-expanded", String(sessionsExpanded));
   button.addEventListener("click", () => {
     sessionsExpanded = !sessionsExpanded;
@@ -736,7 +758,9 @@ function emptyState(message) {
 }
 
 function noTokenText(tokens) {
-  return tokens.available ? "집계할 토큰 기록이 없음" : `토큰 기록이 없음 — ${tokens.source}`;
+  return tokens.available
+    ? t("usage.noTokens")
+    : t("usage.noTokenSource", { source: tokens.source });
 }
 
 // 값이 한 번도 안 잡힌 모델은 범례에서 뺀다 — 죽은 항목이 색만 차지한다
@@ -765,15 +789,15 @@ function nameOf(categories, id) {
 }
 
 function clockText(epochMs) {
-  return new Date(epochMs).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  return new Date(epochMs).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
 }
 
 function stampText(epochMs) {
-  return epochMs ? `${clockText(epochMs)} 기준` : "한도 정보 없음";
+  return epochMs ? t("usage.asOf", { at: clockText(epochMs) }) : t("usage.noLimitInfo");
 }
 
 function resetStamp(epochSeconds) {
-  return new Date(epochSeconds * MS_PER_SECOND).toLocaleString("ko-KR", {
+  return new Date(epochSeconds * MS_PER_SECOND).toLocaleString(LOCALE, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -788,12 +812,17 @@ function remainingText(epochSeconds) {
 // 초 → "45초" / "12분" / "3시간 20분" / "1일 20시간". 남은 시간과 stale 나이가 같은 규칙을 쓴다
 function durationText(seconds) {
   if (seconds === null || seconds === undefined) return UNKNOWN;
-  if (seconds < SECONDS_PER_MINUTE) return `${seconds}초`;
+  if (seconds < SECONDS_PER_MINUTE) return t("duration.seconds", { count: seconds });
   const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
-  if (minutes < MINUTES_PER_HOUR) return `${minutes}분`;
+  if (minutes < MINUTES_PER_HOUR) return t("duration.minutes", { count: minutes });
   const hours = Math.floor(minutes / MINUTES_PER_HOUR);
-  if (hours < HOURS_PER_DAY) return `${hours}시간 ${minutes % MINUTES_PER_HOUR}분`;
-  return `${Math.floor(hours / HOURS_PER_DAY)}일 ${hours % HOURS_PER_DAY}시간`;
+  if (hours < HOURS_PER_DAY) {
+    return t("duration.hoursMinutes", { hours, minutes: minutes % MINUTES_PER_HOUR });
+  }
+  return t("duration.daysHours", {
+    days: Math.floor(hours / HOURS_PER_DAY),
+    hours: hours % HOURS_PER_DAY,
+  });
 }
 
 // ISO8601 UTC → "16s" / "5m" / "3h" / "2d". 세션 카드의 경과 시간 전용 표기라
