@@ -6,7 +6,6 @@ import unittest
 import dash
 import server
 from app.constants import PRECONDITION_EXAMPLE, PRECONDITION_HINT
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
@@ -33,37 +32,22 @@ class PreconditionStorageTest(unittest.TestCase):
         )
         self.assertEqual(todo_repo.get(self.con, todo["id"])["precondition"], CONDITION)
 
-    def test_subtask_keeps_precondition(self):
-        todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
-        subtask = subtask_repo.create(
-            self.con, todo["id"], "하위", precondition=MULTILINE
-        )
-        self.assertEqual(
-            subtask_repo.get(self.con, subtask["id"])["precondition"], MULTILINE
-        )
-
     def test_defaults_to_none(self):
         todo = todo_repo.create(self.con, "조건 없음", workspace_id=self.workspace["id"])
         self.assertIsNone(todo["precondition"])
-        subtask = subtask_repo.create(self.con, todo["id"], "하위")
-        self.assertIsNone(subtask["precondition"])
 
     def test_update_can_set_precondition(self):
         todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
         updated = todo_repo.update(self.con, todo["id"], precondition=CONDITION)
         self.assertEqual(updated["precondition"], CONDITION)
-        subtask = subtask_repo.create(self.con, todo["id"], "하위")
-        self.assertEqual(
-            subtask_repo.update(self.con, subtask["id"], precondition=CONDITION)[
-                "precondition"
-            ],
-            CONDITION,
-        )
 
 
 class PreconditionMigrationTest(unittest.TestCase):
     def test_existing_db_without_column_is_upgraded(self):
-        """컬럼이 없던 시절 DB 도 그냥 열려야 한다. 열리면서 값은 NULL"""
+        """컬럼이 없던 시절 DB 도 그냥 열려야 한다. 열리면서 값은 NULL.
+
+        하위할일을 쓰던 DB 로 만든다 — 그 테이블은 열리면서 사라져야 한다
+        """
         path = temp_db_path()
         legacy = sqlite3.connect(path)
         legacy.executescript(
@@ -83,10 +67,14 @@ class PreconditionMigrationTest(unittest.TestCase):
         legacy.close()
 
         con = temp_db(path)
-        for table in ("todos", "subtasks"):
-            columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
-            self.assertIn("precondition", columns, table)
+        columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+        self.assertIn("precondition", columns)
         self.assertIsNone(todo_repo.get(con, 1)["precondition"])
+        tables = {
+            row["name"]
+            for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        self.assertNotIn("subtasks", tables)
 
 
 class PreconditionInjectionTest(unittest.TestCase):

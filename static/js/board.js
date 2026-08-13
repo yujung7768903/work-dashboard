@@ -11,7 +11,6 @@ const GROUP_BY_WORKSPACE = "workspace";
 const UNASSIGNED_KIND = "unassigned";
 const UNASSIGNED_LABEL = "미분류";
 const DONE = "done";
-const TODO = "todo";
 const ALL_CATEGORIES = { id: null, name: "전체" };
 const NO_COMPLETED = "완료된 워크스페이스가 없습니다.";
 
@@ -21,8 +20,6 @@ let activeCategoryId = null;
 let openMenuTodoId = null;
 // 그 케밥 메뉴가 라벨 목록으로 들어가 있는 할일. 메뉴를 닫으면 첫 화면으로 돌아온다
 let labelMenuTodoId = null;
-// 하위 할일을 펼쳐 둔 할일. 기본은 접힘이고, 재렌더에도 펼친 것만 유지된다
-const expandedTodoIds = new Set();
 // 설정 탭에서 만든 라벨 전체. 케밥 메뉴가 켜고 끌 목록으로 쓴다
 let allLabels = [];
 
@@ -176,7 +173,6 @@ function groupElement(group, alwaysShowDone = false) {
     .filter((todo) => alwaysShowDone || showDone() || todo.status !== DONE)
     .forEach((todo) => {
       details.appendChild(todoElement(todo));
-      if (expandedTodoIds.has(todo.id)) details.appendChild(subtaskList(todo));
     });
   return details;
 }
@@ -248,7 +244,7 @@ function todoElement(todo) {
   title.textContent = todo.title;
   if (todo.needs_title) title.append(rawTitleMark());
 
-  row.append(statusButton, subtaskToggle(todo), title, labelStrip(todo), todoMenu(todo));
+  row.append(statusButton, title, labelStrip(todo), todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
@@ -268,8 +264,8 @@ function labelStrip(todo) {
   return strip;
 }
 
-// 사이드바 메뉴와 같은 16 격자 · currentColor 스트로크 아이콘. 펼치면 CSS 로 90도 돌린다
-// 워크트리 탭의 커밋 토글도 같은 아이콘을 쓴다
+// 사이드바 메뉴와 같은 16 격자 · currentColor 스트로크 아이콘. 펼치면 CSS 로 90도 돌린다.
+// 워크트리 탭의 커밋 토글이 쓴다
 export const CHEVRON_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
   <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor"
         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -282,36 +278,13 @@ const PLUS_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="t
         stroke-width="1.5" stroke-linecap="round"/>
 </svg>`;
 
-// 상태 배지와 제목 사이의 펼침 아이콘. 하위가 없는 줄도 빈 자리를 남겨 제목 세로줄을 맞춘다
-function subtaskToggle(todo) {
-  const button = document.createElement("button");
-  button.className = "subtask-toggle";
-  button.innerHTML = CHEVRON_SVG;
-  if (!todo.subtasks.length) {
-    button.classList.add("empty");
-    return button;
-  }
-  const open = expandedTodoIds.has(todo.id);
-  const done = todo.subtasks.filter((subtask) => subtask.status === DONE).length;
-  button.classList.toggle("open", open);
-  button.title = `하위 할일 ${done}/${todo.subtasks.length}`;
-  button.addEventListener("click", (event) => {
-    // 행 전체가 상세 팝업을 여는 클릭이라 화살표는 거기까지 올라가지 않게 막는다
-    event.stopPropagation();
-    if (open) expandedTodoIds.delete(todo.id);
-    else expandedTodoIds.add(todo.id);
-    run(renderBoard);
-  });
-  return button;
-}
-
-// 하위 추가·삭제는 오른쪽 케밥 메뉴 안으로. 워크스페이스 카드와 같은 ws-menu 스타일 재사용
+// 라벨 수정·삭제는 오른쪽 케밥 메뉴 안으로. 워크스페이스 카드와 같은 ws-menu 스타일 재사용
 function todoMenu(todo) {
   const wrapper = document.createElement("div");
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "⋮";
-  toggle.title = "라벨 수정 · 하위 할일 추가 · 삭제";
+  toggle.title = "라벨 수정 · 삭제";
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
@@ -341,18 +314,10 @@ function todoMenuItems(todo) {
       labelMenuTodoId = todo.id;
       run(renderBoard);
     }),
-    menuItem("하위 할일 추가", () =>
-      run(async () => {
-        openMenuTodoId = null;
-        const value = prompt("하위 할일 제목");
-        if (value) await api.createSubtask(todo.id, value);
-        await renderBoard();
-      })
-    ),
     menuItem("삭제", () =>
       run(async () => {
         openMenuTodoId = null;
-        if (confirm(`"${todo.title}" 삭제할까요? 하위 할일도 함께 사라집니다.`)) {
+        if (confirm(`"${todo.title}" 삭제할까요?`)) {
           await api.deleteTodo(todo.id);
         }
         await renderBoard();
@@ -388,28 +353,6 @@ function emptyLabelHint() {
   hint.textContent = "설정 탭에서 먼저 만드세요";
   hint.disabled = true;
   return hint;
-}
-
-function subtaskList(todo) {
-  const list = document.createElement("ul");
-  list.className = "subtasks";
-  todo.subtasks.forEach((subtask) => {
-    const item = document.createElement("li");
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = subtask.status === DONE;
-    checkbox.addEventListener("change", () =>
-      run(async () => {
-        await api.updateSubtask(subtask.id, {
-          status: checkbox.checked ? DONE : TODO,
-        });
-        await renderBoard();
-      })
-    );
-    item.append(checkbox, document.createTextNode(` ${subtask.title}`));
-    list.appendChild(item);
-  });
-  return list;
 }
 
 document.getElementById("quick-add").addEventListener("submit", (event) => {

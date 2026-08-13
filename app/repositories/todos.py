@@ -8,7 +8,6 @@ from app.constants import (
     STATUS_DOING,
     STATUS_DONE,
     STATUS_TODO,
-    SUBTASKS_REMAINING_MSG,
     TODO_STATUSES,
 )
 from app.db import now, transaction
@@ -96,12 +95,10 @@ def update(con, todo_id, **fields):
 
 
 def delete(con, todo_id):
-    """하위할일까지 cascade. 하위할일은 할일에 종속되어 독립 존재 의미가 없음.
-    붙어 있던 라벨은 연결만 끊는다 — 라벨 자체는 다른 할일도 쓰는 공용이다"""
+    """붙어 있던 라벨은 연결만 끊는다 — 라벨 자체는 다른 할일도 쓰는 공용이다"""
     get(con, todo_id)
     with transaction(con):
         con.execute("DELETE FROM todo_labels WHERE todo_id=?", (todo_id,))
-        con.execute("DELETE FROM subtasks WHERE todo_id=?", (todo_id,))
         con.execute("DELETE FROM todos WHERE id=?", (todo_id,))
 
 
@@ -168,16 +165,6 @@ def list_doing_before(con, before_text):
     ]
 
 
-def _require_subtasks_done(con, todo_id):
-    """하위할일이 남아 있으면 할일을 done 으로 올리지 못하게 막음"""
-    remaining = con.execute(
-        "SELECT 1 FROM subtasks WHERE todo_id=? AND status<>? LIMIT 1",
-        (todo_id, STATUS_DONE),
-    ).fetchone()
-    if remaining:
-        raise Validation(SUBTASKS_REMAINING_MSG)
-
-
 def _validated_assignments(con, current, fields):
     assignments = {}
     for key, value in fields.items():
@@ -192,8 +179,6 @@ def _validated_assignments(con, current, fields):
                 "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요"
             )
         _validate_status(assignments["status"])
-        if assignments["status"] == STATUS_DONE:
-            _require_subtasks_done(con, current["id"])
         assignments["completed_at"] = (
             now() if assignments["status"] == STATUS_DONE else None
         )

@@ -16,10 +16,10 @@ const api = await import(API);
 globalThis.fetch = async () => ({
   ok: false,
   status: 409,
-  json: async () => ({ error: "하위 할 일이 남아 완료할 수 없습니다" }),
+  json: async () => ({ error: "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요" }),
 });
 const failed = await api.updateTodo(39, { status: "done" }).catch((error) => error);
-assert.match(failed.message, /완료할 수 없습니다/);
+assert.match(failed.message, /검토 대기 중입니다/);
 assert.deepStrictEqual(alerts, [failed.message]);
 
 // 확인을 요구하는 응답은 호출부가 confirm 으로 되묻는다. 여기서 또 띄우면 창이 두 번

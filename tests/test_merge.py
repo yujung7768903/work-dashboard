@@ -7,7 +7,6 @@ import unittest
 from app.constants import STATUS_DONE
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.services import merge
 from tests.support import temp_db
@@ -113,23 +112,6 @@ class MergeTest(unittest.TestCase):
         commit(self.worktree, "a.txt", "feat: 기능")
         with open(os.path.join(self.repo, "leftover.db"), "w") as handle:
             handle.write("")
-        self.assertEqual("", self._merge(no_test=True)["aborted"])
-
-    def test_open_subtask_aborts_before_master_is_touched(self):
-        """해제 단계에서 터질 것을 미리 잡는다 — 병합만 되고 할일이 doing 으로 남으면 안 된다"""
-        todo_id = self._linked_todo()
-        subtask_repo.create(self.con, todo_id, "안 끝난 하위할일")
-        commit(self.worktree, "a.txt", "feat: 기능")
-        result = self._merge(no_test=True)
-        self.assertIn("안 끝난 하위할일", result["aborted"])
-        self.assertIn(f"#{todo_id}", result["aborted"])
-        self.assertEqual(["chore: 초기"], self._master_subjects())
-
-    def test_done_subtask_does_not_block(self):
-        todo_id = self._linked_todo()
-        subtask = subtask_repo.create(self.con, todo_id, "끝난 하위할일")
-        subtask_repo.update(self.con, subtask["id"], status=STATUS_DONE)
-        commit(self.worktree, "a.txt", "feat: 기능")
         self.assertEqual("", self._merge(no_test=True)["aborted"])
 
     def test_nothing_to_merge_aborts(self):

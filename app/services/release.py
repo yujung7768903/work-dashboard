@@ -86,7 +86,7 @@ def _finish_todos(con, claude_session_id):
 
 
 def finish_todo_ids(con, todo_ids):
-    """이미 done 인 것은 건드리지 않는다. 하위할일이 남았으면 Validation 이 그대로 올라온다.
+    """이미 done 인 것은 건드리지 않는다.
 
     세션 단위(_finish_todos)와 워크트리 적용(worktrees.apply) 양쪽이 같은 done 처리를
     쓴다 — 후자는 세션이 아니라 작업 위치로 할일을 찾으므로 id 목록을 직접 받는다

@@ -64,10 +64,5 @@ export const createTodo = (fields) => request("POST", "/todos", fields);
 export const updateTodo = (id, fields) => request("PATCH", `/todos/${id}`, fields);
 export const deleteTodo = (id) => request("DELETE", `/todos/${id}`);
 
-export const createSubtask = (todoId, title) =>
-  request("POST", "/subtasks", { todo_id: todoId, title });
-export const updateSubtask = (id, fields) => request("PATCH", `/subtasks/${id}`, fields);
-export const deleteSubtask = (id) => request("DELETE", `/subtasks/${id}`);
-
 export const reorder = (kind, ids, scopeId) =>
   request("POST", "/reorder", { kind, ids, scope_id: scopeId ?? null });

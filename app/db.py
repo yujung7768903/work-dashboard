@@ -61,15 +61,6 @@ CREATE TABLE IF NOT EXISTS todos(
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS subtasks(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    todo_id INTEGER NOT NULL REFERENCES todos(id),
-    title TEXT NOT NULL,
-    precondition TEXT,
-    status TEXT NOT NULL DEFAULT 'todo',
-    sort_order INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS meta(
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -172,6 +163,7 @@ def connect(path=None):
     _add_finished_at_column(con)
     _add_tick_reason_column(con)
     _drop_session_workspace_column(con)
+    _drop_subtasks_table(con)
     _seed_categories(con)
     return con
 
@@ -230,12 +222,18 @@ def _drop_session_workspace_column(con):
         con.commit()
 
 
+def _drop_subtasks_table(con):
+    """하위할일을 걷어낸 자국. 한 할일을 더 쪼개 관리하는 일이 실제로 없었고,
+    구글 태스크에는 대응하는 개념이 없어 내보낼 수도 없었다. 남아 있던 행은 함께 사라진다"""
+    con.execute("DROP TABLE IF EXISTS subtasks")
+    con.commit()
+
+
 def _add_precondition_columns(con):
     """착수 가능 조건 컬럼을 뒤늦게 붙임. 이미 쓰던 DB 도 그냥 열리게"""
-    for table in ("todos", "subtasks"):
-        columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
-        if "precondition" not in columns:
-            con.execute(f"ALTER TABLE {table} ADD COLUMN precondition TEXT")
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    if "precondition" not in columns:
+        con.execute("ALTER TABLE todos ADD COLUMN precondition TEXT")
     con.commit()
 
 
