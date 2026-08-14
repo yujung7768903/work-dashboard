@@ -1,5 +1,6 @@
 // 드래그 재정렬·이동. 렌더 직후 attachDragHandlers 로 리스너를 붙임
 import * as api from "./api.js";
+import { t } from "./i18n.js";
 import { run } from "./main.js";
 
 const UNASSIGNED_KIND = "unassigned";
@@ -52,7 +53,7 @@ function attachTodoHandlers(todo) {
 async function dropGroup(source, target) {
   if (source === target) return;
   if (source.dataset.kind === UNASSIGNED_KIND || target.dataset.kind === UNASSIGNED_KIND) {
-    throw new Error("미분류 그룹은 순위를 바꿀 수 없습니다");
+    throw new Error(t("board.unassignedNotReorderable"));
   }
   const all = await api.getWorkspaces();
   await api.reorder("workspaces", movedOrder(all, source, target));
@@ -72,7 +73,7 @@ async function dropTodo(todoElement, group) {
 }
 
 function movedOrder(all, source, target) {
-  // 화면에 없는(빈) 워크스페이스도 포함해야 서버 재정렬 검증을 통과함
+  // 카테고리 필터로 가려진 워크스페이스도 포함해야 서버 재정렬 검증을 통과함
   const ids = all.map((item) => item.id);
   const sourceId = Number(source.dataset.groupId);
   const targetId = Number(target.dataset.groupId);

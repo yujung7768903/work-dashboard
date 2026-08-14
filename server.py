@@ -21,9 +21,9 @@ from app.errors import (
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
+from app.repositories import settings as settings_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import (
     autorun,
@@ -44,6 +44,7 @@ CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
 }
 STATUS_BY_ERROR = (
     (NotFound, HTTPStatus.NOT_FOUND),
@@ -137,6 +138,8 @@ def _route_get(con, head, item_id, query):
         return worktrees.overview(con)
     if head == "autorun":
         return _autorun_payload(con)
+    if head == "settings":
+        return settings_repo.payload(con)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -159,8 +162,6 @@ def _route_post(con, head, body):
             note=body.get("note"),
             precondition=body.get("precondition"),
         )
-    if head == "subtasks":
-        return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
     if head == "reorder":
         return _reorder(con, body)
     if head == "precondition-check":
@@ -181,6 +182,10 @@ def _route_patch(con, head, item_id, body):
         # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
         autorun_repo.set_enabled(con, bool(body.get("enabled")))
         return _autorun_payload(con)
+    if head == "settings":
+        # autorun 과 같은 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려준다
+        settings_repo.set_language(con, body.get("language"))
+        return settings_repo.payload(con)
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":
@@ -191,8 +196,6 @@ def _route_patch(con, head, item_id, body):
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
         return todo_repo.update(con, item_id, **body)
-    if head == "subtasks":
-        return subtask_repo.update(con, item_id, **body)
     if head == "autorun-runs":
         # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
         return autorun.confirm_run(con, item_id)
@@ -223,7 +226,6 @@ def _route_delete(con, head, item_id, query):
         "labels": lambda con, item_id: label_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
-        "subtasks": subtask_repo.delete,
     }
     if head not in deleters:
         raise UnknownEndpoint("알 수 없는 엔드포인트")
@@ -251,8 +253,9 @@ def _reorder(con, body):
         workspace_repo.reorder(con, ids)
     elif kind == "todos":
         todo_repo.reorder(con, ids, None if scope in (None, NONE_LITERAL) else scope)
-    elif kind == "subtasks":
-        subtask_repo.reorder(con, ids, scope)
+    elif kind == "autorun":
+        # 자율 수행 후보 순서. 보드 순서(todos)와 다른 열이라 종류를 나눈다
+        todo_repo.set_autorun_order(con, ids)
     else:
         raise Validation(f"알 수 없는 reorder 종류: {kind}")
     return {"reordered": len(ids)}

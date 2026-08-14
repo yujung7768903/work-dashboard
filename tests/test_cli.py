@@ -369,8 +369,3 @@ class CliTest(unittest.TestCase):
         self.assertEqual("", out.strip())
         self.assertEqual("", err.strip())
 
-    def test_add_subtask_under_todo(self):
-        self.run_cli("add-todo", "문의", "--category", "운영")
-        code, out, _ = self.run_cli("add-subtask", "1", "회신 초안")
-        self.assertEqual(code, 0)
-        self.assertIn("회신 초안", out)

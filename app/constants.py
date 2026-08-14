@@ -11,6 +11,16 @@ DB_PATH_ENV = "WORK_DASHBOARD_DB"
 UNASSIGNED_LABEL = "미분류"
 SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "스킬 개발", "프로세스 개선")
 
+# 화면 언어. 문구는 코드가 아니라 static/lang/<코드>.json 에 키-값으로 모여 있고,
+# 네 파일이 서로 같은 자격이다. 코드 목록이 화면과 갈라지거나 번역이 빠지면
+# tests/test_language.py 가 잡는다.
+# 기본값·폴백은 영어다 — 이 대시보드를 공개로 열 것이므로, 설정을 못 읽거나 번역이
+# 빠졌을 때 처음 보는 사람이 읽을 수 있는 쪽으로 떨어져야 한다.
+# CLI 출력·훅 주입 블록은 아직 한국어 고정 (README '초기 설정 (⑤) > 화면 언어' 참고)
+LANGUAGES = ("en", "ko", "ja", "zh")
+DEFAULT_LANGUAGE = LANGUAGES[0]
+LANGUAGE_KEY = "language"  # meta 테이블 키
+
 # 카테고리 색은 sort_order 로 팔레트에서 자동 배정하고 이후 사용자가 바꿀 수 있음.
 # 미분류는 팔레트 밖의 옅은 회색 (CSS .group 의 --cat 기본값과 같은 값)
 CATEGORY_PALETTE = (
@@ -24,14 +34,11 @@ WORKSPACE_STATUSES = ("active", "paused", "done")
 STATUS_TODO, STATUS_DOING, STATUS_DONE = TODO_STATUSES
 WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 
-ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js")
+ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js", ".json")  # .json 은 화면 문구 사전
 FIRST_SORT_ORDER = 1
 
 # 여러 자리에서 같은 말을 해야 하는 사용자용 문구. 화면에는 alert 로, CLI 에는
 # 그대로 찍히므로 설명이 아니라 사용자에게 보내는 문장으로 쓴다
-# 완료 차단: 할일 수정·워크트리 적용 두 곳.
-# 남은 하위할일 제목은 싣지 않는다 — 화면에도 CLI 에도 바로 아래 목록으로 보인다
-SUBTASKS_REMAINING_MSG = "하위 할 일이 남아 완료할 수 없습니다"
 # 분류 대상 누락: 할일 생성·세션 분류 세 곳
 SCOPE_REQUIRED_MSG = "카테고리나 워크스페이스 중 하나를 선택해 주세요"
 
@@ -80,8 +87,6 @@ PRECONDITION_EXAMPLE = "#57 이 done 일 것\n확인: git -C ~/work/work-dashboa
 # 그 자리에는 Claude 가 없어 의미 판단을 할 수 없으므로 지시 원문에서 뽑을 수 있는 만큼만 만든다
 AUTO_TODO_TITLE_CHARS = 60
 AUTO_TODO_NOTE_PROMPTS = 5  # note 에 싣는 지시 건수. 뒤로 갈수록 곁가지라 앞쪽만
-AUTO_TODO_MAX_SUBTASKS = 8
-AUTO_TODO_MIN_SUBTASKS = 2  # 1개면 할일과 같은 말이라 쪼갤 이유가 없다
 AUTO_TODO_NOTE_HEAD = "(자동) 세션 분류 때 지시 원문에서 만든 할일. 진행하며 다듬는다."
 # 요약은 뒷일로 돌리므로 할일이 만들어지는 순간의 제목은 늘 지시 첫 문장이다. 그 사실을
 # note 한 줄로 남기고, 요약이 붙으면 그 줄을 지운다 — 남아 있으면 '손봐야 할 제목' 표시가 된다.

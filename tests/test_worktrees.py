@@ -11,7 +11,6 @@ from app.constants import STATUS_DOING, STATUS_DONE
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, worktrees
@@ -72,24 +71,23 @@ class ParseTest(unittest.TestCase):
         # 브랜치가 붙어 있지 않은(detached) 워크트리는 어느 브랜치로도 잡히지 않는다
         self.assertEqual(len(found), 2)
 
-    def test_base_branch_goes_first(self):
-        order = worktrees._base_first(["c", "master", "a"], "master")
-        self.assertEqual(order, ["master", "c", "a"])
+    def test_base_first_moves_base_to_the_front(self):
+        for why, names, base, expected in (
+            ("기준 브랜치가 앞으로", ["c", "master", "a"], "master", ["master", "c", "a"]),
+            ("목록에 기준이 없으면 그대로", ["a", "b"], "main", ["a", "b"]),
+        ):
+            with self.subTest(why=why):
+                self.assertEqual(worktrees._base_first(names, base), expected)
 
-    def test_base_first_survives_missing_base(self):
-        self.assertEqual(worktrees._base_first(["a", "b"], "main"), ["a", "b"])
-
-    def test_summary_prefers_todo_title_over_commit(self):
-        summary = worktrees._summary(
-            "/w", {"/w": "탭 분리"}, [{"subject": "fix: 오타"}]
-        )
-        self.assertEqual(summary, "탭 분리")
-
-    def test_summary_falls_back_to_latest_commit(self):
-        self.assertEqual(worktrees._summary("/w", {}, [{"subject": "fix: 오타"}]), "fix: 오타")
-
-    def test_summary_is_empty_without_todo_or_commit(self):
-        self.assertEqual(worktrees._summary(None, {}, []), "")
+    def test_summary_prefers_todo_then_commit_then_nothing(self):
+        commit = [{"subject": "fix: 오타"}]
+        for why, path, titles, commits, expected in (
+            ("할일 제목이 커밋을 이긴다", "/w", {"/w": "탭 분리"}, commit, "탭 분리"),
+            ("할일이 없으면 최신 커밋", "/w", {}, commit, "fix: 오타"),
+            ("둘 다 없으면 빈 문자열", None, {}, [], ""),
+        ):
+            with self.subTest(why=why):
+                self.assertEqual(worktrees._summary(path, titles, commits), expected)
 
     def test_command_is_shortened_to_basenames(self):
         self.assertEqual(
@@ -119,7 +117,9 @@ class RepoTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.base = tempfile.mkdtemp()
+        # git 은 워크트리 경로를 실제 경로로 돌려준다. macOS 의 /var 는 /private/var
+        # 심볼릭 링크라, mkdtemp 결과를 그대로 쓰면 같은 자리를 가리키는 두 문자열이 갈린다
+        cls.base = os.path.realpath(tempfile.mkdtemp())
         cls.repo = os.path.join(cls.base, "repo")
         os.makedirs(cls.repo)
         git(cls.repo, "init", "-q", "-b", "master")
@@ -219,7 +219,7 @@ class ApplyTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.base = tempfile.mkdtemp()
+        self.base = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
         self.repo = os.path.join(self.base, "repo")
         os.makedirs(self.repo)
@@ -300,16 +300,6 @@ class ApplyTest(unittest.TestCase):
         with self.assertRaises(NotFound):
             worktrees.apply(self.con, self.repo, "nope")
 
-    def test_open_subtasks_block_apply_before_anything_is_touched(self):
-        """워크트리를 지운 뒤 done 처리가 막히면 되돌릴 수 없다 — 미리 확인하고 멈춰야 한다"""
-        todo_id = self._link_todo(self.worktree)
-        subtask_repo.create(self.con, todo_id, "하위 할일")
-        with self.assertRaises(Validation):
-            worktrees.apply(self.con, self.repo, "worktree-feat")
-        self.assertTrue(os.path.isdir(self.worktree))
-        self.assertIn("worktree-feat", git_out(self.repo, "branch"))
-        self.assertEqual(STATUS_DOING, todo_repo.get(self.con, todo_id)["status"])
-
     def test_merge_conflict_leaves_everything_in_place(self):
         write_commit(self.repo, "base.txt", "마스터 변경\n", "마스터도 수정")
         with self.assertRaises(Conflict):
@@ -345,7 +335,7 @@ class DiscardTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.base = tempfile.mkdtemp()
+        self.base = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
         self.repo = os.path.join(self.base, "repo")
         os.makedirs(self.repo)
@@ -368,12 +358,11 @@ class DiscardTest(unittest.TestCase):
         # 병합이 아니므로 그 커밋은 master 이력에 없어야 한다
         self.assertNotIn("수정", git_out(self.repo, "log", "--oneline"))
 
-    def test_discard_ignores_open_subtasks(self):
-        """적용과 달리 완료 처리를 하지 않으므로 하위할일 여부를 보지 않는다"""
+    def test_discard_leaves_linked_todos_alone(self):
+        """적용과 달리 완료 처리를 하지 않는다 — 붙어 있던 할일은 doing 으로 남는다"""
         session_repo.register(self.con, "sess-1", cwd=self.worktree)
         todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
         session_repo.link_todo(self.con, "sess-1", todo["id"])
-        subtask_repo.create(self.con, todo["id"], "하위 할일")
         worktrees.discard(self.con, self.repo, "worktree-feat")
         self.assertFalse(os.path.isdir(self.worktree))
         self.assertEqual(STATUS_DOING, todo_repo.get(self.con, todo["id"])["status"])

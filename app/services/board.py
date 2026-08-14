@@ -4,7 +4,6 @@ from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 
@@ -15,7 +14,7 @@ KIND_UNASSIGNED = "unassigned"
 
 
 def tree(con, group_by):
-    """빈 그룹은 제외. 미분류는 비어 있어도 항상 마지막에 포함"""
+    """워크스페이스는 비어 있어도 포함(빈 카테고리는 제외). 미분류는 항상 마지막"""
     if group_by not in GROUP_BY_CHOICES:
         raise Validation(f"group_by 는 {GROUP_BY_CHOICES} 중 하나여야 함")
     builder = _workspace_groups if group_by == GROUP_BY_WORKSPACE else _category_groups
@@ -33,8 +32,6 @@ def _workspace_groups(con):
         todos = _enriched(
             con, todo_repo.list_by_workspace(con, workspace["id"]), labels, locked
         )
-        if not todos:
-            continue
         category = by_id.get(workspace["category_id"]) or {}
         groups.append(
             _group(
@@ -90,7 +87,6 @@ def _enriched(con, todos, labels, locked):
     enriched = []
     for todo in todos:
         item = dict(todo)
-        item["subtasks"] = subtask_repo.list_by_todo(con, todo["id"])
         item["labels"] = labels.get(todo["id"], [])
         item["autorun_locked"] = todo["id"] in locked
         enriched.append(item)

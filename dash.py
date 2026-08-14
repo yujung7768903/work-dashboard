@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.constants import (
     HISTORY_DAY_CHOICES,
+    LANGUAGES,
     PRECONDITION_HINT,
     SESSION_ID_ENV,
     STATUS_DOING,
@@ -17,9 +18,9 @@ from app.constants import (
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
+from app.repositories import settings as settings_repo
 from app.repositories import workspaces as workspace_repo
 from app.repositories import autorun as autorun_repo
 from app.services import (
@@ -34,8 +35,8 @@ from app.services import (
 )
 
 NONE_LITERAL = "none"
-REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
-STATUS_TARGETS = ("todo", "subtask", "workspace")
+REORDER_KINDS = ("categories", "workspaces", "todos")
+STATUS_TARGETS = ("todo", "workspace")
 CONTEXT_ARGS = ("background", "purpose", "goal", "considerations")
 DETAIL_LABELS = (
     ("배경", "background"),
@@ -124,12 +125,6 @@ def _build_parser():
     add_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
     add_todo.set_defaults(handler=_cmd_add_todo)
 
-    add_subtask = sub.add_parser("add-subtask")
-    add_subtask.add_argument("todo_id", type=int)
-    add_subtask.add_argument("title")
-    add_subtask.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
-    add_subtask.set_defaults(handler=_cmd_add_subtask)
-
     move_todo = sub.add_parser("move-todo")
     move_todo.add_argument("todo_id", type=int)
     move_todo.add_argument("--workspace", required=True, help="워크스페이스 id 또는 none")
@@ -146,7 +141,7 @@ def _build_parser():
     reorder.add_argument(
         "--scope",
         default=None,
-        help="todos 면 워크스페이스 id(미분류는 none), subtasks 면 할일 id",
+        help="todos 면 워크스페이스 id(미분류는 none)",
     )
     reorder.add_argument("ids", nargs="+", type=int)
     reorder.set_defaults(handler=_cmd_reorder)
@@ -245,6 +240,10 @@ def _build_parser():
     onboard.add_argument("--skip", action="store_true", help="자동 분류 거절. 다시 묻지 않음")
     onboard.set_defaults(handler=_cmd_onboard)
 
+    language_cmd = sub.add_parser("language", help="화면 언어 (인자 없으면 현재 값)")
+    language_cmd.add_argument("code", nargs="?", choices=LANGUAGES)
+    language_cmd.set_defaults(handler=_cmd_language)
+
     usage_cmd = sub.add_parser("usage", help="한도 사용률과 토큰 추이")
     _add_json_flag(usage_cmd)
     usage_cmd.set_defaults(handler=_cmd_usage)
@@ -333,8 +332,6 @@ def _cmd_ls(con, args):
         print(f"{group['name']}  {group['done_count']}/{group['total_count']}")
         for todo in group["todos"]:
             print(f"  [{todo['status']}] {todo['id']}. {todo['title']}")
-            for subtask in todo["subtasks"]:
-                print(f"      - [{subtask['status']}] {subtask['title']}")
 
 
 def _cmd_next(con, args):
@@ -407,13 +404,6 @@ def _scope_from_session(con, claude_session_id):
     return session["workspace_id"], session["category_id"]
 
 
-def _cmd_add_subtask(con, args):
-    created = subtask_repo.create(
-        con, args.todo_id, args.title, precondition=args.precondition
-    )
-    print(f"{created['id']}. {created['title']}")
-
-
 def _cmd_move_todo(con, args):
     workspace_id = None if args.workspace == NONE_LITERAL else int(args.workspace)
     moved = todo_repo.update(con, args.todo_id, workspace_id=workspace_id)
@@ -428,7 +418,6 @@ def _cmd_move_todo(con, args):
 def _cmd_set_status(con, args):
     updaters = {
         "workspace": workspace_repo.update,
-        "subtask": subtask_repo.update,
         "todo": todo_repo.update,
     }
     updated = updaters[args.target](con, args.item_id, status=args.status)
@@ -440,11 +429,9 @@ def _cmd_reorder(con, args):
         category_repo.reorder(con, args.ids)
     elif args.kind == "workspaces":
         workspace_repo.reorder(con, args.ids)
-    elif args.kind == "todos":
+    else:
         scope = None if args.scope in (None, NONE_LITERAL) else int(args.scope)
         todo_repo.reorder(con, args.ids, scope)
-    else:
-        subtask_repo.reorder(con, args.ids, int(args.scope))
     print(f"{len(args.ids)}건 재정렬")
 
 
@@ -632,18 +619,13 @@ def _why_nothing_killed(result):
 
 def _cmd_show_note(con, args):
     todo = todo_repo.get(con, args.todo_id)
-    subtasks = subtask_repo.list_by_todo(con, args.todo_id)
     if args.as_json:
-        _emit_json({"todo": todo, "subtasks": subtasks})
+        _emit_json({"todo": todo})
         return
     print(f"[{todo['status']}] {todo['id']}. {todo['title']}")
     if todo["precondition"]:
         print(_indented("착수 조건: ", todo["precondition"]))
     print(f"컨텍스트: {todo['note'] or '(없음)'}")
-    for subtask in subtasks:
-        print(f"  - [{subtask['status']}] {subtask['title']}")
-        if subtask["precondition"]:
-            print(_indented("      조건: ", subtask["precondition"]))
 
 
 def _indented(label, text):
@@ -685,6 +667,13 @@ def _cmd_onboard(con, args):
         print("자동 분류를 하지 않습니다. 초기 설정 안내가 다시 뜨지 않습니다.")
         return
     print("초기 설정 필요" if session_link.needs_onboarding(con) else "초기 설정 완료 또는 거절됨")
+
+
+def _cmd_language(con, args):
+    """초기 설정 때 물어본 언어를 여기 적는다. 웹 설정 탭과 같은 값을 본다"""
+    if args.code:
+        settings_repo.set_language(con, args.code)
+    print(settings_repo.language(con))
 
 
 def _cmd_usage(con, args):

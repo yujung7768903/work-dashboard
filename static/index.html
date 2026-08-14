@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko">
+<!-- lang 은 i18n.js 가 고른 언어로 바꾼다. 기본값은 폴백 언어와 같은 en -->
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>작업 대시보드</title>
+  <title>Work Dashboard</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/usage.css">
 </head>
@@ -19,51 +20,46 @@
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </span>
-        <span class="side-name">작업 대시보드</span>
+        <span class="side-name" data-i18n="app.title"></span>
       </div>
 
       <nav id="tabs" class="side-nav">
-        <button data-tab="usage">
+        <button data-tab="usage" data-i18n="nav.usage">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.3 11.6a6 6 0 1 1 11.4 0" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linecap="round"/>
             <path d="M8 11.3l3-3.4" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          사용량
         </button>
-        <button data-tab="autorun">
+        <button data-tab="autorun" data-i18n="nav.autorun">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <path d="M6.7 5.9 10.4 8l-3.7 2.1z" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
-          자율 수행
         </button>
-        <button data-tab="board" class="active">
+        <button data-tab="board" class="active" data-i18n="nav.board">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          보드
         </button>
-        <button data-tab="workspace">
+        <button data-tab="workspace" data-i18n="nav.workspace">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          워크스페이스
         </button>
-        <button data-tab="settings">
+        <button data-tab="settings" data-i18n="nav.settings">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M8.6 2.2H13a.8.8 0 0 1 .8.8v4.4L7.9 13.3a.8.8 0 0 1-1.2 0L2.7 9.3a.8.8 0 0 1 0-1.2z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="10.8" cy="5.2" r="1" fill="currentColor"/>
           </svg>
-          설정
         </button>
       </nav>
 
@@ -73,27 +69,42 @@
 
     <main class="app-main">
       <header class="topbar">
-        <h1 id="page-title">보드</h1>
+        <h1 id="page-title" data-i18n="nav.board"></h1>
         <p id="error" hidden></p>
+        <!-- 상단바 오른쪽 아이콘 묶음. 상단바 gap 이 둘 사이까지 벌리지 않게 감싼다 -->
+        <div class="topbar-tools">
+        <!-- 언어 메뉴. 지구본 아이콘 하나이고 목록은 language.js 가 채운다 -->
+        <div id="lang-menu" class="ws-menu"></div>
+        <!-- 저장소 바로가기. 새 탭에서 연다 -->
+        <a id="repo-link" href="https://github.com/yujung7768903/work-dashboard" target="_blank" rel="noopener"
+           data-i18n-title="nav.repository" data-i18n-aria-label="nav.repository">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
+            <path fill="currentColor" d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/>
+          </svg>
+        </a>
+        </div>
       </header>
 
       <section id="tab-board" class="tab">
         <!-- 여기부터 카테고리 라벨까지는 두 하위 탭이 함께 쓴다 -->
-        <p id="next-line">다음에 할 일 ▸ <span id="next-text">불러오는 중</span></p>
+        <!-- 두 문구를 각자 span 에 담는다. 텍스트 노드로 두면 채워 넣는 자리가 span 뒤가 된다 -->
+        <p id="next-line"><span data-i18n="board.nextLine"></span>
+          <span id="next-text" data-i18n="common.loading"></span>
+        </p>
         <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
         <details id="session-panel">
           <summary>
             <span id="session-head">
-              <span id="session-count">돌고 있는 세션 0</span>
+              <span id="session-count" data-i18n="session.runningInitial"></span>
               <span id="session-warn" hidden></span>
             </span>
           </summary>
           <ul id="session-list"></ul>
         </details>
         <form id="quick-add">
-          <select id="quick-category" title="카테고리"></select>
-          <input id="quick-title" placeholder="빠른 추가 (장애·문의)" required>
-          <button type="submit" id="quick-submit" title="할일 추가">
+          <select id="quick-category" data-i18n-title="common.category"></select>
+          <input id="quick-title" data-i18n-placeholder="board.quickAddPlaceholder" required>
+          <button type="submit" id="quick-submit" data-i18n-title="board.quickAddSubmit">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
                     stroke-width="1.5" stroke-linecap="round"/>
@@ -104,15 +115,14 @@
 
         <!-- 공통 영역 바로 아래. 레일 메뉴와 달리 밑줄로만 고른 것을 표시한다 -->
         <nav id="board-tabs" class="subtabs">
-          <button data-subtab="todos" class="active">
+          <button data-subtab="todos" class="active" data-i18n="common.todos">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path d="M2.5 4.5 4 6l2.5-2.5M8.5 4.8H14M2.5 11 4 12.5 6.5 10M8.5 11.3H14"
                     fill="none" stroke="currentColor" stroke-width="1.5"
                     stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            할일
           </button>
-          <button data-subtab="worktrees">
+          <button data-subtab="worktrees" data-i18n="common.worktree">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <circle cx="4.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
               <circle cx="4.5" cy="12.4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -120,17 +130,16 @@
               <path d="M4.5 5.4v5.2M11.5 5.4v1.3a2.4 2.4 0 0 1-2.4 2.4H6.9"
                     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-            워크트리
           </button>
         </nav>
 
         <div id="board-todos">
         <div id="board-controls">
-          <label><input type="checkbox" id="show-done"> 완료 항목 표시</label>
+          <label data-i18n="board.showDone"><input type="checkbox" id="show-done"></label>
         </div>
         <div id="groups"></div>
         <details id="done-today">
-          <summary>완료</summary>
+          <summary data-i18n="common.done"></summary>
           <div id="done-groups"></div>
         </details>
         </div>
@@ -142,26 +151,26 @@
 
       <section id="tab-workspace" class="tab" hidden>
         <form id="workspace-add">
-          <input id="workspace-new-name" placeholder="새 워크스페이스" required>
+          <input id="workspace-new-name" data-i18n-placeholder="workspace.newPlaceholder" required>
           <select id="workspace-new-category"></select>
-          <button type="submit">추가</button>
+          <button type="submit" data-i18n="common.add"></button>
         </form>
         <div id="workspace-list"></div>
       </section>
 
       <section id="tab-settings" class="tab" hidden>
         <!-- 카테고리는 소속(하나), 라벨은 성격(여러 개). 같은 화면에서 색까지 관리한다 -->
-        <h2 class="set-head">카테고리</h2>
+        <h2 class="set-head" data-i18n="common.category"></h2>
         <form id="category-add">
-          <input id="category-name" placeholder="새 카테고리" required>
-          <button type="submit">추가</button>
+          <input id="category-name" data-i18n-placeholder="settings.newCategory" required>
+          <button type="submit" data-i18n="common.add"></button>
         </form>
         <ul id="category-list" class="set-list"></ul>
 
-        <h2 class="set-head">라벨</h2>
+        <h2 class="set-head" data-i18n="common.label"></h2>
         <form id="label-add">
-          <input id="label-name" placeholder="새 라벨" required>
-          <button type="submit">추가</button>
+          <input id="label-name" data-i18n-placeholder="settings.newLabel" required>
+          <button type="submit" data-i18n="common.add"></button>
         </form>
         <ul id="label-list" class="set-list"></ul>
       </section>
@@ -169,7 +178,7 @@
       <!-- 자율 수행. 보드에서 떼어낸 이유 — 후보와 사람이 처리할 실행을 상태별로 봐야 한다 -->
       <section id="tab-autorun" class="tab" hidden>
         <div class="ar-state">
-          <label id="autorun-switch" title="자율 수행 켜기·끄기">
+          <label id="autorun-switch" data-i18n-title="autorun.toggleHint">
             <input type="checkbox" id="autorun-toggle">
             <span class="track"></span>
             <span class="state"></span>
@@ -177,11 +186,11 @@
           <span id="autorun-cycle"></span>
         </div>
 
-        <h2 class="ar-head">후보</h2>
-        <p class="ar-hint">auto 라벨이 붙은 할일을 순위대로. 눌러 상세와 착수 조건을 본다</p>
+        <h2 class="ar-head" data-i18n="autorun.candidates"></h2>
+        <p class="ar-hint" data-i18n="autorun.candidatesHint"></p>
         <ul id="autorun-candidates" class="ar-cands"></ul>
 
-        <h2 class="ar-head">실행</h2>
+        <h2 class="ar-head" data-i18n="autorun.runs"></h2>
         <ul id="autorun-list" class="ar-runs"></ul>
       </section>
 
@@ -212,25 +221,30 @@
   </div>
 
   <dialog id="session-modal">
-    <form method="dialog"><button class="modal-close" aria-label="닫기">×</button></form>
+    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
     <div id="session-modal-body"></div>
   </dialog>
 
-  <!-- 워크스페이스 카드의 + 버튼이 여는 추가 폼. 세 값을 한 번에 받는다 —
+  <!-- 카드의 + 버튼이 여는 추가 폼. 세 값을 한 번에 받는다 —
        prompt 를 연달아 띄우면 브라우저가 둘째부터 억제해 제목만 물어본 꼴이 된다 -->
   <dialog id="todo-add-modal">
-    <form method="dialog"><button class="modal-close" aria-label="닫기">×</button></form>
+    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
     <form id="todo-add-form">
       <div class="dlg-head"><p class="dlg-title" id="todo-add-scope"></p></div>
       <div class="field">
-        <label for="todo-add-title">제목</label>
+        <label for="todo-add-title" data-i18n="common.title"></label>
         <input id="todo-add-title" required>
       </div>
+      <!-- 미분류에 넣을 때만 보인다. 워크스페이스에 넣으면 카테고리는 그쪽을 따라간다 -->
+      <div class="field" id="todo-add-category-field" hidden>
+        <label for="todo-add-category" data-i18n="common.category"></label>
+        <select id="todo-add-category"></select>
+      </div>
       <div class="field">
-        <label for="todo-add-precondition">착수 조건</label>
-        <!-- 문구는 dash.py --precondition 도움말과 같아야 한다 (app.constants.PRECONDITION_HINT).
-             tests/test_precondition.py 가 두 곳이 갈라지면 실패한다 -->
-        <p class="hint" id="todo-add-precondition-hint">참/거짓이 갈리는 한 문장을 한 줄에 하나씩 쓴다. 다른 할일이 조건이면 #id 로 적고, 명령으로 확인되면 다음 줄에 '확인: &lt;명령&gt;'. #id 조건은 그 할일이 done 이 되면 저절로 풀린다. 코드가 판정할 수 없는 문장이 하나라도 있으면 자율 수행 후보에서 빠진다</p>
+        <label for="todo-add-precondition" data-i18n="common.precondition"></label>
+        <!-- 문구는 static/lang/ko.json 에 있고 dash.py --precondition 도움말과 같아야 한다
+             (app.constants.PRECONDITION_HINT). tests/test_precondition.py 가 갈라지면 실패한다 -->
+        <p class="hint" id="todo-add-precondition-hint" data-i18n="common.preconditionHint"></p>
         <textarea id="todo-add-precondition" aria-describedby="todo-add-precondition-hint"
                   placeholder="#57 이 done 일 것&#10;확인: git -C ~/work/work-dashboard status --short"></textarea>
       </div>
@@ -238,10 +252,10 @@
         <label for="todo-add-note">note</label>
         <textarea id="todo-add-note"></textarea>
       </div>
-      <div class="dlg-actions"><button type="submit">추가</button></div>
+      <div class="dlg-actions"><button type="submit" data-i18n="common.add"></button></div>
     </form>
   </dialog>
 
-  <script type="module" src="/js/main.js"></script>
+  <script type="module" src="/js/boot.js"></script>
 </body>
 </html>

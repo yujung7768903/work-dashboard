@@ -1,4 +1,7 @@
 // 서버 통신 전담. 다른 모듈은 fetch 를 직접 부르지 않음
+// (i18n.js 는 예외다 — 첫 렌더 전에 언어를 알아야 해서 이 모듈보다 먼저 돈다)
+import { fromKorean, t } from "./i18n.js";
+
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 async function request(method, path, body) {
@@ -10,7 +13,13 @@ async function request(method, path, body) {
   const response = await fetch(`/api${path}`, options);
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const error = new Error(payload?.error ?? `요청 실패 (${response.status})`);
+    // 서버는 한국어로 내려준다. 사전에 같은 문장이 있으면 옮기고, 건수·이름이 박힌
+    // 문장은 사전에 없으므로 원문 그대로 뜬다 (README '초기 설정 (⑤) > 화면 언어' 참고)
+    const error = new Error(
+      payload?.error
+        ? await fromKorean(payload.error)
+        : t("error.requestFailed", { status: response.status })
+    );
     // 서버가 확인을 요구한 것과 진짜 실패를 호출부가 구분할 수 있게 넘긴다
     error.confirm = Boolean(payload?.confirm);
     // 바꾸려던 게 안 바뀌었으면 반드시 눈에 띄어야 한다 — 호출부마다 에러 표시가
@@ -67,10 +76,8 @@ export const createTodo = (fields) => request("POST", "/todos", fields);
 export const updateTodo = (id, fields) => request("PATCH", `/todos/${id}`, fields);
 export const deleteTodo = (id) => request("DELETE", `/todos/${id}`);
 
-export const createSubtask = (todoId, title) =>
-  request("POST", "/subtasks", { todo_id: todoId, title });
-export const updateSubtask = (id, fields) => request("PATCH", `/subtasks/${id}`, fields);
-export const deleteSubtask = (id) => request("DELETE", `/subtasks/${id}`);
+export const getSettings = () => request("GET", "/settings");
+export const updateSettings = (fields) => request("PATCH", "/settings", fields);
 
 export const reorder = (kind, ids, scopeId) =>
   request("POST", "/reorder", { kind, ids, scope_id: scopeId ?? null });

@@ -3,6 +3,7 @@
 // 실행: node tests/precondition_checklist_check.mjs
 // (tests/test_precondition_checklist.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 function node(tag) {
   const self = {
@@ -70,6 +71,7 @@ globalThis.fetch = (url, options) => {
   return Promise.resolve({ ok: true, json: () => Promise.resolve(payload) });
 };
 
+await bootKorean();
 const { openDetail } = await import("../static/js/sessions.js");
 
 body.children = [];

@@ -2,53 +2,68 @@
 // 보드에서 떼어낸 이유 — 결과가 한 목록에 섞이면 사람이 처리할 것(요청·검토 대기)을
 // 찾을 수 없고, 후보가 왜 안 도는지도 알 수 없다
 import * as api from "./api.js";
+import { t } from "./i18n.js";
 import { formatAge, openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 5000;
 // 크론 주기는 crontab 이 정하고 이 값은 화면 표시용 상수다 — README "크론" 참고
-const TICK_LABEL = "5분마다";
-const NO_TICK = "마지막 수행 없음";
-const NO_WORKSPACE = "미분류";
-const RUNNING_LABEL = "진행 중";
-const NO_CANDIDATE = "auto 라벨이 붙은 할일이 없습니다.";
-const NO_RUN = "아직 실행 기록이 없습니다.";
+const TICK_LABEL = t("autorun.cycle");
+const NO_TICK = t("autorun.noRun");
+const NO_WORKSPACE = t("common.unassigned");
+const RUNNING_LABEL = t("autorun.running");
+const NO_CANDIDATE = t("autorun.noCandidate");
+const NO_RUN = t("autorun.noRunYet");
 // review = 잡은 끝났고 사람이 diff 를 보고 병합을 판정할 차례. 진행 중(클로드가 아직
 // 돌고 있음)과 섞이면 목록에서 무엇을 봐야 하는지 알 수 없어 배지를 따로 둔다
 // requested = 세션이 실패한 게 아니라 판단(기획 공백·방향 미정·정보 부족)을 요청하고
 // 스스로 멈춘 것. 사유는 autorun-request 로 남긴 텍스트라 배지 마우스오버로 보여준다
 const OUTCOME_LABELS = {
-  done: "완료", review: "검토 대기", failed: "실패", blocked: "막힘", requested: "요청",
+  done: t("common.done"), review: t("common.review"), failed: t("autorun.outcomeFailed"),
+  blocked: t("autorun.outcomeBlocked"), requested: t("autorun.outcomeRequested"),
 };
 const REVIEW = "review";
 const REQUESTED = "requested";
-const REVIEW_HINT = "변경을 확인·병합했으면 눌러 완료로 내린다";
-const TOGGLE_HINT = "자율 수행 켜기·끄기";
+const REVIEW_HINT = t("autorun.reviewHint");
+const TOGGLE_HINT = t("autorun.toggleHint");
 const PRECONDITION = "precondition";
 
 // 후보 한 건이 지금 못 도는 이유. 서버 autorun.BLOCKER_* 와 같은 이름을 쓴다.
-// 칩에는 — 앞까지만 적고 뒷말은 툴팁으로 — 목록이 사유 문장으로 넘치면 못 읽는다
-const BLOCKER_LABELS = {
-  ready: "시작 가능",
-  blocked: "막힘 — 원인을 보고 그 기록을 지워야 다시 돈다",
-  requested: "요청 대기 — 사람이 결정을 남겨야 다시 돈다",
-  review: "검토 대기 — 확인 버튼을 눌러야 다시 돈다",
-  claimed: "다른 세션이 잡음 — 그 세션이 끝나면 풀린다",
-  precondition: "착수 조건 미충족",
+// 칩에는 짧은 쪽(…Chip)을 적고 왜 그런지는 툴팁(…Hint)으로 — 목록이 문장으로 넘치면 못 읽는다
+// 키를 조립하지 않고 하나씩 적는다 — tests/test_language.py 가 코드에 적힌 키만 찾는다
+const BLOCKER_CHIPS = {
+  ready: t("autorun.blocker.ready"),
+  blocked: t("autorun.blocker.blocked"),
+  requested: t("autorun.blocker.requested"),
+  review: t("autorun.blocker.review"),
+  claimed: t("autorun.blocker.claimed"),
+  precondition: t("autorun.blocker.precondition"),
+};
+const BLOCKER_HINTS = {
+  ready: t("autorun.blockerHint.ready"),
+  blocked: t("autorun.blockerHint.blocked"),
+  requested: t("autorun.blockerHint.requested"),
+  review: t("autorun.blockerHint.review"),
+  claimed: t("autorun.blockerHint.claimed"),
+  precondition: t("autorun.blockerHint.precondition"),
 };
 
 // 실행 목록의 구획. 사람이 손댈 것부터 위에 온다
 const RUN_GROUPS = [
-  ["확인 필요", (run) => run.outcome === REQUESTED || run.outcome === REVIEW],
+  [t("autorun.groupAttention"), (run) => run.outcome === REQUESTED || run.outcome === REVIEW],
   [RUNNING_LABEL, (run) => !run.outcome],
-  ["막힘·실패", (run) => run.outcome === "blocked" || run.outcome === "failed"],
-  ["완료", (run) => run.outcome === "done"],
+  [t("autorun.groupFailed"), (run) => run.outcome === "blocked" || run.outcome === "failed"],
+  [t("common.done"), (run) => run.outcome === "done"],
 ];
 
 let timer = null;
 let bound = false;
+// 끌고 있는 줄. 폴링이 그 사이 목록을 새로 그리면 끌던 노드가 사라진다
+let dragging = null;
 
 export async function renderAutorun() {
   const { state, runs, candidates } = await api.getAutorun();
+  // 끌고 있는 동안 다시 그리면 잡고 있던 줄이 사라져 드롭이 취소된다
+  if (dragging) return;
   paint(state, runs, candidates ?? []);
 }
 
@@ -60,7 +75,7 @@ function paint(state, runs, candidates) {
   // 사유가 없으면 붙이지 않는다 — 이 열을 받기 전 DB 는 NULL 이다
   const reason = state.last_tick_reason ? ` · ${state.last_tick_reason}` : "";
   document.getElementById("autorun-cycle").textContent = state.last_tick_at
-    ? `${TICK_LABEL} | 마지막 수행 ${formatAge(state.last_tick_at)} 전${reason}`
+    ? `${TICK_LABEL} | ${t("autorun.lastRun", { age: formatAge(state.last_tick_at) })}${reason}`
     : `${TICK_LABEL} | ${NO_TICK}`;
 
   paintCandidates(candidates);
@@ -74,37 +89,113 @@ function paintCandidates(candidates) {
     list.appendChild(emptyRow(NO_CANDIDATE));
     return;
   }
-  candidates.forEach((candidate, index) =>
-    list.appendChild(candidateRow(candidate, index)),
-  );
+  candidates.forEach((candidate) => list.appendChild(candidateRow(candidate)));
+  bindCandidateDrag(list);
 }
 
-function candidateRow(candidate, index) {
+function candidateRow(candidate) {
   const item = document.createElement("li");
   item.className = candidate.blocker === "ready" ? "ready" : "held";
-  const rank = element("span", "rank", `${index + 1}`);
+  item.dataset.todoId = String(candidate.todo_id);
   const scope = element("span", "scope", candidate.workspace_name || NO_WORKSPACE);
   const title = element("span", "prompt", candidate.title);
-  item.append(rank, scope, title, blockerChip(candidate));
+  item.append(dragHandle(item), scope, title, blockerChip(candidate));
   // 세션 줄·보드 카드와 같은 팝업. 착수 조건 체크리스트는 개요 탭에 있다
   item.addEventListener("click", () => openDetail({ todo: { id: candidate.todo_id } }));
   return item;
 }
 
+// 줄 전체가 아니라 핸들만 잡히게 한다 — 줄이 곧 드래그 대상이면 팝업을 열려던
+// 클릭이 조금만 흔들려도 드래그로 새고, 제목의 글자 선택도 안 된다
+function dragHandle(item) {
+  const handle = element("span", "ar-grip");
+  handle.title = t("autorun.dragHandle");
+  handle.setAttribute("aria-hidden", "true");
+  handle.addEventListener("mousedown", () => {
+    item.draggable = true;
+  });
+  handle.addEventListener("mouseup", () => {
+    item.draggable = false;
+  });
+  // 핸들을 눌렀다 떼면 클릭으로도 읽혀 팝업이 뜬다. 끌려던 것이지 열려던 게 아니다
+  handle.addEventListener("click", (event) => event.stopPropagation());
+  return handle;
+}
+
+// 끌어서 순서 바꾸기. 삽입선은 대상 줄의 위·아래 테두리로 그린다 — 어디에 놓이는지
+// 보이지 않으면 사람이 한 칸씩 시험해 보는 수밖에 없다.
+// 보드의 dnd.js 를 쓰지 않는 이유 — 그쪽은 카드 위에 통째로 떨어뜨리는 방식이고
+// 워크스페이스 묶음을 전제한다. 후보 목록은 여러 워크스페이스가 한 줄로 섞인 평면이다
+function bindCandidateDrag(list) {
+  if (list.dataset.dragBound) return;
+  list.dataset.dragBound = "1";
+  list.addEventListener("dragstart", (event) => {
+    dragging = event.target.closest("li");
+    if (dragging) dragging.classList.add("dragging");
+  });
+  list.addEventListener("dragover", (event) => {
+    const over = event.target.closest("li");
+    if (!dragging || !over || over === dragging) return;
+    event.preventDefault(); // 이걸 안 하면 브라우저가 드롭을 아예 안 받는다
+    markDropLine(list, over, event.clientY);
+  });
+  list.addEventListener("dragend", () => finishDrag(list));
+  list.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const ids = droppedOrder(list);
+    finishDrag(list);
+    // 저장에 실패해도 다시 그린다 — 화면이 서버가 아는 순서로 되돌아간다.
+    // main.js 의 run() 을 안 쓰는 이유: main.js 가 이 모듈을 부르므로 순환이 된다
+    if (ids) api.reorder("autorun", ids).catch(() => {}).then(renderAutorun);
+  });
+}
+
+// 커서가 줄 중앙보다 위면 그 줄 앞, 아래면 뒤. 한 번에 한 줄만 표시한다
+function markDropLine(list, over, clientY) {
+  const box = over.getBoundingClientRect();
+  const after = clientY > box.top + box.height / 2;
+  clearDropLines(list);
+  over.classList.add(after ? "drop-after" : "drop-before");
+}
+
+function droppedOrder(list) {
+  const marked = list.querySelector(".drop-before, .drop-after");
+  if (!dragging || !marked) return null;
+  const rows = [...list.children].filter((row) => row !== dragging);
+  const at = rows.indexOf(marked) + (marked.classList.contains("drop-after") ? 1 : 0);
+  rows.splice(at, 0, dragging);
+  return rows.map((row) => Number(row.dataset.todoId));
+}
+
+function finishDrag(list) {
+  clearDropLines(list);
+  if (dragging) {
+    dragging.classList.remove("dragging");
+    dragging.draggable = false;
+  }
+  dragging = null;
+}
+
+function clearDropLines(list) {
+  list
+    .querySelectorAll(".drop-before, .drop-after")
+    .forEach((row) => row.classList.remove("drop-before", "drop-after"));
+}
+
 function blockerChip(candidate) {
   const chip = element("span", `badge blocker-${candidate.blocker}`, chipText(candidate));
-  chip.title = BLOCKER_LABELS[candidate.blocker] ?? candidate.blocker;
+  chip.title = BLOCKER_HINTS[candidate.blocker] ?? candidate.blocker;
   return chip;
 }
 
 // 조건 미충족이면 몇 개 중 몇 개인지까지 적는다 — 무엇을 풀어야 도는지가 그 숫자다
 function chipText(candidate) {
-  const label = BLOCKER_LABELS[candidate.blocker] ?? candidate.blocker;
   if (candidate.blocker !== PRECONDITION || !candidate.precondition) {
-    return label.split(" — ")[0];
+    return BLOCKER_CHIPS[candidate.blocker] ?? candidate.blocker;
   }
   const { met, total, manual } = candidate.precondition;
-  return `착수 조건 ${met}/${total}${manual ? ` · 사람 확인 ${manual}` : ""}`;
+  const counted = t("autorun.conditionCount", { met, total });
+  return manual ? `${counted} · ${t("autorun.conditionManual", { manual })}` : counted;
 }
 
 // 스위치를 켜고 끄면 autorun_state 가 바뀐다 — CLI 의 dash.py autorun on|off 와 같은 곳

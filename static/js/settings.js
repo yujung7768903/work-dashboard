@@ -1,13 +1,15 @@
 // 설정 탭. 카테고리(소속·하나)와 라벨(성격·여러 개)을 같은 모양의 줄로 관리한다.
+// 언어는 화면 전체에 걸려 있어 여기가 아니라 상단 우측 아이콘에 있다 (language.js)
 // 두 목록은 이름·색·순서·삭제가 똑같아 줄 만드는 코드를 공유하고, 다른 점만 설정으로 넘긴다
 import * as api from "./api.js";
+import { t } from "./i18n.js";
 import { run } from "./main.js";
 
 const CATEGORIES = {
   listId: "category-list",
   formId: "category-add",
   inputId: "category-name",
-  colorTitle: "카드 상단 배경색",
+  colorTitle: t("settings.categoryColor"),
   load: api.getCategories,
   create: api.createCategory,
   update: api.updateCategory,
@@ -20,7 +22,7 @@ const LABELS = {
   listId: "label-list",
   formId: "label-add",
   inputId: "label-name",
-  colorTitle: "라벨 색",
+  colorTitle: t("settings.labelColor"),
   load: api.getLabels,
   create: api.createLabel,
   update: api.updateLabel,
@@ -100,13 +102,13 @@ function moveButton(config, index, items, offset) {
 
 function addWorkspaceButton(category) {
   const button = document.createElement("button");
-  button.textContent = "워크스페이스 추가";
+  button.textContent = t("settings.addWorkspace");
   button.addEventListener("click", () =>
     run(async () => {
-      const name = prompt(`"${category.name}" 에 만들 워크스페이스 이름`);
+      const name = prompt(t("settings.workspaceNamePrompt", { category: category.name }));
       if (!name) return;
       await api.createWorkspace({ category_id: category.id, name });
-      alert("생성됨. 워크스페이스 탭에서 배경·목적·목표를 채우세요.");
+      alert(t("settings.workspaceCreated"));
     })
   );
   return button;

@@ -37,6 +37,7 @@ from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
+from app.repositories import workspaces as workspace_repo
 from app.services import planning, precondition, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
@@ -180,8 +181,36 @@ def judge(con):
 
 
 def pick(con):
-    """자율 실행 후보 1건. 순위는 planning 이 정하고 여기서는 거르기만 한다"""
-    return planning.next_todo(con, keep=eligible(con))
+    """자율 실행 후보 1건. 화면의 후보 목록 맨 위와 같은 것이어야 한다 —
+    사람이 목록을 끌어 순서를 바꿨는데 다른 것이 돌면 그 조작이 거짓말이 된다.
+
+    남이 잡고 있는 할일은 여기서 뺀다. 목록은 그것도 '다른 세션이 잡음' 으로 보여주므로
+    거르는 자리가 다르다
+    """
+    keep = eligible(con)
+    claimed = todo_repo.ids_claimed_by_others(con)
+    rows = sorted_candidates(
+        con, lambda todo: keep(todo) and todo["id"] not in claimed
+    )
+    if not rows:
+        return None
+    todo = rows[0]
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
+    )
+    return {"todo": todo, "workspace": workspace}
+
+
+def sorted_candidates(con, keep, limit=None):
+    """후보 순서. 사람이 끌어 정한 순서(autorun_order)가 먼저고, 안 정한 것은 그 뒤에
+    planning 순위 그대로 붙는다. 정렬이 안정적이라 그 뒤끼리는 원래 순서를 지킨다
+    """
+    rows = planning.ranked(con, keep=keep)
+    ordered = sorted(
+        rows,
+        key=lambda todo: (todo["autorun_order"] is None, todo["autorun_order"] or 0),
+    )
+    return ordered[:limit] if limit else ordered
 
 
 def eligible(con):
@@ -227,7 +256,7 @@ def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
     blocked = autorun_repo.blocked_todo_ids(con)
     requested = autorun_repo.requested_todo_ids(con)
     review = autorun_repo.locked_todo_ids(con)
-    rows = planning.ranked(con, keep=lambda todo: todo["id"] in labeled, limit=limit)
+    rows = sorted_candidates(con, lambda todo: todo["id"] in labeled, limit=limit)
     return [
         {
             "todo_id": todo["id"],
@@ -458,7 +487,7 @@ def reopen_run(con, run_id):
 def _set_todo_status(con, todo_id, status):
     """검증 없이 시스템이 직접 status 를 맞춘다 — session_repo.link_todo 와 같은 이유로
 
-    todos.update() 의 사람용 검증(하위할일 완료 확인, 검토 대기 잠금)을 거치지 않는다.
+    todos.update() 의 사람용 검증(검토 대기 잠금)을 거치지 않는다.
     이 호출 자체가 그 잠금을 푸는 동작이라 여기서 또 잠금에 걸리면 안 된다
     """
     stamp = now()

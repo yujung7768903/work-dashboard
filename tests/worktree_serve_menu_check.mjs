@@ -3,6 +3,7 @@
 // 브라우저 없이 돌려야 하므로 worktrees.js 가 만지는 DOM 만 흉내낸다.
 // 실행: node tests/worktree_serve_menu_check.mjs  (tests/test_serve_menu.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 const SERVING = "/repo/.claude/worktrees/up";
 const IDLE = "/repo/.claude/worktrees/down";
@@ -101,6 +102,7 @@ globalThis.document = {
   addEventListener() {},
 };
 
+await bootKorean();
 const worktrees = await import("../static/js/worktrees.js");
 await worktrees.renderWorktrees();
 

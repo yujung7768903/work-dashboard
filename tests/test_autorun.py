@@ -193,6 +193,36 @@ class CandidatePanel(AutorunCase):
         self.assertEqual(row["blocker"], autorun.BLOCKER_PRECONDITION)
         self.assertEqual(row["precondition"], {"total": 2, "met": 0, "manual": 1})
 
+    def test_drag_order_wins_over_board_order(self):
+        """사람이 끌어 정한 순서가 먼저다. 안 정한 것은 그 뒤에 원래 순위대로 남는다"""
+        second = self._todo("둘째", labeled=True)
+        third = self._todo("셋째", labeled=True)
+        todo_repo.set_autorun_order(self.con, [third["id"], self.todo["id"]])
+        self.assertEqual(
+            [row["todo_id"] for row in autorun.candidates(self.con)],
+            [third["id"], self.todo["id"], second["id"]],
+        )
+
+    def test_pick_follows_the_dragged_order(self):
+        """목록 맨 위와 실제로 돌 할일이 다르면 그 조작이 거짓말이 된다"""
+        later = self._todo("나중 것", labeled=True)
+        todo_repo.set_autorun_order(self.con, [later["id"], self.todo["id"]])
+        self.assertEqual(autorun.pick(self.con)["todo"]["id"], later["id"])
+
+    def test_reorder_route_saves_candidate_order(self):
+        second = self._todo("둘째", labeled=True)
+        server.route(
+            self.con,
+            "POST",
+            "/api/reorder",
+            {},
+            {"kind": "autorun", "ids": [second["id"], self.todo["id"]]},
+        )
+        self.assertEqual(
+            [row["todo_id"] for row in autorun.candidates(self.con)],
+            [second["id"], self.todo["id"]],
+        )
+
     def test_caps_the_list(self):
         for index in range(AUTORUN_CANDIDATE_LIMIT + 2):
             self._todo(f"자동 {index}", labeled=True)

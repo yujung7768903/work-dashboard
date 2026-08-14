@@ -42,33 +42,29 @@ class WorktreeGuardTest(unittest.TestCase):
         _git(cls.main, "commit", "-qm", "init")
         cls.wt = os.path.join(cls.main, ".claude", "worktrees", "wt")
         _git(cls.main, "worktree", "add", "-q", "-b", "feat/x", cls.wt)
+        cls.loose = os.path.join(cls.root, "loose")
+        os.makedirs(cls.loose, exist_ok=True)
 
     def setUp(self):
         os.environ.pop("ALLOW_MAIN_CHECKOUT", None)
 
-    def test_worktree_source_passes(self):
-        self.assertFalse(self.guard.should_block(os.path.join(self.wt, "app.py")))
-
-    def test_main_checkout_source_blocked(self):
-        self.assertTrue(self.guard.should_block(os.path.join(self.main, "app.py")))
-
-    def test_main_checkout_markdown_passes(self):
-        self.assertFalse(self.guard.should_block(os.path.join(self.main, "README.md")))
-        self.assertFalse(
-            self.guard.should_block(os.path.join(self.main, "docs", "note.py"))
+    def test_block_decision_by_path(self):
+        """메인 체크아웃의 소스만 막고 나머지는 다 통과해야 한다"""
+        cases = (
+            (os.path.join(self.main, "app.py"), True, "메인 체크아웃 소스"),
+            (os.path.join(self.wt, "app.py"), False, "워크트리 안 소스"),
+            (os.path.join(self.main, "README.md"), False, "문서 확장자"),
+            (os.path.join(self.main, "docs", "note.py"), False, "docs/ 아래"),
+            ("/tmp/somewhere/app.py", False, "~/work 밖"),
+            (os.path.join(self.loose, "app.py"), False, "레포가 아님"),
         )
+        for path, expected, why in cases:
+            with self.subTest(why=why):
+                self.assertEqual(self.guard.should_block(path), expected, why)
 
     def test_bypass_env_passes(self):
         os.environ["ALLOW_MAIN_CHECKOUT"] = "1"
         self.assertFalse(self.guard.should_block(os.path.join(self.main, "app.py")))
-
-    def test_outside_work_root_passes(self):
-        self.assertFalse(self.guard.should_block("/tmp/somewhere/app.py"))
-
-    def test_non_repo_under_work_root_passes(self):
-        loose = os.path.join(self.root, "loose")
-        os.makedirs(loose, exist_ok=True)
-        self.assertFalse(self.guard.should_block(os.path.join(loose, "app.py")))
 
     def test_main_returns_block_exit_code(self):
         payload = {

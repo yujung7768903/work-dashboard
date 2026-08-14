@@ -3,6 +3,7 @@
 // DOM 만 흉내낸다. 실행: node tests/autorun_row_click_check.mjs
 // (tests/test_autorun_row_click.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { bootKorean } from "./i18n_boot.mjs";
 
 const RUN = {
   id: 2,
@@ -45,6 +46,12 @@ const node = () => ({
   textContent: "",
   hidden: false,
   open: false,
+  // 후보 목록은 끌어서 순서를 바꾼다 — 그 코드가 만지는 자리만 흉내낸다
+  // (드래그 동작 자체는 tests/autorun_drag_check.mjs 가 본다)
+  dataset: {},
+  draggable: false,
+  querySelectorAll: () => [],
+  setAttribute() {},
   style: { setProperty() {} },
   classList: { toggle() {}, remove() {}, add() {} },
   children: [],
@@ -78,6 +85,7 @@ globalThis.document = {
   },
 };
 
+await bootKorean();
 const autorun = await import("../static/js/autorun.js");
 await autorun.renderAutorun();
 
@@ -88,12 +96,12 @@ assert.equal(
   `5분마다 | 마지막 수행 3m 전 · ${REASON}`,
 );
 
-// 후보 줄 — 순위 / 워크스페이스 / 할일 / 사유 칩
+// 후보 줄 — 손잡이 / 워크스페이스 / 할일 / 사유 칩.
+// 순위 숫자는 없다 — 순서는 목록에 보이는 차례가 곧 순위이고, 손잡이로 바꾼다
 assert.deepEqual(
   cands[0].children.map((cell) => cell.className),
-  ["rank", "scope", "prompt", "badge blocker-ready"],
+  ["ar-grip", "scope", "prompt", "badge blocker-ready"],
 );
-assert.equal(cands[0].children[0].textContent, "1");
 assert.equal(cands[0].children[3].textContent, "시작 가능");
 // 조건에 막힌 줄은 몇 개 중 몇 개인지까지 적는다 — 무엇을 풀어야 도는지가 그 숫자다
 assert.equal(cands[1].children[3].textContent, "착수 조건 1/3 · 사람 확인 1");

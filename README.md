@@ -1,6 +1,6 @@
 # 작업 대시보드
 
-카테고리 > 워크스페이스 > 할일 > 하위할일 4계층으로 작업을 관리하는 1인용 로컬 도구.
+카테고리 > 워크스페이스 > 할일 3계층으로 작업을 관리하는 1인용 로컬 도구.
 사람은 웹으로, Claude는 CLI로 같은 sqlite DB를 쓴다. 외부 의존성 0.
 
 ## 실행
@@ -51,10 +51,10 @@ work-dashboard/
 │   │
 │   ├── repositories/                # 엔티티별 저장·조회와 정합성 규칙
 │   │   ├── categories.py            # 카테고리
+│   │   ├── settings.py              # 화면 언어처럼 앱에 하나뿐인 설정 (meta 키-값)
 │   │   ├── labels.py                # 라벨 (할일에 여러 개)
 │   │   ├── workspaces.py            # 워크스페이스
 │   │   ├── todos.py                 # 할일
-│   │   ├── subtasks.py              # 하위할일
 │   │   ├── sessions.py              # 세션 등록·분류·상태·할일 연결·정리
 │   │   └── autorun.py               # 자율 실행 설정(단일 행)과 실행 기록
 │   │
@@ -75,15 +75,23 @@ work-dashboard/
 ├── hooks/
 │   ├── dash_hook.py                 # Claude Code 훅 단일 진입점
 │   ├── worktree_serve.py            # Stop: 고친 워크트리에 서버가 없으면 띄우라고 지시
-│   └── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단 (플래그 파일 있을 때만)
+│   ├── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단
+│   ├── commit_scope_guard.py        # PreToolUse: 범위 초과 스테이징·커밋 차단
+│   ├── md_lint.py                   # PostToolUse: 저장된 .md 린트
+│   └── stale_base.py                # UserPromptSubmit: 낡은 베이스 위 착수 경고
 │
 ├── static/                          # ES 모듈 프론트엔드 (번들러 없음)
-│   ├── index.html                   # 단일 페이지
+│   ├── index.html                   # 단일 페이지. 문구는 갖지 않고 data-i18n 키만 붙는다
+│   ├── lang/                        # 화면 문구. 언어마다 파일 하나, 키는 네 파일이 같다
+│   │   └── ko.json · en.json · ja.json · zh.json
 │   ├── css/
 │   │   ├── app.css                  # 디자인 토큰 정의 + 공통·보드 스타일
 │   │   └── usage.css                # 사용량 화면 전용 (토큰은 app.css 것을 참조)
 │   └── js/
-│       ├── main.js                  # 부트스트랩·탭 전환 (/usage /board 등 경로 = 탭)
+│       ├── boot.js                  # 진입점. 언어를 확정한 뒤 main.js 를 들인다
+│       ├── i18n.js                  # 사전 적재와 t(키) — 문구는 여기로만 나온다
+│       ├── language.js              # 상단 우측 언어 메뉴 (지구본 아이콘)
+│       ├── main.js                  # 탭 전환 (/usage /board 등 경로 = 탭)
 │       ├── api.js                   # fetch 래퍼
 │       ├── board.js                 # 보드 렌더
 │       ├── settings.js              # 설정 탭 — 카테고리·라벨 관리
@@ -107,29 +115,40 @@ work-dashboard/
 
 ## 훅 동작
 
-훅은 세 개다. **어떤 실패에서도 `exit 0` 무출력으로 끝난다** — 대시보드 문제로 Claude 세션이 안 열리거나 편집을 못 하게 되는 것이 최악의 실패이기 때문이다. 의도적으로 막을 때만 `exit 2` 를 쓴다.
+훅은 여섯 개다. **어떤 실패에서도 `exit 0` 무출력으로 끝난다** — 대시보드 문제로 Claude 세션이 안 열리거나 편집을 못 하게 되는 것이 최악의 실패이기 때문이다. 의도적으로 막을 때만 `exit 2` 를 쓴다.
 
 ### 훅 종류
 
 | 훅 | 등록 위치 | 하는 일 | 동작 방식 |
 | --- | --- | --- | --- |
 | `hooks/dash_hook.py` | `~/.claude/settings.json` (그 PC 전용, 절대 경로). 타임아웃 2초 | 세션 등록·상태 추적, 세션에 워크스페이스·분류·해제 블록 주입 | 인자로 받은 이벤트 이름 하나로 네 갈래 분기하는 단일 진입점. stdin JSON 의 `session_id`·`cwd` 로 DB 를 갱신하고 주입할 블록을 stdout 으로 뱉음. 차단은 하지 않음 |
-| `hooks/worktree_serve.py` | 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준. 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9080–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
-| `hooks/worktree_guard.py` | `~/.claude/settings.json`, matcher `Edit`·`Write`·`NotebookEdit`. 타임아웃 5초. `~/.claude/worktree-guard.on` 이 있을 때만 동작 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
+| `hooks/worktree_serve.py` | `.claude/settings.json`, 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9080–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
+| `hooks/worktree_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 10초 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
+| `hooks/commit_scope_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Bash`. 타임아웃 10초 | 범위를 넘는 스테이징·커밋 차단 | pathspec 없는 `git add -A`/`--all`/`-u`/`.` 와 `git commit -a`/`--all`/`-am` 이면 `exit 2`. `;`·`&&`·파이프로 이어진 복합 명령도 구간별로 검사한다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
+| `hooks/md_lint.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 15초 | 저장된 `.md` 를 markdownlint-cli2 로 검사 | 린트 에러가 있으면 `exit 2` + stderr 에 에러 목록과 재저장 지시. 바이너리를 PATH 에서 직접 부른다 — 없으면 조용히 통과하므로 새 PC 에서는 `npm i -g markdownlint-cli2` 를 먼저 한다. 검사 범위와 설정은 아래 참고 |
+| `hooks/stale_base.py` | `~/.claude/settings.json` (전역, 절대 경로). 타임아웃 10초 | 낡은 베이스 위 착수 경고 | 브랜치가 `@{u}` 또는 워크트리 기준 브랜치(`master`/`main`)보다 뒤처졌으면 최신화하라는 한 줄을 stdout 에 넣는다. 네트워크 fetch 없이 로컬 ref 만 비교하고, 같은 경고는 세션당 한 번만 낸다. 차단은 하지 않음 |
 
-`worktree_serve.py` 만 등록 위치가 다른 이유는 clone 한 다른 PC 에서도 따로 설정할 것이 없어야 하기 때문이다. 거는 조건은 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때. **이미 떠 있으면 관여하지 않는다** — 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다. 막으면서 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다. 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고).
+`worktree_serve.py` 만 등록 위치가 다른 이유는 clone 한 다른 PC 에서도 따로 설정할 것이 없어야 하기 때문이다 — 이 저장소 화면을 띄우는 훅이라 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준으로 들어간다. 나머지 다섯은 **프로젝트를 가리지 않아야 해서 전역에 절대 경로로 등록한다**. 절대 경로는 워크트리가 아니라 메인 체크아웃을 가리켜야 한다 — 워크트리는 병합 뒤 지워진다.
+
+`worktree_guard.py` 는 전역에 등록돼도 `~/work/` 아래만 본다(`WORK_ROOT`). 그 밖의 저장소는 워크트리 관례를 쓰지 않으므로 관여하지 않는다.
+
+`md_lint.py` 는 전역에 등록돼도 **이 저장소 트리 안의 `.md` 만** 검사한다(`.claude/worktrees/` 하위 포함). 밖의 `.md` — 임시 디렉터리, 외부에서 받아온 문서, 다른 프로젝트 — 는 이 저장소의 마크다운 규약을 따를 이유가 없으므로 건너뛴다. 규칙은 `markdownlint-cli2` 가 cwd 에서 찾는 `.markdownlint.json` 을 그대로 쓴다.
+
+`worktree_serve.py` 가 거는 조건은 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때. **이미 떠 있으면 관여하지 않는다** — 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다. 막으면서 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다. 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고).
 
 ### 실행 단계
 
 | 이벤트 | 트리거 시점 | 훅 종류 |
 | --- | --- | --- |
 | `SessionStart` | 세션 시작/재개/초기화/압축 | `dash_hook.py` |
-| `UserPromptSubmit` | 사용자가 프롬프트 제출 | `dash_hook.py` |
-| `PreToolUse` | 도구 실행 전 (matcher `Edit`·`Write`·`NotebookEdit`) | `worktree_guard.py` |
+| `UserPromptSubmit` | 사용자가 프롬프트 제출 | `dash_hook.py`, `stale_base.py` |
+| `PreToolUse` | 도구 실행 전 (matcher `Write`·`Edit`·`NotebookEdit`) | `worktree_guard.py` |
+| `PreToolUse` | 도구 실행 전 (matcher `Bash`) | `commit_scope_guard.py` |
+| `PostToolUse` | 도구 실행 후 (matcher `Write`·`Edit`·`NotebookEdit`) | `md_lint.py` |
 | `Stop` | Claude 응답 완료 | `dash_hook.py`, `worktree_serve.py` |
 | `SessionEnd` | 세션 종료 | `dash_hook.py` |
 
-`Stop` 은 두 훅이 함께 걸린다 — 등록 위치가 달라 서로를 모른다. `dash_hook.py` 는 상태만 내리고 차단하지 않으므로, 막을지 여부는 `worktree_serve.py` 판정만으로 갈린다.
+`Stop` 은 두 훅이 함께 걸린다 — 등록 위치가 달라 서로를 모른다. `dash_hook.py` 는 상태만 내리고 차단하지 않으므로, 막을지 여부는 `worktree_serve.py` 판정만으로 갈린다. `UserPromptSubmit` 도 두 훅이 걸리는데 둘 다 stdout 에만 쓰므로 주입 블록과 경고가 함께 들어간다.
 
 `dash_hook.py` 가 이벤트별로 하는 일:
 
@@ -197,11 +216,10 @@ CLI 로 분류할 때는 Claude 가 지시를 읽고 직접 만들지만, 웹에
 | --- | --- | --- |
 | 제목 | 만들 때는 첫 지시의 첫 문장(60자에서 자름), 곧이어 **한 줄 요약**으로 교체 (아래) | 목록 표기로 시작하는 줄은 항목이라 제목이 못 된다 |
 | `note` | 지시 원문 앞 5건 | 위치·브랜치·세션 id + 원문. 요약하지 않는다 — 제목이 요약이므로 근거는 여기에만 남는다 |
-| 하위할일 | 목록 표기(`-`, `*`, `1.`) 항목 → 없으면 첫 지시의 요청 문장(`~해줘`, `~주고`) | 2개 미만이면 만들지 않고(할일과 같은 말), 8개에서 끊는다 |
 
 #### 제목 요약 (`app/services/summary.py`)
 
-지시 원문을 그대로 제목에 쓰면 보드가 구구절절해진다 — "워크스페이스에서 하위할일이 펼쳐진 상태로 보이는데, 너무 길어져서 기본적으로…". 어미만 떼는 식의 규칙으로는 줄지 않는다(요약은 의미 판단이다). 그래서 **이미 깔려 있는 `claude` CLI** 를 부른다.
+지시 원문을 그대로 제목에 쓰면 보드가 구구절절해진다 — "워크스페이스 카드가 완료된 것까지 다 보이는데, 너무 길어져서 기본적으로…". 어미만 떼는 식의 규칙으로는 줄지 않는다(요약은 의미 판단이다). 그래서 **이미 깔려 있는 `claude` CLI** 를 부른다.
 
 ```bash
 claude -p --model <haiku> --tools "" --strict-mcp-config --setting-sources "" \
@@ -215,11 +233,10 @@ claude -p --model <haiku> --tools "" --strict-mcp-config --setting-sources "" \
 - 만들 때 `note` 에 "제목: 요약이 붙지 않아 지시 첫 문장을 그대로 씀"(`AUTO_TODO_NOTE_RAW_TITLE`) 을 남기고, 요약이 붙으면 그 줄을 지운다. 남아 있으면 조회 결과에 `needs_title: true` 로 실려 **보드 줄과 팝업 개요에 `요약 안 됨` 배지**가 붙는다 — 손봐야 할 제목을 사용자가 알아야 하기 때문이다. 컬럼을 늘리지 않고 `note` 한 줄로 판단하므로 그 줄을 지우면 배지도 사라진다
 - 그 사이 사용자가 제목을 고쳤으면 요약이 덮지 않는다. 요약이 실패하면 제목·`note` 를 그대로 둔다 — 요약 하나 때문에 할일이 안 생기면 안 된다
 - **실패는 이유를 로그로 남긴다** (`제목 요약 실패: …`). 조용히 `None` 을 돌려주던 동안은 화면에 배지만 뜨고 왜 안 붙었는지 알 방법이 없었다. 실제로 첫 라이브 실행에서 조용히 실패한 원인이 타임아웃이었고, 뒷일은 아무도 기다리지 않으므로 `SUMMARY_TIMEOUT_SEC` 을 60초로 뒀다. CLI 는 stdin 을 3초 기다리다 경고를 뱉으므로 `stdin=DEVNULL` 로 넘긴다
-- 하위할일은 요약하지 않는다 — 제목만으로 보드 가독성 문제가 해결되고, 호출을 늘릴 이유가 없다
 
 지시 원문은 transcript 앞 64KB 에서 읽는다. 이때만 `parse_line(collapse=False)` 로 **줄바꿈을 살린다** — 목록 표기를 봐야 하기 때문이다(팝업 대화 목록은 한 줄로 뭉갠 기본값을 쓴다). transcript 를 못 찾으면 훅이 저장한 마지막 지시 한 줄로 대신하고, 그것도 없으면 만들지 않는다.
 
-이미 잡은 할일이 있는 세션은 건드리지 않는다 — 그게 이 세션의 작업이고, 새로 만들면 같은 일이 두 줄이 된다. 만들어진 뒤 팝업은 닫히지 않고 **개요 탭**으로 넘어가 제목·하위할일·`note` 를 보여준다. 추정으로 만든 것이므로 사용자가 바로 보고 고칠 수 있어야 한다.
+이미 잡은 할일이 있는 세션은 건드리지 않는다 — 그게 이 세션의 작업이고, 새로 만들면 같은 일이 두 줄이 된다. 만들어진 뒤 팝업은 닫히지 않고 **개요 탭**으로 넘어가 제목·`note` 를 보여준다. 추정으로 만든 것이므로 사용자가 바로 보고 고칠 수 있어야 한다.
 
 ### 병합 (한 커맨드)
 
@@ -318,6 +335,10 @@ python3 dash.py autorun-finish              # 완료 — 검토 대기로. 할�
 | --- | --- | --- |
 | 상태 바 | 스위치 · 마지막 tick 경과 · 그 tick 의 판정 사유 | 크론이 죽었는지, 켜져 있는데 왜 안 도는지(사용률·워킹트리 더러움 같은 전역 사유)는 여기서만 보인다 |
 | 후보 (최대 5) | `auto` 라벨이 붙은 할일을 순위대로. 줄마다 지금 못 도는 이유를 칩으로 | 실행 가능한 것만 보여주면 목록이 늘 비어 "왜 안 도는지" 를 알 수 없다. 누르면 할일 상세가 열리고 착수 조건 체크리스트가 거기 있다 |
+
+후보 줄은 손잡이(hover 하면 왼쪽에 나타난다)를 잡아 끌어 순서를 바꾼다. 끄는 동안 놓일 자리에 가로선이 뜨고, 놓으면 `todos.autorun_order` 에 저장된다. `pick()` 도 같은 순서를 쓴다 — 목록 맨 위와 실제로 돌 할일이 다르면 그 조작이 거짓말이 된다.
+
+`sort_order` 를 쓰지 않는 이유 — 후보는 여러 워크스페이스에 걸쳐 있고 보드 순서는 워크스페이스가 먼저다. 다른 워크스페이스 할일을 위로 끌어올린 결과를 그 열로는 표현할 수 없다. `autorun_order` 가 NULL 인 할일은 "사람이 안 정함" 이고 기존 순위를 그대로 따라 그 뒤에 붙는다. 줄 전체가 아니라 손잡이만 드래그 대상인 이유 — 줄이 곧 드래그 대상이면 상세 팝업을 열려던 클릭이 조금만 흔들려도 드래그로 샌다.
 | 실행 | `확인 필요`(요청·검토 대기) → `진행 중` → `막힘·실패` → `완료` 순 구획 | 한 목록에 섞이면 사람이 처리할 것을 찾을 수 없다. 확인 필요는 오래돼도 목록에서 안 밀린다 |
 
 트리거는 5분 크론이다 (아래 "크론" 참고). 데몬을 따로 만들지 않는다 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
@@ -404,9 +425,11 @@ python3 dash.py autorun-finish              # 완료 — 검토 대기로. 할�
 
 ### 초기 설정 (⑤)
 
-워크스페이스가 하나도 없는 상태에서 세션을 열면 분류 대신 **초기 설정 블록**이 주입된다. Claude 가 사용자에게 최근 며칠 치 히스토리를 볼지(7일 / 14일 / 안 함) 묻고, 스캔 결과로 카테고리·워크스페이스를 제안한 뒤 확인받아 등록한다.
+워크스페이스가 하나도 없는 상태에서 세션을 열면 분류 대신 **초기 설정 블록**이 주입된다. Claude 가 먼저 화면 언어를 묻고(한국어 / English / 日本語 / 中文), 이어서 최근 며칠 치 히스토리를 볼지(7일 / 14일 / 안 함) 묻고, 스캔 결과로 카테고리·워크스페이스를 제안한 뒤 확인받아 등록한다. 언어는 자동 분류를 거절해도 먼저 묻는다 — 화면 언어는 초기 설정 여부와 무관하게 필요하기 때문이다.
 
 ```bash
+python3 dash.py language                  # 지금 화면 언어
+python3 dash.py language en               # 초기 설정 때 사용자가 고른 언어를 적는다
 python3 dash.py scan-history --days 7     # 세션당 한 줄 요약 (Claude 가 읽는 입력)
 python3 dash.py onboard                   # 초기 설정이 필요한 상태인지
 python3 dash.py onboard --skip            # 자동 분류 거절. 이후 다시 묻지 않음
@@ -414,6 +437,29 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 ```
 
 각 줄 맨 앞의 8자가 세션 id 앞머리이고, 그대로 `link-todo ... --past` 에 넘긴다. `--past` 는 `sessions` 에 없는 세션을 **`state=ended` 로** 등록한다 — `register()` 를 쓰면 `idle` + 지금 시각이 되어 이미 끝난 세션 수십 개가 활성 목록에 살아 있는 것처럼 뜬다. 앞머리가 둘 이상 맞으면 실패한다. 또 `--past` 는 할일 상태를 바꾸지 않는다. 보통의 `link-todo` 는 착수 선언이라 `todo` → `doing` 으로 올리지만, 끝난 세션 연결은 기록이지 착수가 아니기 때문이다.
+
+#### 화면 언어
+
+영어(기본) / 한국어 / 일본어 / 중국어. 고른 값은 `meta.language` 한 줄로 남아 브라우저를 바꾸거나 서버를 내렸다 올려도 유지되고, 웹 설정 탭과 `dash.py language` 가 같은 값을 본다. 바꾸는 곳은 **상단 우측 지구본 아이콘**이다 — 설정 탭 안에 두면 지금 언어를 못 읽는 사람이 그 탭 이름부터 찾아야 한다. 목록은 국기 없이 각 언어의 원어 표기로 적고 지금 언어에 체크가 붙는다 (언어 선택기 관례).
+
+**문구는 코드에 두지 않는다.** `static/lang/<코드>.json` 에 키-값으로 모여 있고 화면은 키만 부른다 (`t("board.nextNone")`, `index.html` 은 `data-i18n="키"`). 한국어도 다른 언어와 같은 자격의 파일이라, 문구를 고치려면 코드가 아니라 이 파일들을 고친다. 값 자리는 `{count}` 처럼 이름으로 적는다 (ICU MessageFormat 의 부분집합이라 나중에 라이브러리로 옮겨도 사전은 그대로 쓴다).
+
+```text
+static/lang/en.json   ← 기본값이자 폴백. 늘 먼저 깔린다
+static/lang/ko.json   ← 고른 언어를 그 위에 덮는다. 빠진 키는 영어로 뜬다
+```
+
+설정을 못 읽거나 번역이 빠졌을 때 **영어로 떨어진다** — 공개로 여는 대시보드라 처음 보는 사람이 읽을 수 있는 자리여야 하고, 화면에 키 문자열이 노출돼서도 안 된다.
+
+`static/js/boot.js` 가 언어를 확정한 **뒤에** 화면 모듈을 들인다 — 여러 모듈이 최상단에서 `t()` 로 라벨 표를 만들기 때문에 순서가 뒤집히면 그것들만 번역이 안 된다. 날짜·시각 표기도 고른 언어를 따른다(`Intl` 의 locale).
+
+키를 늘리고 사전 하나를 빠뜨리면 `tests/test_language.py` 가 실패한다 — 화면(JS·HTML)에서 키를 뽑아 네 사전과 대조하고, `{자리}` 개수와 "번역 안 하고 한국어를 복사한 항목"까지 본다.
+
+아직 한국어 고정인 것:
+
+- CLI(`dash.py`) 출력과 훅이 주입하는 세션 블록 — 읽는 쪽이 Claude 라 옮길 이유가 없다
+- 서버가 내려주는 오류 문구 중 **값이 박힌 문장**(`'개발' 카테고리가 이미 있습니다`). 값이 없는 문장은 `api.js` 가 한국어 원문을 `ko.json` 에서 되짚어 옮긴다 — 그 사전은 오류가 실제로 났을 때만 받아 온다
+- 시드 카테고리 6개와 착수 조건 예시 placeholder. 안내 문구의 `확인:` 은 코드가 파싱하지 않는 사람용 약속어라 언어마다 옮겨 둔다
 
 `scan-history` 는 `~/.claude/projects/*/*.jsonl` **전체**에서 mtime 이 기간 안인 파일만 골라 **앞 64KB** 만 읽고, 프로젝트 위치별로 묶어 세션당 한 줄(시작~최근 날짜 + 첫 지시 200자)로 뱉는다. 전문은 수백 MB 라 세션에 넣을 수 없기 때문이다. 슬래시 명령·자동 압축 요청은 첫 지시에서 걸러낸다.
 
@@ -423,7 +469,7 @@ python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세�
 
 할일마다 **그 할일을 뽑아낸 근거 세션을 연결하고**, 그 세션에서 착수할 때 필요한 구체 정보를 뽑아 `note` 에 적는다 — 실패한 명령과 오류 문구, 확정된 수치·기준, 제외한 범위, 참고 경로. 할일 자체가 그 세션에서 나온 것이므로 근거를 버리면 "왜 있는 할일인지" 를 히스토리에서 다시 찾아야 한다.
 
-워크스페이스마다 **할일도 함께 만들고 상태까지 추정해 넣는다.** 보드가 할일 0개인 워크스페이스를 통째로 감추기 때문이다(`board.py` 의 `if not todos: continue`) — 워크스페이스만 만들면 화면에 아무것도 안 나타나 초기 설정이 실패한 것처럼 보인다. 추정이 틀려도 보드에서 바로 고칠 수 있다.
+워크스페이스마다 **할일도 함께 만들고 상태까지 추정해 넣는다.** 빈 워크스페이스도 보드에 카드로는 뜨지만(`board.py`), 카드만 늘어선 화면은 초기 설정이 절반만 된 것처럼 보인다. 추정이 틀려도 보드에서 바로 고칠 수 있다.
 
 워크스페이스 필드를 채울 때의 기준은 **"매 세션 주입돼도 값어치가 있는가"** 하나다.
 
@@ -525,11 +571,10 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 | `labels` | 할일 성격 표시. 한 할일에 여러 개 (github 이슈 라벨과 같은 뜻) | `id`, `name`(UNIQUE), `color`, `sort_order`, `created_at` | — |
 | `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
 | `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
-| `subtasks` | 하위할일. 할일 삭제 시 함께 삭제 | `id`, `title`, `status`(todo/doing/done), `sort_order`, `created_at` | `todo_id` → `todos` |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
 | `worktrees` | 워크트리 이력. 병합·삭제로 사라진 것도 이름·상태로 남긴다 (팝업 워크트리 탭) | `path`(PK), `repo`, `branch`, `created_at`, `merged_at`, `merge_hash`, `merge_from`, `deleted_at` | — (경로로 잇는다) |
-| `meta` | 내부 플래그 저장소. `categories_seeded`, `onboarding_declined` | `key`(PK), `value` | — |
+| `meta` | 내부 플래그·단일 설정 저장소. `categories_seeded`, `onboarding_declined`, `language` | `key`(PK), `value` | — |
 
 ## 규칙 몇 가지
 
@@ -537,7 +582,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 - 카테고리는 그룹핑 분류일 뿐 우선순위 계산에 관여하지 않는다.
 - 카테고리는 소속이라 할일마다 하나, 라벨은 성격이라 여러 개 붙는다. 라벨 삭제는 붙어 있는 할일이 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/labels/<id>?force=1`) 연결만 끊고 지운다.
 - 카테고리 삭제는 워크스페이스·할일이 없을 때만(있으면 먼저 옮긴다). 분류된 세션만 남아 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/categories/<id>?force=1`) 그 세션들을 미분류로 내리고 지운다. 붙은 게 아무것도 없으면 되묻지 않는다.
-- 워크스페이스 삭제 시 소속 할일은 미분류로 내려간다. 할일 삭제는 하위할일까지 지운다.
+- 워크스페이스 삭제 시 소속 할일은 미분류로 내려간다. 할일 삭제는 붙어 있던 라벨 연결만 끊는다.
 - 웹과 CLI가 같은 DB를 쓴다. CLI 변경을 웹에서 보려면 새로고침한다. 세션 영역만 2초 폴링한다.
 - 마크다운은 루트 `.markdownlint.json` 을 따른다. 표 구분행은 `| --- | --- |`, 코드펜스에는 언어를 붙인다(`text`, `bash`, `json` 등).
 
@@ -616,7 +661,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 `~/.claude/skills/scope-guard/scope_db.py` 가 `app/services/session_link.py` 의 `scope_guard_block()` 을 쓰는 dash.db 어댑터로 교체돼 있고(`scope_db.py.bak` 보존), `session-inject.sh` 훅은 `settings.json` 에서 제거됐다. 목표·하위단계는 대시보드의 워크스페이스·할일이다. 흡수 범위를 여기서 끝내는 근거는 ② 스펙 D4 참고.
 
-**주의** — `scope_db.py set-steps` 는 워크스페이스의 할일을 전부 지우고 다시 넣는다. 할일에 하위할일·컨텍스트 노트가 붙은 워크스페이스에서는 실행하지 말 것.
+**주의** — `scope_db.py set-steps` 는 워크스페이스의 할일을 전부 지우고 다시 넣는다. 할일에 컨텍스트 노트가 붙은 워크스페이스에서는 실행하지 말 것.
 
 ### 롤백
 
