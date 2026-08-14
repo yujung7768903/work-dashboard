@@ -372,14 +372,14 @@ function emptyLabelHint() {
 
 document.getElementById("quick-add").addEventListener("submit", (event) => {
   event.preventDefault();
-  const title = document.getElementById("quick-title");
+  const name = document.getElementById("quick-name");
   const categoryId = Number(document.getElementById("quick-category").value);
   run(async () => {
-    await api.createTodo({
-      title: title.value,
+    await api.createWorkspace({
+      name: name.value,
       category_id: categoryId,
     });
-    title.value = "";
+    name.value = "";
     await renderBoard();
   });
 });

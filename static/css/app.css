@@ -234,7 +234,7 @@ select {
   background-repeat: no-repeat;
   background-position: right var(--sp-12) center;
 }
-#quick-title { flex: 1 1 200px; }
+#quick-name { flex: 1 1 200px; }
 /* 아이콘 하나뿐인 버튼은 정사각으로 만들어 누를 면적을 확보 */
 #quick-submit {
   width: var(--sp-40); flex: none; padding: 0;
