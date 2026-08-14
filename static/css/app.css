@@ -559,20 +559,36 @@ button:disabled { color: var(--line); cursor: default; }
   font-size: var(--fs-body); font-weight: 700; margin: var(--sp-24) 0 var(--sp-4);
 }
 .ar-hint { color: var(--muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-8); }
-/* 후보 줄. 순위 / 워크스페이스 / 할일(남는 폭) / 사유 칩 */
-.ar-cands { list-style: none; margin: 0; padding: 0; }
-.ar-cands li {
-  display: grid; grid-template-columns: 1em 12em minmax(0, 1fr) 14em;
-  gap: var(--sp-8); align-items: baseline; cursor: pointer;
-  background: var(--surface); border-radius: var(--r-ctl);
+/* 후보와 실행은 같은 문법을 쓴다 — 패널 하나(카드) 안에 줄이 들어간다.
+   줄마다 카드를 주면 같은 화면에서 카드 둥글기가 두 종류로 갈라진다 */
+.ar-cands, #autorun-list {
+  list-style: none; margin: 0;
+  padding: var(--sp-4) var(--pad-card) var(--sp-12);
+  background: var(--surface); border-radius: var(--r-card);
   box-shadow: var(--shadow-card);
-  padding: var(--sp-8) var(--pad-card); margin: 0 0 var(--sp-4);
 }
+/* 줄 안의 세로 정렬도 두 목록이 같다. baseline 을 쓰면 글자가 없는 손잡이는 위로,
+   작은 글자(사유 칩·경과)는 아래로 어긋나 가로 한 줄로 안 읽힌다 */
+.ar-cands li, #autorun-list li { align-items: center; }
+
+/* 후보 줄. 워크스페이스 / 할일(남는 폭) / 사유 칩.
+   손잡이는 칸을 차지하지 않는다 — 칸으로 두면 그만큼 들여써져 실행 목록과 글자
+   시작점이 어긋난다. 카드 왼쪽 여백에 겹쳐 띄운다 */
+.ar-cands li {
+  position: relative;
+  display: grid; grid-template-columns: 12em minmax(0, 1fr) 14em;
+  gap: var(--sp-8); cursor: pointer; padding: var(--sp-8) 0;
+}
+.ar-cands li + li { border-top: 1px solid var(--line); }
 .ar-cands li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ar-cands li.empty { grid-template-columns: 1fr; color: var(--muted); cursor: default; }
+.ar-cands li.empty {
+  grid-template-columns: 1fr; color: var(--muted); cursor: default;
+}
 /* 손잡이. 자리는 늘 잡아 두고 hover 에서만 보인다 — 나타날 때 줄이 밀리면 안 된다.
    점 여섯 개는 배경 그라디언트로 찍는다. 아이콘 파일이나 svg 노드를 늘리지 않는다 */
 .ar-cands .ar-grip {
+  position: absolute; left: calc(-1 * var(--sp-12)); top: 50%;
+  transform: translateY(-50%);
   width: var(--sp-8); height: var(--sp-16); cursor: grab; opacity: 0;
   background-image: radial-gradient(currentColor 1px, transparent 1px);
   background-size: 3px 4px; background-position: center; background-repeat: repeat;
@@ -582,7 +598,7 @@ button:disabled { color: var(--line); cursor: default; }
 .ar-cands .ar-grip:focus-visible { opacity: 1; }
 .ar-cands li.dragging { opacity: 0.4; }
 .ar-cands li.dragging .ar-grip { cursor: grabbing; }
-/* 삽입선. 놓으면 어디로 가는지 미리 보여준다 — 테두리로 그려 줄 높이가 안 흔들린다 */
+/* 삽입선. 놓으면 어디로 가는지 미리 보여준다 — 안쪽 그림자로 그려 줄 높이가 안 흔들린다 */
 .ar-cands li.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
 .ar-cands li.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
 .ar-cands .scope { font-weight: 600; }
@@ -621,14 +637,9 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-switch .state::after { content: "OFF"; }
 #autorun-toggle:checked ~ .state { color: var(--accent); }
 #autorun-toggle:checked ~ .state::after { content: "ON"; }
-#autorun-list {
-  list-style: none; margin: 0; padding: var(--sp-4) var(--pad-card) var(--sp-12);
-  background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card);
-}
 /* 상태 구획 머리. 사람이 손댈 것(확인 필요)이 맨 위에 오도록 JS 가 순서를 정한다 */
 #autorun-list li.group {
-  display: flex; gap: var(--sp-8); align-items: baseline; cursor: default;
+  display: flex; gap: var(--sp-8); cursor: default;
   font-weight: 700; font-size: var(--fs-sm);
   padding: var(--sp-12) 0 var(--sp-4); border-bottom: 1px solid var(--line);
 }
@@ -644,8 +655,8 @@ button:disabled { color: var(--line); cursor: default; }
    워크스페이스 / 할일(남는 폭) / 워크트리 / 포트 / 상태 / 경과 */
 #autorun-list li {
   display: grid;
-  grid-template-columns: 12em minmax(0, 1fr) 20em 6em 5em 4em;
-  gap: var(--sp-8); align-items: baseline; padding: var(--sp-4) 0;
+  grid-template-columns: 12em minmax(0, 1fr) 20em 6em 7em 4em;
+  gap: var(--sp-8); padding: var(--sp-8) 0;
   cursor: pointer;
 }
 /* 칸을 넘치는 글자는 줄바꿈 없이 잘라낸다 — 한 줄 높이가 줄마다 달라지면 표가 아니다 */
@@ -673,14 +684,18 @@ button:disabled { color: var(--line); cursor: default; }
 /* 요청도 사람이 볼 때까지 후보에서 빠져 있다는 점에서 막힘과 같은 계열 색을 쓴다 */
 #autorun-list .outcome-requested { color: var(--warn); }
 #autorun-list .outcome-running { color: var(--accent); }
+/* 마지막 칸은 두 목록 다 오른쪽 끝에 붙인다 — 후보의 사유 칩과 눈이 맞는다 */
 #autorun-list .age {
   color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* ── 착수 조건 체크리스트 (상세 팝업) ─────────────────────────────────────── */
 .cond-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; }
+/* 목록 줄 정렬은 화면 어디서나 center 다 — 확인 버튼처럼 글자 크기가 다른 것이
+   섞이면 baseline 은 서로 다른 높이로 흩어진다 */
 .cond-list li {
-  display: flex; align-items: baseline; gap: var(--sp-8);
+  display: flex; align-items: center; gap: var(--sp-8);
   padding: var(--sp-2) 0; font-size: var(--fs-sm);
 }
 .cond-list .text { flex: 1; min-width: 0; }
@@ -689,7 +704,7 @@ button:disabled { color: var(--line); cursor: default; }
 .cond-mark.unmet { color: var(--danger); }
 /* 판정 못 하는 항목. 실패가 아니라 '코드가 모른다' 라서 색을 따로 쓴다 */
 .cond-mark.unknown { color: var(--muted); }
-.cond-check { display: inline-flex; align-items: baseline; gap: var(--sp-4); }
+.cond-check { display: inline-flex; align-items: center; gap: var(--sp-4); }
 .cond-check.met .cond-out { color: var(--good); }
 .cond-check.unmet .cond-out { color: var(--danger); }
 .cond-run {
