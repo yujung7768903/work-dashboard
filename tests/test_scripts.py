@@ -5,9 +5,11 @@ run.sh 를 start.sh 로 바꿨을 때 restart.sh 의 `exec ./run.sh` 가 남아
 """
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 import urllib.error
@@ -50,7 +52,23 @@ class ScriptReferenceTest(unittest.TestCase):
 
 
 class StartStopTest(unittest.TestCase):
-    """실제로 띄우고 멈춘다. DB 는 임시 파일로 돌려 사용자 DB 를 건드리지 않는다"""
+    """실제로 띄우고 멈춘다. DB 는 임시 파일로 돌려 사용자 DB 를 건드리지 않는다.
+
+    저장소 자리가 아니라 임시 디렉토리에 스크립트를 복사해 놓고 거기서 돌린다.
+    stop.sh 는 '이 디렉토리를 cwd 로 도는 서버' 를 전부 멈추므로, 저장소에서 그대로
+    돌리면 사람이 그 워크트리에 띄워 둔 대시보드까지 같이 죽는다 — 실제로 죽였다
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.mkdtemp(prefix="wd-scripts-")
+        for name in SCRIPTS:
+            shutil.copy2(os.path.join(ROOT, name), os.path.join(cls.dir, name))
+        # 서버가 돌려면 있어야 하는 것들. 복사 대신 링크라 원본을 그대로 검사한다
+        # (server.py 는 자기 위치 기준으로 static 을 찾으므로 그것도 걸어 준다)
+        for name in ("server.py", "app", "static"):
+            os.symlink(os.path.join(ROOT, name), os.path.join(cls.dir, name))
+        cls.addClassCleanup(shutil.rmtree, cls.dir, True)
 
     def setUp(self):
         self.port = _free_port()
@@ -59,8 +77,8 @@ class StartStopTest(unittest.TestCase):
 
     def _run(self, script, *argv):
         result = subprocess.run(
-            [os.path.join(ROOT, script), *argv],
-            cwd=ROOT,
+            [os.path.join(self.dir, script), *argv],
+            cwd=self.dir,
             capture_output=True,
             text=True,
             env=self.env,
