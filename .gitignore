@@ -8,6 +8,9 @@ __pycache__/
 # run.sh 가 쌓는 실행 로그. 7일치만 남기고 저장소에는 넣지 않는다
 logs/
 
+# shot.sh 가 찍는 화면 사진. 확인용이라 남길 이유가 없다
+shots/
+
 # 워크트리·로컬 설정은 빼고, 저장소가 공유하는 훅 등록만 커밋한다
 .claude/*
 !.claude/settings.json
