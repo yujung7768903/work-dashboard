@@ -150,6 +150,8 @@ function rowMenu(group, row) {
   const wrapper = document.createElement("div");
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
+  // kebab: 보드 케밥과 같은 보정을 받는다 (app.css 의 .kebab 참고)
+  toggle.className = "kebab";
   toggle.textContent = "⋮";
   toggle.title = t("worktree.rowMenu");
   toggle.addEventListener("click", (event) => {

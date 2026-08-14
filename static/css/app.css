@@ -513,6 +513,15 @@ button:disabled { color: var(--line); cursor: default; }
 .ws-row .value.empty { color: var(--muted); }
 .ws-row input, .ws-row select, .ws-row textarea { width: 100%; }
 .ws-actions { display: flex; gap: var(--sp-8); margin-top: var(--gap); }
+/* 케밥(⋮)은 아이콘이 아니라 글자다. 글리프가 폰트 baseline 에 매달려 상자 중심보다
+   1.25px 아래에 찍히는데, hover 면은 상자 기준 정사각 원이라 원이 위로 치우쳐 보인다
+   (측정: 점 세 개가 원 중심보다 아래, 위 여백 > 아래 여백).
+   box-sizing 이 border-box 라 아래 여백을 줘도 원은 24x24 그대로고 글자만 1px 올라간다.
+   SVG 로 바꾸지 않는 이유 — 케밥은 두 화면이 textContent 로 만들고 테스트도 그 값을 본다 */
+/* 위쪽 `.ws-menu > button { padding: 0 }` 이 특이도(0-1-1)로 더 세므로 같은 급으로 올린다 */
+/* --sp-4 는 글자를 2px 올린다 (아래 여백이 늘면 20px 라인박스가 그만큼 위로 간다).
+   측정: 보정 전 잉크 위 5.5 / 아래 1.5 → 보정 후 3.5 / 3.5 */
+.ws-menu > button.kebab { padding-bottom: var(--sp-4); }
 .ws-menu { position: relative; flex: none; }
 /* 크기·면·정렬은 위 아이콘 버튼 공통 규칙이 잡는다. 여기서는 기호 크기만 */
 .ws-menu > button { font-size: var(--fs-title); line-height: 1; }

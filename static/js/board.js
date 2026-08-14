@@ -300,6 +300,8 @@ function todoMenu(todo) {
   const wrapper = document.createElement("div");
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
+  // kebab: 글리프가 baseline 에 매달려 원형 hover 면보다 아래로 찍힌다. CSS 가 보정한다
+  toggle.className = "kebab";
   toggle.textContent = "⋮";
   toggle.title = t("board.todoMenu");
   toggle.addEventListener("click", (event) => {
