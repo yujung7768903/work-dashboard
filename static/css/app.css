@@ -556,9 +556,12 @@ button:disabled { color: var(--line); cursor: default; }
   padding: var(--sp-12) var(--pad-card); margin: 0 0 var(--gap);
 }
 .ar-head {
-  font-size: var(--fs-body); font-weight: 700; margin: var(--sp-24) 0 var(--sp-4);
+  font-size: var(--fs-body); font-weight: 700; margin: var(--sp-24) 0 var(--sp-8);
 }
 .ar-hint { color: var(--muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-8); }
+/* 판까지는 어느 쪽이든 8. 힌트 줄이 뒤따를 때만 4 로 붙인다 — 힌트는 제목의 일부다.
+   판 쪽에 margin 을 더하는 방법은 안 된다. 형제 margin 은 합쳐지지 않고 큰 쪽만 남는다 */
+.ar-head:has(+ .ar-hint) { margin-bottom: var(--sp-4); }
 /* 후보와 실행은 같은 문법을 쓴다 — 패널 하나(카드) 안에 줄이 들어간다.
    줄마다 카드를 주면 같은 화면에서 카드 둥글기가 두 종류로 갈라진다 */
 /* 위아래 여백은 줄이 가진 것(--sp-8)으로 충분하다. 판에 또 얹으면 위아래가 어긋난다
