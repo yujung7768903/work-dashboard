@@ -82,6 +82,40 @@ class StartStopTest(unittest.TestCase):
     def test_stop_without_server_is_quiet_success(self):
         self.assertIn("돌고 있는 서버 없음", self._run("stop.sh"))
 
+    def test_without_lan_only_this_machine(self):
+        """기본은 루프백. 옵션을 안 준 실행이 LAN 에 열리면 인증 없는 화면이 그냥 노출된다"""
+        lan = _lan_address()
+        if not lan:
+            self.skipTest("LAN 주소 없음")
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self.assertFalse(_listening(self.port, lan), "옵션 없이 LAN 에 열렸다")
+
+    def test_lan_opens_to_other_devices(self):
+        """--lan 은 server.py 가 모르는 이름 — start.sh 가 --host 0.0.0.0 으로 바꿔 넘기고,
+        찍는 주소도 0.0.0.0 이 아니라 붙여넣을 수 있는 실제 주소여야 한다"""
+        lan = _lan_address()
+        if not lan:
+            self.skipTest("LAN 주소 없음")
+        out = self._run("start.sh", "--lan", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self.assertTrue(_listening(self.port, lan), "--lan 인데 LAN 주소로 안 열림")
+        self.assertIn(f"http://{lan}:{self.port}", out)
+        self.assertNotIn("0.0.0.0", out)
+
+    def test_restart_keeps_lan_open_and_still_shows_the_address(self):
+        """재실행은 --lan 이 아니라 --host 0.0.0.0 을 물려받는다 — 플래그 이름만 보면
+        그때 주소도 경고도 사라진다"""
+        lan = _lan_address()
+        if not lan:
+            self.skipTest("LAN 주소 없음")
+        self._run("start.sh", "--lan", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        out = self._run("restart.sh")
+        self.assertTrue(_wait_listening(self.port))
+        self.assertTrue(_listening(self.port, lan), "재실행 뒤 LAN 이 닫혔다")
+        self.assertIn(f"http://{lan}:{self.port}", out)
+
     def test_restart_inherits_port(self):
         """인자를 안 주면 죽는 서버의 포트를 물려받는다"""
         self._run("start.sh", "--port", str(self.port))
@@ -96,9 +130,23 @@ def _free_port():
         return sock.getsockname()[1]
 
 
-def _listening(port):
+def _lan_address():
+    """이 기기의 LAN 주소. 못 찾으면 빈 문자열 (start.sh 와 같은 인터페이스 순서)"""
+    for interface in ("en0", "en1"):
+        try:
+            found = subprocess.run(
+                ["ipconfig", "getifaddr", interface], capture_output=True, text=True
+            )
+        except OSError:  # macOS 밖에는 ipconfig 가 없다
+            return ""
+        if found.returncode == 0 and found.stdout.strip():
+            return found.stdout.strip()
+    return ""
+
+
+def _listening(port, host="127.0.0.1"):
     try:
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/api/usage", timeout=1).read()
+        urllib.request.urlopen(f"http://{host}:{port}/api/usage", timeout=1).read()
         return True
     except (urllib.error.URLError, OSError):
         return False
