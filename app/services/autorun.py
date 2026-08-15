@@ -76,7 +76,7 @@ def tick(con, dry_run=False, launcher=None):
     if dry_run or decision["reason"] != REASON_READY:
         return decision
     launched = (launcher or launch)(
-        prompt=decision["prompt"], cwd=decision["cwd"], name=decision["todo"]["title"]
+        prompt=decision["prompt"], cwd=decision["cwd"], name=_job_name(decision["todo"])
     )
     if not launched.get("job_id"):
         decision["error"] = launched.get("error") or "잡을 띄우지 못함"
@@ -470,6 +470,10 @@ def _wait_for_session(jobs_root, job_id):
             return session_id
         time.sleep(SESSION_POLL_SEC)
     return ""
+
+
+def _job_name(todo):
+    return f"#{todo['id']} | {todo['title']}"
 
 
 def _name_job(jobs_root, job_id, name):
