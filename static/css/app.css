@@ -568,6 +568,28 @@ button:disabled { color: var(--line); cursor: default; }
   border-radius: var(--r-pill); animation: gt-turn 0.7s linear infinite;
 }
 @keyframes gt-turn { to { transform: rotate(360deg); } }
+/* 팝업 둘. 위 팝업들과 같은 외양을 쓴다 — 팝업이 여러 종류로 보일 이유가 없다.
+   [open] 없이 쓰면 display 가 dialog:not([open]) 의 display:none 을 이겨서
+   닫힌 팝업이 문서 맨 아래에 빈 상자로 남는다 */
+#gtasks-auth[open], #gtasks-plan[open] {
+  position: fixed; inset: 0; margin: auto; display: block;
+  width: min(520px, calc(100vw - var(--sp-24))); max-height: 80vh; overflow: auto;
+  padding: var(--sp-20); border: none; border-radius: var(--r-card);
+  background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
+}
+#gtasks-auth::backdrop, #gtasks-plan::backdrop { background: rgba(0, 23, 51, 0.45); }
+html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
+/* 전역 form 은 한 줄 flex 라 [hidden] 을 이긴다 — 단계를 숨겨도 그대로 보인다.
+   .switch[hidden] 과 같은 함정이다 */
+#gtasks-auth form, #gtasks-plan form { display: block; margin: 0; }
+#gtasks-auth form[hidden] { display: none; }
+#gtasks-auth h3, #gtasks-plan h3 { margin: 0 0 var(--sp-12); font-size: var(--fs-body); }
+/* 자격증명은 구글 콘솔을 거쳐야 나온다. 순서를 번호로 보여줘야 어디까지 했는지 안다 */
+.gt-steps { margin: 0 0 var(--sp-12); padding-left: var(--sp-20); line-height: 1.7; }
+.gt-steps li { margin-bottom: var(--sp-4); }
+.gt-field { display: block; margin-bottom: var(--sp-12); }
+.gt-field span { display: block; margin-bottom: var(--sp-4); font-size: var(--fs-sm); }
+.gt-field input { width: 100%; }
 .gt-line { margin: 0 0 var(--sp-8); }
 .gt-note { margin: 0 0 var(--sp-8); font-size: var(--fs-sm); color: var(--muted); }
 .gt-actions { display: flex; justify-content: flex-end; gap: var(--sp-8); }

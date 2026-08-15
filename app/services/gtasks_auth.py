@@ -49,6 +49,12 @@ def authorize(client_id=None, client_secret=None, open_browser=True):
             f"{GTASKS_CLIENT_SECRET_ENV} 환경변수,"
             f" 또는 {gtasks_api.GTASKS_CONFIG_PATH} 에 두 키를 적어 둔다"
         )
+    # 동의가 실패하거나 시간이 지나도 받아 둔 값은 남긴다 — 다시 타이핑하게 하지 않는다.
+    # 기존 내용을 펼쳐 담아야 이미 있던 refresh_token 이 날아가지 않는다
+    if (stored.get("client_id"), stored.get("client_secret")) != (client_id, client_secret):
+        gtasks_api.save_config(
+            {**stored, "client_id": client_id, "client_secret": client_secret}
+        )
     verifier, challenge = _pkce_pair()
     # with 로 감싸야 브라우저를 띄우기 전에 실패해도 포트가 물린 채 남지 않는다
     with HTTPServer((GTASKS_AUTH_HOST, 0), _CallbackHandler) as server:

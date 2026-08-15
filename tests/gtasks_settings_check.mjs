@@ -7,9 +7,12 @@ import { readFile } from "node:fs/promises";
 import { bootKorean } from "./i18n_boot.mjs";
 
 const asked = [];
+const sent = {};
 let panel = {
   state: { enabled: 0, last_sync_at: null, last_error: null },
   connected: false,
+  has_client: false,
+  client_id: "",
   reason: "연결 안 됨",
   categories: [
     { id: 1, name: "개발", enabled: true, linked: false },
@@ -20,6 +23,7 @@ let panel = {
 globalThis.fetch = async (url, options) => {
   const method = options?.method ?? "GET";
   asked.push(`${method} ${url}`);
+  if (options?.body) sent[`${method} ${url}`] = JSON.parse(options.body);
   if (url === "/api/gtasks-plan" && method === "POST") {
     return {
       ok: true,
@@ -110,15 +114,22 @@ function node(tag = "div") {
     },
     showModal() {
       this.shown = true;
-      // 사용자가 '진행'을 누른 것으로 본다 — 취소 경로는 아래에서 따로 확인한다
-      this.returnValue = decision;
+      // 합집합 팝업은 사용자가 '진행'을 누른 것으로 본다 (취소는 아래에서 따로 확인).
+      // 자격증명 창은 단계를 밟아야 하므로 close() 를 부를 때까지 열어 둔다
+      if (this.autoClose) {
+        this.returnValue = decision;
+        this.listeners.close?.();
+      }
+    },
+    close() {
       this.listeners.close?.();
     },
   };
 }
 
 let decision = "go";
-const elements = {};
+const elements = { "gtasks-plan": node() };
+elements["gtasks-plan"].autoClose = true;
 globalThis.document = {
   getElementById: (id) => (elements[id] ??= node()),
   createElement: (tag) => node(tag),
@@ -156,9 +167,43 @@ assert.equal(elements["gtasks-warn"].hidden, false, "사유가 있는데 경고�
 assert.equal(elements["gtasks-reason"].textContent, "연결 안 됨");
 assert.equal(switches().length, 0, "미연동인데 카테고리 스위치가 있다");
 
-// ── 2. 켜기: 바로 동기화하지 않고 합집합 확인을 거친다 ──────────────────────
+// ── 2. 연결하기: 안내 → 다음 → 입력 → 저장 ──────────────────────────────────
 const connect = flatten(card).find((kid) => kid.textContent === "연결하기");
 assert.ok(connect, "연결하기 버튼이 없다");
+
+// elements[] 는 getElementById 로 처음 닿을 때 생긴다 — 직접 꺼내면 undefined 다
+const dialog = document.getElementById("gtasks-auth");
+const guide = document.getElementById("gtasks-auth-guide");
+const form = document.getElementById("gtasks-auth-form");
+const pending = connect.listeners.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+// 값을 어디서 받는지 먼저 알려준다. 바로 입력창을 띄우면 무엇을 넣을지 모른다
+assert.equal(guide.hidden, false, "안내를 건너뛰고 입력창이 떴다");
+assert.equal(form.hidden, true);
+assert.ok(!asked.includes("POST /api/gtasks-auth"), "안내 단계인데 인증이 나갔다");
+
+elements["gtasks-auth-next"].onclick();
+assert.equal(guide.hidden, true);
+assert.equal(form.hidden, false, "다음을 눌렀는데 입력창이 안 떴다");
+// 이전으로 돌아갈 수 있어야 한다 — 콘솔을 다시 봐야 하는 경우가 많다
+elements["gtasks-auth-back"].onclick();
+assert.equal(guide.hidden, false);
+elements["gtasks-auth-next"].onclick();
+
+elements["gtasks-client-id"].value = "  아이디  ";
+elements["gtasks-client-secret"].value = "비밀";
+form.onsubmit({ preventDefault() {} });
+await pending;
+assert.ok(asked.includes("POST /api/gtasks-auth"), asked.join(", "));
+assert.deepEqual(sent["POST /api/gtasks-auth"], { client_id: "아이디", client_secret: "비밀" });
+
+// 이미 받아 둔 자격증명이 있으면 다시 묻지 않는다
+panel = { ...panel, connected: false, has_client: true, client_id: "아이디" };
+await gtasks.renderGtasks();
+dialog.shown = false;
+const reconnect = flatten(elements["gtasks-card"]).find((kid) => kid.textContent === "연결하기");
+await reconnect.listeners.click();
+assert.equal(dialog.shown, false, "자격증명이 있는데 입력창을 또 띄웠다");
 
 panel = { ...panel, connected: true, reason: null };
 await gtasks.renderGtasks();
@@ -203,5 +248,7 @@ assert.ok(
   !asked.slice(before).includes("POST /api/gtasks-setup"),
   "취소했는데 적용이 나갔다"
 );
+// 취소하고 돌아온 자리에서 버튼이 죽어 있으면 다시 시도할 길이 없다
+assert.equal(again.disabled, false, "취소했더니 버튼이 잠긴 채로 남았다");
 
 console.log("ok");

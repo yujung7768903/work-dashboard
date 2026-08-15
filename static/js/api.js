@@ -52,7 +52,7 @@ export const getGtasks = () => request("GET", "/gtasks");
 export const setGtasks = (enabled) => request("PATCH", "/gtasks", { enabled });
 export const setGtasksCategory = (id, enabled) =>
   request("PATCH", `/gtasks-categories/${id}`, { enabled });
-export const connectGtasks = () => request("POST", "/gtasks-auth", {});
+export const connectGtasks = (credentials) => request("POST", "/gtasks-auth", credentials);
 export const planGtasks = () => request("POST", "/gtasks-plan", {});
 export const setupGtasks = () => request("POST", "/gtasks-setup", {});
 export const syncGtasks = () => request("POST", "/gtasks-sync", {});

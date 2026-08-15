@@ -30,7 +30,7 @@ function paint(panel) {
   card.classList.toggle("off", !enabled);
   card.innerHTML = "";
   if (!panel.connected) {
-    card.append(note(t("gtasks.intro")), connectButton());
+    card.append(note(t("gtasks.intro")), connectButton(panel));
     return;
   }
   // 링크가 없으면 아직 카테고리를 안 맞춘 것이다 — 목록 대신 안내를 남긴다
@@ -106,12 +106,50 @@ function stamp(text) {
 
 // ── 버튼 ──────────────────────────────────────────────────────────────────
 
-function connectButton() {
+function connectButton(panel) {
   const button = document.createElement("button");
   button.textContent = t("gtasks.connect");
-  // 동의 창은 서버가 연다. 승인까지 몇 분이 걸릴 수 있어 그동안 계속 돌려 둔다
-  button.addEventListener("click", () => busy(button, async () => paint(await api.connectGtasks())));
+  button.addEventListener("click", () => busy(button, () => connect(panel)));
   return button;
+}
+
+async function connect(panel) {
+  // 자격증명은 구글 콘솔에서 직접 받아야 한다. 이미 받아 둔 게 있으면 다시 묻지 않는다
+  const filled = panel.has_client ? {} : await askCredentials(panel.client_id);
+  if (!filled) return;
+  // 동의 창은 서버가 연다. 승인까지 몇 분이 걸릴 수 있어 그동안 계속 돌려 둔다
+  paint(await api.connectGtasks(filled));
+}
+
+function askCredentials(knownId) {
+  const dialog = document.getElementById("gtasks-auth");
+  const guide = document.getElementById("gtasks-auth-guide");
+  const form = document.getElementById("gtasks-auth-form");
+  const id = document.getElementById("gtasks-client-id");
+  const secret = document.getElementById("gtasks-client-secret");
+  guide.hidden = false;
+  form.hidden = true;
+  id.value = knownId || "";
+  secret.value = "";
+  return new Promise((resolve) => {
+    let filled = null;
+    // addEventListener 가 아니라 대입이라야 다시 열 때 핸들러가 겹쳐 쌓이지 않는다
+    document.getElementById("gtasks-auth-next").onclick = () => step(guide, form);
+    document.getElementById("gtasks-auth-back").onclick = () => step(form, guide);
+    document.getElementById("gtasks-auth-cancel").onclick = () => dialog.close();
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      filled = { client_id: id.value.trim(), client_secret: secret.value.trim() };
+      dialog.close();
+    };
+    dialog.addEventListener("close", () => resolve(filled), { once: true });
+    dialog.showModal();
+  });
+}
+
+function step(from, to) {
+  from.hidden = true;
+  to.hidden = false;
 }
 
 function setupButton() {
@@ -173,8 +211,10 @@ async function busy(button, action) {
   try {
     await action();
   } catch (error) {
-    button.disabled = false;
+    // 실패는 api.js 가 이미 알렸다. 여기서는 다시 누를 수 있게 되돌리기만 한다
   } finally {
+    // 반드시 되돌린다. 취소하고 돌아온 자리에서 버튼이 죽어 있으면 다시 시도할 길이 없다
+    button.disabled = false;
     spinner.remove();
   }
 }

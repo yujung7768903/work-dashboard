@@ -22,10 +22,15 @@ def panel(con):
     사유로 판단한다
     """
     state = gtasks_state.state(con)
-    connected = _connected()
+    stored = gtasks_api.stored_client()
+    connected = bool(stored.get("refresh_token"))
     return {
         "state": state,
         "connected": connected,
+        # 이미 받아 둔 자격증명이 있으면 안내와 입력 창을 건너뛰고 바로 동의로 간다.
+        # client_secret 은 내려보내지 않는다 — 화면이 쓸 일이 없다
+        "has_client": bool(stored.get("client_id") and stored.get("client_secret")),
+        "client_id": stored.get("client_id") or "",
         "reason": state["last_error"] or (None if connected else GTASKS_ERROR_NO_AUTH),
         "categories": [
             {

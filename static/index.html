@@ -196,6 +196,43 @@
         <ul id="label-list" class="set-list"></ul>
       </section>
 
+      <!-- client_id·secret 은 구글 콘솔에서 직접 받아야 한다. 어디서 어떻게 받는지
+           먼저 알려주고, 받아 온 값을 여기서 입력받아 gtasks.json 에 저장한다 -->
+      <dialog id="gtasks-auth">
+        <div id="gtasks-auth-guide">
+          <h3 data-i18n="gtasks.authTitle"></h3>
+          <ol class="gt-steps">
+            <li data-i18n="gtasks.authStep1"></li>
+            <li data-i18n="gtasks.authStep2"></li>
+            <li data-i18n="gtasks.authStep3"></li>
+            <li data-i18n="gtasks.authStep4"></li>
+            <li data-i18n="gtasks.authStep5"></li>
+          </ol>
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank"
+             rel="noreferrer" data-i18n="gtasks.authConsole"></a>
+          <div class="gt-actions">
+            <button type="button" id="gtasks-auth-cancel" data-i18n="common.cancel"></button>
+            <button type="button" id="gtasks-auth-next" data-i18n="gtasks.authNext"></button>
+          </div>
+        </div>
+        <form id="gtasks-auth-form" hidden>
+          <h3 data-i18n="gtasks.formTitle"></h3>
+          <label class="gt-field">
+            <span data-i18n="gtasks.clientId"></span>
+            <input id="gtasks-client-id" required autocomplete="off">
+          </label>
+          <label class="gt-field">
+            <span data-i18n="gtasks.clientSecret"></span>
+            <input id="gtasks-client-secret" type="password" required autocomplete="off">
+          </label>
+          <p class="gt-note" data-i18n="gtasks.formNote"></p>
+          <div class="gt-actions">
+            <button type="button" id="gtasks-auth-back" data-i18n="gtasks.authBack"></button>
+            <button type="submit" data-i18n="gtasks.connect"></button>
+          </div>
+        </form>
+      </dialog>
+
       <!-- 합집합을 보여주고 확인을 받는다. 확인 전에는 양쪽 어디도 건드리지 않는다 -->
       <dialog id="gtasks-plan">
         <h3 data-i18n="gtasks.planTitle"></h3>
