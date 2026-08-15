@@ -8,14 +8,29 @@
 ```bash
 ./start.sh                           # 백그라운드로 띄우고 logs/<날짜>.log 에 기록
 ./start.sh --port 9081               # 워크트리용 다른 포트
+./start.sh --lan                     # 폰·아이패드에서도 볼 때 (인증 없음, LAN 노출 주의)
 ./stop.sh                            # 이 디렉토리에서 돌던 서버만 멈춤
 ./restart.sh                         # 돌던 서버를 죽이고 같은 포트로 다시
 python3 server.py                    # 포그라운드로 볼 때 (http://127.0.0.1:9080)
-python3 server.py --host 0.0.0.0     # 폰에서 볼 때 (인증 없음, LAN 노출 주의)
+python3 server.py --host 0.0.0.0     # --lan 이 하는 것을 손으로
 ```
 
 `start.sh` 는 인자를 `server.py` 로 그대로 넘기고, pid 와 로그 경로를 출력한다.
 로그는 하루 한 파일(`logs/YYYY-MM-DD.log`)이고 7일 넘게 안 쓴 파일은 다음 실행 때 지운다.
+
+**기본은 이 기기 전용(`127.0.0.1`)이고, `--lan` 을 줄 때만 열린다.** `start.sh` 가 아는
+유일한 자기 인자로, `--host 0.0.0.0` 으로 바꿔 넘긴다. 별칭을 둔 이유는 짧아서가 아니라
+주소 때문이다 — `server.py` 는 받은 host 를 그대로 찍어 `http://0.0.0.0:9080` 이 나오는데
+그건 다른 기기에 붙여넣을 수 없다. `--lan` 은 `ipconfig getifaddr en0`(없으면 `en1`) 로
+실제 주소를 찾아 `http://192.168.x.x:9080` 으로 바꿔 찍고, 인증이 없다는 것을 함께 알린다.
+주소를 못 찾아도 뜬 것은 막지 않고 그 사실만 알린다. 손으로 준 `--host 0.0.0.0` 도 같게
+본다 — 인자 없는 `restart.sh` 는 죽는 서버의 인자를 그대로 물려받아 `--lan` 이 아니라 그
+모양으로 오므로, 플래그 이름만 보면 재실행 때 주소도 경고도 사라진다.
+
+**9080 은 메인 체크아웃(master) 자리다.** 늘 같은 주소여야 북마크 하나로 열 수 있어서,
+워크트리는 9081 부터 쓴다. 포트를 고르는 쪽(보드 케밥 메뉴의 "실행", `Stop` 훅)은 9080 을
+아예 후보에서 뺐고(`serve.PORT_RANGE`), 손으로 `--port 9080` 을 준 워크트리는 `server.py`
+가 뜨기 전에 막는다 — 띄우는 길이 여럿이라 고르는 쪽만 고치면 하나는 빠진다.
 
 `stop.sh`·`restart.sh` 는 "이 디렉토리를 cwd 로 돌고 있는 서버"를 `serving.sh` 의 같은
 함수로 찾는다 — 탐지가 갈리면 restart 가 남의 서버를 죽인다. 프로세스 조회는 `/proc` 이
@@ -122,7 +137,7 @@ work-dashboard/
 | 훅 | 등록 위치 | 하는 일 | 동작 방식 |
 | --- | --- | --- | --- |
 | `hooks/dash_hook.py` | `~/.claude/settings.json` (그 PC 전용, 절대 경로). 타임아웃 2초 | 세션 등록·상태 추적, 세션에 워크스페이스·분류·해제 블록 주입 | 인자로 받은 이벤트 이름 하나로 네 갈래 분기하는 단일 진입점. stdin JSON 의 `session_id`·`cwd` 로 DB 를 갱신하고 주입할 블록을 stdout 으로 뱉음. 차단은 하지 않음 |
-| `hooks/worktree_serve.py` | `.claude/settings.json`, 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9080–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
+| `hooks/worktree_serve.py` | `.claude/settings.json`, 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9081–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
 | `hooks/worktree_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 10초 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
 | `hooks/commit_scope_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Bash`. 타임아웃 10초 | 범위를 넘는 스테이징·커밋 차단 | pathspec 없는 `git add -A`/`--all`/`-u`/`.` 와 `git commit -a`/`--all`/`-am` 이면 `exit 2`. `;`·`&&`·파이프로 이어진 복합 명령도 구간별로 검사한다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
 | `hooks/md_lint.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 15초 | 저장된 `.md` 를 markdownlint-cli2 로 검사 | 린트 에러가 있으면 `exit 2` + stderr 에 에러 목록과 재저장 지시. 바이너리를 PATH 에서 직접 부른다 — 없으면 조용히 통과하므로 새 PC 에서는 `npm i -g markdownlint-cli2` 를 먼저 한다. 검사 범위와 설정은 아래 참고 |
@@ -163,7 +178,7 @@ work-dashboard/
 
 | 이벤트 | 하는 일 | 세션에 주입되는 것 |
 | --- | --- | --- |
-| `Stop` | transcript 에서 이번 세션이 고친 워크트리를 뽑아, 웹 프로젝트인데 그 cwd 를 쓰는 서버 프로세스가 없는 것을 찾고 빈 포트(9080–9139)를 고름. `stop_hook_active` 면 아무것도 안 함 | 해당 워크트리가 있으면 `exit 2` 로 종료를 막고 stderr 로 실행 지시 — 실행 방법 확인 위치(그 워크트리의 README·CLAUDE.md), `nohup ... &` 로 띄우라는 것, 빈 포트, `- 워크트리:` / `- url:` / `- 작업 요약:` 마무리 형식. 없으면 무출력 |
+| `Stop` | transcript 에서 이번 세션이 고친 워크트리를 뽑아, 웹 프로젝트인데 그 cwd 를 쓰는 서버 프로세스가 없는 것을 찾고 빈 포트(9081–9139)를 고름. `stop_hook_active` 면 아무것도 안 함 | 해당 워크트리가 있으면 `exit 2` 로 종료를 막고 stderr 로 실행 지시 — 실행 방법 확인 위치(그 워크트리의 README·CLAUDE.md), `nohup ... &` 로 띄우라는 것, 빈 포트, `- 워크트리:` / `- url:` / `- 작업 요약:` 마무리 형식. 없으면 무출력 |
 
 `worktree_guard.py` 가 이벤트별로 하는 일:
 
@@ -278,7 +293,7 @@ push 는 하지 않는다. 워크트리 제거도 하지 않는다 — `ExitWork
 
 | 항목 | 하는 일 | 확인창 |
 | --- | --- | --- |
-| 실행 | 워크트리 루트의 `start.sh` 를 빈 포트(9080–9139)로 실행 | 없음 |
+| 실행 | 워크트리 루트의 `start.sh` 를 빈 포트(9081–9139)로 실행 | 없음 |
 | 재실행 | 중지한 뒤 **같은 포트**로 다시 (포트가 풀릴 때까지 최대 5초 기다림) | 있음 |
 | 중지 | 그 워크트리를 cwd 로 쓰는 서버에 SIGTERM | 있음 |
 
