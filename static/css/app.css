@@ -560,7 +560,9 @@ button:disabled { color: var(--line); cursor: default; }
   display: flex; align-items: center; gap: var(--sp-8);
   margin-top: var(--sp-12); font-size: var(--fs-sm); color: var(--muted);
 }
-.gt-foot button { margin-left: auto; }
+/* 첫 버튼만 밀어야 뒤따르는 버튼이 그 옆에 붙는다. 전부에 걸면 저마다 남은 공간을
+   나눠 먹어 버튼들이 줄 전체에 흩어진다 */
+.gt-foot button:first-of-type { margin-left: auto; }
 /* 카테고리를 맞추는 동안 도는 표시. 몇 초 걸리는지 알 수 없어 진행률이 아니라 원형이다 */
 /* span 이라 inline-block 을 안 주면 width·height 가 무시돼 테두리만 남은 막대가 된다 */
 .gt-spin {
