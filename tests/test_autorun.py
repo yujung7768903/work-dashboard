@@ -281,6 +281,14 @@ class Launching(AutorunCase):
         )
         self.assertEqual(result["run"]["job_id"], JOB)
 
+    def test_job_name_carries_the_todo_id(self):
+        launcher = Recorder()
+        autorun.tick(self.con, launcher=launcher)
+        self.assertEqual(
+            launcher.calls[0]["name"],
+            f"#{self.todo['id']} | {self.todo['title']}",
+        )
+
     def test_child_session_differs_from_launcher(self):
         autorun.tick(self.con, launcher=Recorder())
         self.assertNotEqual(
