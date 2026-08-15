@@ -60,6 +60,7 @@
   --cat-mix: 15%;
 
   --side-w: 208px;
+  --side-w-min: 56px;        /* 접힌 레일. 아이콘 하나 + 좌우 여백 */
   --icon-box: var(--sp-24);  /* 16px 아이콘을 담는 정사각 면 */
 }
 
@@ -112,6 +113,8 @@ body {
   font-size: var(--fs-body); font-weight: 700; letter-spacing: -0.02em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 접기 버튼은 브랜드 줄 오른쪽 끝. 접히면 아래 규칙이 가운데로 옮긴다 */
+#side-toggle { margin-left: auto; }
 
 .side-nav { display: flex; flex-direction: column; gap: var(--sp-2); }
 /* 좌측 3px 강조 바는 선택될 때만 색이 든다. 자리는 항상 잡아둬야 글자가 안 밀림 */
@@ -139,6 +142,23 @@ body {
   font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums;
 }
 #rail-status:empty { display: none; }
+
+/* 접힌 레일: 이름을 걷어내고 아이콘만 남긴다 (static/js/layout.js 가 body 에 클래스를 건다).
+   좁은 화면은 레일이 이미 가로 메뉴라 접을 것이 없으므로 넓은 화면에서만 */
+@media (min-width: 900px) {
+  body.side-collapsed { --side-w: var(--side-w-min); }
+  body.side-collapsed .side-mark,
+  body.side-collapsed .side-name,
+  body.side-collapsed #rail-status { display: none; }
+  body.side-collapsed .side-brand { padding: var(--sp-4) 0 var(--sp-16); }
+  body.side-collapsed #side-toggle { margin: 0 auto; }
+  /* 라벨은 아이콘 옆 텍스트 노드라 감쌀 태그가 없다 — 글자 크기를 0 으로 접는다.
+     읽어 주는 프로그램에는 그대로 남아 아이콘 버튼의 이름이 된다 */
+  body.side-collapsed .side-nav button {
+    justify-content: center; gap: 0; font-size: 0;
+    padding-left: var(--sp-4); padding-right: var(--sp-4);
+  }
+}
 
 .app-main { flex: 1; min-width: 0; padding: 0 var(--sp-16) var(--sp-48); }
 
@@ -182,6 +202,7 @@ h1 {
   .side-nav button { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
   .side-nav button.active { border-bottom-color: var(--accent); }
   #rail-status { display: none; }
+  #side-toggle { display: none; }
   .app-main { padding: 0 var(--sp-12) var(--sp-40); }
 }
 
@@ -289,6 +310,9 @@ button:disabled { color: var(--line); cursor: default; }
   flex-wrap: wrap; font-size: var(--fs-sm);
 }
 #board-controls label { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; }
+/* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다 */
+#view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
+#view-columns button.active { background: var(--softer); color: var(--accent); }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
 .group, .ws-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
@@ -324,6 +348,12 @@ button:disabled { color: var(--line); cursor: default; }
 /* 세로 화면은 1컬럼, 넓으면 2컬럼. 간격은 grid gap 이 담당하므로 카드 세로 마진 없음 */
 /* stretch: 같은 행의 두 카드를 더 긴 쪽 높이에 맞춰 아래선을 정렬 */
 #groups, #done-groups { display: grid; gap: var(--gap); align-items: stretch; margin: var(--gap) 0; }
+/* 고른 열 수는 아래 화면 폭 기준(@media min-width 1240px)을 이긴다 — 화면이 넓어도
+   한 줄로 길게 보고 싶을 때가 있다. 고르는 곳은 보드 위 아이콘 두 개(static/js/layout.js) */
+body[data-board-columns="1"] #groups,
+body[data-board-columns="1"] #done-groups { grid-template-columns: 1fr; }
+body[data-board-columns="2"] #groups,
+body[data-board-columns="2"] #done-groups { grid-template-columns: 1fr 1fr; }
 /* 워크트리 목록도 같은 격자. 세로 마진은 위의 탭 바가 이미 띄워 둔다 */
 #worktree-list { display: grid; gap: var(--gap); align-items: stretch; }
 /* 워크트리 줄은 줄바꿈을 하지 않아 격자 칸의 기본 min-width:auto 가 카드를 내용만큼

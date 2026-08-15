@@ -8,3 +8,6 @@ await import("./main.js");
 // 언어 메뉴는 탭 밖(상단바)이라 탭을 그릴 때마다가 아니라 여기서 한 번만 그린다
 const { renderLanguageMenu } = await import("./language.js");
 renderLanguageMenu();
+
+// 열 수·레일 접힘도 탭 밖이라 한 번만. 들이는 것으로 저장해 둔 값이 화면에 붙는다
+await import("./layout.js");
