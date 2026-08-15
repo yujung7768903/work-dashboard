@@ -98,8 +98,11 @@ class Client:
         params = {"showCompleted": "true", "showHidden": "true"}
         return self._paged("GET", f"/lists/{list_id}/tasks", params)
 
-    def insert(self, list_id, body):
-        return self._call("POST", f"/lists/{list_id}/tasks", body=body)
+    def insert(self, list_id, body, parent=None):
+        """parent 는 본문이 아니라 쿼리 파라미터다 — 본문에 넣으면 조용히 무시되고
+        하위 태스크가 최상위로 올라간다 (구글은 1단계 중첩만 허용)"""
+        params = {"parent": parent} if parent else None
+        return self._call("POST", f"/lists/{list_id}/tasks", params=params, body=body)
 
     def patch(self, list_id, task_id, body):
         return self._call("PATCH", f"/lists/{list_id}/tasks/{task_id}", body=body)

@@ -1,4 +1,7 @@
-"""구글 태스크 양방향 동기화. 네트워크를 타지 않고 가짜 클라이언트로 규칙만 검증한다"""
+"""구글 태스크 양방향 동기화. 네트워크를 타지 않고 가짜 클라이언트로 규칙만 검증한다
+
+매핑은 세 층이다 — 구글 목록=카테고리, 최상위 태스크=워크스페이스, 하위=그 워크스페이스의 할일
+"""
 import os
 import tempfile
 import unittest
@@ -8,19 +11,25 @@ from unittest import mock
 from app.constants import (
     GTASKS_CLIENT_ID_ENV,
     GTASKS_CLIENT_SECRET_ENV,
+    GTASKS_ERROR_EXPIRED,
     GTASKS_STATUS_DONE,
     GTASKS_STATUS_TODO,
     OUTCOME_REVIEW,
     STATUS_DONE,
     STATUS_TODO,
+    WORKSPACE_ACTIVE,
 )
 from app.errors import Validation
 from app.services import gtasks_api, gtasks_auth
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
+from app.repositories import gtasks_state
 from app.repositories import todos as todo_repo
-from app.services import gtasks
+from app.repositories import workspaces as workspace_repo
+from app.services import gtasks, gtasks_setup
 from tests.support import temp_db
+
+WORKSPACE_DONE = "done"
 
 
 def _stamp(offset_seconds=0):
@@ -49,8 +58,10 @@ class FakeClient:
     def tasks(self, list_id):
         return list(self._tasks.get(list_id, []))
 
-    def insert(self, list_id, body):
+    def insert(self, list_id, body, parent=None):
         task = dict(body, id=f"task{self._next}", updated=_stamp())
+        if parent:
+            task["parent"] = parent
         self._next += 1
         self._tasks.setdefault(list_id, []).append(task)
         return task
@@ -64,14 +75,27 @@ class FakeClient:
         raise AssertionError(f"없는 태스크 patch: {task_id}")
 
     def delete(self, list_id, task_id):
+        """구글은 최상위를 지우면 하위까지 함께 지운다. 그 성질이 규칙을 가르므로 흉내낸다"""
+        gone = {task_id} | {
+            task["id"]
+            for task in self._tasks.get(list_id, [])
+            if task.get("parent") == task_id
+        }
         self._tasks[list_id] = [
-            task for task in self._tasks.get(list_id, []) if task["id"] != task_id
+            task for task in self._tasks.get(list_id, []) if task["id"] not in gone
         ]
 
     def only_task(self):
         for tasks in self._tasks.values():
             for task in tasks:
                 return task
+        return None
+
+    def find(self, title):
+        for tasks in self._tasks.values():
+            for task in tasks:
+                if task.get("title") == title:
+                    return task
         return None
 
     def task_count(self):
@@ -81,42 +105,106 @@ class FakeClient:
 class GtasksSyncTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
-        self.category = category_repo.list_all(self.con)[0]
+        category = category_repo.list_all(self.con)[0]
         self.client = FakeClient()
+        # 목록 맞추기는 gtasks_setup 의 몫이라 여기서는 결과만 만들어 둔다
+        created = self.client.create_list(category["name"])
+        category_repo.set_google_list_id(self.con, category["id"], created["id"])
+        self.list_id = created["id"]
+        self.category = category_repo.get(self.con, category["id"])
+
+    def _space(self, name="결제 개편", **fields):
+        return workspace_repo.create(self.con, self.category["id"], name, **fields)
 
     def _todo(self, title="배포 스크립트 정리", **kwargs):
-        return todo_repo.create(
-            self.con, title=title, category_id=self.category["id"], **kwargs
-        )
+        kwargs.setdefault("category_id", self.category["id"])
+        return todo_repo.create(self.con, title=title, **kwargs)
 
     def _sync(self):
         return gtasks.sync(self.con, client=self.client)
 
-    def test_로컬_할일이_구글_목록으로_올라가고_링크가_남는다(self):
-        todo = self._todo(note="본문", precondition="서버 재기동 후")
+    def _reload(self, todo):
+        return todo_repo.get(self.con, todo["id"])
+
+    # ── 올려보내기 ────────────────────────────────────────────────────────
+
+    def test_워크스페이스가_최상위_할일이_그_하위로_올라간다(self):
+        space = self._space(goal="1차 배포까지")
+        todo = self._todo(workspace_id=space["id"])
 
         report = self._sync()
 
-        self.assertEqual(len(report["created_remote"]), 1)
-        task = self.client.only_task()
-        self.assertEqual(task["title"], "배포 스크립트 정리")
-        self.assertIn("착수 조건: 서버 재기동 후", task["notes"])
-        self.assertEqual(todo_repo.get(self.con, todo["id"])["google_task_id"], task["id"])
+        top = self.client.find("결제 개편")
+        child = self.client.find("배포 스크립트 정리")
+        self.assertIsNone(top.get("parent"))
+        self.assertEqual(child["parent"], top["id"])
+        self.assertIn("목표: 1차 배포까지", top["notes"])
+        self.assertEqual(self._reload(todo)["google_task_id"], child["id"])
+        self.assertEqual(len(report["created_remote"]), 2)
 
-    def test_빈_카테고리는_목록을_만들지_않는다(self):
-        self._sync()
-
-        self.assertEqual(self.client.lists(), [])
-
-    def test_두번_돌려도_같은_태스크를_다시_만들지_않는다(self):
+    def test_워크스페이스_없는_할일은_최상위로_올라간다(self):
         self._todo()
 
         self._sync()
+
+        self.assertIsNone(self.client.only_task().get("parent"))
+
+    def test_두번_돌려도_같은_태스크를_다시_만들지_않는다(self):
+        space = self._space()
+        self._todo(workspace_id=space["id"])
+
+        self._sync()
         report = self._sync()
 
-        self.assertEqual(self.client.task_count(), 1)
+        self.assertEqual(self.client.task_count(), 2)
         self.assertEqual(report["created_remote"], [])
         self.assertEqual(report["pushed"], [])
+
+    def test_목록이_안_붙은_카테고리는_건너뛴다(self):
+        other = category_repo.create(self.con, "아직 안 맞춘 카테고리")
+        todo_repo.create(self.con, title="여기 할일", category_id=other["id"])
+
+        self._sync()
+
+        self.assertIsNone(self.client.only_task())
+
+    def test_꺼진_카테고리는_건드리지_않는다(self):
+        self._todo()
+        category_repo.set_gtasks_enabled(self.con, self.category["id"], False)
+
+        self._sync()
+
+        self.assertEqual(self.client.task_count(), 0)
+
+    # ── 내려받기 ──────────────────────────────────────────────────────────
+
+    def test_폰에서_만든_최상위는_워크스페이스가_아니라_할일이_된다(self):
+        """최상위를 워크스페이스로 승격시키면 회차마다 워크스페이스가 늘어난다"""
+        self.client.insert(self.list_id, {"title": "폰에서 적은 일", "status": GTASKS_STATUS_TODO})
+
+        report = self._sync()
+
+        self.assertEqual(workspace_repo.list_all(self.con), [])
+        titles = [t["title"] for t in todo_repo.list_by_category(self.con, self.category["id"])]
+        self.assertIn("폰에서 적은 일", titles)
+        self.assertEqual(len(report["created_local"]), 1)
+
+    def test_폰에서_만든_하위는_그_워크스페이스의_할일이_된다(self):
+        space = self._space()
+        self._sync()
+        top = self.client.find("결제 개편")
+        self.client.insert(
+            self.list_id, {"title": "폰에서 적은 하위", "status": GTASKS_STATUS_TODO}, parent=top["id"]
+        )
+
+        self._sync()
+
+        made = [
+            todo
+            for todo in todo_repo.list_by_workspace(self.con, space["id"])
+            if todo["title"] == "폰에서 적은 하위"
+        ]
+        self.assertEqual(len(made), 1)
 
     def test_폰에서_완료하면_로컬도_완료된다(self):
         todo = self._todo()
@@ -127,8 +215,34 @@ class GtasksSyncTest(unittest.TestCase):
 
         report = self._sync()
 
-        self.assertEqual(todo_repo.get(self.con, todo["id"])["status"], STATUS_DONE)
+        self.assertEqual(self._reload(todo)["status"], STATUS_DONE)
         self.assertEqual(len(report["pulled"]), 1)
+
+    def test_폰에서_워크스페이스를_완료하면_done_이_된다(self):
+        space = self._space()
+        self._sync()
+        top = self.client.find("결제 개편")
+        top["status"] = GTASKS_STATUS_DONE
+        top["updated"] = _stamp(60)
+
+        self._sync()
+
+        self.assertEqual(workspace_repo.get(self.con, space["id"])["status"], WORKSPACE_DONE)
+
+    def test_폰에서_완료를_풀면_워크스페이스가_다시_active_가_된다(self):
+        space = self._space()
+        self._sync()  # 링크가 생긴 뒤라야 완료된 워크스페이스도 계속 동기화 범위에 남는다
+        workspace_repo.update(self.con, space["id"], status=WORKSPACE_DONE)
+        self._sync()
+        top = self.client.find("결제 개편")
+        top["status"] = GTASKS_STATUS_TODO
+        top["updated"] = _stamp(60)
+
+        self._sync()
+
+        self.assertEqual(workspace_repo.get(self.con, space["id"])["status"], WORKSPACE_ACTIVE)
+
+    # ── 최신 우선 ─────────────────────────────────────────────────────────
 
     def test_로컬이_더_최신이면_폰의_제목_수정이_밀려난다(self):
         todo = self._todo()
@@ -141,7 +255,7 @@ class GtasksSyncTest(unittest.TestCase):
         report = self._sync()
 
         self.assertEqual(self.client.only_task()["title"], "대시보드에서 고친 제목")
-        self.assertEqual(todo_repo.get(self.con, todo["id"])["title"], "대시보드에서 고친 제목")
+        self.assertEqual(self._reload(todo)["title"], "대시보드에서 고친 제목")
         self.assertEqual(len(report["pushed"]), 1)
 
     def test_폰이_더_최신이면_제목이_내려온다(self):
@@ -153,51 +267,21 @@ class GtasksSyncTest(unittest.TestCase):
 
         self._sync()
 
-        self.assertEqual(todo_repo.get(self.con, todo["id"])["title"], "폰에서 고친 제목")
+        self.assertEqual(self._reload(todo)["title"], "폰에서 고친 제목")
 
-    def test_폰에서_만든_태스크가_그_카테고리의_할일이_된다(self):
-        self._todo()
-        self._sync()
-        list_id = self.client.lists()[0]["id"]
-        self.client.insert(list_id, {"title": "폰에서 적은 일", "status": GTASKS_STATUS_TODO})
-
-        report = self._sync()
-
-        titles = [t["title"] for t in todo_repo.list_by_category(self.con, self.category["id"])]
-        self.assertIn("폰에서 적은 일", titles)
-        self.assertEqual(len(report["created_local"]), 1)
-
-    def test_로컬에서_지운_할일은_구글에서도_지워진다(self):
+    def test_밀어넣은_직후_같은_초에_고쳐도_되돌려지지_않는다(self):
+        """로컬은 초까지, 구글은 밀리초까지 적는다. 그대로 비교하면 로컬 수정이 조용히 사라진다"""
         todo = self._todo()
         self._sync()
-        todo_repo.delete(self.con, todo["id"])
-
-        report = self._sync()
-
-        self.assertEqual(self.client.task_count(), 0)
-        self.assertEqual(len(report["deleted_remote"]), 1)
-
-    def test_폰에서_지운_미완료_할일은_되살아난다(self):
-        self._todo()
-        self._sync()
-        list_id = self.client.lists()[0]["id"]
-        self.client.delete(list_id, self.client.only_task()["id"])
+        task = self.client.only_task()
+        local_second = self._reload(todo)["updated_at"][:19]
+        task["updated"] = f"{local_second}.999Z"  # 같은 초, 밀리초만 뒤
+        todo_repo.update(self.con, todo["id"], title="같은 초에 고친 제목")
 
         self._sync()
 
-        self.assertEqual(self.client.task_count(), 1)
-
-    def test_완료된_할일은_폰에서_지워도_되살리지_않는다(self):
-        todo = self._todo()
-        self._sync()
-        todo_repo.update(self.con, todo["id"], status=STATUS_DONE)
-        self._sync()
-        list_id = self.client.lists()[0]["id"]
-        self.client.delete(list_id, self.client.only_task()["id"])
-
-        self._sync()
-
-        self.assertEqual(self.client.task_count(), 0)
+        self.assertEqual(self._reload(todo)["title"], "같은 초에 고친 제목")
+        self.assertEqual(self.client.only_task()["title"], "같은 초에 고친 제목")
 
     def test_로컬_규칙에_막히면_폰의_완료를_받지_않고_건너뛴다(self):
         todo = self._todo()
@@ -211,8 +295,61 @@ class GtasksSyncTest(unittest.TestCase):
 
         report = self._sync()
 
-        self.assertEqual(todo_repo.get(self.con, todo["id"])["status"], STATUS_TODO)
+        self.assertEqual(self._reload(todo)["status"], STATUS_TODO)
         self.assertEqual(len(report["skipped"]), 1)
+
+    # ── 삭제 ──────────────────────────────────────────────────────────────
+
+    def test_대시보드에서_지운_할일은_구글에서도_지워진다(self):
+        todo = self._todo()
+        self._sync()
+        todo_repo.delete(self.con, todo["id"])
+
+        report = self._sync()
+
+        self.assertEqual(self.client.task_count(), 0)
+        self.assertEqual(len(report["deleted_remote"]), 1)
+
+    def test_폰에서_지운_미완료_할일은_대시보드에서도_지워진다(self):
+        todo = self._todo()
+        self._sync()
+        self.client.delete(self.list_id, self.client.only_task()["id"])
+
+        report = self._sync()
+
+        self.assertEqual(self.client.task_count(), 0)
+        self.assertEqual(len(report["deleted_local"]), 1)
+        self.assertEqual(todo_repo.list_by_category(self.con, self.category["id"]), [])
+        self.assertNotIn(todo["id"], [t["id"] for t in todo_repo.list_by_category(self.con, self.category["id"])])
+
+    def test_완료된_할일은_폰에서_지워도_대시보드에_남는다(self):
+        """구글 앱의 '완료된 항목 삭제' 한 번에 완료 기록이 통째로 날아가면 안 된다"""
+        todo = self._todo()
+        self._sync()
+        todo_repo.update(self.con, todo["id"], status=STATUS_DONE)
+        self._sync()
+        self.client.delete(self.list_id, self.client.only_task()["id"])
+
+        report = self._sync()
+
+        self.assertEqual(self.client.task_count(), 0)
+        self.assertEqual(report["deleted_local"], [])
+        self.assertEqual(self._reload(todo)["status"], STATUS_DONE)
+
+    def test_워크스페이스를_지워도_소속_할일은_사라지지_않는다(self):
+        """구글은 최상위를 지우면 하위까지 지운다. 링크를 안 끊으면 멀쩡한 할일이 증발한다"""
+        space = self._space()
+        todo = self._todo(workspace_id=space["id"])
+        self._sync()
+        workspace_repo.delete(self.con, space["id"])  # 소속 할일은 미분류로 강등
+
+        self._sync()
+
+        survivor = self._reload(todo)
+        self.assertIsNone(survivor["workspace_id"])
+        self.assertEqual(self.client.task_count(), 1)
+        self.assertIsNone(self.client.only_task().get("parent"))
+        self.assertEqual(self.client.only_task()["id"], survivor["google_task_id"])
 
     def test_dry_run_은_양쪽_다_건드리지_않는다(self):
         todo = self._todo()
@@ -221,29 +358,88 @@ class GtasksSyncTest(unittest.TestCase):
 
         self.assertEqual(len(report["created_remote"]), 1)
         self.assertEqual(self.client.task_count(), 0)
-        self.assertIsNone(todo_repo.get(self.con, todo["id"])["google_task_id"])
+        self.assertIsNone(self._reload(todo)["google_task_id"])
 
-    def test_밀어넣은_직후_같은_초에_고쳐도_되돌려지지_않는다(self):
-        """로컬은 초까지, 구글은 밀리초까지 적는다. 그대로 비교하면 로컬 수정이 조용히 사라진다"""
-        todo = self._todo()
-        self._sync()
-        task = self.client.only_task()
-        local_second = todo_repo.get(self.con, todo["id"])["updated_at"][:19]
-        task["updated"] = f"{local_second}.999Z"  # 같은 초, 밀리초만 뒤
-        todo_repo.update(self.con, todo["id"], title="같은 초에 고친 제목")
 
-        self._sync()
+class GtasksSetupTest(unittest.TestCase):
+    """연동을 켤 때 한 번 도는 카테고리 맞추기. 할일은 건드리지 않는다"""
 
-        self.assertEqual(todo_repo.get(self.con, todo["id"])["title"], "같은 초에 고친 제목")
-        self.assertEqual(self.client.only_task()["title"], "같은 초에 고친 제목")
+    def setUp(self):
+        self.con = temp_db()
+        self.client = FakeClient()
+        self.names = [row["name"] for row in category_repo.list_all(self.con)]
 
-    def test_기존_목록을_제목으로_찾아_다시_만들지_않는다(self):
-        self.client.create_list(f"대시보드 · {self.category['name']}")
-        self._todo()
+    def test_계획은_양쪽_합집합을_보여주고_아무것도_쓰지_않는다(self):
+        self.client.create_list("운동")
 
-        self._sync()
+        plan = gtasks_setup.plan(self.con, client=self.client)
 
-        self.assertEqual(len(self.client.lists()), 1)
+        self.assertEqual(plan["create_local"], ["운동"])
+        self.assertEqual(plan["create_remote"], self.names)
+        self.assertEqual(plan["union"], self.names + ["운동"])
+        self.assertEqual([row["name"] for row in category_repo.list_all(self.con)], self.names)
+
+    def test_적용하면_없는_쪽을_만들고_연동을_켠다(self):
+        self.client.create_list("운동")
+
+        gtasks_setup.apply(self.con, client=self.client)
+
+        names = [row["name"] for row in category_repo.list_all(self.con)]
+        self.assertEqual(sorted(names), sorted(self.names + ["운동"]))
+        self.assertEqual(len(self.client.lists()), len(names))
+        self.assertTrue(gtasks_state.state(self.con)["enabled"])
+
+    def test_이름이_같으면_목록을_다시_만들지_않고_링크만_맺는다(self):
+        existing = self.client.create_list(self.names[0])
+
+        gtasks_setup.apply(self.con, client=self.client)
+
+        linked = category_repo.get_by_name(self.con, self.names[0])
+        self.assertEqual(linked["google_list_id"], existing["id"])
+        self.assertEqual(len(self.client.lists()), len(self.names))
+
+    def test_설정_화면_payload_는_네트워크를_치지_않는다(self):
+        payload = gtasks_setup.panel(self.con)
+
+        self.assertFalse(payload["state"]["enabled"])
+        self.assertEqual(len(payload["categories"]), len(self.names))
+        self.assertTrue(all(row["enabled"] for row in payload["categories"]))
+        self.assertFalse(any(row["linked"] for row in payload["categories"]))
+
+
+class GtasksRunTest(unittest.TestCase):
+    """cron 과 웹이 같이 쓰는 입구. 설정을 보고 돌지 말지 정한다"""
+
+    def setUp(self):
+        self.con = temp_db()
+
+    def test_꺼져_있으면_아무것도_하지_않는다(self):
+        self.assertIsNone(gtasks.run(self.con))
+
+    def test_실패해도_켜진_상태는_유지하고_사유만_남긴다(self):
+        gtasks_state.set_enabled(self.con, True)
+        blow_up = mock.patch.object(
+            gtasks, "sync", side_effect=gtasks_api.GtasksError("invalid_grant: 어쩌고")
+        )
+
+        with blow_up:
+            with self.assertRaises(gtasks_api.GtasksError):
+                gtasks.run(self.con)
+
+        state = gtasks_state.state(self.con)
+        self.assertTrue(state["enabled"])
+        self.assertEqual(state["last_error"], GTASKS_ERROR_EXPIRED)
+
+    def test_성공하면_사유가_지워지고_시각이_남는다(self):
+        gtasks_state.set_enabled(self.con, True)
+        gtasks_state.record_error(self.con, "지난번 실패")
+
+        with mock.patch.object(gtasks, "sync", return_value={}):
+            gtasks.run(self.con)
+
+        state = gtasks_state.state(self.con)
+        self.assertIsNone(state["last_error"])
+        self.assertTrue(state["last_sync_at"])
 
 
 class GtasksAuthArgsTest(unittest.TestCase):

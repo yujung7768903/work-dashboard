@@ -128,6 +128,15 @@ CREATE TABLE IF NOT EXISTS autorun_runs(
     requested_note TEXT,
     finished_at TEXT
 );
+-- ⑤ 구글 태스크 연동. autorun_state 와 같은 이유로 단일 행. 문제가 생겨도 enabled 를
+-- 건드리지 않고 last_error 만 채운다 — 끄고 켜는 것은 사람의 판단이다
+CREATE TABLE IF NOT EXISTS gtasks_state(
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 0,
+    last_sync_at TEXT,
+    last_error TEXT,
+    updated_at TEXT NOT NULL
+);
 """
 
 SEEDED_FLAG = "categories_seeded"
@@ -270,13 +279,25 @@ def _add_usage_account_column(con):
 def _add_gtasks_columns(con):
     """구글 태스크 연결 열을 뒤늦게 붙임. 연동을 안 쓰면 계속 NULL 로 남는다
 
-    카테고리 하나가 구글 목록 하나, 할일 하나가 태스크 하나로 붙는다
+    구글 목록 하나가 카테고리 하나, 그 안의 최상위 태스크가 워크스페이스,
+    최상위에 딸린 하위 태스크가 그 워크스페이스의 할일이다 (구글은 1단계만 중첩된다)
     """
-    pairs = (("categories", "google_list_id"), ("todos", "google_task_id"))
+    pairs = (
+        ("categories", "google_list_id"),
+        ("workspaces", "google_task_id"),
+        ("todos", "google_task_id"),
+    )
     for table, column in pairs:
         columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
         if column not in columns:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+    # 카테고리별 연동 여부. 기본 1 — 합집합 확인 화면에서 사용자가 승인한 목록이 기준이라
+    # 새로 생긴 카테고리도 켜져 있는 것이 사용자의 기대에 맞는다
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(categories)")}
+    if "gtasks_enabled" not in columns:
+        con.execute(
+            "ALTER TABLE categories ADD COLUMN gtasks_enabled INTEGER NOT NULL DEFAULT 1"
+        )
     con.commit()
 
 

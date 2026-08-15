@@ -37,6 +37,20 @@ def set_google_list_id(con, category_id, list_id):
         )
 
 
+def set_gtasks_enabled(con, category_id, enabled):
+    """이 카테고리를 동기화 대상으로 볼지. 끄면 연결(google_list_id)은 그대로 남는다
+
+    링크를 지우면 다시 켤 때 목록을 새로 만들어 폰에 같은 이름이 둘 생긴다
+    """
+    get(con, category_id)
+    with transaction(con):
+        con.execute(
+            "UPDATE categories SET gtasks_enabled=? WHERE id=?",
+            (1 if enabled else 0, category_id),
+        )
+    return get(con, category_id)
+
+
 def get(con, category_id):
     row = con.execute("SELECT * FROM categories WHERE id=?", (category_id,)).fetchone()
     if not row:

@@ -66,6 +66,7 @@ STATUSLINE_TITLE_MAX = 40
 USAGE_CLI_DAYS = 7
 # 삭제를 먼저 보여준다 — 되돌리기 어려운 것부터 눈에 들어와야 한다
 GTASKS_ACTION_LABELS = (
+    ("deleted_local", "대시보드에서 삭제"),
     ("deleted_remote", "구글에서 삭제"),
     ("created_local", "폰에서 받아 새로 만듦"),
     ("pulled", "폰이 최신이라 반영"),
@@ -734,7 +735,14 @@ def _cmd_gtasks_auth(con, args):
 
 def _cmd_gtasks_sync(con, args):
     """되돌리기 어려운 삭제가 섞이므로 무엇을 했는지 건별로 남긴다"""
-    report = gtasks.sync(con, dry_run=args.dry_run)
+    report = gtasks.run(con, dry_run=args.dry_run)
+    if report is None:
+        # cron 이 부르는 자리다. 꺼 뒀다고 실패로 처리하면 로그가 매번 시끄럽다
+        if args.as_json:
+            _emit_json({"enabled": False})
+        else:
+            print("연동이 꺼져 있어 아무것도 하지 않음 (설정 화면에서 켤 수 있습니다)")
+        return
     if args.as_json:
         _emit_json(report)
         return

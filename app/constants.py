@@ -155,8 +155,6 @@ GTASKS_TIMEOUT_SEC = 20
 GTASKS_PAGE_MAX = 100  # Tasks API 가 한 번에 주는 최대치. 기본값 20 이라 명시해야 함
 GTASKS_TOKEN_MARGIN_SEC = 60  # 만료 직전에 쓰다 401 나는 걸 피하려고 미리 갱신
 GTASKS_SEEN_KEY = "gtasks_seen_ids"
-# 우리가 만든 목록임을 제목으로 구분한다. 사용자의 기존 목록을 건드리지 않기 위함
-GTASKS_LIST_PREFIX = "대시보드 · "
 GTASKS_STATUS_DONE = "completed"
 GTASKS_STATUS_TODO = "needsAction"
 GTASKS_NOTES_MAX = 8000  # 구글 상한은 8192. 잘라 보내지 않으면 호출 전체가 400 으로 죽는다
@@ -164,6 +162,10 @@ GTASKS_UNTITLED = "(제목 없음)"
 # 로컬 인증 콜백. 데스크톱 OAuth 클라이언트는 127.0.0.1 이면 포트를 안 가린다
 GTASKS_AUTH_HOST = "127.0.0.1"
 GTASKS_AUTH_TIMEOUT_SEC = 300
+# 문제가 생겨도 연동을 끄지 않는다 — 껐다 켜는 건 사람 몫이고, 화면은 사유만 보여준다.
+# 와이파이가 한 번 끊겼다고 설정이 꺼지면 사용자가 그걸 눈치채지 못한 채 며칠을 보낸다
+GTASKS_ERROR_NO_AUTH = "연결 안 됨"
+GTASKS_ERROR_EXPIRED = "로그인 만료"
 
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 COST_FIELD = "estimated_cost_usd"
