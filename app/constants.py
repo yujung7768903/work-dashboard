@@ -16,7 +16,7 @@ SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "
 # tests/test_language.py 가 잡는다.
 # 기본값·폴백은 영어다 — 이 대시보드를 공개로 열 것이므로, 설정을 못 읽거나 번역이
 # 빠졌을 때 처음 보는 사람이 읽을 수 있는 쪽으로 떨어져야 한다.
-# CLI 출력·훅 주입 블록은 아직 한국어 고정 (README '초기 설정 (⑤) > 화면 언어' 참고)
+# CLI 출력·훅 주입 블록은 아직 한국어 고정 — 읽는 쪽이 Claude 라 옮길 이유가 없다
 LANGUAGES = ("en", "ko", "ja", "zh")
 DEFAULT_LANGUAGE = LANGUAGES[0]
 LANGUAGE_KEY = "language"  # meta 테이블 키
