@@ -202,14 +202,13 @@
         <div id="gtasks-auth-guide">
           <h3 data-i18n="gtasks.authTitle"></h3>
           <ol class="gt-steps">
-            <li data-i18n="gtasks.authStep1"></li>
+            <!-- 줄바꿈을 넣으면 공백이 하나 더 생긴다. 앞뒤 여백은 사전 문구가 갖는다 -->
+            <li><span data-i18n="gtasks.authStep1Before"></span><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" data-i18n="gtasks.authConsole"></a><span data-i18n="gtasks.authStep1After"></span></li>
             <li data-i18n="gtasks.authStep2"></li>
             <li data-i18n="gtasks.authStep3"></li>
             <li data-i18n="gtasks.authStep4"></li>
             <li data-i18n="gtasks.authStep5"></li>
           </ol>
-          <a href="https://console.cloud.google.com/apis/credentials" target="_blank"
-             rel="noreferrer" data-i18n="gtasks.authConsole"></a>
           <div class="gt-actions">
             <button type="button" id="gtasks-auth-cancel" data-i18n="common.cancel"></button>
             <button type="button" id="gtasks-auth-next" data-i18n="gtasks.authNext"></button>

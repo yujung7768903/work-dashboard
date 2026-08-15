@@ -587,6 +587,9 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 자격증명은 구글 콘솔을 거쳐야 나온다. 순서를 번호로 보여줘야 어디까지 했는지 안다 */
 .gt-steps { margin: 0 0 var(--sp-12); padding-left: var(--sp-20); line-height: 1.7; }
 .gt-steps li { margin-bottom: var(--sp-4); }
+/* 전역 a 규칙이 없어 두면 브라우저 기본 파랑(#0000ee)이 뜬다 — 팔레트와 어긋나고
+   어두운 테마에서는 배경에 묻힌다 */
+.gt-steps a { color: var(--accent); }
 .gt-field { display: block; margin-bottom: var(--sp-12); }
 .gt-field span { display: block; margin-bottom: var(--sp-4); font-size: var(--fs-sm); }
 .gt-field input { width: 100%; }
