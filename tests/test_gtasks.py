@@ -387,6 +387,10 @@ class GtasksSetupTest(unittest.TestCase):
         self.con = temp_db()
         self.client = FakeClient()
         self.names = [row["name"] for row in category_repo.list_all(self.con)]
+        # 돌리는 기계에 ssl 이 없으면 그 사유가 모든 판정을 덮는다. 여기서는 고정한다
+        ready = mock.patch.object(gtasks_api, "HTTPS_READY", True)
+        ready.start()
+        self.addCleanup(ready.stop)
 
     def test_계획은_양쪽_합집합을_보여주고_아무것도_쓰지_않는다(self):
         self.client.create_list("운동")
@@ -438,6 +442,27 @@ class GtasksSetupTest(unittest.TestCase):
                 with self.assertRaises(Validation) as caught:
                     call(self.con)
             self.assertEqual(str(caught.exception), GTASKS_NEED_CONNECT)
+
+    def test_인증에_실패하면_사유가_남아_화면에_뜬다(self):
+        """사유가 없으면 화면에 '연결 안 됨' 만 남아, 왜 또 연결해야 하는지 알 수 없다"""
+        blew_up = mock.patch.object(
+            gtasks_auth, "authorize", side_effect=Validation("동의가 오지 않음")
+        )
+
+        with blew_up:
+            with self.assertRaises(Validation):
+                gtasks_setup.connect(self.con)
+
+        self.assertEqual(gtasks_state.state(self.con)["last_error"], "동의가 오지 않음")
+        self.assertEqual(gtasks_setup.panel(self.con)["reason"], "동의가 오지 않음")
+
+    def test_인증에_성공하면_지난_사유가_지워진다(self):
+        gtasks_state.record_error(self.con, "지난번 실패")
+
+        with mock.patch.object(gtasks_auth, "authorize", return_value="path"):
+            gtasks_setup.connect(self.con)
+
+        self.assertIsNone(gtasks_state.state(self.con)["last_error"])
 
     def test_연결_해제는_승인만_버리고_링크와_자격증명은_남긴다(self):
         """다시 붙일 때 콘솔에 또 가지 않아야 하고, 같은 계정이면 그대로 이어져야 한다"""

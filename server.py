@@ -30,7 +30,6 @@ from app.services import (
     autorun,
     board,
     gtasks,
-    gtasks_auth,
     gtasks_setup,
     planning,
     session_link,
@@ -179,8 +178,9 @@ def _route_post(con, head, body):
     if head == "gtasks-auth":
         # 브라우저 동의창은 이 서버가 연다. ThreadingHTTPServer 라 기다리는 동안에도
         # 다른 화면은 그대로 뜬다. 자격증명은 gtasks.json·환경변수에서도 찾는다
-        gtasks_auth.authorize(body.get("client_id"), body.get("client_secret"))
-        return gtasks_setup.panel(con)
+        return gtasks_setup.connect(
+            con, body.get("client_id"), body.get("client_secret")
+        )
     if head == "gtasks-plan":
         # 무엇이 만들어질지 먼저 보여주고 확인을 받는다. 여기서는 아무것도 쓰지 않는다
         return gtasks_setup.plan(con)

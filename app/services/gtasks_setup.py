@@ -14,10 +14,10 @@ from app.constants import (
     GTASKS_SEEN_KEY,
 )
 from app.db import meta_set
-from app.errors import Validation
+from app.errors import DomainError, Validation
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
-from app.services import gtasks_api
+from app.services import gtasks_api, gtasks_auth
 
 
 def panel(con):
@@ -48,6 +48,21 @@ def panel(con):
             for category in category_repo.list_all(con)
         ],
     }
+
+
+def connect(con, client_id=None, client_secret=None):
+    """구글 동의를 마치고 결과를 남긴다.
+
+    실패 사유를 안 남기면 화면에는 '연결 안 됨' 만 남아, 사용자는 왜 또 연결해야 하는지
+    알 수 없다 — 자격증명은 파일에 그대로 있으니 껐다 켠 탓으로 보이기까지 한다
+    """
+    try:
+        gtasks_auth.authorize(client_id, client_secret)
+    except DomainError as error:
+        gtasks_state.record_error(con, str(error))
+        raise
+    gtasks_state.record_error(con, None)
+    return panel(con)
 
 
 def disconnect(con):
