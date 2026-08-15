@@ -562,10 +562,16 @@ button:disabled { color: var(--line); cursor: default; }
 }
 .gt-foot button { margin-left: auto; }
 /* 카테고리를 맞추는 동안 도는 표시. 몇 초 걸리는지 알 수 없어 진행률이 아니라 원형이다 */
+/* span 이라 inline-block 을 안 주면 width·height 가 무시돼 테두리만 남은 막대가 된다 */
 .gt-spin {
-  width: var(--sp-16); height: var(--sp-16); flex: none;
+  display: inline-block; width: var(--sp-16); height: var(--sp-16); flex: none;
   border: 2px solid var(--line); border-top-color: var(--accent);
   border-radius: var(--r-pill); animation: gt-turn 0.7s linear infinite;
+}
+/* 도는 동안에도 무엇을 누른 것인지 읽혀야 한다 — disabled 기본색은 면과 거의 같아
+   글자가 통째로 사라진다. :disabled 를 함께 걸어 그 규칙보다 구체적으로 만든다 */
+button.busy:disabled {
+  display: inline-flex; align-items: center; gap: var(--sp-8); color: var(--muted);
 }
 @keyframes gt-turn { to { transform: rotate(360deg); } }
 /* 팝업 둘. 위 팝업들과 같은 외양을 쓴다 — 팝업이 여러 종류로 보일 이유가 없다.

@@ -204,10 +204,13 @@ async function guard(box, action) {
 }
 
 async function busy(button, action) {
-  const card = document.getElementById("gtasks-card");
-  const spinner = span("gt-spin");
+  // 스피너를 카드에 붙이면 버튼 옆에 따로 떠서 무엇이 도는지 안 보인다. 버튼 안에 넣는다
+  const label = button.textContent;
   button.disabled = true;
-  card.appendChild(spinner);
+  button.classList.add("busy");
+  button.textContent = "";
+  button.appendChild(span("gt-spin"));
+  button.appendChild(text(label));
   try {
     await action();
   } catch (error) {
@@ -215,6 +218,13 @@ async function busy(button, action) {
   } finally {
     // 반드시 되돌린다. 취소하고 돌아온 자리에서 버튼이 죽어 있으면 다시 시도할 길이 없다
     button.disabled = false;
-    spinner.remove();
+    button.classList.remove("busy");
+    button.textContent = label;
   }
+}
+
+function text(value) {
+  const node = document.createElement("span");
+  node.textContent = value;
+  return node;
 }

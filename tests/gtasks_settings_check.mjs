@@ -163,6 +163,16 @@ assert.ok(
   /\.switch\[hidden\]\s*\{[^}]*display:\s*none/.test(css),
   ".switch[hidden] 에 display:none 이 없다 — hidden=true 여도 화면에는 보인다"
 );
+// 스피너는 span 이다. inline 이면 width·height 가 무시돼 테두리만 남은 막대가 된다
+assert.ok(
+  /\.gt-spin\s*\{[^}]*display:\s*inline-block/.test(css),
+  ".gt-spin 이 inline-block 이 아니다 — 원이 아니라 막대로 그려진다"
+);
+// 도는 동안 disabled 기본색(--line)이 걸리면 글자가 면과 같아져 사라진다
+assert.ok(
+  /button\.busy:disabled\s*\{[^}]*color:/.test(css),
+  "button.busy:disabled 에 색이 없다 — 도는 동안 버튼 글자가 사라진다"
+);
 assert.equal(elements["gtasks-warn"].hidden, false, "사유가 있는데 경고가 안 보인다");
 assert.equal(elements["gtasks-reason"].textContent, "연결 안 됨");
 assert.equal(switches().length, 0, "미연동인데 카테고리 스위치가 있다");
