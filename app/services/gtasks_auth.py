@@ -16,6 +16,7 @@ from app.constants import (
     GTASKS_CLIENT_SECRET_ENV,
     GTASKS_AUTH_TIMEOUT_SEC,
     GTASKS_AUTH_URL,
+    GTASKS_NO_BROWSER,
     GTASKS_SCOPE,
     GTASKS_TOKEN_URL,
 )
@@ -35,6 +36,8 @@ def authorize(client_id=None, client_secret=None, open_browser=True):
     이 함수는 최초 1회만 쓰인다. refresh_token 은 구글 동의 화면을 거쳐야만 나오므로
     손으로 적어 넣을 수 없고, 한 번 받고 나면 이후 동기화는 그것만으로 돈다
     """
+    # 포트를 물고 브라우저를 띄우기 전에 막는다 — 어차피 토큰 교환에서 죽는다
+    gtasks_api.require_https()
     stored = gtasks_api.stored_client()
     client_id = client_id or os.environ.get(GTASKS_CLIENT_ID_ENV) or stored.get("client_id")
     client_secret = (
@@ -64,8 +67,10 @@ def authorize(client_id=None, client_secret=None, open_browser=True):
         redirect_uri = f"http://{GTASKS_AUTH_HOST}:{server.server_port}"
         url = _consent_url(client_id, redirect_uri, challenge)
         print(f"브라우저에서 아래 주소를 열어 승인하세요:\n{url}")
-        if open_browser:
-            webbrowser.open(url)
+        # 웹 화면에서 부르면 이 print 를 볼 수 없다. 브라우저가 안 열렸는데 그냥 기다리면
+        # 사용자는 주소도 모른 채 타임아웃까지 스피너만 본다 — 주소를 담아 바로 멈춘다
+        if open_browser and not webbrowser.open(url):
+            raise Validation(f"{GTASKS_NO_BROWSER}\n{url}")
         server.handle_request()
         auth_code, auth_error = server.auth_code, server.auth_error
     if auth_error:

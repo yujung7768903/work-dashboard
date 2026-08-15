@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from app.constants import (
+    GTASKS_AUTH_URL,
     GTASKS_CLIENT_ID_ENV,
     GTASKS_CLIENT_SECRET_ENV,
     GTASKS_ERROR_EXPIRED,
@@ -16,6 +17,7 @@ from app.constants import (
     GTASKS_STATUS_DONE,
     GTASKS_STATUS_TODO,
     OUTCOME_REVIEW,
+    PYTHON_MIN,
     STATUS_DONE,
     STATUS_TODO,
     WORKSPACE_ACTIVE,
@@ -408,8 +410,16 @@ class GtasksSetupTest(unittest.TestCase):
                     call(self.con)
             self.assertEqual(str(caught.exception), GTASKS_NEED_CONNECT)
 
+    def test_ssl_이_없으면_화면을_여는_순간_그_사유부터_보인다(self):
+        """자격증명을 다 입력한 뒤에 알려주면 헛수고가 된다"""
+        with mock.patch.object(gtasks_api, "HTTPS_READY", False):
+            payload = gtasks_setup.panel(self.con)
+
+        self.assertIn(PYTHON_MIN, payload["reason"])
+
     def test_설정_화면_payload_는_네트워크를_치지_않는다(self):
-        payload = gtasks_setup.panel(self.con)
+        with mock.patch.object(gtasks_api, "HTTPS_READY", True):
+            payload = gtasks_setup.panel(self.con)
 
         self.assertFalse(payload["state"]["enabled"])
         self.assertEqual(len(payload["categories"]), len(self.names))
@@ -463,6 +473,11 @@ class GtasksAuthArgsTest(unittest.TestCase):
         patcher = mock.patch.object(gtasks_api, "GTASKS_CONFIG_PATH", self.config_path)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # 돌리는 기계의 Python 에 ssl 이 있든 없든 같은 결과가 나와야 한다.
+        # 고정하지 않으면 ssl 없는 기계에서 아래 검사들이 전부 그 안내로 덮인다
+        ready = mock.patch.object(gtasks_api, "HTTPS_READY", True)
+        ready.start()
+        self.addCleanup(ready.stop)
 
     def _write_config(self, payload):
         with open(self.config_path, "w", encoding="utf-8") as handle:
@@ -519,6 +534,29 @@ class GtasksAuthArgsTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(Validation):
                 gtasks_auth.authorize()
+
+    def test_ssl_없는_Python_이면_최소_버전을_알려주고_멈춘다(self):
+        """같은 3.9 라도 ssl 없이 빌드되면 urllib 이 'unknown url type: https' 로 끝난다"""
+        self._write_config('{"client_id": "a", "client_secret": "b"}')
+        broken = mock.patch.object(gtasks_api, "HTTPS_READY", False)
+
+        with broken:
+            with self.assertRaises(Validation) as caught:
+                gtasks_auth.authorize()
+
+        message = str(caught.exception)
+        self.assertIn(PYTHON_MIN, message)
+        self.assertIn("ssl", message)
+
+    def test_브라우저가_안_열리면_주소를_알려주고_멈춘다(self):
+        """웹 화면에서는 서버 콘솔의 안내를 볼 수 없다. 그냥 기다리면 스피너만 남는다"""
+        self._write_config('{"client_id": "a", "client_secret": "b"}')
+
+        with mock.patch.object(gtasks_auth.webbrowser, "open", return_value=False):
+            with self.assertRaises(Validation) as caught:
+                gtasks_auth.authorize()
+
+        self.assertIn(GTASKS_AUTH_URL, str(caught.exception))
 
     def test_refresh_token_까지_있으면_동기화는_인증_없이_읽는다(self):
         self._write_config(

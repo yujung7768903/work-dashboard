@@ -7,7 +7,7 @@
 짝은 **이름이 같은지**로만 맺는다. 접두어를 붙이면 폰에서 손으로 만든 목록이 영영
 안 붙어 같은 이름이 둘씩 생긴다
 """
-from app.constants import GTASKS_ERROR_NO_AUTH, GTASKS_NEED_CONNECT
+from app.constants import GTASKS_ERROR_NO_AUTH, GTASKS_NEED_CONNECT, GTASKS_NO_SSL
 from app.errors import Validation
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
@@ -31,7 +31,7 @@ def panel(con):
         # client_secret 은 내려보내지 않는다 — 화면이 쓸 일이 없다
         "has_client": bool(stored.get("client_id") and stored.get("client_secret")),
         "client_id": stored.get("client_id") or "",
-        "reason": state["last_error"] or (None if connected else GTASKS_ERROR_NO_AUTH),
+        "reason": _reason(state, connected),
         "categories": [
             {
                 "id": category["id"],
@@ -42,6 +42,19 @@ def panel(con):
             for category in category_repo.list_all(con)
         ],
     }
+
+
+def _reason(state, connected):
+    """⚠ 옆에 한 줄. 막고 있는 것 중 가장 먼저 풀어야 하는 것을 고른다
+
+    ssl 이 없으면 무엇을 눌러도 구글에 닿지 못한다. 자격증명을 다 입력한 뒤가 아니라
+    화면을 여는 순간 알려줘야 헛수고를 안 한다
+    """
+    if not gtasks_api.HTTPS_READY:
+        return GTASKS_NO_SSL
+    if state["last_error"]:
+        return state["last_error"]
+    return None if connected else GTASKS_ERROR_NO_AUTH
 
 
 def _connected():

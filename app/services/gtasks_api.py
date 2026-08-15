@@ -9,6 +9,7 @@ import urllib.request
 from app.constants import (
     GTASKS_API_ROOT,
     GTASKS_CONFIG_PATH,
+    GTASKS_NO_SSL,
     GTASKS_PAGE_MAX,
     GTASKS_TIMEOUT_SEC,
     GTASKS_TOKEN_MARGIN_SEC,
@@ -18,6 +19,19 @@ from app.errors import DomainError, NotFound, Validation
 
 CONFIG_KEYS = ("client_id", "client_secret", "refresh_token")
 UNAUTHORIZED = 401
+
+try:  # ssl 없이 빌드된 Python 이 있다. 그러면 urllib 이 https 를 아예 못 연다
+    import ssl  # noqa: F401
+
+    HTTPS_READY = True
+except ImportError:  # pragma: no cover - 정상 환경에서는 안 탄다
+    HTTPS_READY = False
+
+
+def require_https():
+    """구글을 부르기 전에 막는다. 안 막으면 urllib 이 원인 모를 문구로 끝낸다"""
+    if not HTTPS_READY:
+        raise Validation(GTASKS_NO_SSL)
 
 
 class GtasksError(DomainError):
@@ -66,7 +80,11 @@ def save_config(config, path=None):
 
 
 def post_form(url, fields):
-    """토큰 발급·갱신용 form POST. 인증 흐름과 클라이언트가 같이 쓴다"""
+    """토큰 발급·갱신용 form POST. 인증 흐름과 클라이언트가 같이 쓴다
+
+    모든 구글 호출이 access token 을 받으러 여기를 지난다 — 마지막 관문으로 한 번 더 본다
+    """
+    require_https()
     body = urllib.parse.urlencode(fields).encode("utf-8")
     request = urllib.request.Request(url, data=body, method="POST")
     request.add_header("Content-Type", "application/x-www-form-urlencoded")
