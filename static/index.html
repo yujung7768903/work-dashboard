@@ -185,6 +185,16 @@
         </div>
 
         <div id="board-worktrees" hidden>
+          <div id="worktree-controls">
+            <!-- 워크스페이스별(기존)·프로젝트별(저장소 전체) 전환. 프로젝트별은 워크스페이스나
+                 할일에 안 걸린 워크트리까지 보여준다 -->
+            <div id="worktree-view">
+              <button type="button" class="active" data-view="workspace"
+                      data-i18n="worktree.viewWorkspace"></button>
+              <button type="button" data-view="project"
+                      data-i18n="worktree.viewProject"></button>
+            </div>
+          </div>
           <div id="worktree-list"></div>
         </div>
       </section>

@@ -46,20 +46,36 @@ STATE_MERGED = "merged"
 STATE_DELETED = "deleted"
 # 세션 cwd 가 워크트리인지 가르고 저장소 루트를 잘라내는 표식
 WORKTREE_MARK = release.WORKTREE_MARK
+# 워크트리 탭 뷰 모드 — 워크스페이스별(기존)과 프로젝트(저장소)별
+GROUP_BY_WORKSPACE = "workspace"
+GROUP_BY_PROJECT = "project"
+GROUP_BY_CHOICES = (GROUP_BY_WORKSPACE, GROUP_BY_PROJECT)
 # 기준 브랜치 reflog 의 병합 항목 — `merge <브랜치>: Merge made by ...` / `...: Fast-forward`
 MERGE_ENTRY = re.compile(r"^merge (\S+):")
 
 
-def overview(con):
-    """저장소를 찾은 활성 워크스페이스만. 못 찾은 워크스페이스는 그리지 않는다"""
+def overview(con, group_by=GROUP_BY_WORKSPACE):
+    """워크스페이스별은 저장소를 찾은 활성 워크스페이스만(기존과 같음).
+
+    프로젝트별은 워크스페이스·할일 연결과 무관하게, 세션이 한 번이라도 다녀간 저장소를
+    전부 보여준다 — 워크스페이스가 done·아카이브됐거나 세션이 아직 분류되지 않았어도
+    그 저장소의 워크트리는 남아 있을 수 있어서다
+    """
+    if group_by not in GROUP_BY_CHOICES:
+        raise Validation(f"group_by 는 {GROUP_BY_CHOICES} 중 하나여야 함")
     summaries = {_real(cwd): title
                  for cwd, title in session_repo.todo_titles_by_cwd(con).items()}
     # 줄 클릭으로 열 할일. 적용 로직이 쓰는 todo_ids_by_cwd(위치별 전체)와 달리
     # 요약 제목과 같은 세션에서 뽑은 하나여야 해서 단수 조회를 쓴다
     todo_id_by_path = {_real(cwd): todo_id
                        for cwd, todo_id in session_repo.todo_id_by_cwd(con).items()}
-    categories = {row["id"]: row for row in category_repo.list_all(con)}
     ports = _ports_by_pid()
+    builder = _project_groups if group_by == GROUP_BY_PROJECT else _workspace_groups
+    return {"group_by": group_by, "groups": builder(con, summaries, todo_id_by_path, ports)}
+
+
+def _workspace_groups(con, summaries, todo_id_by_path, ports):
+    categories = {row["id"]: row for row in category_repo.list_all(con)}
     groups = []
     for workspace in workspace_repo.list_all(con, status=WORKSPACE_ACTIVE):
         root = _repo_root(session_repo.cwds_by_workspace(con, workspace["id"]))
@@ -77,7 +93,38 @@ def overview(con):
                 **_repo_state(root, summaries, todo_id_by_path, ports),
             }
         )
-    return {"groups": groups}
+    return groups
+
+
+def _project_groups(con, summaries, todo_id_by_path, ports):
+    """저장소 하나 = 그룹 하나. 워크스페이스 여럿이 같은 저장소를 써도 한 번만 보인다"""
+    groups = []
+    for root in _known_repo_roots(session_repo.all_cwds(con)):
+        groups.append(
+            {
+                "id": None,
+                "name": os.path.basename(root),
+                "category_id": None,
+                "category_name": None,
+                "category_color": None,
+                "repo": root,
+                **_repo_state(root, summaries, todo_id_by_path, ports),
+            }
+        )
+    return sorted(groups, key=lambda group: group["name"])
+
+
+def _known_repo_roots(cwds):
+    """cwd 들이 걸친 서로 다른 저장소 루트 전부. 워크스페이스 뷰의 _repo_root 는 하나 찾으면
+    멈추지만(워크스페이스 하나 = 저장소 하나 가정), 여기는 저장소 목록 자체가 필요하다"""
+    roots = []
+    seen = set()
+    for cwd in cwds:
+        root = repo_root_of(cwd)
+        if root and root not in seen:
+            seen.add(root)
+            roots.append(root)
+    return roots
 
 
 def history(con, todo_ids):

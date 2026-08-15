@@ -354,7 +354,21 @@ body[data-board-columns="1"] #groups,
 body[data-board-columns="1"] #done-groups { grid-template-columns: 1fr; }
 body[data-board-columns="2"] #groups,
 body[data-board-columns="2"] #done-groups { grid-template-columns: 1fr 1fr; }
-/* 워크트리 목록도 같은 격자. 세로 마진은 위의 탭 바가 이미 띄워 둔다 */
+/* 워크스페이스별·프로젝트별 전환. #board-controls·#view-columns 와 같은 감각 —
+   고른 쪽만 액센트 색 면이 남고, 오른쪽 끝에 붙는다 */
+#worktree-controls { display: flex; color: var(--muted); font-size: var(--fs-sm); margin: 0 0 var(--gap); }
+#worktree-view { display: flex; gap: var(--sp-4); margin-left: auto; }
+#worktree-view button {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: none; color: var(--muted); font-weight: 600; cursor: pointer;
+}
+#worktree-view button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+#worktree-view button.active { background: var(--softer); color: var(--accent); }
+
+/* 워크트리 목록도 같은 격자. 세로 마진은 위의 전환 줄이 띄워 둔다 */
 #worktree-list { display: grid; gap: var(--gap); align-items: stretch; }
 /* 워크트리 줄은 줄바꿈을 하지 않아 격자 칸의 기본 min-width:auto 가 카드를 내용만큼
    넓혀 버린다. 0 으로 풀어야 1fr 을 지키고 안쪽이 말줄임으로 접힌다 */
