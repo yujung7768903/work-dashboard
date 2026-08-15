@@ -1,8 +1,9 @@
 """보드 그룹핑 트리 조립. 여러 엔티티에 걸치므로 service 계층"""
 from app.constants import STATUS_DONE, UNASSIGNED_LABEL
 from app.errors import Validation
+from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
-from app.repositories import subtasks as subtask_repo
+from app.repositories import labels as label_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 
@@ -13,7 +14,7 @@ KIND_UNASSIGNED = "unassigned"
 
 
 def tree(con, group_by):
-    """빈 그룹은 제외. 미분류는 비어 있어도 항상 마지막에 포함"""
+    """워크스페이스는 비어 있어도 포함(빈 카테고리는 제외). 미분류는 항상 마지막"""
     if group_by not in GROUP_BY_CHOICES:
         raise Validation(f"group_by 는 {GROUP_BY_CHOICES} 중 하나여야 함")
     builder = _workspace_groups if group_by == GROUP_BY_WORKSPACE else _category_groups
@@ -21,13 +22,16 @@ def tree(con, group_by):
 
 
 def _workspace_groups(con):
-    # 보드가 카테고리 색·이모지로 카드 상단을 칠하고 라벨 필터를 거는 데 씀
+    # 보드가 카테고리 색·이모지로 카드 상단을 칠하고 카테고리 필터를 거는 데 씀
     by_id = {row["id"]: row for row in category_repo.list_all(con)}
+    # 라벨은 트리 한 번에 한 번만 읽는다. 카드마다 다시 물으면 카드 수만큼 쿼리가 는다
+    labels = label_repo.map_by_todo(con)
+    locked = autorun_repo.locked_todo_ids(con)
     groups = []
     for workspace in workspace_repo.list_all(con):
-        todos = _with_subtasks(con, todo_repo.list_by_workspace(con, workspace["id"]))
-        if not todos:
-            continue
+        todos = _enriched(
+            con, todo_repo.list_by_workspace(con, workspace["id"]), labels, locked
+        )
         category = by_id.get(workspace["category_id"]) or {}
         groups.append(
             _group(
@@ -43,14 +47,18 @@ def _workspace_groups(con):
                 jira_id=workspace["jira_id"],
             )
         )
-    groups.append(_unassigned_group(con))
+    groups.append(_unassigned_group(con, labels, locked))
     return groups
 
 
 def _category_groups(con):
+    labels = label_repo.map_by_todo(con)
+    locked = autorun_repo.locked_todo_ids(con)
     groups = []
     for category in category_repo.list_all(con):
-        todos = _with_subtasks(con, todo_repo.list_by_category(con, category["id"]))
+        todos = _enriched(
+            con, todo_repo.list_by_category(con, category["id"]), labels, locked
+        )
         if not todos:
             continue
         groups.append(
@@ -65,21 +73,22 @@ def _category_groups(con):
     return groups
 
 
-def _unassigned_group(con):
+def _unassigned_group(con, labels, locked):
     return _group(
         kind=KIND_UNASSIGNED,
         item_id=None,
         name=UNASSIGNED_LABEL,
         sort_order=None,
-        todos=_with_subtasks(con, todo_repo.list_by_workspace(con, None)),
+        todos=_enriched(con, todo_repo.list_by_workspace(con, None), labels, locked),
     )
 
 
-def _with_subtasks(con, todos):
+def _enriched(con, todos, labels, locked):
     enriched = []
     for todo in todos:
         item = dict(todo)
-        item["subtasks"] = subtask_repo.list_by_todo(con, todo["id"])
+        item["labels"] = labels.get(todo["id"], [])
+        item["autorun_locked"] = todo["id"] in locked
         enriched.append(item)
     return enriched
 

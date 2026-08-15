@@ -1,9 +1,6 @@
 """카테고리 저장·조회. 비어 있을 때만 삭제 허용"""
-import re
-
 from app import ordering
-from app.constants import COLOR_PATTERN
-from app.db import now, palette_color, transaction
+from app.db import clean_color, now, palette_color, transaction
 from app.errors import Conflict, NeedsConfirm, NotFound, Validation
 
 TABLE = "categories"
@@ -43,7 +40,7 @@ def set_google_list_id(con, category_id, list_id):
 def get(con, category_id):
     row = con.execute("SELECT * FROM categories WHERE id=?", (category_id,)).fetchone()
     if not row:
-        raise NotFound(f"카테고리 {category_id} 없음")
+        raise NotFound("카테고리를 찾을 수 없습니다")
     return dict(row)
 
 
@@ -52,7 +49,7 @@ def get_by_name(con, name):
         "SELECT * FROM categories WHERE name=?", (_clean_name(name),)
     ).fetchone()
     if not row:
-        raise NotFound(f"카테고리 '{name}' 없음")
+        raise NotFound(f"'{name}' 카테고리를 찾을 수 없습니다")
     return dict(row)
 
 
@@ -69,7 +66,7 @@ def update(con, category_id, **fields):
         _reject_duplicate(con, cleaned, exclude_id=category_id)
         changes["name"] = cleaned
     if "color" in fields:
-        changes["color"] = _clean_color(fields["color"])
+        changes["color"] = clean_color(fields["color"])
     if not changes:
         raise Validation("수정할 필드가 없음 (name·color)")
     assignments = ", ".join(f"{key}=?" for key in changes)
@@ -109,15 +106,8 @@ def reorder(con, ids):
 def _clean_name(name):
     cleaned = (name or "").strip()
     if not cleaned:
-        raise Validation("카테고리 이름이 비어 있음")
+        raise Validation("카테고리 이름을 입력해 주세요")
     return cleaned
-
-
-def _clean_color(color):
-    cleaned = (color or "").strip()
-    if not re.match(COLOR_PATTERN, cleaned):
-        raise Validation(f"색은 #rrggbb 형식이어야 함: {color!r}")
-    return cleaned.lower()
 
 
 def _reject_duplicate(con, name, exclude_id=None):
@@ -125,7 +115,7 @@ def _reject_duplicate(con, name, exclude_id=None):
         "SELECT id FROM categories WHERE name=? AND id IS NOT ?", (name, exclude_id)
     ).fetchone()
     if row:
-        raise Conflict(f"카테고리 '{name}' 이미 있음")
+        raise Conflict(f"'{name}' 카테고리가 이미 있습니다")
 
 
 def _count_sessions(con, category_id):
@@ -141,5 +131,6 @@ def _reject_if_occupied(con, category_id):
         ).fetchone()["n"]
         if count:
             raise Conflict(
-                f"{label} {count}건이 남아 있어 삭제할 수 없음. 먼저 다른 카테고리로 옮기세요"
+                f"{label} {count}건이 남아 있어 삭제할 수 없습니다."
+                " 먼저 다른 카테고리로 옮겨 주세요"
             )

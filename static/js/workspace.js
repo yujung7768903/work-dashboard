@@ -1,15 +1,16 @@
 // 워크스페이스 카드 그리드. 수정을 누른 카드만 입력 가능
 import * as api from "./api.js";
+import { t } from "./i18n.js";
 import { run } from "./main.js";
 
 const CONTEXT_FIELDS = [
-  ["background", "배경"],
-  ["purpose", "목적"],
-  ["goal", "목표"],
-  ["considerations", "추가 고려사항"],
+  ["background", t("workspace.background")],
+  ["purpose", t("workspace.purpose")],
+  ["goal", t("workspace.goal")],
+  ["considerations", t("workspace.considerations")],
 ];
 const WORKSPACE_STATUSES = ["active", "paused", "done"];
-const EMPTY_LABEL = "(미입력)";
+const EMPTY_LABEL = t("workspace.emptyField");
 const GROUP_BY_WORKSPACE = "workspace";
 
 let editingId = null;
@@ -31,7 +32,7 @@ export async function renderWorkspaceTab() {
   const list = document.getElementById("workspace-list");
   list.innerHTML = "";
   if (!workspaces.length) {
-    list.textContent = "워크스페이스가 없습니다. 위에서 바로 만들 수 있습니다.";
+    list.textContent = t("workspace.none");
     return;
   }
   const counts = countsByWorkspace(tree);
@@ -47,7 +48,6 @@ export async function renderWorkspaceTab() {
 }
 
 function countsByWorkspace(tree) {
-  // 트리는 빈 워크스페이스를 숨기므로 없는 id 는 표시 생략
   const counts = {};
   tree.groups
     .filter((group) => group.kind === GROUP_BY_WORKSPACE)
@@ -80,7 +80,9 @@ function readCard(workspace, categories, counts) {
   // 보드 카드와 같은 카테고리 색을 상단에 깖. 못 찾으면 CSS 기본값(옅은 회색)
   if (category?.color) card.style.setProperty("--cat", category.color);
   const jira = workspace.jira_id ? ` · ${workspace.jira_id}` : "";
-  const progress = counts[workspace.id] ? ` · 할일 ${counts[workspace.id]}` : "";
+  const progress = counts[workspace.id]
+    ? ` · ${t("workspace.todoCount", { count: counts[workspace.id] })}`
+    : "";
 
   const head = document.createElement("div");
   head.className = "ws-head";
@@ -119,7 +121,7 @@ function menu(workspace) {
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
   toggle.textContent = "…";
-  toggle.title = "수정 · 삭제";
+  toggle.title = t("workspace.menu");
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
     openMenuId = openMenuId === workspace.id ? null : workspace.id;
@@ -136,15 +138,15 @@ function menuItems(workspace) {
   const items = document.createElement("div");
   items.className = "ws-menu-items";
   items.append(
-    menuItem("수정", () => {
+    menuItem(t("common.edit"), () => {
       editingId = workspace.id;
       openMenuId = null;
       run(renderWorkspaceTab);
     }),
-    menuItem("삭제", () =>
+    menuItem(t("common.delete"), () =>
       run(async () => {
         openMenuId = null;
-        if (!confirm("삭제하면 소속 할일은 미분류로 내려갑니다. 진행할까요?")) {
+        if (!confirm(t("workspace.confirmDelete"))) {
           await renderWorkspaceTab();
           return;
         }
@@ -174,11 +176,11 @@ function editCard(workspace, categories) {
   const inputs = {};
 
   inputs.name = textInput(workspace.name);
-  card.appendChild(labeled("이름", inputs.name));
+  card.appendChild(labeled(t("workspace.name"), inputs.name));
 
   inputs.category_id = document.createElement("select");
   inputs.category_id.innerHTML = optionsHtml(categories, workspace.category_id);
-  card.appendChild(labeled("카테고리", inputs.category_id));
+  card.appendChild(labeled(t("common.category"), inputs.category_id));
 
   inputs.status = document.createElement("select");
   inputs.status.innerHTML = WORKSPACE_STATUSES.map(
@@ -186,7 +188,7 @@ function editCard(workspace, categories) {
       `<option value="${value}"${value === workspace.status ? " selected" : ""}>` +
       `${value}</option>`
   ).join("");
-  card.appendChild(labeled("상태", inputs.status));
+  card.appendChild(labeled(t("workspace.status"), inputs.status));
 
   inputs.jira_id = textInput(workspace.jira_id ?? "");
   card.appendChild(labeled("Jira ID", inputs.jira_id));
@@ -222,7 +224,7 @@ function editActions(workspace, inputs) {
   actions.className = "ws-actions";
 
   const save = document.createElement("button");
-  save.textContent = "저장";
+  save.textContent = t("common.save");
   save.addEventListener("click", () =>
     run(async () => {
       await api.updateWorkspace(workspace.id, collect(inputs));
@@ -232,7 +234,7 @@ function editActions(workspace, inputs) {
   );
 
   const cancel = document.createElement("button");
-  cancel.textContent = "취소";
+  cancel.textContent = t("common.cancel");
   cancel.addEventListener("click", () => {
     editingId = null;
     run(renderWorkspaceTab);

@@ -10,13 +10,14 @@ from app.constants import (
     GTASKS_CLIENT_SECRET_ENV,
     GTASKS_STATUS_DONE,
     GTASKS_STATUS_TODO,
+    OUTCOME_REVIEW,
     STATUS_DONE,
     STATUS_TODO,
 )
 from app.errors import Validation
 from app.services import gtasks_api, gtasks_auth
+from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.services import gtasks
 from tests.support import temp_db
@@ -198,10 +199,12 @@ class GtasksSyncTest(unittest.TestCase):
 
         self.assertEqual(self.client.task_count(), 0)
 
-    def test_하위할일이_남으면_폰의_완료를_받지_않고_건너뛴다(self):
+    def test_로컬_규칙에_막히면_폰의_완료를_받지_않고_건너뛴다(self):
         todo = self._todo()
-        subtask_repo.create(self.con, todo["id"], "남은 하위할일")
         self._sync()
+        # 자율 수행 검토 대기는 사람이 확인하기 전까지 상태 변경을 막는다 — 폰도 예외가 아니다
+        run = autorun_repo.start_run(self.con, todo["id"])
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
         task = self.client.only_task()
         task["status"] = GTASKS_STATUS_DONE
         task["updated"] = _stamp(60)

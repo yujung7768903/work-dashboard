@@ -149,6 +149,19 @@ class WorktreeLookupTest(unittest.TestCase):
         self.addCleanup(setattr, release, "last_worktree_cwd", original)
 
 
+# _is_server 판정. 새 기동 방식이 생기면 여기에 한 줄 추가한다
+IS_SERVER_CASES = (
+    ("/usr/bin/python3 server.py --port 9092", True, "기본 기동"),
+    ("node /opt/npm/bin/npm-cli.js run dev", True, "npm run dev"),
+    ("python3 -u server.py --port 9092", True, "플래그가 스크립트 이름을 밀어냄"),
+    ("/opt/homebrew/bin/python3 -B server.py", True, "절대경로 + 플래그"),
+    ("env WORK_DASHBOARD_DB=/tmp/x.db python3 server.py", True, "env 래퍼"),
+    ("nohup python3 server.py --port 9092", True, "nohup 래퍼"),
+    ("/bin/zsh -c 'python3 server.py --port 1'", False, "셸은 서버가 아니다"),
+    ("nohup /bin/zsh -c 'python3 server.py'", False, "래퍼를 걷어내도 셸은 셸"),
+)
+
+
 class ServingProcessTest(unittest.TestCase):
     def test_server_outside_a_worktree_is_never_touched(self):
         """메인 체크아웃까지 종료 대상이 되면 사용자가 보던 대시보드가 꺼진다"""
@@ -165,25 +178,12 @@ class ServingProcessTest(unittest.TestCase):
     def test_missing_directory_is_empty(self):
         self.assertEqual([], release.serving_processes("/nope/.claude/worktrees/gone"))
 
-    def test_shell_command_mentioning_server_is_not_a_server(self):
-        """셸 명령줄 어딘가에 server.py 가 있다고 서버는 아니다 — 자기 셸을 죽인다"""
-        self.assertFalse(release._is_server("/bin/zsh -c 'python3 server.py --port 1'"))
-
-    def test_server_command_is_detected(self):
-        self.assertTrue(release._is_server("/usr/bin/python3 server.py --port 9092"))
-        self.assertTrue(release._is_server("node /opt/npm/bin/npm-cli.js run dev"))
-
-    def test_flags_do_not_hide_the_server(self):
-        """어떻게 띄웠는지에 판정이 흔들리면 안 된다 — 플래그가 스크립트 이름을 밀어낸다"""
-        self.assertTrue(release._is_server("python3 -u server.py --port 9092"))
-        self.assertTrue(release._is_server("/opt/homebrew/bin/python3 -B server.py"))
-
-    def test_wrappers_do_not_hide_the_server(self):
-        """nohup·env 로 감싸 띄우면 래퍼가 앞 두 토큰을 다 차지한다"""
-        self.assertTrue(release._is_server("env WORK_DASHBOARD_DB=/tmp/x.db python3 server.py"))
-        self.assertTrue(release._is_server("nohup python3 server.py --port 9092"))
-        # 래퍼를 걷어내도 셸은 여전히 서버가 아니어야 한다
-        self.assertFalse(release._is_server("nohup /bin/zsh -c 'python3 server.py'"))
+    def test_server_command_is_told_apart_from_lookalikes(self):
+        """어떻게 띄웠는지에 판정이 흔들리면 안 된다. 반대로 셸 명령줄에 server.py 가
+        들어 있다고 서버로 보면 자기 셸을 죽인다"""
+        for command, expected, why in IS_SERVER_CASES:
+            with self.subTest(command=command):
+                self.assertEqual(release._is_server(command), expected, why)
 
     def test_running_server_in_worktree_is_found_and_killed(self):
         root = _worktree_dir()

@@ -4,12 +4,14 @@ from datetime import datetime, timedelta, timezone
 from app.constants import (
     ENDED_RETENTION_DAYS,
     LAST_PROMPT_MAX_CHARS,
+    SCOPE_REQUIRED_MSG,
     SESSION_STATES,
     STALE_IDLE_HOURS,
     STATE_ENDED,
     STATE_IDLE,
     STATE_WORKING,
     STATUS_DOING,
+    STATUS_DONE,
     STATUS_TODO,
 )
 from app.db import now, transaction
@@ -19,10 +21,18 @@ from app.repositories import workspaces as workspace_repo
 
 TABLE = "sessions"
 ACTIVE_STATES = (STATE_WORKING, STATE_IDLE)
-WITH_NAMES = """SELECT s.*, c.name AS category_name, w.name AS workspace_name
+# 세션의 워크스페이스는 저장하지 않고 연결된 할일에서 파생한다 — 소속이 세션과 할일
+# 두 군데 있으면 세션을 분류해도 보드에 안 나타나는 어긋남이 생긴다.
+# 할일이 여럿이면 가장 최근 연결된 것이 이 세션의 현재 작업이다
+LATEST_LINKED = """FROM session_todos st JOIN todos t ON t.id = st.todo_id
+                   WHERE st.session_id = s.id
+                   ORDER BY st.created_at DESC, st.todo_id DESC LIMIT 1"""
+WITH_NAMES = f"""SELECT s.*, c.name AS category_name,
+                (SELECT t.workspace_id {LATEST_LINKED}) AS workspace_id,
+                (SELECT (SELECT w.name FROM workspaces w WHERE w.id = t.workspace_id)
+                 {LATEST_LINKED}) AS workspace_name
             FROM sessions s
-            LEFT JOIN categories c ON c.id = s.category_id
-            LEFT JOIN workspaces w ON w.id = s.workspace_id"""
+            LEFT JOIN categories c ON c.id = s.category_id"""
 # 데몬이 미리 띄우는 spare 프로세스도 SessionStart 로 등록된다. 프롬프트가 한 번도
 # 없던 세션은 목록·미분류 집계 양쪽에서 같이 빠져야 개수와 목록이 어긋나지 않는다.
 PROMPTED = "COALESCE(last_prompt,'') <> ''"
@@ -52,13 +62,13 @@ def register(con, claude_session_id, cwd=None, git_branch=None):
 def get(con, claude_session_id):
     found = find(con, claude_session_id)
     if not found:
-        raise NotFound(f"세션 {claude_session_id} 없음")
+        raise NotFound("세션을 찾을 수 없습니다")
     return found
 
 
 def find(con, claude_session_id):
     row = con.execute(
-        "SELECT * FROM sessions WHERE claude_session_id=?", (claude_session_id,)
+        f"{WITH_NAMES} WHERE s.claude_session_id=?", (claude_session_id,)
     ).fetchone()
     return dict(row) if row else None
 
@@ -91,14 +101,17 @@ def set_last_prompt(con, claude_session_id, text):
 
 
 def classify(con, claude_session_id, category_name=None, workspace_id=None):
-    """워크스페이스를 주면 카테고리는 그 워크스페이스의 것이 이김"""
+    """워크스페이스를 주면 카테고리는 그 워크스페이스의 것이 이김.
+
+    워크스페이스 자체는 저장하지 않는다 — 세션이 어느 워크스페이스 일감인지는
+    할일을 연결하는 것으로 정해진다. 여기서는 카테고리를 고르는 데만 쓴다
+    """
     get(con, claude_session_id)
     category_id = _resolve_category(con, category_name, workspace_id)
     with transaction(con):
         con.execute(
-            "UPDATE sessions SET category_id=?, workspace_id=?, last_seen_at=?"
-            " WHERE claude_session_id=?",
-            (category_id, workspace_id, now(), claude_session_id),
+            "UPDATE sessions SET category_id=?, last_seen_at=? WHERE claude_session_id=?",
+            (category_id, now(), claude_session_id),
         )
     return get(con, claude_session_id)
 
@@ -106,32 +119,36 @@ def classify(con, claude_session_id, category_name=None, workspace_id=None):
 def classify_by_ids(con, session_row_id, category_id=None, workspace_id=None):
     """대시보드에서 손으로 고칠 때. 내부 정수 id 로 받음"""
     if not _row_by_id(con, session_row_id):
-        raise NotFound(f"세션 {session_row_id} 없음")
+        raise NotFound("세션을 찾을 수 없습니다")
     if workspace_id is not None:
         category_id = workspace_repo.get(con, workspace_id)["category_id"]
     elif category_id is not None:
         category_repo.get(con, category_id)
     else:
-        raise Validation("카테고리나 워크스페이스 중 하나는 필요함")
+        raise Validation(SCOPE_REQUIRED_MSG)
     with transaction(con):
         con.execute(
-            "UPDATE sessions SET category_id=?, workspace_id=?, last_seen_at=? WHERE id=?",
-            (category_id, workspace_id, now(), session_row_id),
+            "UPDATE sessions SET category_id=?, last_seen_at=? WHERE id=?",
+            (category_id, now(), session_row_id),
         )
     return _row_by_id(con, session_row_id)
 
 
-def link_todo(con, claude_session_id, todo_id, claim=True):
+def link_todo(con, claude_session_id, todo_id, claim=True, status=None):
     """중복 연결은 무시. PK 가 (session_id, todo_id).
 
-    연결은 착수 선언이므로 할일을 doing 으로 올림. status=todo 인 것만 바꿔서
-    이미 done 인 할일이 되살아나지 않게 함.
+    연결하며 할일의 상태도 정한다. 기본은 doing(착수 선언)이고, 이미 끝난 작업을
+    뒤늦게 연결하는 것이면 done 을 넘긴다 — 무엇이 끝난 것인지는 작업 내용을 본
+    쪽만 알 수 있으므로 여기서 추측하지 않고 받은 값을 쓴다.
+
+    doing 은 status=todo 인 것만 바꾼다. 이미 done 인 할일이 연결만으로 되살아나면 안 된다.
 
     claim=False 는 끝난 히스토리 세션을 소급 연결할 때 쓴다 — 그건 착수 선언이 아니라
     기록이므로 상태를 건드리면 안 된다 (온보딩이 추정해 넣은 상태가 뒤집힌다)
     """
     session = get(con, claude_session_id)
     _require_todo(con, todo_id)
+    target = _validated_link_status(status)
     stamp = now()
     with transaction(con):
         con.execute(
@@ -139,11 +156,27 @@ def link_todo(con, claude_session_id, todo_id, claim=True):
             " VALUES(?,?,?)",
             (session["id"], todo_id, stamp),
         )
-        if claim:
+        if not claim:
+            return
+        if target == STATUS_DONE:
+            con.execute(
+                "UPDATE todos SET status=?, completed_at=?, updated_at=? WHERE id=?",
+                (STATUS_DONE, stamp, stamp, todo_id),
+            )
+        else:
             con.execute(
                 "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status=?",
                 (STATUS_DOING, stamp, todo_id, STATUS_TODO),
             )
+
+
+def _validated_link_status(status):
+    """연결할 때 넣을 수 있는 상태는 doing·done 뿐. todo 는 연결하지 않은 것과 같은 말"""
+    if status is None:
+        return STATUS_DOING
+    if status not in (STATUS_DOING, STATUS_DONE):
+        raise Validation(f"연결 상태는 {STATUS_DOING} 또는 {STATUS_DONE} 이어야 함: {status!r}")
+    return status
 
 
 def linked_todo_ids(con, claude_session_id):
@@ -194,33 +227,81 @@ def cwds_by_workspace(con, workspace_id):
     """그 워크스페이스에서 돌았던 작업 위치. 최근 순.
     워크스페이스에는 저장소 경로가 없어 워크트리 뷰가 여기서 저장소를 유추한다"""
     rows = con.execute(
-        """SELECT cwd, MAX(last_seen_at) AS seen FROM sessions
-            WHERE workspace_id=? AND COALESCE(cwd,'') <> ''
-            GROUP BY cwd ORDER BY seen DESC""",
+        """SELECT s.cwd AS cwd, MAX(s.last_seen_at) AS seen FROM sessions s
+            JOIN session_todos st ON st.session_id = s.id
+            JOIN todos t ON t.id = st.todo_id
+            WHERE t.workspace_id=? AND COALESCE(s.cwd,'') <> ''
+            GROUP BY s.cwd ORDER BY seen DESC""",
         (workspace_id,),
     )
     return [row["cwd"] for row in rows]
 
 
-def todo_titles_by_cwd(con):
-    """작업 위치 → 거기서 돌던 세션이 잡은 할일 제목. 워크트리 뷰의 작업 요약용.
-    오래된 것부터 훑어 같은 위치는 가장 최근 세션의 제목이 남는다"""
+def cwd_counts_by_workspace(con, workspace_id):
+    """그 워크스페이스에서 돈 작업 위치 → 세션 수. 많이 돈 순, 같으면 최근 순.
+
+    cwds_by_workspace 와 갈라 두는 이유 — 워크트리 뷰는 '어느 저장소들을 봐야 하나'라
+    목록이 필요하고, 자율 실행은 '어디가 이 워크스페이스의 본거지인가'라 무게가 필요하다.
+    한 번 스쳐간 위치가 최근이라는 이유로 이기면 자율 잡이 엉뚱한 저장소에서 돈다
+    """
     rows = con.execute(
-        """SELECT s.cwd AS cwd, t.title AS title
+        """SELECT s.cwd AS cwd, COUNT(*) AS sessions, MAX(s.last_seen_at) AS seen
+             FROM sessions s
+             JOIN session_todos st ON st.session_id = s.id
+             JOIN todos t ON t.id = st.todo_id
+            WHERE t.workspace_id=? AND COALESCE(s.cwd,'') <> ''
+            GROUP BY s.cwd ORDER BY sessions DESC, seen DESC""",
+        (workspace_id,),
+    )
+    return [(row["cwd"], row["sessions"]) for row in rows]
+
+
+def _latest_todo_by_cwd(con):
+    """작업 위치 → 거기서 마지막으로 돌던 세션이 잡은 할일 행.
+    오래된 것부터 훑어 같은 위치는 가장 최근 세션의 것이 남는다"""
+    rows = con.execute(
+        """SELECT s.cwd AS cwd, t.id AS todo_id, t.title AS title
              FROM sessions s
              JOIN session_todos st ON st.session_id = s.id
              JOIN todos t ON t.id = st.todo_id
             WHERE COALESCE(s.cwd,'') <> ''
             ORDER BY s.last_seen_at ASC"""
     )
-    return {row["cwd"]: row["title"] for row in rows}
+    return {row["cwd"]: row for row in rows}
+
+
+def todo_titles_by_cwd(con):
+    """워크트리 뷰의 작업 요약용 제목"""
+    return {cwd: row["title"] for cwd, row in _latest_todo_by_cwd(con).items()}
+
+
+def todo_id_by_cwd(con):
+    """워크트리 뷰가 줄 클릭으로 상세 팝업을 열 때 쓰는 할일 id.
+    제목과 같은 행에서 뽑으므로 보이는 요약과 열리는 할일이 어긋나지 않는다"""
+    return {cwd: row["todo_id"] for cwd, row in _latest_todo_by_cwd(con).items()}
+
+
+def todo_ids_by_cwd(con):
+    """작업 위치 → 거기서 돌던 세션들이 연결한 할일 id 전부(중복 없이).
+    워크트리 적용(병합 후 할일 done 처리)이 한 위치에 여러 세션이 걸쳐 있어도
+    다 잡아야 해서, 요약과 달리 최근 하나가 아니라 전체를 모은다"""
+    rows = con.execute(
+        """SELECT DISTINCT s.cwd AS cwd, st.todo_id AS todo_id
+             FROM sessions s
+             JOIN session_todos st ON st.session_id = s.id
+            WHERE COALESCE(s.cwd,'') <> ''"""
+    )
+    found = {}
+    for row in rows:
+        found.setdefault(row["cwd"], set()).add(row["todo_id"])
+    return found
 
 
 def get_by_row_id(con, session_row_id):
     """대시보드 팝업용. 목록과 같은 모양(이름 포함)으로 한 건"""
     row = con.execute(f"{WITH_NAMES} WHERE s.id=?", (session_row_id,)).fetchone()
     if not row:
-        raise NotFound(f"세션 {session_row_id} 없음")
+        raise NotFound("세션을 찾을 수 없습니다")
     return dict(row)
 
 
@@ -251,14 +332,14 @@ def _resolve_category(con, category_name, workspace_id):
     if workspace_id is not None:
         return workspace_repo.get(con, workspace_id)["category_id"]
     if not category_name:
-        raise Validation("카테고리나 워크스페이스 중 하나는 필요함")
+        raise Validation(SCOPE_REQUIRED_MSG)
     return category_repo.get_by_name(con, category_name)["id"]
 
 
 def _require_todo(con, todo_id):
     row = con.execute("SELECT id FROM todos WHERE id=?", (todo_id,)).fetchone()
     if not row:
-        raise NotFound(f"할일 {todo_id} 없음")
+        raise NotFound("할 일을 찾을 수 없습니다")
 
 
 def _clean_id(claude_session_id):

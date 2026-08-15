@@ -11,6 +11,16 @@ DB_PATH_ENV = "WORK_DASHBOARD_DB"
 UNASSIGNED_LABEL = "미분류"
 SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "스킬 개발", "프로세스 개선")
 
+# 화면 언어. 문구는 코드가 아니라 static/lang/<코드>.json 에 키-값으로 모여 있고,
+# 네 파일이 서로 같은 자격이다. 코드 목록이 화면과 갈라지거나 번역이 빠지면
+# tests/test_language.py 가 잡는다.
+# 기본값·폴백은 영어다 — 이 대시보드를 공개로 열 것이므로, 설정을 못 읽거나 번역이
+# 빠졌을 때 처음 보는 사람이 읽을 수 있는 쪽으로 떨어져야 한다.
+# CLI 출력·훅 주입 블록은 아직 한국어 고정 (README '초기 설정 (⑤) > 화면 언어' 참고)
+LANGUAGES = ("en", "ko", "ja", "zh")
+DEFAULT_LANGUAGE = LANGUAGES[0]
+LANGUAGE_KEY = "language"  # meta 테이블 키
+
 # 카테고리 색은 sort_order 로 팔레트에서 자동 배정하고 이후 사용자가 바꿀 수 있음.
 # 미분류는 팔레트 밖의 옅은 회색 (CSS .group 의 --cat 기본값과 같은 값)
 CATEGORY_PALETTE = (
@@ -24,9 +34,17 @@ WORKSPACE_STATUSES = ("active", "paused", "done")
 STATUS_TODO, STATUS_DOING, STATUS_DONE = TODO_STATUSES
 WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 
-ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js")
+ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js", ".json")  # .json 은 화면 문구 사전
 FIRST_SORT_ORDER = 1
 
+# 여러 자리에서 같은 말을 해야 하는 사용자용 문구. 화면에는 alert 로, CLI 에는
+# 그대로 찍히므로 설명이 아니라 사용자에게 보내는 문장으로 쓴다
+# 분류 대상 누락: 할일 생성·세션 분류 세 곳
+SCOPE_REQUIRED_MSG = "카테고리나 워크스페이스 중 하나를 선택해 주세요"
+
+# 세션이 띄운 하위 프로세스에 실려오는 자기 세션 id. 훅 stdin 의 session_id 와 같은 값이라
+# CLI 가 이걸로 자기 세션을 안다 — 모델이 주입 블록의 UUID 를 옮겨 적지 않아도 된다
+SESSION_ID_ENV = "CLAUDE_CODE_SESSION_ID"
 SESSION_STATES = ("working", "idle", "ended")
 STATE_WORKING, STATE_IDLE, STATE_ENDED = SESSION_STATES
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop", "SessionEnd")
@@ -54,12 +72,20 @@ HISTORY_DAY_CHOICES = (7, 14)
 ONBOARDING_MIN_SESSIONS = 3
 ONBOARDING_DECLINED_FLAG = "onboarding_declined"
 
+# 착수 조건 작성 안내. CLI(--precondition 도움말)와 추가 팝업이 같은 문구를 쓴다 —
+# 두 곳에서 다르게 설명하면 어느 쪽 규약이 맞는지 알 수 없다.
+# 세션에는 첫 줄만 주입되므로(session_link) 판정 문장이 첫 줄에 와야 한다
+PRECONDITION_HINT = (
+    "참/거짓이 갈리는 한 문장을 첫 줄에 쓴다."
+    " 다른 할일이 조건이면 #id 로 적고, 명령으로 확인되면 둘째 줄에 '확인: <명령>'."
+    " 조건이 있는 할일은 자율 수행 후보에서 빠진다"
+)
+PRECONDITION_EXAMPLE = "#57 이 done 일 것\n확인: git -C ~/work/work-dashboard status --short"
+
 # 대시보드에서 세션을 워크스페이스로 분류할 때 자동으로 만드는 할일.
 # 그 자리에는 Claude 가 없어 의미 판단을 할 수 없으므로 지시 원문에서 뽑을 수 있는 만큼만 만든다
 AUTO_TODO_TITLE_CHARS = 60
 AUTO_TODO_NOTE_PROMPTS = 5  # note 에 싣는 지시 건수. 뒤로 갈수록 곁가지라 앞쪽만
-AUTO_TODO_MAX_SUBTASKS = 8
-AUTO_TODO_MIN_SUBTASKS = 2  # 1개면 할일과 같은 말이라 쪼갤 이유가 없다
 AUTO_TODO_NOTE_HEAD = "(자동) 세션 분류 때 지시 원문에서 만든 할일. 진행하며 다듬는다."
 # 요약은 뒷일로 돌리므로 할일이 만들어지는 순간의 제목은 늘 지시 첫 문장이다. 그 사실을
 # note 한 줄로 남기고, 요약이 붙으면 그 줄을 지운다 — 남아 있으면 '손봐야 할 제목' 표시가 된다.
@@ -143,3 +169,32 @@ TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_re
 COST_FIELD = "estimated_cost_usd"
 MODEL_FAMILIES = (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"))
 MODEL_FAMILY_OTHER = "기타"
+
+# ④ 자율 실행. 사람이 자리를 비운 사이 할일 1건씩 `claude --bg` 잡으로 돌린다.
+# 대상은 두 겹으로 좁힌다 — 사람이 붙인 라벨과, 코드가 판정할 수 없는 조건의 부재.
+AUTORUN_LABEL = "auto"  # 이 라벨이 붙은 할일만 후보. 자율 실행 허가는 사람이 라벨로 준다
+AUTORUN_MODEL = "claude-sonnet-5"  # 모델은 상수. 성공률 학습·자동 선택은 하지 않는다
+AUTORUN_MAX_CONCURRENT = 1  # 사용량 창을 나눠 쓰면 둘 다 리밋에 걸리고 diff 가 섞인다
+AUTORUN_FAIL_LIMIT = 2  # 같은 할일이 이만큼 연속 실패하면 막고 다음 할일로
+AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun 자체를 끈다
+# review(검토 대기)가 성공한 잡의 첫 결과다. 다 끝냈고 확인할 것도 불분명한 것도 없을
+# 때만 자율 세션이 커밋하므로, 잡이 끝난 시점의 그 작업은 '끝난 것'이 아니라 '사람이 보고
+# 병합을 판정할 것'이다.
+# done 은 사람이 검토 대기 배지를 눌러 내렸을 때만 붙는다 — 진행 중과 검토 대기를 같은
+# 배지로 뭉개면 사람이 무엇을 봐야 하는지 목록에서 알 수 없다
+# requested(요청)는 blocked 와 달리 실패가 아니라 세션이 스스로 멈춘 것이다 — 기획이
+# 비었거나, 방향이 여럿인데 note 에 안 정해져 있거나, 토큰·Jira·문서 위치가 없어서
+# 추측 대신 사람 판단을 기다린다. blocked 처럼 다음 tick 후보에서 빠지지만 실패 횟수에는
+# 안 세고 blocked_streak 도 안 건드린다 — 오류가 아니라 의도적인 정지라서다
+AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked", "requested")
+OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_FAILED, OUTCOME_BLOCKED, OUTCOME_REQUESTED = (
+    AUTORUN_OUTCOMES
+)
+# --bg 잡의 상태 파일. 이 값들이면 잡이 끝난 것으로 보고 실행 기록을 닫는다.
+# blocked(리밋)는 열어 둔다 — resume-limited-jobs.py 가 다시 밀어 준다
+AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
+AUTORUN_JOB_TERMINAL = ("done", "failed", "stopped")
+AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
+AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다
+# 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
+MERGE_TEST_TIMEOUT_SEC = 600

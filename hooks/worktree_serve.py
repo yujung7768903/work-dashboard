@@ -8,19 +8,21 @@
 import json
 import os
 import re
-import socket
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services import release  # noqa: E402
+from app.services import release, serve  # noqa: E402
 
 EXIT_OK = 0
 EXIT_BLOCK = 2
 WORKTREE_MARK = release.WORKTREE_MARK
+# 포트 고르기는 보드 케밥 메뉴의 "띄우기" 와 같은 것을 쓴다 — 판정이 갈리면
+# 훅이 비었다고 알려준 포트를 화면 쪽이 이미 쓰고 있을 수 있다
+PORT_RANGE = serve.PORT_RANGE
+free_port = serve.free_port
 # 이 중 하나라도 워크트리 루트에 있으면 띄울 수 있는 웹 프로젝트로 본다
 SERVER_ENTRIES = ("server.py", "manage.py", "package.json")
-PORT_RANGE = range(9080, 9140)
 PATH_PATTERN = re.compile(r'"(?:file_path|notebook_path)"\s*:\s*"([^"]+)"')
 
 MESSAGE = """워크트리를 고쳤는데 그 코드를 서비스하는 프로세스가 없음: {root}
@@ -98,17 +100,6 @@ def _is_served(root):
     finish 가 종료하므로 둘의 판정이 갈리면 안 된다
     """
     return bool(release.serving_processes(root))
-
-
-def free_port():
-    for port in PORT_RANGE:
-        with socket.socket() as probe:
-            try:
-                probe.bind(("127.0.0.1", port))
-            except OSError:
-                continue
-        return port
-    return None
 
 
 if __name__ == "__main__":

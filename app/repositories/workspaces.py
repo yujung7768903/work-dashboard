@@ -44,7 +44,7 @@ def list_all(con, status=None):
 def get(con, workspace_id):
     row = con.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
     if not row:
-        raise NotFound(f"워크스페이스 {workspace_id} 없음")
+        raise NotFound("워크스페이스를 찾을 수 없습니다")
     return dict(row)
 
 
@@ -103,7 +103,7 @@ def _validated_assignments(con, fields):
 def _clean_name(name):
     cleaned = (name or "").strip()
     if not cleaned:
-        raise Validation("워크스페이스 이름이 비어 있음")
+        raise Validation("워크스페이스 이름을 입력해 주세요")
     return cleaned
 
 

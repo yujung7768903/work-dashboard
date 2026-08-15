@@ -12,10 +12,9 @@ from app.constants import (
 from app.db import meta_get, meta_set
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import transcript
+from app.services import transcript, worktrees
 
 BLOCK_OPEN = '<work-dashboard session="{session}" state="{state}">'
 BLOCK_CLOSE = "</work-dashboard>"
@@ -37,17 +36,35 @@ FRESHNESS_GUIDE = (
 )
 # 끝난 작업의 리소스(할일·서버·워크트리)가 남으면 다음 세션이 그걸 진행 중으로 오해한다
 RELEASE_GUIDE = (
-    "완료: master 에 병합해 이 작업이 끝나면 리소스를 해제한다 — "
-    "python3 dash.py finish <session> 으로 연결된 할일을 done 으로 내리고 "
-    "그 워크트리를 쓰던 서버를 종료한 뒤, ExitWorktree 로 워크트리를 제거한다."
+    "완료: 사용자가 병합을 지시하면(\"병합해줘\", \"master 에 반영해줘\") "
+    "python3 dash.py merge 한 번으로 수행한다 — 상태 확인·master 들이기·테스트·병합·"
+    "할일 done·서버 종료를 그 순서로 한다. git merge 를 손으로 조립하지 않는다. "
+    "그 뒤 ExitWorktree 로 워크트리를 제거한다. "
+    "병합 없이 리소스만 해제할 때만 dash.py finish 를 쓴다. "
+    "충돌은 사람에게 넘기지 않고 직접 해결한다 — 양쪽 기능이 모두 동작하게, 최신 코드 기준으로. "
+    "다만 하나를 버려야 하거나 동작이 달라지는 선택이면 추측하지 않고 사용자에게 확인한다 "
+    "(자율 세션이면 dash.py autorun-request 로 남긴다)."
 )
 # 해제 뒤 같은 세션이 이어질 때. 끝난 할일에 새 작업을 얹으면 무엇이 끝났는지 알 수 없어진다
 RELEASED_GUIDE = (
     "지침: 이 세션이 잡았던 할일은 모두 끝났다(done). "
     "사용자가 새 요청을 하면 끝난 할일에 얹지 말고 새 할일로 진행한다 — "
-    "dash.py add-todo <제목> --session <session> 으로 만들고 "
-    "dash.py link-todo <session> <todo-id> 로 연결한다. "
+    "dash.py add-todo <제목> --session 으로 만들고 "
+    "dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 만들지 않는다."
+)
+# 연결은 착수 선언이지만 늘 그런 것은 아니다 — 이미 끝난 작업을 뒤늦게 연결하는 일도 있다.
+# 무엇이 끝난 것인지는 작업 내용을 본 쪽만 알므로 코드가 추측하지 않고 여기서 규칙을 알린다
+LINK_STATUS_RULE = (
+    "연결 상태는 기본 doing 이고, 이미 master 에 병합돼 끝난 작업이면 "
+    "--status done 을 붙인다."
+)
+# 브랜치로 워크스페이스는 알아냈지만 아직 할일을 안 잡은 세션. 잡아야 보드에 보인다
+UNLINKED_GUIDE = (
+    "미연결: 이 세션은 아직 어느 할일도 잡지 않았다. 위 목록에서 이번 작업에 해당하는 "
+    "할일을 dash.py link-todo <todo-id> 로 잡는다. 해당하는 것이 없으면 "
+    "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다. "
+    + LINK_STATUS_RULE
 )
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
@@ -61,17 +78,22 @@ UNCLASSIFIED_GUIDE = (
     "(1) 위치와 질문 내용으로 카테고리를 정하고 확인 없이 등록한다. "
     "(2) 관련된 진행 중 워크스페이스가 있다고 판단되면 사용자에게 확인받고 등록한다. "
     "없으면 카테고리만 등록한다. "
-    "등록: python3 dash.py classify <session> --category <이름> [--workspace <id>] "
+    "등록: python3 dash.py classify --category <이름> [--workspace <id>] "
     "코드·문서를 바꾸거나 여러 턴에 걸치거나 산출물이 남는 작업이면 "
-    "dash.py add-todo 로 할일을 만들고 dash.py link-todo <session> <todo-id> 로 연결한다. "
-    "단발 조회·설명 질문이면 할일을 만들지 않는다. "
+    "dash.py add-todo 로 할일을 만들고 dash.py link-todo <todo-id> 로 연결한다. "
+    + LINK_STATUS_RULE
+    + " 단발 조회·설명 질문이면 할일을 만들지 않는다. "
     "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
-    "dash.py show-todo --session <session> 으로 할일을 직접 확인하고 "
+    "dash.py show-todo --session 으로 할일을 직접 확인하고 "
     "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."
 )
 ONBOARDING_GUIDE = (
     "지침: 등록된 워크스페이스가 하나도 없다. 초기 설정을 진행한다. "
-    "(1) 먼저 사용자에게 묻는다 — 최근 며칠 치 Claude 히스토리를 보고 자동 분류할지. "
+    "(0) 먼저 화면 언어를 묻는다 — English(en, 기본) / 한국어(ko) / 日本語(ja) / 中文(zh). "
+    "고른 값을 python3 dash.py language <코드> 로 적는다. 자동 분류를 거절해도 "
+    "이 질문은 먼저 한다 — 화면 언어는 초기 설정 여부와 무관하게 필요하다. "
+    "이후 언제든 설정 탭에서 바꿀 수 있다는 것도 알린다. "
+    "(1) 다음으로 사용자에게 묻는다 — 최근 며칠 치 Claude 히스토리를 보고 자동 분류할지. "
     f"{' / '.join(f'{days}일' for days in HISTORY_DAY_CHOICES)} / 자동 분류 안 함. "
     "'안 함' 이면 python3 dash.py onboard --skip 을 실행하고 여기서 끝낸다 "
     "— 이후 이 질문은 다시 뜨지 않는다. "
@@ -147,10 +169,20 @@ def render_context(con, claude_session_id):
     if not session:
         return ""
     if session["workspace_id"]:
-        return _classified_block(con, session)
+        return _classified_block(con, session, session["workspace_id"])
+    by_branch = _workspace_by_branch(con, session)
+    if by_branch:
+        # 소속은 아직 없다(할일 미연결). 워크스페이스 컨텍스트만 브랜치로 되찾아 준다 —
+        # 저장하지 않고 매번 다시 계산하므로 세션에 워크스페이스가 남지는 않는다
+        return _classified_block(con, session, by_branch["id"], linked=False)
     if needs_onboarding(con):
         return _onboarding_block(con, session)
     return _unclassified_block(con, session)
+
+
+def _workspace_by_branch(con, session):
+    jira = jira_from_branch(session["git_branch"])
+    return workspace_repo.get_by_jira(con, jira) if jira else None
 
 
 def released_context(con, claude_session_id):
@@ -211,11 +243,9 @@ def detail(con, session_row_id):
     return {
         "session": session,
         "messages": transcript.recent(session["claude_session_id"]),
-        # 하위할일까지 실어준다 — 분류 직후 자동 생성된 것을 팝업에서 바로 확인해야 함
-        "todos": [
-            {**todo_repo.get(con, todo_id), "subtasks": subtask_repo.list_by_todo(con, todo_id)}
-            for todo_id in todo_ids
-        ],
+        "todos": [todo_repo.get(con, todo_id) for todo_id in todo_ids],
+        # 워크트리 탭도 같은 팝업에 있다 — 세션에서 열든 할일에서 열든 같은 이력을 본다
+        "worktrees": worktrees.history(con, todo_ids),
     }
 
 
@@ -224,6 +254,8 @@ def todo_detail(con, todo_id):
     return {
         "todo": todo_repo.get(con, todo_id),
         "sessions": session_repo.list_by_todo(con, todo_id),
+        # 워크트리 탭용 이력. 병합·삭제된 워크트리도 이름과 상태로 남는다
+        "worktrees": worktrees.history(con, [todo_id]),
     }
 
 
@@ -252,8 +284,8 @@ def scope_guard_block(con, jira_id):
     return "\n".join(lines)
 
 
-def _classified_block(con, session):
-    workspace = workspace_repo.get(con, session["workspace_id"])
+def _classified_block(con, session, workspace_id, linked=True):
+    workspace = workspace_repo.get(con, workspace_id)
     category = category_repo.get(con, workspace["category_id"])
     jira = f" [{workspace['jira_id']}]" if workspace["jira_id"] else ""
     lines = [
@@ -264,6 +296,8 @@ def _classified_block(con, session):
         lines.append(f"{label}: {workspace[key] or '(미입력)'}")
     lines.append("할일:")
     lines.extend(_todo_lines(con, workspace["id"]))
+    if not linked:
+        lines.append(UNLINKED_GUIDE)
     lines.append(CLASSIFIED_GUIDE)
     lines.append(RELEASE_GUIDE)
     lines.append(FRESHNESS_GUIDE)

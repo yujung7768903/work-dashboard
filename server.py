@@ -18,12 +18,22 @@ from app.errors import (
     UnknownEndpoint,
     Validation,
 )
+from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
-from app.repositories import subtasks as subtask_repo
+from app.repositories import labels as label_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
+from app.repositories import settings as settings_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, planning, session_link, session_todo, usage, worktrees
+from app.services import (
+    autorun,
+    board,
+    planning,
+    session_link,
+    session_todo,
+    usage,
+    worktrees,
+)
 
 STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
@@ -33,6 +43,7 @@ CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
 }
 STATUS_BY_ERROR = (
     (NotFound, HTTPStatus.NOT_FOUND),
@@ -103,6 +114,8 @@ def _route_get(con, head, item_id, query):
         return planning.done_on(con, _single(query, "date", None))
     if head == "categories":
         return category_repo.list_all(con)
+    if head == "labels":
+        return label_repo.list_all(con)
     if head == "workspaces":
         if item_id:
             return {
@@ -122,12 +135,18 @@ def _route_get(con, head, item_id, query):
         return usage.snapshot(con)
     if head == "worktrees":
         return worktrees.overview(con)
+    if head == "autorun":
+        return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
+    if head == "settings":
+        return settings_repo.payload(con)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
 def _route_post(con, head, body):
     if head == "categories":
         return category_repo.create(con, body.get("name"))
+    if head == "labels":
+        return label_repo.create(con, body.get("name"))
     if head == "workspaces":
         extra = {key: body.get(key) for key in WORKSPACE_CREATE_FIELDS}
         return workspace_repo.create(
@@ -140,25 +159,42 @@ def _route_post(con, head, body):
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
             note=body.get("note"),
+            precondition=body.get("precondition"),
         )
-    if head == "subtasks":
-        return subtask_repo.create(con, body.get("todo_id"), body.get("title"))
     if head == "reorder":
         return _reorder(con, body)
+    if head == "worktrees":
+        repo, branch, action = body.get("repo"), body.get("branch"), body.get("action")
+        # 서버 조작(띄우기·다시 띄우기·내리기)은 할일·세션을 건드리지 않아 con 을 받지 않는다
+        if action in worktrees.CONTROLS:
+            return worktrees.control(repo, branch, action)
+        writer = worktrees.discard if action == "discard" else worktrees.apply
+        return writer(con, repo, branch)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
 def _route_patch(con, head, item_id, body):
+    if head == "autorun":
+        # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
+        state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
+        return {"state": state, "runs": autorun.panel_runs(con)}
+    if head == "settings":
+        # autorun 과 같은 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려준다
+        settings_repo.set_language(con, body.get("language"))
+        return settings_repo.payload(con)
     if not item_id:
         raise Validation("id 가 필요함")
     if head == "categories":
         return category_repo.update(con, item_id, **body)
+    if head == "labels":
+        return label_repo.update(con, item_id, **body)
     if head == "workspaces":
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
         return todo_repo.update(con, item_id, **body)
-    if head == "subtasks":
-        return subtask_repo.update(con, item_id, **body)
+    if head == "autorun-runs":
+        # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
+        return autorun.confirm_run(con, item_id)
     if head == "sessions":
         session = session_repo.classify_by_ids(
             con,
@@ -166,8 +202,14 @@ def _route_patch(con, head, item_id, body):
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
         )
-        # 워크스페이스로 분류한 세션은 할일까지 만들어 붙인다. 카테고리만이면 None
-        return {**session, "created_todo": session_todo.ensure_from_session(con, item_id)}
+        # 워크스페이스로 분류한 세션은 할일까지 만들어 붙인다. 카테고리만이면 None.
+        # 세션이 그 워크스페이스에 속한다는 사실은 이 할일 연결로만 남으므로,
+        # 연결 뒤 세션 행을 다시 읽어 파생된 워크스페이스가 응답에 실리게 한다
+        created = session_todo.ensure_from_session(
+            con, item_id, body.get("workspace_id")
+        )
+        session = session_repo.get_by_row_id(con, item_id) if created else session
+        return {**session, "created_todo": created}
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -177,9 +219,9 @@ def _route_delete(con, head, item_id, query):
     force = _single(query, "force", None) == "1"
     deleters = {
         "categories": lambda con, item_id: category_repo.delete(con, item_id, force),
+        "labels": lambda con, item_id: label_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
-        "subtasks": subtask_repo.delete,
     }
     if head not in deleters:
         raise UnknownEndpoint("알 수 없는 엔드포인트")
@@ -192,12 +234,12 @@ def _reorder(con, body):
     scope = body.get("scope_id")
     if kind == "categories":
         category_repo.reorder(con, ids)
+    elif kind == "labels":
+        label_repo.reorder(con, ids)
     elif kind == "workspaces":
         workspace_repo.reorder(con, ids)
     elif kind == "todos":
         todo_repo.reorder(con, ids, None if scope in (None, NONE_LITERAL) else scope)
-    elif kind == "subtasks":
-        subtask_repo.reorder(con, ids, scope)
     else:
         raise Validation(f"알 수 없는 reorder 종류: {kind}")
     return {"reordered": len(ids)}

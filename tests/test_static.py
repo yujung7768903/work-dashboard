@@ -13,6 +13,16 @@ BAD_REQUEST = 400
 SERVER_ERROR = 500
 
 
+# resolve_static 이 내주면 안 되는 경로. 상위 탈출·인코딩된 탈출·허용 안 된 확장자·
+# index 없는 디렉토리 — 하나라도 뚫리면 저장소 파일이 그대로 노출된다
+UNSAFE_STATIC_PATHS = (
+    "/../server.py",
+    "/%2e%2e/server.py",
+    "/index.txt",
+    "/js",
+)
+
+
 class StaticPathTest(unittest.TestCase):
     def test_root_maps_to_index(self):
         resolved = server.resolve_static("/")
@@ -21,32 +31,23 @@ class StaticPathTest(unittest.TestCase):
     def test_allows_nested_module(self):
         self.assertIsNotNone(server.resolve_static("/js/api.js"))
 
-    def test_rejects_parent_traversal(self):
-        self.assertIsNone(server.resolve_static("/../server.py"))
-
-    def test_rejects_encoded_traversal(self):
-        self.assertIsNone(server.resolve_static("/%2e%2e/server.py"))
-
-    def test_rejects_disallowed_suffix(self):
-        self.assertIsNone(server.resolve_static("/index.txt"))
-
-    def test_rejects_directory_without_index(self):
-        self.assertIsNone(server.resolve_static("/js"))
+    def test_rejects_unsafe_or_unknown_paths(self):
+        for path in UNSAFE_STATIC_PATHS:
+            with self.subTest(path=path):
+                self.assertIsNone(server.resolve_static(path))
 
 
 class PagePathTest(unittest.TestCase):
-    def test_tab_path_falls_back_to_index(self):
-        resolved = server.resolve_page("/board")
-        self.assertTrue(resolved.endswith(os.path.join("static", "index.html")))
+    """탭 경로가 앱 화면으로 떨어지는지는 test_frontend_contract.TabPathTest 가
+    index.html 의 탭을 전수 대조한다. 여기서는 자산·차단 경로만 본다"""
 
     def test_existing_asset_is_served_as_is(self):
         self.assertTrue(server.resolve_page("/js/api.js").endswith("api.js"))
 
-    def test_missing_asset_stays_not_found(self):
-        self.assertIsNone(server.resolve_page("/js/nope.js"))
-
-    def test_traversal_with_suffix_stays_not_found(self):
-        self.assertIsNone(server.resolve_page("/../server.py"))
+    def test_missing_or_unsafe_asset_stays_not_found(self):
+        for path in ("/js/nope.js", "/../server.py"):
+            with self.subTest(path=path):
+                self.assertIsNone(server.resolve_page(path))
 
 
 class ErrorMappingTest(unittest.TestCase):
@@ -86,17 +87,19 @@ class RouteTest(unittest.TestCase):
         self.assertEqual(payload["workspace"]["name"], "KT")
         self.assertEqual(payload["todos"], [])
 
-    def test_unknown_endpoint_raises_not_found(self):
-        with self.assertRaises(NotFound):
-            server.route(self.con, "GET", "/api/nope", {}, {})
-
-    def test_unsupported_method_raises_validation(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "PUT", "/api/tree", {}, {})
-
-    def test_reorder_endpoint_rejects_unknown_kind(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "POST", "/api/reorder", {}, {"kind": "x", "ids": []})
+    def test_route_rejects_bad_requests(self):
+        """라우팅 거부 조건이 한자리에. 새 엔드포인트의 거부 규칙도 여기에 붙인다"""
+        for exc, why, method, path, body in (
+            (NotFound, "없는 엔드포인트", "GET", "/api/nope", {}),
+            (Validation, "지원 안 하는 메서드", "PUT", "/api/tree", {}),
+            (Validation, "reorder 의 알 수 없는 kind", "POST", "/api/reorder",
+             {"kind": "x", "ids": []}),
+            (Validation, "id 없이 할일 조회", "GET", "/api/todos", {}),
+            (Validation, "id 없이 세션 수정", "PATCH", "/api/sessions", {"category_id": 1}),
+        ):
+            with self.subTest(why=why):
+                with self.assertRaises(exc):
+                    server.route(self.con, method, path, {}, body)
 
     def test_sessions_endpoint_shape(self):
         from app.repositories import sessions as session_repo
@@ -122,10 +125,6 @@ class RouteTest(unittest.TestCase):
             [row["claude_session_id"] for row in payload["sessions"]], ["route-sess"]
         )
 
-    def test_todo_endpoint_requires_id(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "GET", "/api/todos", {}, {})
-
     def test_patch_session_classifies(self):
         from app.repositories import sessions as session_repo
 
@@ -136,10 +135,6 @@ class RouteTest(unittest.TestCase):
             self.con, "PATCH", f"/api/sessions/{row_id}", {}, {"category_id": ops}
         )
         self.assertEqual(payload["category_id"], ops)
-
-    def test_patch_session_without_id_is_validation(self):
-        with self.assertRaises(Validation):
-            server.route(self.con, "PATCH", "/api/sessions", {}, {"category_id": 1})
 
     def test_delete_todo_endpoint(self):
         ops = category_repo.get_by_name(self.con, "운영")["id"]

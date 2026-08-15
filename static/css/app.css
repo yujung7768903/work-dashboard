@@ -48,7 +48,7 @@
   /* 굵기는 400(본문)·500(보조)·600(강조)·700(제목) 네 단만 쓴다 */
 
   --r-card: 12px;
-  --r-ctl: 8px;   /* 컨트롤, 그리고 카드 안에 겹쳐 놓는 카드 */
+  --r-ctl: 5px;   /* 컨트롤, 그리고 카드 안에 겹쳐 놓는 카드 */
   --r-pill: 999px;
 
   /* 카드는 선 대신 그림자로 띄운다. 두 번째 값이 1px 테두리 역할 */
@@ -151,8 +151,14 @@ h1 {
   font-weight: 700; margin: 0; letter-spacing: -0.02em;
 }
 
+/* 제목이 남는 자리를 먹어 오류 문구와 언어 아이콘을 오른쪽 끝으로 민다 */
+#page-title { margin-right: auto; }
+.topbar-tools { display: flex; align-items: center; }
+
+/* 상단바에 홀로 있는 버튼이라 목록 줄용 --icon-box 보다 한 단 크게 */
+
 #error {
-  margin: 0 0 0 auto;
+  margin: 0;
   background: color-mix(in srgb, var(--danger) 10%, var(--surface));
   color: var(--danger); padding: var(--sp-8) var(--sp-12);
   border-radius: var(--r-ctl); font-weight: 500; font-size: var(--fs-sm);
@@ -228,7 +234,7 @@ select {
   background-repeat: no-repeat;
   background-position: right var(--sp-12) center;
 }
-#quick-title { flex: 1 1 200px; }
+#quick-name { flex: 1 1 200px; }
 /* 아이콘 하나뿐인 버튼은 정사각으로 만들어 누를 면적을 확보 */
 #quick-submit {
   width: var(--sp-40); flex: none; padding: 0;
@@ -247,25 +253,33 @@ button {
   transition: background 0.12s, box-shadow 0.12s, transform 0.06s;
 }
 button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 13%, var(--surface)); }
-button:active:not(:disabled) { transform: translateY(1px); }
+button:active:not(:disabled), #repo-link:active { transform: translateY(1px); }
 button:disabled { color: var(--line); cursor: default; }
 
 /* 아이콘·기호 하나뿐인 작은 버튼. 정사각으로 잡아 hover 면이 원으로 뜬다 —
    기본 버튼의 둥근 사각형은 아이콘 하나에는 폭이 남아 애매하게 보인다.
    면은 hover 에서만: 평소엔 아이콘만 떠 있다 */
-.icon-btn, .group-add, .ws-menu > button, .modal-close {
+.icon-btn, .group-add, .ws-menu > button, .modal-close, #repo-link {
   width: var(--icon-box); height: var(--icon-box); flex: none; padding: 0;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; background: none; color: var(--muted);
 }
+
+/* 상단바의 두 아이콘만 한 단 크게. 목록 줄 안에 들어가는 다른 아이콘과 달리 홀로 있다 */
+/* 글리프(약 16)보다 살짝 큰 면. 32 로 두면 원형 hover 면이 커져 둘 사이가 벌어져 보인다 */
+#lang-menu > button, #repo-link {
+  width: calc(var(--sp-24) + var(--sp-4)); height: calc(var(--sp-24) + var(--sp-4));
+}
+#repo-link { text-decoration: none; }
 /* 카드 상단은 카테고리 색이라 기본 hover 면(어두운 회색)이 다크모드에서 묻힌다.
    글자색을 섞은 반투명 면이라 밝은 테마에선 옅은 회색, 어두운 테마에선 옅은 흰빛으로 뜬다.
    :not(:disabled) 는 같은 조건의 기본 button:hover 규칙을 이기기 위한 것 */
 .icon-btn:hover:not(:disabled),
 .group-add:hover:not(:disabled),
 .ws-menu > button:hover,
+#repo-link:hover,
 .modal-close:hover,
-.subtask-toggle:hover:not(:disabled) {
+.row-toggle:hover:not(:disabled) {
   background: color-mix(in srgb, var(--fg) 18%, transparent);
   color: var(--fg);
 }
@@ -350,30 +364,39 @@ button:disabled { color: var(--line); cursor: default; }
 /* 행 전체가 상세 팝업을 여는 클릭 대상 */
 .todo { cursor: pointer; }
 .todo.done .title { color: var(--muted); text-decoration: line-through; }
-/* 상태 배지처럼 보이게 좁고 둥글게 */
+/* 상태(todo·doing·done)는 모서리만 살짝 둥근 네모. 옆의 라벨은 양끝이 둥근 알약이라
+   모양만으로 '단계' 와 '성격' 이 구분된다 */
 .todo > button:first-child {
   min-width: 4.6em; font-size: var(--fs-micro); font-weight: 600;
   padding: var(--sp-4) var(--sp-8);
-  border-radius: var(--r-pill); color: var(--muted);
+  border-radius: var(--r-ctl); color: var(--muted);
 }
 .todo.doing > button:first-child { background: var(--softer); color: var(--accent); }
-/* 들여쓰기는 격자 한 칸(40px) + 화살표 칸 — 상태 배지 폭과 맞춰 제목 아래로 떨어진다 */
-.subtasks {
-  margin: 0;
-  padding: var(--sp-2) var(--pad-card) var(--sp-8) calc(var(--sp-40) + 1.2em + var(--sp-8));
-  list-style: none; color: var(--muted); font-size: var(--fs-sm);
+
+/* 제목과 케밥 사이 세 번째 칸. 넘치면 잘라내지 않고 아래로 접는다.
+   flex: none 이라 라벨이 없으면 폭 0 — 제목 칸을 뺏지 않는다 */
+.todo-labels {
+  display: flex; flex-wrap: wrap; justify-content: flex-end;
+  gap: var(--sp-4); flex: none;
 }
-/* 상태 배지 다음 칸. 하위가 없는 줄도 아이콘 자리를 비워 둬 제목 세로줄이 어긋나지 않는다 */
-/* 폭은 .subtasks 들여쓰기와 같은 1.2em — 하위 목록이 제목 바로 아래로 떨어진다.
-   높이도 같은 값으로 맞춰 hover 면이 원이 된다 (다른 아이콘 버튼은 --icon-box 정사각) */
-.subtask-toggle {
+/* 라벨 색은 각자 인라인 --cat 으로 온다. 워크트리 포트 배지와 같은 알약 모양 */
+.todo-label {
+  padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--cat) 14%, var(--surface));
+  color: color-mix(in srgb, var(--cat) 72%, var(--fg));
+  font-size: var(--fs-micro); font-weight: 600; white-space: nowrap;
+}
+/* 펼침 아이콘. 폭 1.2em 은 뒤따르는 목록 들여쓰기와 같은 값이고, 높이도 같은 값으로
+   맞춰 hover 면이 원이 된다 (다른 아이콘 버튼은 --icon-box 정사각) */
+.row-toggle {
   display: flex; align-items: center; justify-content: center;
   width: 1.2em; height: 1.2em; padding: 0; border-radius: 50%;
   background: none; color: var(--muted);
 }
-.subtask-toggle svg { transition: transform 0.12s; }
-.subtask-toggle.open svg { transform: rotate(90deg); }
-.subtask-toggle.empty { visibility: hidden; }
+.row-toggle svg { transition: transform 0.12s; }
+.row-toggle.open svg { transform: rotate(90deg); }
+/* 펼칠 것이 없는 줄도 아이콘 자리를 비워 둬 옆 칸 세로줄이 어긋나지 않는다 */
+.row-toggle.empty { visibility: hidden; }
 /* 제목이 요약 안 된 자동 생성 할일 — 지시 첫 문장이 그대로 제목이라 손봐야 한다.
    면을 채우지 않고 테두리만 — 상태 배지보다 약하게 보여야 눈이 상태를 먼저 읽는다 */
 .raw-title {
@@ -398,19 +421,21 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라벨이 이미 섹션 경계를 그으므로 그 아래 첫 줄은 선을 겹치지 않는다 */
 .wt-section > .label + .wt-row { border-top: none; }
 
-/* 표처럼 네 칸 — 이름 / 요약 / 커밋 변화 / 포트. 줄마다 같은 격자라 세로로 맞는다.
+/* 표처럼 다섯 칸 — 이름 / 요약 / 커밋 변화 / 포트 / 케밥 메뉴. 줄마다 같은 격자라 세로로 맞는다.
    포트는 배지 하나 폭(60px)만 잡고 남는 폭은 이름이 더 가져간다. 대신 이름은
    14em 아래로는 줄지 않는다 — 그 밑으로 가면 브랜치명이 말줄임뿐이라 못 읽는다.
    포트 칸을 auto 로 두면 포트가 둘인 줄만 칸이 넓어져 표가 어긋난다. 고정 폭으로
-   두고 넘치는 배지는 칸 안에서 아래로 내린다 */
+   두고 넘치는 배지는 칸 안에서 아래로 내린다. 메뉴 칸은 케밥 버튼 하나 폭만 */
 .wt-row {
   display: grid;
-  grid-template-columns: minmax(14em, 1.6fr) minmax(0, 1fr) 5em 60px;
+  grid-template-columns: minmax(14em, 1.6fr) minmax(0, 1fr) 5em 60px 1.5em;
   align-items: center; gap: var(--sp-8);
   padding: var(--sp-8) var(--pad-card);
   border-top: 1px solid var(--line);
 }
 .wt-name { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
+/* 누를 수 있는 칸은 연결된 할일이 있는 이름 칸뿐 — 손 모양도 거기까지만 */
+.wt-name.linked { cursor: pointer; }
 .wt-row .title {
   min-width: 0; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -441,11 +466,12 @@ button:disabled { color: var(--line); cursor: default; }
   font-variant-numeric: tabular-nums; text-decoration: none;
 }
 .wt-port:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
-/* 하위 할일 목록(.subtasks)의 모양은 쓰되, 들여쓰기는 셰브런 다음 칸 —
-   브랜치 이름 세로줄 아래로 떨어진다 */
+/* 들여쓰기는 셰브런 다음 칸 — 브랜치 이름 세로줄 아래로 떨어진다 */
 .wt-commits {
+  margin: 0;
   padding: var(--sp-2) var(--pad-card) var(--sp-8)
            calc(var(--pad-card) + 1.2em + var(--sp-8));
+  list-style: none; color: var(--muted); font-size: var(--fs-sm);
 }
 .wt-commits code { color: var(--fg); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
 .wt-when { color: var(--muted); font-size: var(--fs-micro); }
@@ -454,6 +480,11 @@ button:disabled { color: var(--line); cursor: default; }
 /* 라벨은 어디서든 --fs-sm + 500 + muted (사용량 한도 카드 라벨과 같은 값) */
 .field label { display: block; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 .field textarea { width: 100%; min-height: 60px; }
+/* 라벨 아래 한 줄 안내. 라벨보다 한 단 옅게 — 읽는 순서가 라벨 → 안내 → 입력칸이다 */
+.field .hint {
+  margin: var(--sp-2) 0 var(--sp-4);
+  color: var(--muted); font-size: var(--fs-micro); line-height: var(--lh-body);
+}
 
 /* ── 워크스페이스 ─────────────────────────────────────────────────────────── */
 /* 카드 그리드. 보드와 같은 기준으로 1↔2컬럼 */
@@ -494,23 +525,115 @@ button:disabled { color: var(--line); cursor: default; }
   display: block; width: 100%; text-align: left; background: none; white-space: nowrap;
 }
 
-/* ── 카테고리 ─────────────────────────────────────────────────────────────── */
-#category-list { list-style: none; padding: 0; margin: 0; }
-#category-list li {
+/* ── 설정 (카테고리·라벨) ─────────────────────────────────────────────────── */
+/* 두 목록이 한 화면에 겹치므로 무엇의 목록인지 제목으로 가른다 */
+.set-head { margin: var(--gap) 0 var(--sp-8); font-size: var(--fs-body); font-weight: 700; }
+.set-head:first-child { margin-top: 0; }
+.set-list { list-style: none; padding: 0; margin: 0; }
+.set-list li {
   display: flex; gap: var(--sp-8); align-items: center;
   margin-bottom: var(--sp-8); padding: var(--sp-12);
   background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
 }
-#category-list li > input:not([type="color"]) { flex: 1 1 8em; }
+.set-list li > input:not([type="color"]) { flex: 1 1 8em; }
 /* 색 견본은 둥근 사각형으로. 브라우저 기본 여백을 없앤다 */
-#category-list input[type="color"] {
+.set-list input[type="color"] {
   width: var(--sp-32); height: var(--sp-32); padding: 0;
   border: none; border-radius: var(--r-ctl);
   background: none; cursor: pointer; flex: none;
 }
-#category-list input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-#category-list input[type="color"]::-webkit-color-swatch {
+.set-list input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.set-list input[type="color"]::-webkit-color-swatch {
   border: none; border-radius: var(--r-ctl); box-shadow: var(--shadow-card);
+}
+
+/* ── 자율 수행 패널 ──────────────────────────────────────────────────────── */
+#autorun-panel {
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-12) var(--pad-card); margin: var(--gap) 0;
+}
+#autorun-panel > summary {
+  display: flex; align-items: center; gap: var(--sp-8);
+  cursor: pointer; list-style: none; font-weight: 600;
+}
+#autorun-panel > summary::-webkit-details-marker { display: none; }
+#autorun-panel > summary::before {
+  content: ""; flex: none; width: 6px; height: 6px;
+  border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
+  transform: rotate(-45deg); transition: transform 0.12s;
+}
+#autorun-panel[open] > summary::before { transform: rotate(45deg); }
+/* 라벨·점·주기를 한 줄로 — 켜짐 여부와 주기를 제목 옆에서 한 번에 읽는다 */
+#autorun-head {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-12);
+}
+#autorun-cycle {
+  font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
+}
+/* 활성 여부 표시 겸 조작. 켜짐이 곧 스위치라 상태와 스위치를 따로 두지 않는다.
+   체크박스는 숨기고 접근성만 남긴다 — 키보드·스크린리더는 그대로 동작한다 */
+#autorun-switch {
+  display: inline-flex; align-items: center; gap: var(--sp-4);
+  flex: none; cursor: pointer;
+}
+#autorun-toggle { position: absolute; width: 1px; height: 1px; opacity: 0; }
+#autorun-switch .track {
+  position: relative; width: 26px; height: 14px; flex: none;
+  border-radius: var(--r-pill); background: var(--muted); transition: background 0.12s;
+}
+#autorun-switch .track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px;
+  border-radius: var(--r-pill); background: var(--surface); transition: transform 0.12s;
+}
+#autorun-toggle:checked + .track { background: var(--accent); }
+#autorun-toggle:checked + .track::after { transform: translateX(12px); }
+#autorun-toggle:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 글자는 상태에서 파생시킨다 — JS 가 따로 갱신하지 않아 어긋날 자리가 없다 */
+#autorun-switch .state { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+#autorun-switch .state::after { content: "OFF"; }
+#autorun-toggle:checked ~ .state { color: var(--accent); }
+#autorun-toggle:checked ~ .state::after { content: "ON"; }
+#autorun-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
+/* 자율 실행 기록이 없으면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
+#autorun-list:empty { display: none; }
+/* 어느 줄이든 눌러서 상세 팝업을 연다 — 세션 목록과 같은 규칙 */
+/* 표처럼 칸 시작 위치가 줄마다 같아야 한다. flex 로는 안 된다 — 워크스페이스 이름이
+   길거나 상태 글자('검토 대기' ↔ '완료')가 길면 그만큼 뒤 칸이 밀린다. 격자로 못박는다:
+   워크스페이스 / 할일(남는 폭) / 워크트리 / 포트 / 상태 / 경과 */
+#autorun-list li {
+  display: grid;
+  grid-template-columns: 12em minmax(0, 1fr) 20em 6em 5em 4em;
+  gap: var(--sp-8); align-items: baseline; padding: var(--sp-4) 0;
+  cursor: pointer;
+}
+/* 칸을 넘치는 글자는 줄바꿈 없이 잘라낸다 — 한 줄 높이가 줄마다 달라지면 표가 아니다 */
+#autorun-list li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#autorun-list .scope { font-weight: 600; }
+#autorun-list .prompt { color: var(--muted); }
+#autorun-list .wt { color: var(--muted); font-size: var(--fs-sm); }
+/* 포트 알약은 워크트리 탭의 .wt-port 를 그대로 쓴다 — 같은 것이 두 곳에서 다르면 안 된다.
+   다만 이 줄은 한 줄에 여섯 칸이 들어가므로 알약만 한 단 작게 줄인다 */
+#autorun-list .ports { display: flex; gap: var(--sp-4); }
+#autorun-list .wt-port { padding: 0 var(--sp-4); font-size: var(--fs-micro); }
+#autorun-list .badge { font-weight: 600; font-size: var(--fs-sm); }
+#autorun-list .outcome-done { color: var(--good); }
+/* 검토 대기만 버튼이다. 줄 안에서 글자처럼 보이게 기본 버튼 외양을 걷어낸다 */
+/* text-align 은 버튼의 브라우저 기본값이 center 라 명시해야 한다 — 안 그러면 span 인
+   다른 결과(완료·실패)와 칸 안에서 시작 위치가 어긋난다 */
+#autorun-list button.badge {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 600;
+  font-size: var(--fs-sm); cursor: pointer; text-decoration: underline dotted;
+  text-align: left;
+}
+#autorun-list .outcome-review { color: var(--soft); }
+#autorun-list .outcome-failed { color: var(--danger); }
+#autorun-list .outcome-blocked { color: var(--warn); }
+/* 요청도 사람이 볼 때까지 후보에서 빠져 있다는 점에서 막힘과 같은 계열 색을 쓴다 */
+#autorun-list .outcome-requested { color: var(--warn); }
+#autorun-list .outcome-running { color: var(--accent); }
+#autorun-list .age {
+  color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
 }
 
 /* ── 세션 패널 ────────────────────────────────────────────────────────────── */
@@ -565,22 +688,39 @@ button:disabled { color: var(--line); cursor: default; }
    스크롤은 본문이 맡는다. 그래야 닫기 버튼이 제목과 같은 선에 고정된다 */
 /* [open] 없이 쓰면 display 가 dialog:not([open]) 의 display:none 을 이겨서
    닫힌 팝업이 문서 맨 아래에 빈 상자로 남는다 */
-#session-modal[open] {
-  position: relative; display: flex; flex-direction: column;
-  width: min(620px, calc(100vw - var(--sp-24))); max-height: 84vh; overflow: hidden;
+/* fixed + inset 0 + margin auto = 스크롤 위치와 무관하게 화면 정중앙.
+   position: relative 로 두면 문서 흐름상의 자리에 뜨는 탓에 아래쪽 카드에서 열면
+   팝업을 보려고 위로 스크롤해야 했다. 닫기 버튼의 기준 상자 역할은 fixed 도 한다 */
+/* 할일 추가 팝업도 같은 외양을 쓴다 — 팝업이 두 종류로 보일 이유가 없다 */
+#session-modal[open],
+#todo-add-modal[open] {
+  position: fixed; inset: 0; margin: auto;
+  display: flex; flex-direction: column;
+  width: min(620px, calc(100vw - var(--sp-24))); max-height: 80vh; overflow: hidden;
   padding: 0; border: none; border-radius: var(--r-card);
   background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
 }
-#session-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
+/* 팝업이 열린 동안 뒤 화면은 고정. 스크롤은 팝업 본문만 갖는다 */
+html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidden; }
+#session-modal::backdrop, #todo-add-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
 /* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
-#session-modal form { margin: 0; }
+#session-modal form, #todo-add-modal form { margin: 0; }
+/* 전역 form 은 한 줄 flex 다(빠른 추가·설정 폼용). 팝업 폼은 라벨과 칸이 붙어야 하므로
+   세로로 쌓는다 — display 를 안 바꾸면 제목·세 칸·버튼이 한 줄에 흩어진다.
+   여백은 세션 팝업 본문과 같은 값 */
+#todo-add-form { display: block; padding: var(--sp-20); overflow: auto; }
+/* textarea 는 .field 공통 규칙이 이미 100%. 한 줄 입력·선택도 같은 폭이어야 줄이 맞는다 */
+#todo-add-form .field input, #todo-add-form .field select { width: 100%; }
+/* 확인 버튼은 오른쪽 끝. 팝업의 마지막 동작 위치를 세션 팝업과 같게 둔다 */
+.dlg-actions { display: flex; justify-content: flex-end; margin-top: var(--sp-20); }
 .modal-close {
   position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
   background: none; color: var(--muted);
   /* 크기·면·정렬은 위 아이콘 버튼 공통 규칙이 잡는다 */
   font-size: var(--fs-title); line-height: var(--lh-tight);
 }
-#session-modal-body { padding: var(--pad-card); overflow: auto; }
+/* 팝업은 카드보다 담는 글이 많아 내부 여백만 한 칸 넉넉하게 준다 */
+#session-modal-body { padding: var(--sp-20); overflow: auto; }
 
 /* 팝업 탭. 개요 = 할일의 시각·note, 세션 = 분류·최근 대화 */
 .dlg-tabs {
@@ -600,26 +740,30 @@ button:disabled { color: var(--line); cursor: default; }
 /* 탭 바로 아래 첫 블록은 이미 간격이 있어 위 여백을 지운다 */
 .dlg-pane > .dlg-section:first-child { margin-top: 0; }
 
-.time-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
-.time-list li {
-  display: flex; align-items: center; gap: var(--sp-8);
+/* 시각 + 내용 한 줄짜리 로그 목록. 개요의 History, 워크트리 탭의 History·Commit 이
+   같은 모양을 쓴다 — 시각 표기가 로그 파일과 같아야 두 탭을 나란히 읽을 수 있다 */
+/* 여백은 섹션 이름(.label) 이 갖는다 — 감싼 div 에도 주면 두 배가 돼 다른 섹션과 어긋난다 */
+.dlg-log > .label { display: flex; align-items: center; gap: var(--sp-8); }
+.log-list { list-style: none; margin: 0; padding: 0; }
+.log-list li {
+  display: flex; align-items: baseline; gap: var(--sp-8);
   padding: var(--sp-2) 0; font-size: var(--fs-sm);
 }
-.time-list .when { flex: 1; }
-.time-list .age { color: var(--muted); }
+/* 시각·해시는 폭이 고정돼야 줄마다 같은 열에서 시작한다 */
+.log-list .when { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.log-list code { flex: none; color: var(--fg); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.log-list .text {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 경과 시간은 오른쪽 끝 */
+.log-list .age { flex: none; margin-left: auto; color: var(--muted); }
 /* note 는 세션에 그대로 주입되는 글이라 줄바꿈을 살려서 보여준다 */
 .note-body {
   margin: var(--sp-4) 0 0; padding: var(--sp-12); border-radius: var(--r-ctl);
   background: var(--bg); font-size: var(--fs-sm); line-height: var(--lh-body);
   white-space: pre-wrap;
 }
-
-.dlg-subtasks { list-style: none; margin: 0; padding: 0; }
-.dlg-subtasks li {
-  display: flex; align-items: baseline; gap: var(--sp-8);
-  padding: var(--sp-2) 0; font-size: var(--fs-sm);
-}
-.dlg-subtasks .text { flex: 1; }
 
 .dlg-head { margin-bottom: var(--sp-12); }
 .dlg-title {
@@ -633,10 +777,13 @@ button:disabled { color: var(--line); cursor: default; }
   background-color: var(--cat-bg); color: var(--cat-ink);
   font-size: var(--fs-micro); font-weight: 600; letter-spacing: 0;
 }
-.dlg-section { margin-top: var(--sp-16); }
-.dlg-section > .label {
-  margin: 0 0 var(--sp-4); color: var(--muted); font-size: var(--fs-sm); font-weight: 500;
-}
+.dlg-section { margin-top: var(--sp-20); }
+/* 팝업의 섹션 이름(History·착수 조건·note·Commit·최근 대화)은 같은 depth 라 같은 모양이다.
+   본문 크기·본문 색을 그대로 쓴다 — 옅게 줄이면 이름이 아니라 곁가지로 읽힌다.
+   깊이는 보지 않는다: History·Commit 은 목록을 감싼 .dlg-log 안에 있다 */
+.dlg-section .label { margin: var(--sp-12) 0 var(--sp-4); }
+/* 블록 첫 라벨은 위 여백이 겹치므로 지운다 */
+.dlg-section > .label:first-child { margin-top: 0; }
 .dlg-badge {
   display: inline-block; min-width: 4.2em; text-align: center;
   padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
@@ -647,6 +794,20 @@ button:disabled { color: var(--line); cursor: default; }
 #session-modal button.copy {
   padding: var(--sp-2) var(--sp-8); font-size: var(--fs-sm); color: var(--muted);
 }
+
+/* 팝업 워크트리 탭 — 이름 / 상태 / 커밋 차이 한 줄, 아래에 시각과 커밋 목록.
+   보드 워크트리 탭의 격자를 쓰지 않는다: 여기는 한 워크트리를 펼쳐 보는 자리다 */
+.dlg-wt-head { display: flex; align-items: center; gap: var(--sp-8); margin: 0; }
+.dlg-wt-head .title {
+  min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 상태는 글자만 읽지 않아도 구분돼야 한다 — 작업 중은 강조색, 병합은 완료색, 삭제는 취소선 */
+.wt-state.working { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
+.wt-state.merged { background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: var(--good); }
+.wt-state.deleted { text-decoration: line-through; }
+/* 커밋 차이는 Commit 섹션 이름 오른쪽. 보드와 달리 칸을 고정할 필요가 없어 값만 붙여 놓는다 */
+#session-modal .wt-div { display: flex; gap: var(--sp-4); }
 
 .session-id { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); }
 .session-id code {
@@ -693,7 +854,8 @@ button:disabled { color: var(--line); cursor: default; }
   :root {
     --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
     --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
-    --rail: #14161f;
+    /* 어두운 테마에서는 판을 더 누를 수 없다 — 배경보다 밝게, 카드보다는 어둡게 */
+    --rail: #191c28;
     --danger: #e46b6b; --good: #3cbe86; --warn: #e5a838;
     /* 어두운 면에서는 그림자가 안 보이므로 옅은 링으로 카드 경계를 만든다 */
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -705,6 +867,7 @@ button:disabled { color: var(--line); cursor: default; }
   .group, .ws-card { --cat: #444a5c; }
   button { background-color: #2a2e3f; }
   button:hover:not(:disabled) { background-color: #343950; }
+  #repo-link:hover { background-color: #343950; }
   button:disabled { color: #4a4b55; }
   .side-nav button, .ws-menu > button, .ws-menu-items button, .modal-close {
     background-color: transparent;

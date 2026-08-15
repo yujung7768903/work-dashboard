@@ -1,14 +1,20 @@
 """착수 가능 조건(precondition) 저장·표시·주입."""
+import json
+import pathlib
 import sqlite3
 import unittest
 
-from app.repositories import subtasks as subtask_repo
+import dash
+import server
+from app.constants import PRECONDITION_EXAMPLE, PRECONDITION_HINT
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import session_link
 from tests.support import temp_db, temp_db_path
 
+STATIC = pathlib.Path(__file__).resolve().parent.parent / "static"
+INDEX = STATIC / "index.html"
 CONDITION = "#30 사용량 대시보드가 done 일 것"
 MULTILINE = (
     "work-dashboard 에 미커밋 변경이 남은 워크트리가 없을 것\n"
@@ -27,37 +33,22 @@ class PreconditionStorageTest(unittest.TestCase):
         )
         self.assertEqual(todo_repo.get(self.con, todo["id"])["precondition"], CONDITION)
 
-    def test_subtask_keeps_precondition(self):
-        todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
-        subtask = subtask_repo.create(
-            self.con, todo["id"], "하위", precondition=MULTILINE
-        )
-        self.assertEqual(
-            subtask_repo.get(self.con, subtask["id"])["precondition"], MULTILINE
-        )
-
     def test_defaults_to_none(self):
         todo = todo_repo.create(self.con, "조건 없음", workspace_id=self.workspace["id"])
         self.assertIsNone(todo["precondition"])
-        subtask = subtask_repo.create(self.con, todo["id"], "하위")
-        self.assertIsNone(subtask["precondition"])
 
     def test_update_can_set_precondition(self):
         todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
         updated = todo_repo.update(self.con, todo["id"], precondition=CONDITION)
         self.assertEqual(updated["precondition"], CONDITION)
-        subtask = subtask_repo.create(self.con, todo["id"], "하위")
-        self.assertEqual(
-            subtask_repo.update(self.con, subtask["id"], precondition=CONDITION)[
-                "precondition"
-            ],
-            CONDITION,
-        )
 
 
 class PreconditionMigrationTest(unittest.TestCase):
     def test_existing_db_without_column_is_upgraded(self):
-        """컬럼이 없던 시절 DB 도 그냥 열려야 한다. 열리면서 값은 NULL"""
+        """컬럼이 없던 시절 DB 도 그냥 열려야 한다. 열리면서 값은 NULL.
+
+        하위할일을 쓰던 DB 로 만든다 — 그 테이블은 열리면서 사라져야 한다
+        """
         path = temp_db_path()
         legacy = sqlite3.connect(path)
         legacy.executescript(
@@ -77,17 +68,22 @@ class PreconditionMigrationTest(unittest.TestCase):
         legacy.close()
 
         con = temp_db(path)
-        for table in ("todos", "subtasks"):
-            columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
-            self.assertIn("precondition", columns, table)
+        columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+        self.assertIn("precondition", columns)
         self.assertIsNone(todo_repo.get(con, 1)["precondition"])
+        tables = {
+            row["name"]
+            for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        self.assertNotIn("subtasks", tables)
 
 
 class PreconditionInjectionTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
-        self.workspace = workspace_repo.create(self.con, 1, "테스트")
-        session_repo.register(self.con, "sess-1", cwd="/tmp")
+        # 세션에 워크스페이스가 저장되지 않으므로 브랜치 Jira 로 컨텍스트를 되찾는 경로를 씀
+        self.workspace = workspace_repo.create(self.con, 1, "테스트", jira_id="AB-1")
+        session_repo.register(self.con, "sess-1", cwd="/tmp", git_branch="AB-1")
         session_repo.classify(self.con, "sess-1", workspace_id=self.workspace["id"])
 
     def test_condition_appears_in_injected_block(self):
@@ -111,6 +107,66 @@ class PreconditionInjectionTest(unittest.TestCase):
         todo_repo.create(self.con, "조건 없음", workspace_id=self.workspace["id"])
         block = session_link.render_context(self.con, "sess-1")
         self.assertNotIn("     조건:", block)
+
+
+class PreconditionPopupTest(unittest.TestCase):
+    """팝업 개요 탭이 조건을 그리려면 API 응답에 값이 실려 있어야 한다"""
+
+    def setUp(self):
+        self.con = temp_db()
+        self.workspace = workspace_repo.create(self.con, 1, "테스트")
+
+    def test_todo_detail_carries_condition(self):
+        todo = todo_repo.create(
+            self.con, "할일", workspace_id=self.workspace["id"], precondition=MULTILINE
+        )
+        payload = session_link.todo_detail(self.con, todo["id"])
+        self.assertEqual(payload["todo"]["precondition"], MULTILINE)
+
+
+class PreconditionAddFormTest(unittest.TestCase):
+    """화면(할일 추가 폼)에서 넣은 조건·note 가 저장까지 가야 한다.
+
+    서버가 body 의 값을 버리면, 저장 계층 테스트는 전부 통과하면서
+    브라우저에서만 값이 사라진다 — 실제로 그랬다.
+    """
+
+    def setUp(self):
+        self.con = temp_db()
+
+    def test_post_carries_condition_and_note(self):
+        created = server.route(
+            self.con,
+            "POST",
+            "/api/todos",
+            {},
+            {
+                "title": "할일",
+                "category_id": 1,
+                "precondition": CONDITION,
+                "note": "컨텍스트",
+            },
+        )
+        stored = todo_repo.get(self.con, created["id"])
+        self.assertEqual(stored["precondition"], CONDITION)
+        self.assertEqual(stored["note"], "컨텍스트")
+
+    def test_popup_hint_matches_cli_help(self):
+        """안내 문구는 CLI 도움말과 같아야 한다.
+
+        두 곳에서 다르게 설명하면 어느 규약이 맞는지 알 수 없다. 화면 쪽 문구는
+        static/lang/ko.json 에 있고(index.html 은 키만 갖는다) 상수를 끼워 넣을 수
+        없으므로 같은 문장인지 여기서 대조한다
+        """
+        korean = json.loads((STATIC / "lang" / "ko.json").read_text(encoding="utf-8"))
+        self.assertEqual(korean["common.preconditionHint"], PRECONDITION_HINT)
+        self.assertIn("common.preconditionHint", INDEX.read_text(encoding="utf-8"))
+        self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
+        # 예시는 placeholder 로 보여 준다 (개행은 &#10;). CLI 도움말과 같은 상수를
+        # 그대로 쓰므로 이 자리만 한국어로 남는다
+        self.assertIn(
+            PRECONDITION_EXAMPLE.replace("\n", "&#10;"), INDEX.read_text(encoding="utf-8")
+        )
 
 
 if __name__ == "__main__":

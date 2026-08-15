@@ -19,9 +19,7 @@ def reorder(con, table, ids, where, params):
         row["id"] for row in con.execute(f"SELECT id FROM {table} WHERE {where}", params)
     ]
     if sorted(ids) != sorted(existing):
-        raise Validation(
-            f"재정렬 대상이 범위와 일치하지 않음 (요청 {len(ids)}건, 범위 {len(existing)}건)"
-        )
+        raise Validation("목록이 바뀌었습니다. 새로고침 후 다시 시도해 주세요")
     with transaction(con):
         for order, item_id in enumerate(ids, start=FIRST_SORT_ORDER):
             con.execute(f"UPDATE {table} SET sort_order=? WHERE id=?", (order, item_id))

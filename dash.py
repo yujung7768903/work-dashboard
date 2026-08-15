@@ -10,22 +10,37 @@ from app.constants import (
     GTASKS_CLIENT_ID_ENV,
     GTASKS_CLIENT_SECRET_ENV,
     HISTORY_DAY_CHOICES,
+    LANGUAGES,
+    PRECONDITION_HINT,
+    SESSION_ID_ENV,
+    STATUS_DOING,
     STATUS_DONE,
     UNASSIGNED_LABEL,
 )
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
-from app.repositories import subtasks as subtask_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
+from app.repositories import settings as settings_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import board, gtasks, gtasks_auth, history, planning, release
-from app.services import session_link, usage
+from app.repositories import autorun as autorun_repo
+from app.services import (
+    autorun,
+    board,
+    gtasks,
+    gtasks_auth,
+    history,
+    merge,
+    planning,
+    release,
+    session_link,
+    usage,
+)
 
 NONE_LITERAL = "none"
-REORDER_KINDS = ("categories", "workspaces", "todos", "subtasks")
-STATUS_TARGETS = ("todo", "subtask", "workspace")
+REORDER_KINDS = ("categories", "workspaces", "todos")
+STATUS_TARGETS = ("todo", "workspace")
 CONTEXT_ARGS = ("background", "purpose", "goal", "considerations")
 DETAIL_LABELS = (
     ("배경", "background"),
@@ -33,13 +48,19 @@ DETAIL_LABELS = (
     ("목표", "goal"),
     ("고려사항", "considerations"),
 )
-# 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다
-PRECONDITION_HELP = (
-    "착수 가능 조건. 참/거짓이 갈리는 한 문장으로 쓴다."
-    " 다른 할일이 조건이면 #id, 자동 확인이 되면 둘째 줄에 '확인: <명령>'"
-)
+# 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다.
+# 문구는 팝업과 공유한다 (app.constants.PRECONDITION_HINT)
+PRECONDITION_HELP = f"착수 가능 조건. {PRECONDITION_HINT}"
+AUTORUN_ACTIONS = ("on", "off", "status")
+AUTORUN_RECENT = 5  # 상태 출력에 붙이는 최근 실행 건수
 EXIT_OK = 0
 EXIT_ERROR = 1
+# 세션 인자를 생략했다는 표시. 값이 아니라 자리표라 파싱 뒤 환경변수로 바뀐다
+SELF_SESSION = object()
+SESSION_ARG_HELP = (
+    f"생략하면 {SESSION_ID_ENV} 가 가리키는 이 세션."
+    " 터미널에서 직접 실행할 때는 값을 적는다"
+)
 # 사용률 막대와 다른 줄에 그리므로 폭은 넉넉하다. 한글은 두 칸을 먹으니 줄 폭의 절반쯤
 STATUSLINE_TITLE_MAX = 40
 USAGE_CLI_DAYS = 7
@@ -61,6 +82,8 @@ def main(argv=None):
     args = _build_parser().parse_args(argv)
     con = connect()
     try:
+        if getattr(args, "session", None) is SELF_SESSION:
+            args.session = _self_session()
         args.handler(con, args)
     except DomainError as error:
         print(str(error), file=sys.stderr)
@@ -84,8 +107,8 @@ def _build_parser():
 
     upcoming = sub.add_parser("next", help="다음에 할 일 1건")
     upcoming.add_argument("--workspace", type=int, default=None)
-    upcoming.add_argument("--session", default=None,
-                          help="이 세션이 잡은 할일은 후보로 남기고 남의 것은 뺌")
+    _add_session_arg(upcoming, required=False,
+                     note="이 세션이 잡은 할일은 후보로 남기고 남의 것은 뺌.")
     _add_json_flag(upcoming)
     upcoming.set_defaults(handler=_cmd_next)
 
@@ -110,17 +133,10 @@ def _build_parser():
     add_todo.add_argument("title")
     add_todo.add_argument("--category", default=None)
     add_todo.add_argument("--workspace", default=None)
-    add_todo.add_argument("--session", default=None,
-                          help="이 세션이 붙은 워크스페이스에 추가")
+    _add_session_arg(add_todo, required=False, note="이 세션이 붙은 워크스페이스에 추가.")
     add_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
     add_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
     add_todo.set_defaults(handler=_cmd_add_todo)
-
-    add_subtask = sub.add_parser("add-subtask")
-    add_subtask.add_argument("todo_id", type=int)
-    add_subtask.add_argument("title")
-    add_subtask.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
-    add_subtask.set_defaults(handler=_cmd_add_subtask)
 
     move_todo = sub.add_parser("move-todo")
     move_todo.add_argument("todo_id", type=int)
@@ -138,7 +154,7 @@ def _build_parser():
     reorder.add_argument(
         "--scope",
         default=None,
-        help="todos 면 워크스페이스 id(미분류는 none), subtasks 면 할일 id",
+        help="todos 면 워크스페이스 id(미분류는 none)",
     )
     reorder.add_argument("ids", nargs="+", type=int)
     reorder.set_defaults(handler=_cmd_reorder)
@@ -162,14 +178,14 @@ def _build_parser():
     sessions.set_defaults(handler=_cmd_sessions)
 
     classify = sub.add_parser("classify", help="세션 분류 등록")
-    classify.add_argument("session")
+    _add_session_arg(classify)
     classify.add_argument("--category", default=None)
     classify.add_argument("--workspace", type=int, default=None)
     classify.set_defaults(handler=_cmd_classify)
 
     show_todo = sub.add_parser("show-todo", help="할일 목록 (id·제목·컨텍스트 유무)")
     show_todo.add_argument("--workspace", type=int, default=None)
-    show_todo.add_argument("--session", default=None)
+    _add_session_arg(show_todo, required=False, note="이 세션이 붙은 범위만.")
     _add_json_flag(show_todo)
     show_todo.set_defaults(handler=_cmd_show_todo)
 
@@ -179,8 +195,14 @@ def _build_parser():
     show_note.set_defaults(handler=_cmd_show_note)
 
     link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
-    link_todo.add_argument("session")
+    _add_session_arg(link_todo)
     link_todo.add_argument("todo_id", type=int)
+    link_todo.add_argument(
+        "--status",
+        choices=(STATUS_DOING, STATUS_DONE),
+        default=None,
+        help="연결하며 넣을 상태. 기본은 doing. 이미 master 에 병합된 작업이면 done",
+    )
     link_todo.add_argument(
         "--past",
         action="store_true",
@@ -189,15 +211,34 @@ def _build_parser():
     )
     link_todo.set_defaults(handler=_cmd_link_todo)
 
+    merge_cmd = sub.add_parser(
+        "merge", help="워크트리 브랜치를 master 로 병합 (상태 확인·테스트·해제까지 한 번에)"
+    )
+    _add_session_arg(merge_cmd)
+    merge_cmd.add_argument("--worktree", default=None, help="기본값은 세션의 작업 위치")
+    merge_cmd.add_argument(
+        "--message", default=None, help="병합 커밋 제목. 기본값은 브랜치 첫 커밋 제목"
+    )
+    merge_cmd.add_argument(
+        "--test",
+        default=None,
+        help=f"테스트 명령. 기본값은 {merge.DEFAULT_TEST_ENTRY} 가 있으면"
+        f" '{merge.DEFAULT_TEST_COMMAND}'",
+    )
+    merge_cmd.add_argument(
+        "--no-test", action="store_true", help="테스트를 돌리지 않고 병합"
+    )
+    merge_cmd.set_defaults(handler=_cmd_merge)
+
     finish = sub.add_parser("finish", help="병합 후 리소스 해제 (할일 done·서버 종료)")
-    finish.add_argument("session")
+    _add_session_arg(finish)
     finish.add_argument("--worktree", default=None, help="기본값은 세션의 작업 위치")
     finish.set_defaults(handler=_cmd_finish)
 
     status_line = sub.add_parser(
         "statusline", help="상태줄 한 줄 (연결된 할일·상태·워크트리 서버 포트)"
     )
-    status_line.add_argument("session")
+    _add_session_arg(status_line)
     status_line.add_argument(
         "--cwd", default=None, help="세션의 현재 위치. 상태줄이 넘겨주는 값이 가장 정확하다"
     )
@@ -211,6 +252,10 @@ def _build_parser():
     onboard = sub.add_parser("onboard", help="초기 설정 상태")
     onboard.add_argument("--skip", action="store_true", help="자동 분류 거절. 다시 묻지 않음")
     onboard.set_defaults(handler=_cmd_onboard)
+
+    language_cmd = sub.add_parser("language", help="화면 언어 (인자 없으면 현재 값)")
+    language_cmd.add_argument("code", nargs="?", choices=LANGUAGES)
+    language_cmd.set_defaults(handler=_cmd_language)
 
     usage_cmd = sub.add_parser("usage", help="한도 사용률과 토큰 추이")
     _add_json_flag(usage_cmd)
@@ -234,6 +279,46 @@ def _build_parser():
     _add_json_flag(gsync)
     gsync.set_defaults(handler=_cmd_gtasks_sync)
 
+    autorun_cmd = sub.add_parser("autorun", help="자율 실행 켜기·끄기·상태")
+    autorun_cmd.add_argument("action", choices=AUTORUN_ACTIONS)
+    _add_json_flag(autorun_cmd)
+    autorun_cmd.set_defaults(handler=_cmd_autorun)
+
+    autorun_tick = sub.add_parser("autorun-tick", help="자율 실행 판정 (5분 크론)")
+    autorun_tick.add_argument(
+        "--dry-run", action="store_true", dest="dry_run", help="띄우지 않고 판정 사유만"
+    )
+    _add_json_flag(autorun_tick)
+    autorun_tick.set_defaults(handler=_cmd_autorun_tick)
+
+    autorun_prompt = sub.add_parser("autorun-prompt", help="자율 세션에 줄 지시 전문")
+    autorun_prompt.add_argument("todo_id", type=int)
+    autorun_prompt.add_argument(
+        "--cwd", default=None, help="기본값은 그 워크스페이스에서 작업하던 저장소"
+    )
+    autorun_prompt.set_defaults(handler=_cmd_autorun_prompt)
+
+    autorun_reopen = sub.add_parser(
+        "autorun-reopen", help="확인(완료)을 되돌려 다시 검토 대기로"
+    )
+    autorun_reopen.add_argument("run_id", type=int)
+    autorun_reopen.set_defaults(handler=_cmd_autorun_reopen)
+
+    autorun_request = sub.add_parser(
+        "autorun-request", help="판단 보류 — 자율 수행을 멈추고 사람 결정을 요청"
+    )
+    _add_session_arg(autorun_request)
+    autorun_request.add_argument(
+        "note", help="무엇이 필요한지 한 문장 (기획 공백·방향 미정·토큰/Jira/문서 위치 등)"
+    )
+    autorun_request.set_defaults(handler=_cmd_autorun_request)
+
+    autorun_finish = sub.add_parser(
+        "autorun-finish", help="자율 수행 완료 — 검토 대기로 전환 (할일 상태는 안 건드림)"
+    )
+    _add_session_arg(autorun_finish)
+    autorun_finish.set_defaults(handler=_cmd_autorun_finish)
+
     return parser
 
 
@@ -241,6 +326,32 @@ def _add_json_flag(parser):
     parser.add_argument(
         "--json", action="store_true", dest="as_json", help="Claude 파싱용 JSON 출력"
     )
+
+
+def _add_session_arg(parser, required=True, note=""):
+    """세션 인자. 생략하면 환경변수로 자기 세션을 찾는다.
+
+    required 는 '이 명령에 세션이 꼭 필요한가'다. 필요 없는 쪽(--session)은 플래그를
+    빼는 것이 '세션 범위 없음'이라 기존 뜻을 지키고, 값 없이 적었을 때만 이 세션으로 본다
+    """
+    if required:
+        parser.add_argument(
+            "session", nargs="?", default=SELF_SESSION, help=SESSION_ARG_HELP
+        )
+        return
+    parser.add_argument(
+        "--session", nargs="?", const=SELF_SESSION, default=None,
+        help=f"{note} 값을 생략하면 이 세션 ({SESSION_ID_ENV})",
+    )
+
+
+def _self_session():
+    session = os.environ.get(SESSION_ID_ENV)
+    if not session:
+        raise Validation(
+            f"세션을 알 수 없음 ({SESSION_ID_ENV} 없음). session 인자에 값을 적을 것"
+        )
+    return session
 
 
 def _cmd_ls(con, args):
@@ -252,8 +363,6 @@ def _cmd_ls(con, args):
         print(f"{group['name']}  {group['done_count']}/{group['total_count']}")
         for todo in group["todos"]:
             print(f"  [{todo['status']}] {todo['id']}. {todo['title']}")
-            for subtask in todo["subtasks"]:
-                print(f"      - [{subtask['status']}] {subtask['title']}")
 
 
 def _cmd_next(con, args):
@@ -326,13 +435,6 @@ def _scope_from_session(con, claude_session_id):
     return session["workspace_id"], session["category_id"]
 
 
-def _cmd_add_subtask(con, args):
-    created = subtask_repo.create(
-        con, args.todo_id, args.title, precondition=args.precondition
-    )
-    print(f"{created['id']}. {created['title']}")
-
-
 def _cmd_move_todo(con, args):
     workspace_id = None if args.workspace == NONE_LITERAL else int(args.workspace)
     moved = todo_repo.update(con, args.todo_id, workspace_id=workspace_id)
@@ -347,7 +449,6 @@ def _cmd_move_todo(con, args):
 def _cmd_set_status(con, args):
     updaters = {
         "workspace": workspace_repo.update,
-        "subtask": subtask_repo.update,
         "todo": todo_repo.update,
     }
     updated = updaters[args.target](con, args.item_id, status=args.status)
@@ -359,11 +460,9 @@ def _cmd_reorder(con, args):
         category_repo.reorder(con, args.ids)
     elif args.kind == "workspaces":
         workspace_repo.reorder(con, args.ids)
-    elif args.kind == "todos":
+    else:
         scope = None if args.scope in (None, NONE_LITERAL) else int(args.scope)
         todo_repo.reorder(con, args.ids, scope)
-    else:
-        subtask_repo.reorder(con, args.ids, int(args.scope))
     print(f"{len(args.ids)}건 재정렬")
 
 
@@ -403,11 +502,36 @@ def _cmd_sessions(con, args):
 
 
 def _cmd_classify(con, args):
+    """카테고리만 세션에 남는다. 워크스페이스 소속은 할일을 연결해야 생긴다"""
     updated = session_repo.classify(
         con, args.session, category_name=args.category, workspace_id=args.workspace
     )
-    scope = updated["workspace_id"] or "-"
-    print(f"분류됨: category={updated['category_id']} workspace={scope}")
+    print(f"분류됨: category={updated['category_id']}")
+    if args.workspace is None:
+        return
+    print(_link_candidates(con, args.workspace, args.session))
+
+
+def _link_candidates(con, workspace_id, claude_session_id):
+    """분류는 할일 연결까지 해야 끝난다 — 그 워크스페이스에서 아직 아무도 안 잡은 할일.
+
+    무엇이 이 세션의 작업인지는 의미 판단이라 코드가 고르지 않는다. 후보만 좁혀 준다
+    """
+    claimed = todo_repo.ids_claimed_by_others(con, claude_session_id)
+    open_todos = [
+        todo
+        for todo in todo_repo.list_by_workspace(con, workspace_id)
+        if todo["status"] != STATUS_DONE and todo["id"] not in claimed
+    ]
+    if not open_todos:
+        return (
+            f"연결할 후보 없음. 새로 만들 것:"
+            f" add-todo <제목> --workspace {workspace_id} 후 link-todo <todo-id>"
+        )
+    lines = ["이 세션의 작업을 고를 것 (없으면 add-todo 로 새로 만든다):"]
+    lines += [f"  {todo['id']}. [{todo['status']}] {todo['title']}" for todo in open_todos]
+    lines.append("  → link-todo <todo-id>")
+    return "\n".join(lines)
 
 
 def _cmd_show_todo(con, args):
@@ -443,9 +567,31 @@ def _todos_in_scope(con, args):
     ]
 
 
+def _cmd_merge(con, args):
+    """병합 파이프라인. 어디까지 갔는지 찍고, 중단 사유가 있으면 그것으로 실패한다"""
+    result = merge.merge(
+        con,
+        args.session,
+        worktree=args.worktree,
+        message=args.message,
+        test=args.test,
+        no_test=args.no_test,
+    )
+    for label, detail in result["steps"]:
+        # 중단 사유는 stderr 로 나간다 — 여기서 흘려보내지 않으면 사유가 단계보다 먼저 찍힌다
+        print(f"{label}: {detail}", flush=True)
+    if result["aborted"]:
+        raise Validation("중단 — " + result["aborted"])
+    _print_release(result["release"])
+
+
 def _cmd_finish(con, args):
     """병합으로 끝난 작업의 뒷정리. 워크트리 제거는 ExitWorktree 몫이라 안내만 한다"""
-    result = release.finish(con, args.session, worktree=args.worktree)
+    _print_release(release.finish(con, args.session, worktree=args.worktree))
+
+
+def _print_release(result):
+    """해제 결과. merge 와 finish 가 같은 형식으로 찍어야 읽는 쪽이 헷갈리지 않는다"""
     print("완료한 할일: " + (", ".join(str(i) for i in result["todos"]) or "(없음)"))
     for pid, command in result["killed"]:
         print(f"종료한 프로세스: {pid} {command}")
@@ -504,18 +650,13 @@ def _why_nothing_killed(result):
 
 def _cmd_show_note(con, args):
     todo = todo_repo.get(con, args.todo_id)
-    subtasks = subtask_repo.list_by_todo(con, args.todo_id)
     if args.as_json:
-        _emit_json({"todo": todo, "subtasks": subtasks})
+        _emit_json({"todo": todo})
         return
     print(f"[{todo['status']}] {todo['id']}. {todo['title']}")
     if todo["precondition"]:
         print(_indented("착수 조건: ", todo["precondition"]))
     print(f"컨텍스트: {todo['note'] or '(없음)'}")
-    for subtask in subtasks:
-        print(f"  - [{subtask['status']}] {subtask['title']}")
-        if subtask["precondition"]:
-            print(_indented("      조건: ", subtask["precondition"]))
 
 
 def _indented(label, text):
@@ -537,8 +678,10 @@ def _cmd_link_todo(con, args):
     session = args.session
     if args.past:
         session = history.ensure_past_session(con, session)
-    session_repo.link_todo(con, session, args.todo_id, claim=not args.past)
-    print(f"할일 {args.todo_id} 연결됨")
+    session_repo.link_todo(
+        con, session, args.todo_id, claim=not args.past, status=args.status
+    )
+    print(f"할일 {args.todo_id} 연결됨" + (f" ({args.status})" if args.status else ""))
 
 
 def _cmd_scan_history(con, args):
@@ -555,6 +698,13 @@ def _cmd_onboard(con, args):
         print("자동 분류를 하지 않습니다. 초기 설정 안내가 다시 뜨지 않습니다.")
         return
     print("초기 설정 필요" if session_link.needs_onboarding(con) else "초기 설정 완료 또는 거절됨")
+
+
+def _cmd_language(con, args):
+    """초기 설정 때 물어본 언어를 여기 적는다. 웹 설정 탭과 같은 값을 본다"""
+    if args.code:
+        settings_repo.set_language(con, args.code)
+    print(settings_repo.language(con))
 
 
 def _cmd_usage(con, args):
@@ -634,6 +784,69 @@ def _resolve_workspace(con, target):
     if not found:
         raise NotFound(f"'{target}' 에 해당하는 워크스페이스 없음")
     return found
+
+
+def _cmd_autorun(con, args):
+    """켜고 끄기는 명시적. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않는다"""
+    if args.action != "status":
+        autorun_repo.set_enabled(con, args.action == "on")
+    state = autorun_repo.state(con)
+    runs = autorun_repo.recent(con, AUTORUN_RECENT)
+    if args.as_json:
+        _emit_json({"state": state, "recent": runs})
+        return
+    print(f"autorun: {'on' if state['enabled'] else 'off'}"
+          f" (연속 막힘 {state['blocked_streak']}, 마지막 tick {state['last_tick_at'] or '없음'})")
+    for run in runs:
+        print(f"  #{run['id']} 할일 {run['todo_id']} [{run['outcome'] or '진행 중'}]"
+              f" job={run['job_id'] or '?'} session={run['claude_session_id'] or '?'}")
+
+
+def _cmd_autorun_tick(con, args):
+    decision = autorun.tick(con, dry_run=args.dry_run)
+    if args.as_json:
+        _emit_json(decision)
+        return
+    print(decision["reason"])
+    for run in decision.get("closed") or []:
+        print(f"  실행 #{run['id']} 닫음 → {run['outcome']}")
+    picked = decision.get("todo")
+    if picked:
+        print(f"  대상: {picked['id']}. {picked['title']}")
+    if decision.get("cwd"):
+        print(f"  작업 위치: {decision['cwd']}")
+    if decision.get("run"):
+        print(f"  띄움: job={decision['run']['job_id']}"
+              f" session={decision['run']['claude_session_id'] or '(못 받음)'}")
+    if decision.get("error"):
+        print(f"  실패: {decision['error']}", file=sys.stderr)
+
+
+def _cmd_autorun_prompt(con, args):
+    """자율 세션에 실제로 들어가는 지시. 띄우기 전에 사람이 눈으로 볼 수 있어야 한다"""
+    todo = todo_repo.get(con, args.todo_id)
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
+    )
+    cwd = args.cwd or autorun.target_cwd(con, workspace)
+    if not cwd:
+        raise Validation(autorun.REASON_NO_CWD + " — --cwd 로 지정할 것")
+    print(autorun.build_prompt(todo, workspace, cwd))
+
+
+def _cmd_autorun_reopen(con, args):
+    run = autorun.reopen_run(con, args.run_id)
+    print(f"실행 {run['id']} (할일 {run['todo_id']}) → {run['outcome']}")
+
+
+def _cmd_autorun_request(con, args):
+    run = autorun_repo.mark_requested(con, args.session, args.note)
+    print(f"요청 등록: 할일 {run['todo_id']} (실행 #{run['id']}) — 자율 수행 후보에서 빠짐")
+
+
+def _cmd_autorun_finish(con, args):
+    run = autorun_repo.mark_finished(con, args.session)
+    print(f"완료 표시: 할일 {run['todo_id']} (실행 #{run['id']}) — 검토 대기로 넘어감")
 
 
 def _emit_json(payload):

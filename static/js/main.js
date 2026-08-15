@@ -1,6 +1,8 @@
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
+// (이 모듈은 boot.js 가 언어를 확정한 뒤에 들어온다 — 아래 TITLES 가 그때 번역된다)
 import { renderBoard, renderShared } from "./board.js";
-import { renderCategories } from "./categories.js";
+import { t } from "./i18n.js";
+import { renderSettings } from "./settings.js";
 import { renderUsage } from "./usage.js";
 import { renderWorkspaceTab } from "./workspace.js";
 import { renderWorktrees } from "./worktrees.js";
@@ -29,7 +31,7 @@ export function renderBoardTab() {
 const RENDERERS = {
   board: renderBoardTab,
   workspace: renderWorkspaceTab,
-  categories: renderCategories,
+  settings: renderSettings,
   usage: renderUsage,
 };
 
@@ -38,10 +40,10 @@ const DEFAULT_TAB = "usage";
 
 // 상단 바 제목. 레일 메뉴 라벨과 같은 말을 쓴다
 const TITLES = {
-  board: "보드",
-  workspace: "워크스페이스",
-  categories: "카테고리",
-  usage: "사용량",
+  board: t("nav.board"),
+  workspace: t("nav.workspace"),
+  settings: t("nav.settings"),
+  usage: t("nav.usage"),
 };
 
 export function showError(message) {
