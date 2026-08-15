@@ -613,6 +613,9 @@ button:disabled { color: var(--line); cursor: default; }
   display: inline-flex; align-items: center; gap: var(--sp-4);
   flex: none; cursor: pointer;
 }
+/* display 를 지정하면 브라우저 기본 [hidden] 규칙을 덮어써서 hidden=true 여도 그려진다.
+   연동 전에 스위치가 보이면 누를 수 없는 것을 누르게 된다 */
+.switch[hidden] { display: none; }
 .switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .switch .track {
   position: relative; width: 26px; height: 14px; flex: none;

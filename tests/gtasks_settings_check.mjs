@@ -3,6 +3,7 @@
 // 끄면 카테고리 스위치가 값을 유지한 채 회색으로 잠기는지
 // 실행: node tests/gtasks_settings_check.mjs (tests/test_gtasks_settings.py 가 이걸 부른다)
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { bootKorean } from "./i18n_boot.mjs";
 
 const asked = [];
@@ -144,6 +145,13 @@ assert.equal(
   "구글 태스크와 연동하면, 이 곳에서 연동할 카테고리를 관리할 수 있습니다."
 );
 assert.equal(elements["gtasks-switch"].hidden, true, "미연동인데 스위치가 보인다");
+// hidden 속성만으로는 부족하다 — .switch 에 display 가 걸려 있으면 브라우저 기본
+// [hidden] 규칙을 덮어써서 속성이 true 여도 그대로 그려진다. CSS 쪽도 같이 본다
+const css = await readFile(new URL("../static/css/app.css", import.meta.url), "utf-8");
+assert.ok(
+  /\.switch\[hidden\]\s*\{[^}]*display:\s*none/.test(css),
+  ".switch[hidden] 에 display:none 이 없다 — hidden=true 여도 화면에는 보인다"
+);
 assert.equal(elements["gtasks-warn"].hidden, false, "사유가 있는데 경고가 안 보인다");
 assert.equal(elements["gtasks-reason"].textContent, "연결 안 됨");
 assert.equal(switches().length, 0, "미연동인데 카테고리 스위치가 있다");

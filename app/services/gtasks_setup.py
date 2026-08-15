@@ -7,7 +7,8 @@
 짝은 **이름이 같은지**로만 맺는다. 접두어를 붙이면 폰에서 손으로 만든 목록이 영영
 안 붙어 같은 이름이 둘씩 생긴다
 """
-from app.constants import GTASKS_ERROR_NO_AUTH
+from app.constants import GTASKS_ERROR_NO_AUTH, GTASKS_NEED_CONNECT
+from app.errors import Validation
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
 from app.services import gtasks_api
@@ -43,12 +44,25 @@ def _connected():
     return bool(gtasks_api.stored_client().get("refresh_token"))
 
 
+def _client_or_guide(client):
+    """인증 전이면 다음에 누를 것을 알려준다.
+
+    이 자리를 비워 두면 Client() 안의 load_config 가 파일 경로와 CLI 명령이 박힌
+    원문을 던지고, 화면에는 그게 그대로 뜬다 — 버튼이 바로 아래 있는데도
+    """
+    if client is not None:
+        return client
+    if not _connected():
+        raise Validation(GTASKS_NEED_CONNECT)
+    return gtasks_api.Client()
+
+
 def plan(con, client=None):
     """무엇을 만들지 미리 보여준다. 아무것도 쓰지 않는다
 
     화면이 이 결과를 그대로 팝업에 뿌리고 사용자의 확인을 받는다
     """
-    client = client if client is not None else gtasks_api.Client()
+    client = _client_or_guide(client)
     local = [category["name"] for category in category_repo.list_all(con)]
     remote = [_title(row) for row in client.lists()]
     remote = [title for title in remote if title]
@@ -69,7 +83,7 @@ def apply(con, client=None):
     켜기까지 여기서 하는 이유는 '맞췄지만 꺼져 있는' 중간 상태를 남기지 않기 위해서다.
     사용자가 확인 팝업에서 누른 '진행'이 곧 켜겠다는 뜻이다
     """
-    client = client if client is not None else gtasks_api.Client()
+    client = _client_or_guide(client)
     remote_by_title = {}
     for row in client.lists():
         title = _title(row)

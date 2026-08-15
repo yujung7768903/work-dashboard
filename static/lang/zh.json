@@ -245,5 +245,6 @@
   "error.mergeConflict": "因冲突未能合并，需要手动处理",
   "error.scopeRequired": "请在分类或工作区中选择其一",
   "error.gtasksNoAuth": "未连接",
-  "error.gtasksExpired": "登录已过期"
+  "error.gtasksExpired": "登录已过期",
+  "error.gtasksNeedConnect": "请先使用下方的「连接」按钮关联 Google 任务"
 }

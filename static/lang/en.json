@@ -245,5 +245,6 @@
   "error.mergeConflict": "The merge has conflicts. Resolve them manually",
   "error.scopeRequired": "Choose either a category or a workspace",
   "error.gtasksNoAuth": "Not connected",
-  "error.gtasksExpired": "Sign-in expired"
+  "error.gtasksExpired": "Sign-in expired",
+  "error.gtasksNeedConnect": "Use the Connect button below to link Google Tasks first"
 }

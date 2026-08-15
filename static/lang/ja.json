@@ -245,5 +245,6 @@
   "error.mergeConflict": "コンフリクトによりマージできませんでした。手動で解決してください",
   "error.scopeRequired": "カテゴリかワークスペースのどちらかを選んでください",
   "error.gtasksNoAuth": "未接続",
-  "error.gtasksExpired": "ログインの有効期限切れ"
+  "error.gtasksExpired": "ログインの有効期限切れ",
+  "error.gtasksNeedConnect": "下の「連携する」ボタンから Google ToDo との連携を先に行ってください"
 }

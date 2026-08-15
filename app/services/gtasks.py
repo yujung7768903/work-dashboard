@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from app.constants import (
     GTASKS_ERROR_EXPIRED,
     GTASKS_ERROR_NO_AUTH,
+    GTASKS_NEED_CONNECT,
     GTASKS_NOTES_MAX,
     GTASKS_SEEN_KEY,
     GTASKS_STATUS_DONE,
@@ -37,7 +38,7 @@ from app.constants import (
     WORKSPACE_ACTIVE,
 )
 from app.db import meta_get, meta_set
-from app.errors import DomainError
+from app.errors import DomainError, Validation
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
 from app.repositories import todos as todo_repo
@@ -91,9 +92,16 @@ def _reason(error):
     return text
 
 
+def _guided_client():
+    """인증 전이면 파일 경로가 박힌 원문 대신 다음에 누를 것을 알려준다"""
+    if not gtasks_api.stored_client().get("refresh_token"):
+        raise Validation(GTASKS_NEED_CONNECT)
+    return gtasks_api.Client()
+
+
 def sync(con, client=None, dry_run=False):
     """한 바퀴 돌고 무엇을 했는지 보고. dry_run 이면 아무것도 쓰지 않는다"""
-    client = client if client is not None else gtasks_api.Client()
+    client = client if client is not None else _guided_client()
     report = {action: [] for action in ACTIONS}
     previous = _load_seen(con)
     seen = set()

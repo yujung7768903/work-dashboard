@@ -12,6 +12,7 @@ from app.constants import (
     GTASKS_CLIENT_ID_ENV,
     GTASKS_CLIENT_SECRET_ENV,
     GTASKS_ERROR_EXPIRED,
+    GTASKS_NEED_CONNECT,
     GTASKS_STATUS_DONE,
     GTASKS_STATUS_TODO,
     OUTCOME_REVIEW,
@@ -397,6 +398,15 @@ class GtasksSetupTest(unittest.TestCase):
         linked = category_repo.get_by_name(self.con, self.names[0])
         self.assertEqual(linked["google_list_id"], existing["id"])
         self.assertEqual(len(self.client.lists()), len(self.names))
+
+    def test_인증_전에_켜면_경로_대신_다음에_누를_것을_알려준다(self):
+        """load_config 원문은 파일 경로와 CLI 명령이 박혀 있다. 버튼이 바로 아래 있는데도"""
+        empty = mock.patch.object(gtasks_api, "stored_client", return_value={})
+        for call in (gtasks_setup.plan, gtasks_setup.apply, gtasks.sync):
+            with empty:
+                with self.assertRaises(Validation) as caught:
+                    call(self.con)
+            self.assertEqual(str(caught.exception), GTASKS_NEED_CONNECT)
 
     def test_설정_화면_payload_는_네트워크를_치지_않는다(self):
         payload = gtasks_setup.panel(self.con)
