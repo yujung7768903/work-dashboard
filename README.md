@@ -542,7 +542,7 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 | 테이블 | 역할 | 주요 컬럼 | 참조 |
 | --- | --- | --- | --- |
-| `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at`, `google_list_id`(구글 목록 연결), `gtasks_enabled`(카테고리별 동기화 on/off, 기본 1) | — |
+| `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at`, `google_list_id`(구글 목록 연결), `gtasks_enabled`(카테고리별 동기화 on/off, 기본 0) | — |
 | `workspaces` | 브랜치·Jira 단위 큰 작업. 배경·목적·목표·고려사항 보관 | `id`, `name`, `background`, `purpose`, `goal`, `considerations`, `status`(active/paused/done), `sort_order`, `jira_id`, `created_at`, `updated_at`, `google_task_id`(구글 최상위 태스크 연결) | `category_id` → `categories` |
 | `labels` | 할일 성격 표시. 한 할일에 여러 개 (github 이슈 라벨과 같은 뜻) | `id`, `name`(UNIQUE), `color`, `sort_order`, `created_at` | — |
 | `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
@@ -605,7 +605,7 @@ python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
 1. `연결하기` — 인증이 없을 때만 뜬다. 자격증명 안내 → `다음` → 입력 → 저장 → 구글 동의 창. 이미 받아 둔 자격증명이 있으면 안내와 입력을 건너뛴다
 2. `카테고리 맞추기` — 양쪽 목록을 읽어 **합집합**을 팝업으로 보여주고 확인을 받는다. 이름이 같은 것은 하나로 친다
 3. `진행` — 한쪽에만 있는 것을 반대쪽에 만든다. **여기서 멈춘다** — 할일 동기화는 하지 않는다
-4. 그 뒤에야 마스터 ON/OFF 스위치와 카테고리별 on/off 가 뜬다. 마스터를 끄면 **값은 그대로 둔 채** 회색으로 잠근다
+4. 그 뒤에야 마스터 ON/OFF 스위치와 카테고리별 on/off 가 뜬다. **카테고리는 전부 꺼진 채로 시작한다** — 목록을 맞추는 것과 할일을 주고받는 것은 다른 결정이고, 켜진 채로 시작하면 첫 동기화가 전 카테고리의 할일을 한꺼번에 폰으로 올린다. 마스터를 끄면 **값은 그대로 둔 채** 회색으로 잠근다
 
 합집합 확인 팝업은 **2번 한 번뿐**이다. 그 뒤로 마스터를 껐다 켜는 것은 스위치 하나로 끝난다 — 이미 맞춰 둔 목록을 켤 때마다 다시 확인받을 이유가 없다. 맞추기 전에는 켤 것이 없으므로 스위치 자체를 감춘다.
 

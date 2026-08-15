@@ -113,6 +113,8 @@ class GtasksSyncTest(unittest.TestCase):
         # 목록 맞추기는 gtasks_setup 의 몫이라 여기서는 결과만 만들어 둔다
         created = self.client.create_list(category["name"])
         category_repo.set_google_list_id(self.con, category["id"], created["id"])
+        # 목록을 맞춰도 기본은 off 다. 실제 화면과 같이 사람이 켠 상태에서 시작한다
+        category_repo.set_gtasks_enabled(self.con, category["id"], True)
         self.list_id = created["id"]
         self.category = category_repo.get(self.con, category["id"])
 
@@ -406,6 +408,19 @@ class GtasksSetupTest(unittest.TestCase):
         self.assertEqual(len(self.client.lists()), len(names))
         self.assertTrue(gtasks_state.state(self.con)["enabled"])
 
+    def test_맞춘_직후_카테고리는_전부_꺼져_있다(self):
+        """목록을 맞추는 것과 할일을 주고받는 것은 다른 결정이다.
+
+        켜진 채로 시작하면 첫 동기화가 전 카테고리의 할일을 한꺼번에 폰으로 올린다
+        """
+        self.client.create_list("운동")
+
+        gtasks_setup.apply(self.con, client=self.client)
+
+        rows = category_repo.list_all(self.con)
+        self.assertTrue(all(row["google_list_id"] for row in rows))
+        self.assertFalse(any(row["gtasks_enabled"] for row in rows))
+
     def test_이름이_같으면_목록을_다시_만들지_않고_링크만_맺는다(self):
         existing = self.client.create_list(self.names[0])
 
@@ -456,7 +471,8 @@ class GtasksSetupTest(unittest.TestCase):
 
         self.assertFalse(payload["state"]["enabled"])
         self.assertEqual(len(payload["categories"]), len(self.names))
-        self.assertTrue(all(row["enabled"] for row in payload["categories"]))
+        # 목록을 맞추는 것과 할일을 주고받는 것은 다른 결정이다 — 켜는 것은 사람이 고른다
+        self.assertFalse(any(row["enabled"] for row in payload["categories"]))
         self.assertFalse(any(row["linked"] for row in payload["categories"]))
 
 

@@ -291,12 +291,12 @@ def _add_gtasks_columns(con):
         columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
         if column not in columns:
             con.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
-    # 카테고리별 연동 여부. 기본 1 — 합집합 확인 화면에서 사용자가 승인한 목록이 기준이라
-    # 새로 생긴 카테고리도 켜져 있는 것이 사용자의 기대에 맞는다
+    # 카테고리별 연동 여부. 기본 0 — 목록을 맞추는 것과 할일을 주고받는 것은 다른 결정이다.
+    # 켜진 채로 시작하면 첫 동기화가 전 카테고리의 할일을 한꺼번에 폰으로 올린다
     columns = {row["name"] for row in con.execute("PRAGMA table_info(categories)")}
     if "gtasks_enabled" not in columns:
         con.execute(
-            "ALTER TABLE categories ADD COLUMN gtasks_enabled INTEGER NOT NULL DEFAULT 1"
+            "ALTER TABLE categories ADD COLUMN gtasks_enabled INTEGER NOT NULL DEFAULT 0"
         )
     con.commit()
 
