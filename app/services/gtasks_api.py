@@ -79,6 +79,20 @@ def save_config(config, path=None):
     return resolved
 
 
+def forget_refresh_token(path=None):
+    """계정 승인만 지운다. client_id/secret 은 GCP 앱 등록이라 남겨 둔다
+
+    둘까지 지우면 다시 붙일 때 콘솔에 가서 값을 또 받아와야 한다 — 사용자가 끊고 싶은
+    것은 구글 계정 연결이지 앱 등록이 아니다
+    """
+    resolved = path or GTASKS_CONFIG_PATH
+    stored = stored_client(resolved)
+    if not stored:
+        return resolved
+    stored.pop("refresh_token", None)
+    return save_config(stored, resolved)
+
+
 def post_form(url, fields):
     """토큰 발급·갱신용 form POST. 인증 흐름과 클라이언트가 같이 쓴다
 

@@ -83,6 +83,8 @@
   "gtasks.lastSync": "上次同步 {when}",
   "gtasks.neverSynced": "尚未同步",
   "gtasks.syncNow": "立即同步",
+  "gtasks.disconnect": "断开连接",
+  "gtasks.confirmDisconnect": "将断开 Google 账号连接。两侧的任务都会保留，重新连接后可继续同步。",
   "session.runningInitial": "运行中的会话 0",
   "session.runningCount": "运行中的会话 {count}",
   "session.unclassified": "待分类",

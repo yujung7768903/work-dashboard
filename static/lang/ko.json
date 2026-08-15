@@ -83,6 +83,8 @@
   "gtasks.lastSync": "마지막 동기화 {when}",
   "gtasks.neverSynced": "아직 동기화한 적 없음",
   "gtasks.syncNow": "지금 동기화",
+  "gtasks.disconnect": "연결 해제",
+  "gtasks.confirmDisconnect": "구글 계정 연결을 끊습니다. 양쪽 할일은 그대로 남고, 다시 연결하면 이어서 동기화됩니다.",
   "session.runningInitial": "돌고 있는 세션 0",
   "session.runningCount": "돌고 있는 세션 {count}",
   "session.unclassified": "분류 전",

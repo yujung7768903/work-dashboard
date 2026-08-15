@@ -146,9 +146,11 @@ def _sync_list(con, client, category, previous, seen, report, dry_run):
 
     # 워크스페이스를 먼저 올려야 그 아래 할일이 붙을 parent id 가 생긴다
     for space in spaces:
-        _push_space(con, client, list_id, space, remote, linked_space, seen, report, dry_run)
+        _push_space(con, client, list_id, space, remote, linked_space, previous, seen,
+                    report, dry_run)
     for todo in todos:
-        _push_todo(con, client, list_id, todo, remote, linked_space, seen, report, dry_run)
+        _push_todo(con, client, list_id, todo, remote, linked_space, previous, seen,
+                   report, dry_run)
 
 
 # ── 양쪽에 다 있는 짝 ────────────────────────────────────────────────────────
@@ -272,11 +274,11 @@ def _create_local(con, category, linked_space, task, report, dry_run):
         todo_repo.update(con, todo["id"], status=STATUS_DONE)
 
 
-def _push_space(con, client, list_id, space, remote, linked_space, seen, report, dry_run):
+def _push_space(con, client, list_id, space, remote, linked_space, previous, seen, report, dry_run):
     task_id = space["google_task_id"]
     if task_id and task_id in remote:
         return
-    if task_id:
+    if task_id and task_id in previous:
         _drop_local(con, workspace_repo, space["id"],
                     space["status"] == WORKSPACE_DONE, f"[{space['name']}]", report, dry_run)
         return
@@ -291,14 +293,16 @@ def _push_space(con, client, list_id, space, remote, linked_space, seen, report,
     seen.add(created["id"])
 
 
-def _push_todo(con, client, list_id, todo, remote, linked_space, seen, report, dry_run):
+def _push_todo(con, client, list_id, todo, remote, linked_space, previous, seen, report, dry_run):
     task_id = todo["google_task_id"]
     if task_id and task_id in remote:
         return
-    if task_id:
+    if task_id and task_id in previous:
         _drop_local(con, todo_repo, todo["id"], todo["status"] == STATUS_DONE,
                     f"#{todo['id']} {todo['title']}", report, dry_run)
         return
+    # 링크는 있는데 지난 회차에 본 적이 없다 = 목록이나 계정이 바뀐 것.
+    # 지운 증거가 없으므로 지우지 않고 다시 올린다 (아래에서 링크가 새 id 로 덮인다)
     report["created_remote"].append(f"#{todo['id']} {todo['title']}")
     if dry_run:
         return

@@ -354,6 +354,20 @@ class GtasksSyncTest(unittest.TestCase):
         self.assertIsNone(self.client.only_task().get("parent"))
         self.assertEqual(self.client.only_task()["id"], survivor["google_task_id"])
 
+    def test_본_적_없는_링크는_지우지_않고_다시_올린다(self):
+        """계정·목록이 바뀌면 모든 링크가 한꺼번에 낯설어진다. 지운 증거로 보면 전멸한다"""
+        todo = self._todo()
+        self._sync()
+        # 다른 계정으로 다시 붙인 상황 — 링크는 남았는데 그 태스크를 본 기록이 없다
+        gtasks._save_seen(self.con, set())
+        self.client.delete(self.list_id, self.client.only_task()["id"])
+
+        report = self._sync()
+
+        self.assertEqual(report["deleted_local"], [])
+        self.assertEqual(len(report["created_remote"]), 1)
+        self.assertEqual(self._reload(todo)["google_task_id"], self.client.only_task()["id"])
+
     def test_dry_run_은_양쪽_다_건드리지_않는다(self):
         todo = self._todo()
 
@@ -409,6 +423,25 @@ class GtasksSetupTest(unittest.TestCase):
                 with self.assertRaises(Validation) as caught:
                     call(self.con)
             self.assertEqual(str(caught.exception), GTASKS_NEED_CONNECT)
+
+    def test_연결_해제는_승인만_버리고_링크와_자격증명은_남긴다(self):
+        """다시 붙일 때 콘솔에 또 가지 않아야 하고, 같은 계정이면 그대로 이어져야 한다"""
+        config = os.path.join(tempfile.mkdtemp(), "gtasks.json")
+        with open(config, "w", encoding="utf-8") as handle:
+            handle.write('{"client_id": "a", "client_secret": "b", "refresh_token": "c"}')
+        gtasks_setup.apply(self.con, client=self.client)
+        linked = category_repo.list_all(self.con)[0]["google_list_id"]
+
+        with mock.patch.object(gtasks_api, "GTASKS_CONFIG_PATH", config):
+            payload = gtasks_setup.disconnect(self.con)
+            left = gtasks_api.stored_client(config)
+
+        self.assertNotIn("refresh_token", left)
+        self.assertEqual(left["client_id"], "a")  # 앱 등록은 남는다
+        self.assertFalse(payload["state"]["enabled"])
+        self.assertEqual(category_repo.list_all(self.con)[0]["google_list_id"], linked)
+        # 본 기록을 남기면 다시 붙였을 때 사라진 태스크를 '폰에서 지웠다'로 읽는다
+        self.assertEqual(gtasks._load_seen(self.con), set())
 
     def test_ssl_이_없으면_화면을_여는_순간_그_사유부터_보인다(self):
         """자격증명을 다 입력한 뒤에 알려주면 헛수고가 된다"""

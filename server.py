@@ -188,6 +188,9 @@ def _route_post(con, head, body):
         return {"result": gtasks_setup.apply(con), "panel": gtasks_setup.panel(con)}
     if head == "gtasks-sync":
         return {"report": gtasks.run(con), "panel": gtasks_setup.panel(con)}
+    if head == "gtasks-disconnect":
+        # 양쪽 데이터는 건드리지 않는다. 구글 계정 승인만 버린다
+        return gtasks_setup.disconnect(con)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 

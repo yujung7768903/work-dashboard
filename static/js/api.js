@@ -56,6 +56,7 @@ export const connectGtasks = (credentials) => request("POST", "/gtasks-auth", cr
 export const planGtasks = () => request("POST", "/gtasks-plan", {});
 export const setupGtasks = () => request("POST", "/gtasks-setup", {});
 export const syncGtasks = () => request("POST", "/gtasks-sync", {});
+export const disconnectGtasks = () => request("POST", "/gtasks-disconnect", {});
 
 export const getAutorun = () => request("GET", "/autorun");
 export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });

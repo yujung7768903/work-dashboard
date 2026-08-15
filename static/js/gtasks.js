@@ -21,9 +21,11 @@ function bind() {
 
 function paint(panel) {
   const enabled = Boolean(panel.state.enabled);
-  const head = document.getElementById("gtasks-switch");
   const toggle = document.getElementById("gtasks-toggle");
-  head.hidden = !panel.connected;
+  // 링크가 없으면 아직 카테고리를 안 맞춘 것이다 — 목록 대신 안내를 남긴다
+  const linked = panel.categories.filter((row) => row.linked);
+  // 맞추기 전에는 켤 것이 없다. 스위치를 보여주면 누를 수 없는 것을 누르게 된다
+  document.getElementById("gtasks-switch").hidden = !panel.connected || !linked.length;
   toggle.checked = enabled;
   paintWarning(panel.reason);
   const card = document.getElementById("gtasks-card");
@@ -33,8 +35,6 @@ function paint(panel) {
     card.append(note(t("gtasks.intro")), connectButton(panel));
     return;
   }
-  // 링크가 없으면 아직 카테고리를 안 맞춘 것이다 — 목록 대신 안내를 남긴다
-  const linked = panel.categories.filter((row) => row.linked);
   if (!linked.length) {
     card.append(note(t("gtasks.intro")), setupButton());
     return;
@@ -95,8 +95,19 @@ function footer(panel) {
   now.textContent = t("gtasks.syncNow");
   now.disabled = !panel.state.enabled;
   now.addEventListener("click", () => busy(now, async () => paint((await api.syncGtasks()).panel)));
-  foot.append(when, now);
+  foot.append(when, disconnectButton(), now);
   return foot;
+}
+
+function disconnectButton() {
+  const button = document.createElement("button");
+  button.textContent = t("gtasks.disconnect");
+  button.addEventListener("click", () => {
+    // 양쪽 데이터는 그대로라 되돌리기 쉽지만, 눌러서 끊길 줄 몰랐던 상황은 만들지 않는다
+    if (!globalThis.confirm?.(t("gtasks.confirmDisconnect"))) return;
+    return busy(button, async () => paint(await api.disconnectGtasks()));
+  });
+  return button;
 }
 
 function stamp(text) {
@@ -184,14 +195,10 @@ function ask(dialog) {
 // ── 진행 표시 ─────────────────────────────────────────────────────────────
 
 async function onToggle() {
+  // 스위치는 카테고리를 맞춘 뒤에만 보인다. 그러니 여기서 다시 확인할 것이 없다 —
+  // 합집합 팝업은 '카테고리 맞추기' 한 번뿐이고, 그 뒤로는 껐다 켜는 것이 전부다
   const toggle = document.getElementById("gtasks-toggle");
-  // 켜는 길은 카테고리 확인을 거친다. 끄는 것은 되돌리기 쉬워 바로 반영한다
-  if (!toggle.checked) {
-    await guard(toggle, async () => paint(await api.setGtasks(false)));
-    return;
-  }
-  toggle.checked = false; // 확인을 마쳐야 켜진다 — 미리 켜 두면 취소했을 때 어긋난다
-  await openPlan();
+  await guard(toggle, async () => paint(await api.setGtasks(toggle.checked)));
 }
 
 async function guard(box, action) {

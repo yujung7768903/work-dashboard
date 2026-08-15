@@ -143,6 +143,10 @@ function switches() {
   return flatten(elements["gtasks-card"]).filter((kid) => kid.type === "checkbox");
 }
 
+function dialogSwitch() {
+  return document.getElementById("gtasks-switch");
+}
+
 await bootKorean();
 const gtasks = await import("../static/js/gtasks.js");
 
@@ -219,6 +223,8 @@ panel = { ...panel, connected: true, reason: null };
 await gtasks.renderGtasks();
 const setup = flatten(elements["gtasks-card"]).find((kid) => kid.textContent === "카테고리 맞추기");
 assert.ok(setup, "연결됐는데 카테고리 맞추기 버튼이 없다");
+// 맞추기 전에는 켤 것이 없다. 스위치가 보이면 누를 수 없는 것을 누르게 된다
+assert.equal(dialogSwitch().hidden, true, "카테고리를 맞추기 전인데 스위치가 보인다");
 
 await setup.listeners.click();
 assert.ok(asked.includes("POST /api/gtasks-plan"), asked.join(", "));
@@ -238,10 +244,20 @@ await rows[1].listeners.change();
 assert.ok(asked.includes("PATCH /api/gtasks-categories/2"), asked.join(", "));
 
 // ── 4. 끄면 값은 그대로 두고 잠근다 ─────────────────────────────────────────
-const master = elements["gtasks-toggle"];
+const master = document.getElementById("gtasks-toggle");
 master.checked = false;
 await master.listeners.change();
 assert.ok(asked.includes("PATCH /api/gtasks"), asked.join(", "));
+// 다시 켤 때는 합집합 팝업을 띄우지 않는다 — 확인은 최초 맞추기 한 번뿐이다
+const beforeOn = asked.length;
+master.checked = true;
+await master.listeners.change();
+assert.ok(
+  !asked.slice(beforeOn).includes("POST /api/gtasks-plan"),
+  "이미 맞춘 뒤인데 켤 때 또 확인을 물었다"
+);
+master.checked = false;
+await master.listeners.change();
 const locked = switches();
 assert.deepEqual(locked.map((box) => box.disabled), [true, true, true], "꺼졌는데 안 잠겼다");
 assert.deepEqual(locked.map((box) => box.checked), [true, true, true], "꺼지면서 값이 바뀌었다");

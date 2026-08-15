@@ -7,7 +7,13 @@
 짝은 **이름이 같은지**로만 맺는다. 접두어를 붙이면 폰에서 손으로 만든 목록이 영영
 안 붙어 같은 이름이 둘씩 생긴다
 """
-from app.constants import GTASKS_ERROR_NO_AUTH, GTASKS_NEED_CONNECT, GTASKS_NO_SSL
+from app.constants import (
+    GTASKS_ERROR_NO_AUTH,
+    GTASKS_NEED_CONNECT,
+    GTASKS_NO_SSL,
+    GTASKS_SEEN_KEY,
+)
+from app.db import meta_set
 from app.errors import Validation
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
@@ -42,6 +48,19 @@ def panel(con):
             for category in category_repo.list_all(con)
         ],
     }
+
+
+def disconnect(con):
+    """구글 계정 연결만 끊는다. 양쪽 데이터는 그대로 둔다
+
+    링크(google_list_id·google_task_id)는 남긴다 — 같은 계정으로 다시 붙이면 그대로
+    이어진다. 대신 '지난 회차에 본 태스크' 기록은 지운다. 그게 남아 있으면 다시 붙였을 때
+    사라진 태스크를 '폰에서 지웠다'로 읽어 멀쩡한 할일을 지운다
+    """
+    gtasks_api.forget_refresh_token()
+    meta_set(con, GTASKS_SEEN_KEY, "[]")
+    gtasks_state.set_enabled(con, False)
+    return panel(con)
 
 
 def _reason(state, connected):
