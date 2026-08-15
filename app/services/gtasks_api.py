@@ -80,9 +80,14 @@ def save_config(config, path=None, replace=False):
     parent = os.path.dirname(resolved)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with open(resolved, "w", encoding="utf-8") as handle:
+    # 옆에 쓰고 바꿔치기한다. 곧바로 truncate 하면 그 사이 읽는 쪽이 깨진 JSON 을 보고
+    # stored_client 의 조용한 빈 값 폴백을 타, 병합 결과에서 refresh_token 이 사라진다.
+    # 서버가 여러 개 떠 있고 ThreadingHTTPServer 라 겹쳐 읽고 쓰는 순간이 실제로 있다
+    staging = resolved + ".tmp"
+    with open(staging, "w", encoding="utf-8") as handle:
         json.dump(config, handle, ensure_ascii=False, indent=2)
-    os.chmod(resolved, 0o600)
+    os.chmod(staging, 0o600)
+    os.replace(staging, resolved)
     return resolved
 
 

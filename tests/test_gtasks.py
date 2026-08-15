@@ -391,6 +391,12 @@ class GtasksSetupTest(unittest.TestCase):
         ready = mock.patch.object(gtasks_api, "HTTPS_READY", True)
         ready.start()
         self.addCleanup(ready.stop)
+        # connect·disconnect 를 부르는 검사를 하나 더 붙이면서 patch 를 빠뜨리면
+        # 사용자의 실제 refresh_token 이 지워진다. 클래스 전체를 임시 파일로 돌린다
+        self.config_path = os.path.join(tempfile.mkdtemp(), "gtasks.json")
+        config = mock.patch.object(gtasks_api, "GTASKS_CONFIG_PATH", self.config_path)
+        config.start()
+        self.addCleanup(config.stop)
 
     def test_계획은_양쪽_건수를_붙여_보여주고_아무것도_쓰지_않는다(self):
         """이름이 같다고 같은 것이 아니다 — 건수가 없으면 남의 목록과 통째로 합쳐진다"""
@@ -666,6 +672,24 @@ class GtasksAuthArgsTest(unittest.TestCase):
         left = gtasks_api.stored_client(self.config_path)
         self.assertEqual(left["refresh_token"], "keep-me")
         self.assertEqual(left["client_id"], "새 값")
+
+    def test_쓰는_도중에_읽어도_빈_파일이_보이지_않는다(self):
+        """곧바로 truncate 하면 그 사이 읽는 쪽이 빈 값으로 판단해 토큰을 잃는다"""
+        self._write_config(
+            '{"client_id": "a", "client_secret": "b", "refresh_token": "keep-me"}'
+        )
+        seen = []
+        original = gtasks_api.json.dump
+
+        def peeking(*args, **kwargs):
+            # 새 내용을 쓰는 도중에 다른 프로세스가 읽은 셈 친다
+            seen.append(gtasks_api.stored_client(self.config_path))
+            return original(*args, **kwargs)
+
+        with mock.patch.object(gtasks_api.json, "dump", peeking):
+            gtasks_api.save_config({"client_id": "새 값"})
+
+        self.assertEqual(seen[0].get("refresh_token"), "keep-me")
 
     def test_연결_해제만_refresh_token_을_지운다(self):
         self._write_config(
