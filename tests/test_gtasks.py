@@ -392,55 +392,78 @@ class GtasksSetupTest(unittest.TestCase):
         ready.start()
         self.addCleanup(ready.stop)
 
-    def test_계획은_양쪽_합집합을_보여주고_아무것도_쓰지_않는다(self):
+    def test_계획은_양쪽_건수를_붙여_보여주고_아무것도_쓰지_않는다(self):
+        """이름이 같다고 같은 것이 아니다 — 건수가 없으면 남의 목록과 통째로 합쳐진다"""
+        both = self.client.create_list(self.names[0])
+        self.client.insert(both["id"], {"title": "폰에 원래 있던 것"})
         self.client.create_list("운동")
+        todo_repo.create(
+            self.con, title="여기 할일", category_id=category_repo.list_all(self.con)[0]["id"]
+        )
 
         plan = gtasks_setup.plan(self.con, client=self.client)
+        found = {item["name"]: item for item in plan["items"]}
 
-        self.assertEqual(plan["create_local"], ["운동"])
-        self.assertEqual(plan["create_remote"], self.names)
-        self.assertEqual(plan["union"], self.names + ["운동"])
+        self.assertEqual(found[self.names[0]]["local"], 1)
+        self.assertEqual(found[self.names[0]]["remote"], 1)
+        self.assertIsNone(found["운동"]["local"])
+        self.assertEqual(found["운동"]["remote"], 0)
+        self.assertIsNone(found[self.names[1]]["remote"])
         self.assertEqual([row["name"] for row in category_repo.list_all(self.con)], self.names)
 
-    def test_적용하면_없는_쪽을_만들고_연동을_켠다(self):
+    def test_고른_것만_만들고_켠다(self):
         self.client.create_list("운동")
 
-        gtasks_setup.apply(self.con, client=self.client)
+        gtasks_setup.apply(self.con, ["운동", self.names[0]], client=self.client)
 
-        names = [row["name"] for row in category_repo.list_all(self.con)]
-        self.assertEqual(sorted(names), sorted(self.names + ["운동"]))
-        self.assertEqual(len(self.client.lists()), len(names))
+        rows = {row["name"]: row for row in category_repo.list_all(self.con)}
+        self.assertIn("운동", rows)  # 구글에만 있던 것을 골랐으니 카테고리가 생긴다
+        self.assertTrue(rows["운동"]["gtasks_enabled"])
+        self.assertTrue(rows[self.names[0]]["gtasks_enabled"])
         self.assertTrue(gtasks_state.state(self.con)["enabled"])
 
-    def test_맞춘_직후_카테고리는_전부_꺼져_있다(self):
-        """목록을 맞추는 것과 할일을 주고받는 것은 다른 결정이다.
-
-        켜진 채로 시작하면 첫 동기화가 전 카테고리의 할일을 한꺼번에 폰으로 올린다
-        """
+    def test_고르지_않은_것은_양쪽_어디도_건드리지_않는다(self):
+        """예전에는 합집합을 통째로 만들어 폰의 목록이 전부 카테고리가 됐다"""
         self.client.create_list("운동")
+        self.client.create_list("회사")
 
-        gtasks_setup.apply(self.con, client=self.client)
+        gtasks_setup.apply(self.con, [self.names[0]], client=self.client)
 
-        rows = category_repo.list_all(self.con)
-        self.assertTrue(all(row["google_list_id"] for row in rows))
-        self.assertFalse(any(row["gtasks_enabled"] for row in rows))
+        rows = {row["name"]: row for row in category_repo.list_all(self.con)}
+        self.assertNotIn("운동", rows)
+        self.assertNotIn("회사", rows)
+        # 안 고른 대시보드 카테고리도 폰에 목록을 만들지 않는다
+        self.assertEqual(sorted(t["title"] for t in self.client.lists()),
+                         sorted(["운동", "회사", self.names[0]]))
+        for name in self.names[1:]:
+            self.assertIsNone(rows[name]["google_list_id"])
+            self.assertFalse(rows[name]["gtasks_enabled"])
+
+    def test_하나도_안_고르면_거절한다(self):
+        with self.assertRaises(Validation):
+            gtasks_setup.apply(self.con, [], client=self.client)
 
     def test_이름이_같으면_목록을_다시_만들지_않고_링크만_맺는다(self):
         existing = self.client.create_list(self.names[0])
 
-        gtasks_setup.apply(self.con, client=self.client)
+        gtasks_setup.apply(self.con, [self.names[0]], client=self.client)
 
         linked = category_repo.get_by_name(self.con, self.names[0])
         self.assertEqual(linked["google_list_id"], existing["id"])
-        self.assertEqual(len(self.client.lists()), len(self.names))
+        self.assertEqual(len(self.client.lists()), 1)
 
     def test_인증_전에_켜면_경로_대신_다음에_누를_것을_알려준다(self):
         """load_config 원문은 파일 경로와 CLI 명령이 박혀 있다. 버튼이 바로 아래 있는데도"""
         empty = mock.patch.object(gtasks_api, "stored_client", return_value={})
-        for call in (gtasks_setup.plan, gtasks_setup.apply, gtasks.sync):
+        calls = (
+            lambda: gtasks_setup.plan(self.con),
+            lambda: gtasks_setup.apply(self.con, ["개발"]),
+            lambda: gtasks.sync(self.con),
+        )
+        for call in calls:
             with empty:
                 with self.assertRaises(Validation) as caught:
-                    call(self.con)
+                    call()
             self.assertEqual(str(caught.exception), GTASKS_NEED_CONNECT)
 
     def test_인증에_실패하면_사유가_남아_화면에_뜬다(self):
@@ -469,7 +492,7 @@ class GtasksSetupTest(unittest.TestCase):
         config = os.path.join(tempfile.mkdtemp(), "gtasks.json")
         with open(config, "w", encoding="utf-8") as handle:
             handle.write('{"client_id": "a", "client_secret": "b", "refresh_token": "c"}')
-        gtasks_setup.apply(self.con, client=self.client)
+        gtasks_setup.apply(self.con, [self.names[0]], client=self.client)
         linked = category_repo.list_all(self.con)[0]["google_list_id"]
 
         with mock.patch.object(gtasks_api, "GTASKS_CONFIG_PATH", config):
@@ -631,6 +654,29 @@ class GtasksAuthArgsTest(unittest.TestCase):
                 gtasks_auth.authorize()
 
         self.assertIn(GTASKS_AUTH_URL, str(caught.exception))
+
+    def test_부분_저장이_refresh_token_을_지우지_않는다(self):
+        """동의 화면을 다시 거쳐야만 나오는 값이라, 한 번 덮이면 재인증밖에 길이 없다"""
+        self._write_config(
+            '{"client_id": "a", "client_secret": "b", "refresh_token": "keep-me"}'
+        )
+
+        gtasks_api.save_config({"client_id": "새 값", "client_secret": "새 비밀"})
+
+        left = gtasks_api.stored_client(self.config_path)
+        self.assertEqual(left["refresh_token"], "keep-me")
+        self.assertEqual(left["client_id"], "새 값")
+
+    def test_연결_해제만_refresh_token_을_지운다(self):
+        self._write_config(
+            '{"client_id": "a", "client_secret": "b", "refresh_token": "keep-me"}'
+        )
+
+        gtasks_api.forget_refresh_token()
+
+        left = gtasks_api.stored_client(self.config_path)
+        self.assertNotIn("refresh_token", left)
+        self.assertEqual(left["client_id"], "a")
 
     def test_refresh_token_까지_있으면_동기화는_인증_없이_읽는다(self):
         self._write_config(

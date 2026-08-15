@@ -185,7 +185,9 @@ def _route_post(con, head, body):
         # 무엇이 만들어질지 먼저 보여주고 확인을 받는다. 여기서는 아무것도 쓰지 않는다
         return gtasks_setup.plan(con)
     if head == "gtasks-setup":
-        return {"result": gtasks_setup.apply(con), "panel": gtasks_setup.panel(con)}
+        # 고른 것만 만든다. 안 고른 것은 양쪽 어디도 건드리지 않는다
+        result = gtasks_setup.apply(con, body.get("chosen"))
+        return {"result": result, "panel": gtasks_setup.panel(con)}
     if head == "gtasks-sync":
         return {"report": gtasks.run(con), "panel": gtasks_setup.panel(con)}
     if head == "gtasks-disconnect":

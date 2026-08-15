@@ -17,6 +17,7 @@ from app.db import meta_set
 from app.errors import DomainError, Validation
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
+from app.repositories import todos as todo_repo
 from app.services import gtasks_api, gtasks_auth
 
 
@@ -110,53 +111,64 @@ def _client_or_guide(client):
 
 
 def plan(con, client=None):
-    """무엇을 만들지 미리 보여준다. 아무것도 쓰지 않는다
+    """고를 수 있는 후보를 건수까지 붙여 돌려준다. 아무것도 쓰지 않는다
 
-    화면이 이 결과를 그대로 팝업에 뿌리고 사용자의 확인을 받는다
+    건수가 핵심이다 — 이름이 같다고 같은 것이 아니다. 대시보드 '공부'(할일 2개)와
+    폰의 '공부'(61개)가 별개인데도 이름만 보고 켜면 두 뭉치가 한 번에 합쳐진다
     """
     client = _client_or_guide(client)
-    local = [category["name"] for category in category_repo.list_all(con)]
-    remote = [_title(row) for row in client.lists()]
-    remote = [title for title in remote if title]
-    local_set, remote_set = set(local), set(remote)
+    local = {}
+    for category in category_repo.list_all(con):
+        local[category["name"]] = len(todo_repo.list_by_category(con, category["id"]))
+    remote = {}
+    for row in client.lists():
+        title = _title(row)
+        # 폰에 같은 이름이 둘이면 먼저 만든 쪽만 센다 (apply 의 짝 맺기와 같은 기준)
+        if title and title not in remote:
+            remote[title] = len(client.tasks(row["id"]))
+    # 대시보드 순서를 앞에 두고 폰에만 있는 것을 뒤에 붙인다 — 사용자가 익숙한 순서
+    names = list(local) + [title for title in remote if title not in local]
     return {
-        "local": local,
-        "remote": remote,
-        # 대시보드 순서를 앞에 두고 폰에만 있는 것을 뒤에 붙인다 — 사용자가 익숙한 순서
-        "union": local + [title for title in remote if title not in local_set],
-        "create_local": [title for title in remote if title not in local_set],
-        "create_remote": [name for name in local if name not in remote_set],
+        "items": [
+            {"name": name, "local": local.get(name), "remote": remote.get(name)}
+            for name in names
+        ]
     }
 
 
-def apply(con, client=None):
-    """합집합대로 양쪽을 맞추고 링크를 남긴 뒤 연동을 켠다. 할일은 손대지 않는다
+def apply(con, chosen, client=None):
+    """고른 것만 양쪽에 만들고 링크한 뒤 켠다. 할일은 손대지 않는다
 
-    켜기까지 여기서 하는 이유는 '맞췄지만 꺼져 있는' 중간 상태를 남기지 않기 위해서다.
-    사용자가 확인 팝업에서 누른 '진행'이 곧 켜겠다는 뜻이다
+    고르지 않은 것은 양쪽 어디도 건드리지 않는다 — 예전에는 합집합을 통째로 만들어,
+    폰에만 있던 목록이 전부 대시보드 카테고리가 되고 그 반대도 일어났다
+
+    켜기까지 여기서 하는 이유는 '맞췄지만 꺼져 있는' 중간 상태를 남기지 않기 위해서다
     """
     client = _client_or_guide(client)
+    wanted = [name for name in (chosen or []) if name]
+    if not wanted:
+        raise Validation("연동할 카테고리를 하나 이상 골라 주세요")
     remote_by_title = {}
     for row in client.lists():
         title = _title(row)
         # 폰에 같은 이름이 둘이면 먼저 만든 쪽에 붙는다. 나중 것을 잡으면 회차마다 바뀐다
         if title and title not in remote_by_title:
             remote_by_title[title] = row["id"]
+    known = {category["name"]: category for category in category_repo.list_all(con)}
     report = {"created_local": [], "created_remote": [], "linked": []}
-    known = {category["name"] for category in category_repo.list_all(con)}
-    for title in remote_by_title:
-        if title in known:
-            continue
-        category_repo.create(con, title)
-        report["created_local"].append(title)
-    for category in category_repo.list_all(con):
-        list_id = remote_by_title.get(category["name"])
+    for name in wanted:
+        category = known.get(name)
+        if not category:
+            category = category_repo.create(con, name)
+            report["created_local"].append(name)
+        list_id = remote_by_title.get(name)
         if not list_id:
-            list_id = client.create_list(category["name"])["id"]
-            report["created_remote"].append(category["name"])
+            list_id = client.create_list(name)["id"]
+            report["created_remote"].append(name)
         else:
-            report["linked"].append(category["name"])
+            report["linked"].append(name)
         category_repo.set_google_list_id(con, category["id"], list_id)
+        category_repo.set_gtasks_enabled(con, category["id"], True)
     gtasks_state.set_enabled(con, True)
     return report
 

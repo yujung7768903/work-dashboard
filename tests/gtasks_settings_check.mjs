@@ -29,11 +29,11 @@ globalThis.fetch = async (url, options) => {
       ok: true,
       status: 200,
       json: async () => ({
-        local: ["개발", "블로그"],
-        remote: ["운동"],
-        union: ["개발", "블로그", "운동"],
-        create_local: ["운동"],
-        create_remote: ["개발", "블로그"],
+        items: [
+          { name: "개발", local: 48, remote: 9 },
+          { name: "블로그", local: 3, remote: null },
+          { name: "운동", local: null, remote: 5 },
+        ],
       }),
     };
   }
@@ -114,12 +114,9 @@ function node(tag = "div") {
     },
     showModal() {
       this.shown = true;
-      // 합집합 팝업은 사용자가 '진행'을 누른 것으로 본다 (취소는 아래에서 따로 확인).
-      // 자격증명 창은 단계를 밟아야 하므로 close() 를 부를 때까지 열어 둔다
-      if (this.autoClose) {
-        this.returnValue = decision;
-        this.listeners.close?.();
-      }
+      // 자격증명 창은 단계를 밟아야 하므로 close() 를 부를 때까지 열어 둔다.
+      // 고르기 팝업은 onShow 로 사용자의 선택을 흉내낸다
+      this.onShow?.();
     },
     close() {
       this.listeners.close?.();
@@ -127,9 +124,18 @@ function node(tag = "div") {
   };
 }
 
-let decision = "go";
+let planPick = ["개발"];
+let planGo = true;
 const elements = { "gtasks-plan": node() };
-elements["gtasks-plan"].autoClose = true;
+// 팝업이 뜨면 정해 둔 것만 체크하고 버튼을 누른다
+elements["gtasks-plan"].onShow = () => {
+  flatten(elements["gtasks-plan-list"])
+    .filter((kid) => kid.type === "checkbox")
+    .forEach((box) => {
+      box.checked = planPick.includes(box.value);
+    });
+  document.getElementById(planGo ? "gtasks-plan-go" : "gtasks-plan-cancel").onclick();
+};
 globalThis.document = {
   getElementById: (id) => (elements[id] ??= node()),
   createElement: (tag) => node(tag),
@@ -228,8 +234,8 @@ assert.equal(dialogSwitch().hidden, true, "카테고리를 맞추기 전인데 �
 
 await setup.listeners.click();
 assert.ok(asked.includes("POST /api/gtasks-plan"), asked.join(", "));
-assert.equal(elements["gtasks-plan-union"].textContent, "개발, 블로그, 운동");
-assert.ok(asked.includes("POST /api/gtasks-setup"), "확인했는데 적용이 안 나갔다");
+// 고른 것만 나가야 한다 — 예전에는 합집합을 통째로 만들어 폰의 목록이 전부 카테고리가 됐다
+assert.deepEqual(sent["POST /api/gtasks-setup"], { chosen: ["개발"] });
 // 카테고리만 맞추고 멈춘다 — 할일 동기화는 사용자가 따로 눌러야 한다
 assert.ok(!asked.includes("POST /api/gtasks-sync"), "확인 직후에 동기화까지 돌았다");
 
@@ -264,7 +270,7 @@ assert.deepEqual(locked.map((box) => box.checked), [true, true, true], "꺼지�
 assert.equal(elements["gtasks-card"].classList.contains("off"), true, "회색 처리가 안 됐다");
 
 // ── 5. 확인 팝업에서 취소하면 아무것도 안 나간다 ────────────────────────────
-decision = "cancel";
+planGo = false;
 const before = asked.length;
 panel = { ...panel, categories: panel.categories.map((row) => ({ ...row, linked: false })) };
 await gtasks.renderGtasks();
@@ -276,5 +282,15 @@ assert.ok(
 );
 // 취소하고 돌아온 자리에서 버튼이 죽어 있으면 다시 시도할 길이 없다
 assert.equal(again.disabled, false, "취소했더니 버튼이 잠긴 채로 남았다");
+
+// ── 6. 하나도 안 고르고 진행하면 아무것도 안 만든다 ──────────────────────────
+planGo = true;
+planPick = [];
+const beforeEmpty = asked.length;
+await again.listeners.click();
+assert.ok(
+  !asked.slice(beforeEmpty).includes("POST /api/gtasks-setup"),
+  "하나도 안 골랐는데 적용이 나갔다"
+);
 
 console.log("ok");

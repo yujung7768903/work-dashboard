@@ -235,14 +235,12 @@
       <!-- 합집합을 보여주고 확인을 받는다. 확인 전에는 양쪽 어디도 건드리지 않는다 -->
       <dialog id="gtasks-plan">
         <h3 data-i18n="gtasks.planTitle"></h3>
-        <p class="gt-line"><b data-i18n="gtasks.planLocal"></b> <span id="gtasks-plan-local"></span></p>
-        <p class="gt-line"><b data-i18n="gtasks.planRemote"></b> <span id="gtasks-plan-remote"></span></p>
         <p class="gt-note" data-i18n="gtasks.planRule"></p>
-        <p class="gt-line"><b data-i18n="gtasks.planUnion"></b> <span id="gtasks-plan-union"></span></p>
-        <form method="dialog" class="gt-actions">
-          <button value="cancel" data-i18n="common.cancel"></button>
-          <button value="go" id="gtasks-plan-go" data-i18n="gtasks.planGo"></button>
-        </form>
+        <div id="gtasks-plan-list"></div>
+        <div class="gt-actions">
+          <button type="button" id="gtasks-plan-cancel" data-i18n="common.cancel"></button>
+          <button type="button" id="gtasks-plan-go" data-i18n="gtasks.planGo"></button>
+        </div>
       </dialog>
 
       <section id="tab-usage" class="tab" hidden>

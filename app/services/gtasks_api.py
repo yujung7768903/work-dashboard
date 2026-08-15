@@ -67,9 +67,16 @@ def stored_client(path=None):
     return stored if isinstance(stored, dict) else {}
 
 
-def save_config(config, path=None):
-    """refresh_token 은 비밀번호와 같아 파일 권한을 본인만으로 좁힌다"""
+def save_config(config, path=None, replace=False):
+    """기본은 있던 내용에 덮어쓰기. refresh_token 은 비밀번호와 같아 권한을 600 으로 좁힌다
+
+    병합이 기본인 이유: refresh_token 은 구글 동의 화면을 다시 거쳐야만 나오는 값이라
+    한 번 잃으면 재인증밖에 길이 없다. 부분 저장(자격증명만 먼저 넣기 등) 하나가
+    실수로 통째 쓰기가 되면 그대로 날아간다 — 지우는 것은 replace 로 명시할 때만
+    """
     resolved = path or GTASKS_CONFIG_PATH
+    if not replace:
+        config = {**stored_client(resolved), **config}
     parent = os.path.dirname(resolved)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -90,7 +97,8 @@ def forget_refresh_token(path=None):
     if not stored:
         return resolved
     stored.pop("refresh_token", None)
-    return save_config(stored, resolved)
+    # 여기서만 통째로 쓴다 — 지우는 것이 목적이라 병합하면 도로 살아난다
+    return save_config(stored, resolved, replace=True)
 
 
 def post_form(url, fields):

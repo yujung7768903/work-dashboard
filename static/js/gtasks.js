@@ -172,22 +172,68 @@ function setupButton() {
 
 async function openPlan() {
   const plan = await api.planGtasks();
-  fill("gtasks-plan-local", plan.local);
-  fill("gtasks-plan-remote", plan.remote);
-  fill("gtasks-plan-union", plan.union);
+  const boxes = fillPlan(plan.items);
+  const chosen = await askPlan();
+  if (!chosen) return;
+  const picked = boxes.filter((box) => box.checked).map((box) => box.value);
+  if (!picked.length) return;
+  paint((await api.setupGtasks(picked)).panel);
+}
+
+// 세 무리로 나눈다. '양쪽에 있음' 은 두 뭉치가 합쳐진다는 뜻이라 건수를 같이 보여준다 —
+// 대시보드 '공부'(2개)와 폰의 '공부'(61개)가 별개인 채로 켜지는 사고를 막는 유일한 장치다
+// 라벨을 함수로 두는 이유: 사전 검사기가 t("키") 리터럴만 훑어서, 키를 값으로 담아 두면
+// '안 쓰는 키'로 잡힌다. 게다가 사전은 첫 렌더 뒤에 채워지므로 지연 호출이 맞다
+const PLAN_GROUPS = [
+  { label: () => t("gtasks.planBoth"), match: (item) => item.local !== null && item.remote !== null },
+  { label: () => t("gtasks.planOnlyLocal"), match: (item) => item.remote === null },
+  { label: () => t("gtasks.planOnlyRemote"), match: (item) => item.local === null },
+];
+
+function fillPlan(items) {
+  const list = document.getElementById("gtasks-plan-list");
+  list.innerHTML = "";
+  const boxes = [];
+  PLAN_GROUPS.forEach((section) => {
+    const group = items.filter(section.match);
+    if (!group.length) return;
+    const head = document.createElement("h4");
+    head.textContent = section.label();
+    list.appendChild(head);
+    group.forEach((item) => {
+      const line = document.createElement("label");
+      line.className = "gt-pick";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = item.name;
+      boxes.push(box);
+      line.append(box, text(item.name), count(item));
+      list.appendChild(line);
+    });
+  });
+  return boxes;
+}
+
+function count(item) {
+  const node = document.createElement("span");
+  node.className = "gt-count";
+  node.textContent =
+    item.local !== null && item.remote !== null
+      ? t("gtasks.planPair", { local: item.local, remote: item.remote })
+      : t("gtasks.planOne", { n: item.local === null ? item.remote : item.local });
+  return node;
+}
+
+function askPlan() {
   const dialog = document.getElementById("gtasks-plan");
-  const decision = await ask(dialog);
-  if (decision !== "go") return;
-  paint((await api.setupGtasks()).panel);
-}
-
-function fill(id, names) {
-  document.getElementById(id).textContent = names.length ? names.join(", ") : t("gtasks.none");
-}
-
-function ask(dialog) {
   return new Promise((resolve) => {
-    dialog.addEventListener("close", () => resolve(dialog.returnValue), { once: true });
+    let go = false;
+    document.getElementById("gtasks-plan-go").onclick = () => {
+      go = true;
+      dialog.close();
+    };
+    document.getElementById("gtasks-plan-cancel").onclick = () => dialog.close();
+    dialog.addEventListener("close", () => resolve(go), { once: true });
     dialog.showModal();
   });
 }
