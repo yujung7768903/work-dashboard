@@ -2,6 +2,7 @@
 // 언어는 화면 전체에 걸려 있어 여기가 아니라 상단 우측 아이콘에 있다 (language.js)
 // 두 목록은 이름·색·순서·삭제가 똑같아 줄 만드는 코드를 공유하고, 다른 점만 설정으로 넘긴다
 import * as api from "./api.js";
+import { renderGtasks } from "./gtasks.js";
 import { t } from "./i18n.js";
 import { run } from "./main.js";
 
@@ -31,7 +32,7 @@ const LABELS = {
 };
 
 export async function renderSettings() {
-  await Promise.all([renderList(CATEGORIES), renderList(LABELS)]);
+  await Promise.all([renderList(CATEGORIES), renderList(LABELS), renderGtasks()]);
 }
 
 async function renderList(config) {

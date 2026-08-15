@@ -538,25 +538,38 @@ python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여�
 
 | 테이블 | 역할 | 주요 컬럼 | 참조 |
 | --- | --- | --- | --- |
-| `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at`, `google_list_id`(구글 목록 연결) | — |
-| `workspaces` | 브랜치·Jira 단위 큰 작업. 배경·목적·목표·고려사항 보관 | `id`, `name`, `background`, `purpose`, `goal`, `considerations`, `status`(active/paused/done), `sort_order`, `jira_id`, `created_at`, `updated_at` | `category_id` → `categories` |
+| `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at`, `google_list_id`(구글 목록 연결), `gtasks_enabled`(카테고리별 동기화 on/off, 기본 1) | — |
+| `workspaces` | 브랜치·Jira 단위 큰 작업. 배경·목적·목표·고려사항 보관 | `id`, `name`, `background`, `purpose`, `goal`, `considerations`, `status`(active/paused/done), `sort_order`, `jira_id`, `created_at`, `updated_at`, `google_task_id`(구글 최상위 태스크 연결) | `category_id` → `categories` |
 | `labels` | 할일 성격 표시. 한 할일에 여러 개 (github 이슈 라벨과 같은 뜻) | `id`, `name`(UNIQUE), `color`, `sort_order`, `created_at` | — |
 | `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
-| `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at`, `google_task_id`(구글 태스크 연결) | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
+| `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at`, `google_task_id`(구글 하위 태스크 연결) | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
 | `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
 | `worktrees` | 워크트리 이력. 병합·삭제로 사라진 것도 이름·상태로 남긴다 (팝업 워크트리 탭) | `path`(PK), `repo`, `branch`, `created_at`, `merged_at`, `merge_hash`, `merge_from`, `deleted_at` | — (경로로 잇는다) |
+| `gtasks_state` | 구글 태스크 연동 설정. 필드가 넷이라 `meta` 대신 단일 행 (`autorun_state` 와 같은 이유) | `id`(=1), `enabled`, `last_sync_at`, `last_error`, `updated_at` | — |
 | `meta` | 내부 플래그·단일 설정 저장소. `categories_seeded`, `onboarding_declined`, `language`, `gtasks_seen_ids` | `key`(PK), `value` | — |
 
 ## 구글 태스크 양방향 동기화
 
-폰에서 할일을 보고 체크하려고 붙였다. 카테고리 하나가 구글 목록 하나(`대시보드 · <카테고리>`)로 간다.
+폰에서 할일을 보고 체크하려고 붙였다. 구글이 1단계 중첩만 허용하므로 세 층이 그대로 들어맞는다.
+
+```text
+구글 목록        =  카테고리
+ └ 최상위 태스크  =  워크스페이스
+    └ 하위 태스크 =  그 워크스페이스의 할일
+```
+
+목록 이름은 카테고리 이름 **그대로**다. 접두어를 붙이면 폰에서 손으로 만든 목록이 영영 안 붙어 같은 이름이 둘씩 생긴다.
+
+워크스페이스가 없는 할일은 최상위로 올라간다. 다만 내려올 때 "최상위 = 워크스페이스"로 보면 그 할일들이 회차마다 워크스페이스로 승격돼 수가 계속 늘어난다. 그래서 **우리가 워크스페이스로 링크해 둔 최상위만** 워크스페이스로 보고, 폰에서 새로 만든 최상위는 카테고리 직속 할일로 만든다.
 
 ### 최초 1회 설정
 
 1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트를 만들고 **Google Tasks API** 를 켠다
 2. **사용자 인증 정보 → OAuth 클라이언트 ID → 데스크톱 앱** 으로 클라이언트를 만든다
 3. 인증한다 — 브라우저가 열리고, 승인하면 `~/.claude/work-dashboard/gtasks.json` (권한 600) 에 저장된다
+
+3번은 **설정 탭의 `연결하기` 버튼**으로도 된다 (동의 창은 대시보드 서버가 연다). 다만 `client_id`/`client_secret` 은 아래 (a) 나 (b) 로 미리 넣어 둬야 한다 — 화면에서 받지 않는다.
 
 자격증명은 **인자 > 환경변수 > `gtasks.json`** 순으로 찾는다. 셋 중 편한 것을 쓴다.
 
@@ -579,9 +592,22 @@ python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
 
 **`refresh_token` 은 손으로 적어 넣을 수 없다** — 구글 동의 화면을 거쳐야만 발급된다. 다른 데서 이미 받아 둔 것이 있다면 세 키를 직접 써넣고 `gtasks-auth` 를 건너뛰어도 된다.
 
+### 설정 화면 (설정 탭)
+
+인증만으로는 아직 아무것도 안 돈다. **켜기 전에 카테고리부터 맞춘다.**
+
+1. `연결하기` — 인증이 없을 때만 뜬다
+2. `카테고리 맞추기` — 양쪽 목록을 읽어 **합집합**을 팝업으로 보여주고 확인을 받는다. 이름이 같은 것은 하나로 친다
+3. `진행` — 한쪽에만 있는 것을 반대쪽에 만든다. **여기서 멈춘다** — 할일 동기화는 하지 않는다
+4. 그 뒤 카드에 카테고리별 on/off 가 뜬다. 마스터를 끄면 **값은 그대로 둔 채** 회색으로 잠근다
+
+문제가 생겨도 **연동을 자동으로 끄지 않는다.** 와이파이가 한 번 끊겼다고 설정이 꺼지면 사용자가 그 사실을 모른 채 며칠을 보낸다. 대신 제목 오른쪽에 `⚠ 로그인 만료` 처럼 사유만 띄운다. 끄는 판단은 사람이 한다.
+
+사유는 마지막 동기화가 `gtasks_state.last_error` 에 남긴 것을 읽는다 — 설정 탭을 열 때마다 구글에 물어보지 않는다.
+
 ### 동기화
 
-**`gtasks-sync` 는 인자가 없다.** 자격증명은 위 1회로 끝이고, 이후로는 저장된 `refresh_token` 으로 access token 을 알아서 받아 쓴다.
+**`gtasks-sync` 는 인자가 없다.** 자격증명은 위 1회로 끝이고, 이후로는 저장된 `refresh_token` 으로 access token 을 알아서 받아 쓴다. **연동이 꺼져 있으면 아무것도 하지 않고 끝난다** — cron 이 매번 부르는 자리라 실패로 처리하지 않는다.
 
 ```bash
 python3 dash.py gtasks-sync --dry-run   # 무엇이 바뀔지만 보고 아무것도 안 씀
@@ -590,7 +616,7 @@ python3 dash.py gtasks-sync
 
 **첫 실행은 `--dry-run` 으로 확인한다** — 미완료 할일 전부가 구글에 생성된다.
 
-웹훅이 없는 API라 주기적으로 부르는 것 말고 방법이 없다. 손으로 부르기 싫으면 cron 에 건다.
+웹훅이 없는 API라 주기적으로 부르는 것 말고 방법이 없다. 손으로 부르기 싫으면 cron 에 건다 (설정 화면의 `지금 동기화` 가 같은 일을 한다).
 
 ```bash
 # 10분마다. crontab -e
@@ -604,23 +630,29 @@ python3 dash.py gtasks-sync
 | 제목 | 양방향 | `updated_at` vs `updated` 최신 우선 |
 | 완료 여부 | 양방향 | 위와 같음 |
 | note·착수 조건 | 내려보내기만 | 폰에서 고쳐도 대시보드는 안 바뀜 |
-| 라벨·워크스페이스 | 동기화 안 함 | — |
+| 워크스페이스 배경·목적·목표·고려사항 | 내려보내기만 | `notes` 한 칸에 네 줄로 실린다 |
+| 라벨 | 동기화 안 함 | — |
 
 - **내용이 실제로 다를 때만** 시각을 본다. 안 그러면 우리가 방금 민 것 때문에 원격이 늘 최신이라 무한 왕복이 된다.
 - 시각은 초 단위로 잘라서 비교한다. `db.now()` 는 초까지만 적고 구글은 밀리초까지 주므로, 그대로 두면 같은 초에 고친 로컬 수정이 조용히 되돌려진다.
 - 동점이면 로컬이 이긴다.
 - 폰의 완료를 받다가 로컬 규칙(자율 수행 검토 대기 등)에 막히면 **건너뛰고 보고**한다. 로컬 규칙이 이긴다.
-- 폰에는 `todo`/`doing` 구분이 없다. 폰에서 완료를 풀면 `doing` 이었어도 `todo` 로 내려온다.
+- 폰에는 `todo`/`doing` 구분이 없다. 폰에서 완료를 풀면 `doing` 이었어도 `todo` 로 내려온다. 워크스페이스도 마찬가지로 `paused` 가 아니라 `active` 로 돌아온다.
+- 카테고리 스위치를 끄면 그 카테고리는 통째로 건너뛴다. 목록 링크는 남으므로 다시 켜도 목록이 새로 생기지 않는다.
 
 ### 삭제
 
-`meta.gtasks_seen_ids` 에 지난 회차의 태스크 id 를 남겨 두는 것이 "폰에서 새로 만든 것"과 "로컬에서 지운 것"을 가르는 유일한 근거다.
+`meta.gtasks_seen_ids` 에 지난 회차의 태스크 id 를 남겨 두는 것이 "폰에서 새로 만든 것"과 "대시보드에서 지운 것"을 가르는 유일한 근거다.
 
 | 상황 | 처리 |
 | --- | --- |
 | 대시보드에서 지움 | 구글에서도 지움 |
-| 폰에서 지움 (미완료) | 되살림 — 존재 여부는 대시보드가 정한다 |
+| 폰에서 지움 (미완료) | 대시보드에서도 지움 |
 | 폰에서 지움 (완료) | 그대로 둠 — '완료 항목 삭제'가 무덤을 파헤치면 안 되므로 |
+
+완료분은 링크도 남겨 둔다. 링크를 지우면 다음 회차가 "아직 안 올린 것"으로 보고 무덤을 다시 파낸다.
+
+**워크스페이스를 지울 때가 까다롭다.** 구글은 최상위를 지우면 하위까지 함께 지우는데, 대시보드에서는 소속 할일이 미분류로 살아남는다. 그 할일들의 링크를 그대로 두면 다음 회차가 "폰에서 지웠다"로 읽어 멀쩡한 할일을 지운다. 그래서 최상위를 지우기 전에 함께 사라질 하위의 링크를 끊고, 같은 회차에 최상위 태스크로 다시 올린다.
 
 ## 규칙 몇 가지
 

@@ -89,7 +89,7 @@
           <summary>
             <span id="autorun-head">
               <span data-i18n="autorun.title"></span>
-              <label id="autorun-switch" data-i18n-title="autorun.toggleHint">
+              <label class="switch" id="autorun-switch" data-i18n-title="autorun.toggleHint">
                 <input type="checkbox" id="autorun-toggle">
                 <span class="track"></span>
                 <span class="state"></span>
@@ -181,7 +181,32 @@
           <button type="submit" data-i18n="common.add"></button>
         </form>
         <ul id="label-list" class="set-list"></ul>
+
+        <!-- 연동을 켜기 전에는 관리할 카테고리가 없다. 빈 카드 대신 무엇을 할 수 있는지 알린다 -->
+        <h2 class="set-head" id="gtasks-head">
+          <span data-i18n="gtasks.title"></span>
+          <label class="switch" id="gtasks-switch" data-i18n-title="gtasks.toggleHint" hidden>
+            <input type="checkbox" id="gtasks-toggle">
+            <span class="track"></span>
+            <span class="state"></span>
+          </label>
+          <span id="gtasks-warn" hidden>⚠ <span id="gtasks-reason"></span></span>
+        </h2>
+        <div id="gtasks-card" class="set-card"></div>
       </section>
+
+      <!-- 합집합을 보여주고 확인을 받는다. 확인 전에는 양쪽 어디도 건드리지 않는다 -->
+      <dialog id="gtasks-plan">
+        <h3 data-i18n="gtasks.planTitle"></h3>
+        <p class="gt-line"><b data-i18n="gtasks.planLocal"></b> <span id="gtasks-plan-local"></span></p>
+        <p class="gt-line"><b data-i18n="gtasks.planRemote"></b> <span id="gtasks-plan-remote"></span></p>
+        <p class="gt-note" data-i18n="gtasks.planRule"></p>
+        <p class="gt-line"><b data-i18n="gtasks.planUnion"></b> <span id="gtasks-plan-union"></span></p>
+        <form method="dialog" class="gt-actions">
+          <button value="cancel" data-i18n="common.cancel"></button>
+          <button value="go" id="gtasks-plan-go" data-i18n="gtasks.planGo"></button>
+        </form>
+      </dialog>
 
       <section id="tab-usage" class="tab" hidden>
         <div class="u-shell">

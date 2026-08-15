@@ -48,6 +48,15 @@ export const discardWorktree = (repo, branch) =>
 // action: start(띄우기) · restart(다시 띄우기) · stop(내리기)
 export const controlWorktree = (repo, branch, action) =>
   request("POST", "/worktrees", { repo, branch, action });
+export const getGtasks = () => request("GET", "/gtasks");
+export const setGtasks = (enabled) => request("PATCH", "/gtasks", { enabled });
+export const setGtasksCategory = (id, enabled) =>
+  request("PATCH", `/gtasks-categories/${id}`, { enabled });
+export const connectGtasks = () => request("POST", "/gtasks-auth", {});
+export const planGtasks = () => request("POST", "/gtasks-plan", {});
+export const setupGtasks = () => request("POST", "/gtasks-setup", {});
+export const syncGtasks = () => request("POST", "/gtasks-sync", {});
+
 export const getAutorun = () => request("GET", "/autorun");
 export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });
 export const confirmAutorunRun = (id) => request("PATCH", `/autorun-runs/${id}`);
