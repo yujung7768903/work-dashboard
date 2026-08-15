@@ -143,7 +143,7 @@ MISSING_WINDOW_LABELS = ("이번 주 (Sonnet 전용)", "모델별 주간 창")
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 COST_FIELD = "estimated_cost_usd"
 MODEL_FAMILIES = (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"))
-MODEL_FAMILY_OTHER = "기타"
+MODEL_FAMILY_OTHER = "Other"  # 화면이 이 이름만 사전에서 꺼내 옮긴다 (usage.modelOther)
 
 # ④ 자율 실행. 사람이 자리를 비운 사이 할일 1건씩 `claude --bg` 잡으로 돌린다.
 # 대상은 두 겹으로 좁힌다 — 사람이 붙인 라벨과, 코드가 판정할 수 없는 조건의 부재.

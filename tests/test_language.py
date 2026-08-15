@@ -5,6 +5,7 @@
 키 문자열로 그냥 떠서 아무도 모른다 — 그 누락을 여기서 잡는다. 목록을 손으로 적지 않고
 JS·HTML 에서 뽑아 대조하므로 화면에 새 문구가 생기면 이 테스트가 자동으로 같이 늘어난다.
 """
+import ast
 import glob
 import json
 import os
@@ -15,6 +16,7 @@ import sys
 import unittest
 
 import server
+from app import errors
 from app.constants import DB_PATH_ENV, DEFAULT_LANGUAGE, LANGUAGES
 from app.errors import Validation
 from app.repositories import settings as settings_repo
@@ -34,6 +36,67 @@ HTML_KEY = re.compile(r'data-i18n(?:-[a-z-]+)?="([\w.]+)"')
 # static/js/i18n.js 의 언어 코드 목록
 CODE = re.compile(r'code:\s*"([a-z]+)"')
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
+HANGUL = re.compile(r"[가-힣]")
+
+# 서버가 한국어로 내려주고 화면이 사전에서 되짚는 문구의 키. 화면 코드에 t("키") 가
+# 없으므로 안 쓰는 키 검사에서 뺀다
+SERVER_PREFIXES = ("error.", "notice.", "reason.")
+# 서버가 쓰는 언어. 되짚기의 출발점이라 이 사전만 원문과 대조한다
+SERVER_LANGUAGE = "ko"
+# 화면에서 부르는 경로에 있는 모듈. 여기서 올린 예외 문구는 그대로 alert 로 뜨므로
+# 사전에 같은 틀이 있어야 한다. CLI 전용 모듈(merge·history·session_link)은 뺀다 —
+# 한국어 고정이다 (README '초기 설정 (⑤) > 화면 언어')
+BROWSER_FACING = (
+    "server.py",
+    "app/db.py",
+    "app/ordering.py",
+    "app/repositories/categories.py",
+    "app/repositories/labels.py",
+    "app/repositories/settings.py",
+    "app/repositories/todos.py",
+    "app/repositories/workspaces.py",
+    "app/services/serve.py",
+    "app/services/worktrees.py",
+)
+RAISED = tuple(
+    name
+    for name, value in vars(errors).items()
+    if isinstance(value, type) and issubclass(value, errors.DomainError)
+)
+
+
+def shape(text):
+    """{name} 이름을 지운 문구 뼈대. 서버 f-string 과 사전 틀을 같은 자로 재기 위함"""
+    return PLACEHOLDER.sub("{}", text)
+
+
+def raised_messages(path):
+    """그 모듈이 올리는 도메인 예외의 문구를 뼈대로. f-string 은 값 자리를 {} 로 둔다"""
+    tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
+            continue
+        if getattr(node.exc.func, "id", None) not in RAISED or not node.exc.args:
+            continue
+        text = _template(node.exc.args[0])
+        if text and HANGUL.search(text):
+            found.append((node.lineno, text))
+    return found
+
+
+def _template(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if not isinstance(node, ast.JoinedStr):
+        return ""
+    parts = []
+    for piece in node.values:
+        if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+            parts.append(piece.value)
+        else:
+            parts.append("{}")
+    return "".join(parts)
 
 
 def js_keys():
@@ -159,14 +222,34 @@ class DictionaryTest(unittest.TestCase):
                 self.assertEqual(sorted(dictionary(code)), base)
 
     def test_no_unused_key(self):
-        """서버 오류 문구(error.*)는 화면 코드에 없다 — api.js 가 한국어 응답을 사전에서
-        되짚어 찾기 때문이다. 그 외에 안 쓰는 키가 쌓이면 사전이 화면과 어긋난 채 자란다"""
+        """서버가 내려주는 문구(error.·notice.·reason.)는 화면 코드에 없다 — i18n.js 가
+        한국어 응답을 사전에서 되짚어 찾기 때문이다. 그 외에 안 쓰는 키가 쌓이면 사전이
+        화면과 어긋난 채 자란다"""
         unused = [
             key
             for key in dictionary(DEFAULT_LANGUAGE)
-            if key not in set(used_keys()) and not key.startswith("error.")
+            if key not in set(used_keys()) and not key.startswith(SERVER_PREFIXES)
         ]
         self.assertEqual(unused, [])
+
+    def test_browser_facing_errors_are_in_the_dictionary(self):
+        """화면까지 올라오는 예외 문구가 사전에 없으면 그 alert 만 한국어로 뜬다.
+
+        건수·이름이 박힌 문장도 사전에 {값} 자리를 뚫은 틀로 두면 i18n.js 가 되짚는다.
+        서버 문장을 고치고 사전을 안 고치면 여기서 갈라진다
+        """
+        shapes = {shape(value) for value in dictionary(SERVER_LANGUAGE).values()}
+        found = [
+            (path, line, text)
+            for path in BROWSER_FACING
+            for line, text in raised_messages(path)
+        ]
+        # 예외를 올리는 방식이 바뀌어 0 건을 검사하게 되면 아래가 조용히 통과한다
+        self.assertGreater(len(found), 40)
+        missing = [
+            f"{path}:{line}: {text}" for path, line, text in found if shape(text) not in shapes
+        ]
+        self.assertEqual(missing, [], f"ko.json 에 없는 서버 문구: {missing}")
 
     def test_placeholders_survive_translation(self):
         """{count} 를 빠뜨리면 그 언어에서만 숫자가 사라진다"""
