@@ -21,10 +21,19 @@
           </svg>
         </span>
         <span class="side-name" data-i18n="app.title"></span>
+        <!-- 레일 접기. 문구는 접힘/펼침에 따라 달라지므로 layout.js 가 넣는다 -->
+        <button type="button" id="side-toggle" class="icon-btn">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.6"
+                  fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6.6 3.2v9.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
       </div>
 
+      <!-- 접으면 아이콘만 남으므로 이름을 title 로도 달아 둔다 (문구는 라벨과 같은 키) -->
       <nav id="tabs" class="side-nav">
-        <button data-tab="usage" data-i18n="nav.usage">
+        <button data-tab="usage" data-i18n="nav.usage" data-i18n-title="nav.usage">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.3 11.6a6 6 0 1 1 11.4 0" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linecap="round"/>
@@ -32,21 +41,21 @@
                   stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </button>
-        <button data-tab="board" class="active" data-i18n="nav.board">
+        <button data-tab="board" class="active" data-i18n="nav.board" data-i18n-title="nav.board">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button data-tab="workspace" data-i18n="nav.workspace">
+        <button data-tab="workspace" data-i18n="nav.workspace" data-i18n-title="nav.workspace">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button data-tab="settings" data-i18n="nav.settings">
+        <button data-tab="settings" data-i18n="nav.settings" data-i18n-title="nav.settings">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M8.6 2.2H13a.8.8 0 0 1 .8.8v4.4L7.9 13.3a.8.8 0 0 1-1.2 0L2.7 9.3a.8.8 0 0 1 0-1.2z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
@@ -144,6 +153,29 @@
         <div id="board-todos">
         <div id="board-controls">
           <label data-i18n="board.showDone"><input type="checkbox" id="show-done"></label>
+          <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 화면 폭이 정하던 것을 직접 고른다 -->
+          <div id="view-columns">
+            <button type="button" class="icon-btn" data-columns="1"
+                    data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4" fill="none"
+                      stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" data-columns="2"
+                    data-i18n-title="board.twoColumns" data-i18n-aria-label="board.twoColumns">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <rect x="2.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="8.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="2.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="8.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div id="groups"></div>
         <details id="done-today">
