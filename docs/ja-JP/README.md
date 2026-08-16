@@ -44,7 +44,7 @@ Claude は CLI から操作し、両者が同じ SQLite ファイルを読み書
 | 任意 | Claude Code — セッション追跡・ステータスライン・自律実行に必要 |
 | 任意 | Node.js — テストの一部の画面チェックが `node` で動く |
 | 任意 | `PATH` 上の `markdownlint-cli2` — Markdown lint フックが使う |
-| 任意 | `ssl` が使える Python — Google Tasks 同期に必要。同じ 3.9 でもビルドによっては欠けているので `python3 -c "import ssl"` で確認する |
+| 任意 | `ssl` が使える Python — Google Tasks 同期に必要。同じ 3.9 でもビルドによっては欠けているので `python3 -c "import ssl"` で確認する。`start.sh` が使えるものを選び、`WORK_DASHBOARD_PYTHON` で指定もできる |
 
 ## クイックスタート
 

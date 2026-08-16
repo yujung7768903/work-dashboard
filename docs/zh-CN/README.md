@@ -38,7 +38,7 @@
 | 可选 | Claude Code —— 会话追踪、状态栏与自主执行需要 |
 | 可选 | Node.js —— 测试中的部分界面检查在 `node` 下运行 |
 | 可选 | `PATH` 中的 `markdownlint-cli2` —— Markdown lint 钩子会用到 |
-| 可选 | 带 `ssl` 的 Python —— Google 任务同步需要。同为 3.9 也可能因构建方式而缺失，用 `python3 -c "import ssl"` 确认 |
+| 可选 | 带 `ssl` 的 Python —— Google 任务同步需要。同为 3.9 也可能因构建方式而缺失，用 `python3 -c "import ssl"` 确认。`start.sh` 会自动选择可用的解释器，也可用 `WORK_DASHBOARD_PYTHON` 指定 |
 
 ## 快速开始
 
