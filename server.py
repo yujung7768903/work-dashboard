@@ -135,7 +135,7 @@ def _route_get(con, head, item_id, query):
     if head == "usage":
         return usage.snapshot(con)
     if head == "worktrees":
-        return worktrees.overview(con)
+        return worktrees.overview(con, _single(query, "group_by", worktrees.GROUP_BY_WORKSPACE))
     if head == "autorun":
         return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
     if head == "settings":

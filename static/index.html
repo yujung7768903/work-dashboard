@@ -167,7 +167,7 @@
         <div id="board-controls">
           <label data-i18n="board.showDone"><input type="checkbox" id="show-done"></label>
           <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 화면 폭이 정하던 것을 직접 고른다 -->
-          <div id="view-columns">
+          <div class="view-columns">
             <button type="button" class="icon-btn" data-columns="1"
                     data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -198,6 +198,39 @@
         </div>
 
         <div id="board-worktrees" hidden>
+          <div id="worktree-controls">
+            <!-- 워크스페이스별(기존)·프로젝트별(저장소 전체) 전환. 프로젝트별은 워크스페이스나
+                 할일에 안 걸린 워크트리까지 보여준다 -->
+            <div id="worktree-view">
+              <button type="button" class="active" data-view="workspace"
+                      data-i18n="worktree.viewWorkspace"></button>
+              <button type="button" data-view="project"
+                      data-i18n="worktree.viewProject"></button>
+            </div>
+            <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 할일 탭의 view-columns 와 같은 취향을 공유한다 -->
+            <div class="view-columns">
+              <button type="button" class="icon-btn" data-columns="1"
+                      data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4" fill="none"
+                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button type="button" class="icon-btn" data-columns="2"
+                      data-i18n-title="board.twoColumns" data-i18n-aria-label="board.twoColumns">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <rect x="2.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <rect x="8.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <rect x="2.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <rect x="8.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+          </div>
           <div id="worktree-list"></div>
         </div>
       </section>
