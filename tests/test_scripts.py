@@ -70,17 +70,35 @@ class StartStopTest(unittest.TestCase):
 
     def _stop(self):
         if _listening(self.port):
-            self._run("stop.sh")
+            self._run("stop.sh", "--port", str(self.port))
+
+    def _skip_if_shared(self):
+        # 인자 없는 재실행은 이 체크아웃의 서버를 전부 죽인다. 띄우기 전에 부른다
+        if _serving_pids():
+            self.skipTest("이 체크아웃에 다른 서버가 떠 있음")
 
     def test_start_then_stop(self):
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port), "start.sh 로 뜨지 않음")
-        out = self._run("stop.sh")
+        out = self._run("stop.sh", "--port", str(self.port))
         self.assertIn("종료", out)
         self.assertFalse(_listening(self.port), "stop.sh 로 멈추지 않음")
 
     def test_stop_without_server_is_quiet_success(self):
-        self.assertIn("돌고 있는 서버 없음", self._run("stop.sh"))
+        self.assertIn(
+            "돌고 있는 서버 없음", self._run("stop.sh", "--port", str(self.port))
+        )
+
+    def test_stop_with_port_leaves_other_servers_alone(self):
+        other = _free_port()
+        self._run("start.sh", "--port", str(other))
+        self.addCleanup(self._run, "stop.sh", "--port", str(other))
+        self.assertTrue(_wait_listening(other))
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self._run("stop.sh", "--port", str(self.port))
+        self.assertFalse(_listening(self.port), "지정한 포트가 안 멈췄다")
+        self.assertTrue(_listening(other), "지정하지 않은 포트까지 멈췄다")
 
     def test_without_lan_only_this_machine(self):
         """기본은 루프백. 옵션을 안 준 실행이 LAN 에 열리면 인증 없는 화면이 그냥 노출된다"""
@@ -109,6 +127,7 @@ class StartStopTest(unittest.TestCase):
         lan = _lan_address()
         if not lan:
             self.skipTest("LAN 주소 없음")
+        self._skip_if_shared()
         self._run("start.sh", "--lan", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
         out = self._run("restart.sh")
@@ -118,6 +137,7 @@ class StartStopTest(unittest.TestCase):
 
     def test_restart_inherits_port(self):
         """인자를 안 주면 죽는 서버의 포트를 물려받는다"""
+        self._skip_if_shared()
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
         self.assertIn("종료", self._run("restart.sh"))
@@ -128,6 +148,17 @@ def _free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+def _serving_pids():
+    """이 체크아웃을 cwd 로 돌고 있는 서버 pid"""
+    found = subprocess.run(
+        ["bash", "-c", ". ./serving.sh; serving_pids"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    return found.stdout.split()
 
 
 def _lan_address():
