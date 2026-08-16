@@ -10,7 +10,7 @@ const WIDE_SCREEN = "(min-width: 1240px)";
 
 function applyColumns(columns) {
   document.body.dataset.boardColumns = columns;
-  document.querySelectorAll("#view-columns button").forEach((button) => {
+  document.querySelectorAll(".view-columns button").forEach((button) => {
     button.classList.toggle("active", button.dataset.columns === columns);
   });
 }
@@ -24,9 +24,11 @@ function applySide(collapsed) {
   button.setAttribute("aria-expanded", String(!collapsed));
 }
 
-document.getElementById("view-columns").addEventListener("click", (event) => {
+// 할일 탭·워크트리 탭 둘 다 .view-columns 를 쓰므로 위임으로 한 번에 받는다
+document.addEventListener("click", (event) => {
   // 버튼 안에 아이콘 svg 가 있어 event.target 이 버튼이 아닐 수 있다
-  const columns = event.target.closest("button")?.dataset.columns;
+  const button = event.target.closest(".view-columns button");
+  const columns = button?.dataset.columns;
   if (!columns) return;
   localStorage.setItem(COLUMNS_KEY, columns);
   applyColumns(columns);

@@ -237,6 +237,17 @@ def cwds_by_workspace(con, workspace_id):
     return [row["cwd"] for row in rows]
 
 
+def all_cwds(con):
+    """세션이 남긴 모든 작업 위치, 워크스페이스·할일 연결 여부와 무관하게. 최근 순.
+    워크트리 뷰의 프로젝트 모드가 저장소를 유추할 때 쓴다 — cwds_by_workspace 와 달리
+    todos 조인이 없어 어느 워크스페이스에도 속하지 않은 위치까지 잡힌다"""
+    rows = con.execute(
+        "SELECT cwd, MAX(last_seen_at) AS seen FROM sessions"
+        " WHERE COALESCE(cwd,'') <> '' GROUP BY cwd ORDER BY seen DESC"
+    )
+    return [row["cwd"] for row in rows]
+
+
 def cwd_counts_by_workspace(con, workspace_id):
     """그 워크스페이스에서 돈 작업 위치 → 세션 수. 많이 돈 순, 같으면 최근 순.
 

@@ -310,9 +310,9 @@ button:disabled { color: var(--line); cursor: default; }
   flex-wrap: wrap; font-size: var(--fs-sm);
 }
 #board-controls label { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; }
-/* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다 */
-#view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
-#view-columns button.active { background: var(--softer); color: var(--accent); }
+/* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다. 할일·워크트리 탭이 같이 쓴다 */
+.view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
+.view-columns button.active { background: var(--softer); color: var(--accent); }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
 .group, .ws-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
@@ -351,10 +351,28 @@ button:disabled { color: var(--line); cursor: default; }
 /* 고른 열 수는 아래 화면 폭 기준(@media min-width 1240px)을 이긴다 — 화면이 넓어도
    한 줄로 길게 보고 싶을 때가 있다. 고르는 곳은 보드 위 아이콘 두 개(static/js/layout.js) */
 body[data-board-columns="1"] #groups,
-body[data-board-columns="1"] #done-groups { grid-template-columns: 1fr; }
+body[data-board-columns="1"] #done-groups,
+body[data-board-columns="1"] #worktree-list { grid-template-columns: 1fr; }
 body[data-board-columns="2"] #groups,
-body[data-board-columns="2"] #done-groups { grid-template-columns: 1fr 1fr; }
-/* 워크트리 목록도 같은 격자. 세로 마진은 위의 탭 바가 이미 띄워 둔다 */
+body[data-board-columns="2"] #done-groups,
+body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
+/* 워크스페이스별·프로젝트별 전환은 왼쪽, 열 수 아이콘(.view-columns)은 오른쪽 */
+#worktree-controls {
+  display: flex; flex-wrap: wrap; color: var(--muted);
+  font-size: var(--fs-sm); margin: 0 0 var(--gap);
+}
+#worktree-view { display: flex; gap: var(--sp-4); }
+#worktree-view button {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: none; color: var(--muted); font-weight: 600; cursor: pointer;
+}
+#worktree-view button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+#worktree-view button.active { background: var(--softer); color: var(--accent); }
+
+/* 워크트리 목록도 같은 격자. 세로 마진은 위의 전환 줄이 띄워 둔다 */
 #worktree-list { display: grid; gap: var(--gap); align-items: stretch; }
 /* 워크트리 줄은 줄바꿈을 하지 않아 격자 칸의 기본 min-width:auto 가 카드를 내용만큼
    넓혀 버린다. 0 으로 풀어야 1fr 을 지키고 안쪽이 말줄임으로 접힌다 */

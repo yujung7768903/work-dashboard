@@ -40,7 +40,7 @@ export const getSessions = () => request("GET", "/sessions");
 export const getSession = (id) => request("GET", `/sessions/${id}`);
 export const classifySession = (id, fields) => request("PATCH", `/sessions/${id}`, fields);
 export const getUsage = () => request("GET", "/usage");
-export const getWorktrees = () => request("GET", "/worktrees");
+export const getWorktrees = (groupBy) => request("GET", `/worktrees?group_by=${groupBy}`);
 export const applyWorktree = (repo, branch) =>
   request("POST", "/worktrees", { repo, branch, action: "apply" });
 export const discardWorktree = (repo, branch) =>

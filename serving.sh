@@ -10,7 +10,10 @@ EXIT_WAIT_TRIES=25 # 0.2초씩 — 포트가 풀리기 전에 새로 띄우면 b
 serving_pids() {
   local here pid cwd
   here=$(pwd -P) # lsof 는 심볼릭 링크를 푼 경로를 주므로 비교할 쪽도 풀어둔다
-  for pid in $(pgrep -f 'python3 server\.py' || true); do
+  # 인터프리터 이름으로 좁히지 않는다 — python3 가 pyenv 샤임을 거치지 않고 바로
+  # 풀리면(예: Xcode CommandLineTools 의 Python) 명령줄에 "python3" 가 안 남는다.
+  # cwd 로 이미 좁히므로 server.py 하나로도 충분하다
+  for pid in $(pgrep -f 'server\.py' || true); do
     if [ -e "/proc/$pid/cwd" ]; then
       cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)
     else
