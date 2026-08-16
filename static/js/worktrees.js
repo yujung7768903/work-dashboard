@@ -42,10 +42,23 @@ let groupBy = localStorage.getItem(VIEW_KEY) === GROUP_BY_PROJECT
   : GROUP_BY_WORKSPACE;
 
 export async function renderWorktrees() {
-  // 들고 있는 게 있으면 먼저 그려 두고, 새로 받아 한 번 더 그린다
+  // 들고 있는 게 있으면 먼저 그려 두고, 새로 받아 한 번 더 그린다.
+  // 없으면 빈 칸 대신 도는 원을 세운다 — 한 번 받는 데 0.6 초가 걸린다
   if (cached) draw(cached);
+  else drawLoading();
   cached = (await api.getWorktrees(groupBy)).groups;
   draw(cached);
+}
+
+function drawLoading() {
+  syncViewButtons();
+  const container = document.getElementById("worktree-list");
+  container.innerHTML = "";
+  const spinner = document.createElement("div");
+  spinner.className = "wt-loading";
+  spinner.setAttribute("role", "status");
+  spinner.setAttribute("aria-label", t("common.loading"));
+  container.appendChild(spinner);
 }
 
 function draw(groups) {

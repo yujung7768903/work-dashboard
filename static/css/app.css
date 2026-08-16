@@ -377,6 +377,18 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 /* 워크트리 줄은 줄바꿈을 하지 않아 격자 칸의 기본 min-width:auto 가 카드를 내용만큼
    넓혀 버린다. 0 으로 풀어야 1fr 을 지키고 안쪽이 말줄임으로 접힌다 */
 #worktree-list > .group { min-width: 0; }
+/* 목록을 받아 오는 동안 격자 전체 폭 가운데에 도는 원 하나 */
+.wt-loading {
+  grid-column: 1 / -1; justify-self: center; margin: var(--sp-48) 0;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-top-color: var(--accent);
+  animation: wt-spin 0.7s linear infinite;
+}
+@keyframes wt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .wt-loading { animation-duration: 2.4s; }
+}
 
 /* overflow 를 걸지 않음: 마지막 항목의 케밥 메뉴가 카드 밖으로 펼쳐져야 함 */
 .group {
