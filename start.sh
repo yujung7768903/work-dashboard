@@ -12,6 +12,27 @@ LOG_KEEP_DAYS=7
 ANY_HOST=0.0.0.0
 # 어느 인터페이스에서 LAN 주소를 찾을지. 앞의 것부터 — en0 이 보통 무선이다
 LAN_INTERFACES="en0 en1"
+# 고를 파이썬 후보. 앞의 것부터 — PATH 의 python3 가 되면 그걸 그대로 쓴다
+PYTHON_CANDIDATES="python3 /usr/bin/python3 /opt/homebrew/bin/python3"
+
+# ssl 이 되는 python3 를 고른다.
+# 표준 라이브러리만 쓰므로 인터프리터를 바꿔도 깨질 것이 없다. 반면 ssl 이 빠진
+# 파이썬으로 뜨면 구글 태스크 연동이 HTTPS 를 아예 못 연다 — 같은 3.9 라도
+# 빌드에 따라 빠지고(예: pyenv 로 빌드한 뒤 시스템 openssl 이 사라진 경우)
+# 그때 urllib 은 "unknown url type: https" 라는, 원인을 짐작할 수 없는 문구로 끝난다
+pick_python() {
+  local candidate
+  for candidate in ${WORK_DASHBOARD_PYTHON:-} $PYTHON_CANDIDATES; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import ssl' >/dev/null 2>&1; then
+      echo "$candidate"
+      return
+    fi
+  done
+  # 아무것도 없으면 원래대로. 서버는 뜨고 연동만 못 쓴다 — 설정 화면이 사유를 알린다
+  echo python3
+}
+
+python=$(pick_python)
 
 # --lan 은 server.py 가 모르는 이름이라 여기서 --host 0.0.0.0 으로 바꿔 넘긴다.
 # 별칭을 두는 이유는 짧아서가 아니라 주소 때문 — server.py 는 받은 host 를 그대로
@@ -49,7 +70,7 @@ before=$(wc -l <"$log")
 # -u 가 아니라 환경변수로 버퍼링을 끈다 — 명령 앞 두 토큰이 'python3 -u' 가 되면
 # release.py·worktrees.py 의 서버 탐지가 server.py 를 못 알아본다
 # bash 3.2 는 set -u 에서 빈 배열의 "${args[@]}" 를 unbound 로 본다 (restart.sh 와 같은 회피)
-PYTHONUNBUFFERED=1 nohup python3 server.py ${args[@]+"${args[@]}"} >>"$log" 2>&1 &
+PYTHONUNBUFFERED=1 nohup "$python" server.py ${args[@]+"${args[@]}"} >>"$log" 2>&1 &
 pid=$!
 
 # 뜨면 URL 한 줄, 실패하면 사유를 로그에 남긴다. 그 줄이 나올 때까지만 기다린다
@@ -72,5 +93,10 @@ else
 fi
 if [ -n "$open_to_lan" ]; then
   echo "LAN 공개 — 인증이 없다. 신뢰하는 와이파이에서만 쓰고, 끝나면 ./stop.sh"
+fi
+# 인터프리터를 말없이 바꾸면 "왜 다른 파이썬으로 떴지" 를 추적할 길이 없다.
+# PATH 의 python3 를 그대로 쓴 흔한 경우에는 굳이 적지 않는다
+if [ "$python" != "python3" ]; then
+  echo "python3 에 ssl 이 없어 $python 로 띄움 (구글 태스크 연동에 필요)"
 fi
 echo "pid $pid · 로그 $log"

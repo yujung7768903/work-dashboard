@@ -42,7 +42,7 @@ Claude 는 CLI 로 다루고, 둘이 같은 sqlite 파일을 읽고 쓴다. 프�
 | 선택 | Claude Code — 세션 추적·상태줄·자율 실행에 필요 |
 | 선택 | Node.js — 테스트 중 일부 화면 검증이 `node` 로 돈다 |
 | 선택 | `PATH` 의 `markdownlint-cli2` — 마크다운 린트 훅이 쓴다 |
-| 선택 | `ssl` 이 되는 Python — 구글 태스크 동기화에 필요. 같은 3.9 라도 빌드에 따라 빠져 있을 수 있으니 `python3 -c "import ssl"` 로 확인 |
+| 선택 | `ssl` 이 되는 Python — 구글 태스크 동기화에 필요. 같은 3.9 라도 빌드에 따라 빠져 있을 수 있으니 `python3 -c "import ssl"` 로 확인. `start.sh` 가 되는 것을 골라 띄우고, `WORK_DASHBOARD_PYTHON` 으로 지정할 수도 있다 |
 
 ## 빠른 시작
 

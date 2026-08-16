@@ -44,7 +44,7 @@ running and the next session knows where things stand.
 | Optional | Claude Code — for session tracking, status line and autonomous runs |
 | Optional | Node.js — some UI checks in the test suite run under `node` |
 | Optional | `markdownlint-cli2` on `PATH` — used by the markdown lint hook |
-| Optional | A Python with `ssl` — needed for the Google Tasks sync. Even a 3.9 can be built without it, so check with `python3 -c "import ssl"` |
+| Optional | A Python with `ssl` — needed for the Google Tasks sync. Even a 3.9 can be built without it, so check with `python3 -c "import ssl"`. `start.sh` picks one that has it, and `WORK_DASHBOARD_PYTHON` overrides the choice |
 
 ## Quickstart
 
