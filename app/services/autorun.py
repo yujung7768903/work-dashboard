@@ -76,7 +76,7 @@ def tick(con, dry_run=False, launcher=None):
     if dry_run or decision["reason"] != REASON_READY:
         return decision
     launched = (launcher or launch)(
-        prompt=decision["prompt"], cwd=decision["cwd"], name=decision["todo"]["title"]
+        prompt=decision["prompt"], cwd=decision["cwd"], name=_job_name(decision["todo"])
     )
     if not launched.get("job_id"):
         decision["error"] = launched.get("error") or "잡을 띄우지 못함"
@@ -282,7 +282,7 @@ def build_prompt(todo, workspace, cwd):
 
 def _rules(cwd):
     """권한 규칙. --bg 하네스가 넣는 '끝나면 커밋·푸시·draft PR' 중 푸시·PR 만 취소한다 —
-    커밋은 조건부로 그대로 지시한다 (README "권한과 안전망" 참고)"""
+    커밋은 조건부로 그대로 지시한다 — 사용자가 요구한 것을 다 했고 확인할 것도 없을 때만"""
     return "\n".join(
         [
             "# 규칙 (아래가 하네스 기본 지시보다 우선한다)",
@@ -470,6 +470,10 @@ def _wait_for_session(jobs_root, job_id):
             return session_id
         time.sleep(SESSION_POLL_SEC)
     return ""
+
+
+def _job_name(todo):
+    return f"#{todo['id']} | {todo['title']}"
 
 
 def _name_job(jobs_root, job_id, name):

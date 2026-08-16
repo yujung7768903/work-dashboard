@@ -14,7 +14,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from app.constants import STATUS_DONE, WORKSPACE_ACTIVE
+from app.constants import STATUS_DONE, TEST_SERVER_PORTS, WORKSPACE_ACTIVE
 from app.db import now
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
@@ -32,6 +32,8 @@ BRANCH_LIMIT = 30
 COMMIT_LIMIT = 20
 # 브랜치별 git 을 겹쳐 부르는 폭. 저장소 하나가 CPU 를 다 먹지 않을 만큼만
 GIT_WORKERS = 8
+# 저장소를 겹쳐 보는 폭. 저장소마다 GIT_WORKERS 만큼 더 벌어지므로 곱이 감당할 만큼만
+REPO_WORKERS = 4
 # 명령줄 앞 두 토큰만 이름으로 줄여 보여준다 (`python3 server.py`)
 COMMAND_TOKENS = 2
 # git log 필드 구분자. 커밋 제목에 들어갈 일이 없어 split 이 안전하다
@@ -46,27 +48,43 @@ STATE_MERGED = "merged"
 STATE_DELETED = "deleted"
 # 세션 cwd 가 워크트리인지 가르고 저장소 루트를 잘라내는 표식
 WORKTREE_MARK = release.WORKTREE_MARK
+# 워크트리 탭 뷰 모드 — 워크스페이스별(기존)과 프로젝트(저장소)별
+GROUP_BY_WORKSPACE = "workspace"
+GROUP_BY_PROJECT = "project"
+GROUP_BY_CHOICES = (GROUP_BY_WORKSPACE, GROUP_BY_PROJECT)
 # 기준 브랜치 reflog 의 병합 항목 — `merge <브랜치>: Merge made by ...` / `...: Fast-forward`
 MERGE_ENTRY = re.compile(r"^merge (\S+):")
 
 
-def overview(con):
-    """저장소를 찾은 활성 워크스페이스만. 못 찾은 워크스페이스는 그리지 않는다"""
+def overview(con, group_by=GROUP_BY_WORKSPACE):
+    """워크스페이스별은 저장소를 찾은 활성 워크스페이스만(기존과 같음).
+
+    프로젝트별은 워크스페이스·할일 연결과 무관하게, 세션이 한 번이라도 다녀간 저장소를
+    전부 보여준다 — 워크스페이스가 done·아카이브됐거나 세션이 아직 분류되지 않았어도
+    그 저장소의 워크트리는 남아 있을 수 있어서다
+    """
+    if group_by not in GROUP_BY_CHOICES:
+        raise Validation(f"group_by 는 {GROUP_BY_CHOICES} 중 하나여야 함")
     summaries = {_real(cwd): title
                  for cwd, title in session_repo.todo_titles_by_cwd(con).items()}
     # 줄 클릭으로 열 할일. 적용 로직이 쓰는 todo_ids_by_cwd(위치별 전체)와 달리
     # 요약 제목과 같은 세션에서 뽑은 하나여야 해서 단수 조회를 쓴다
     todo_id_by_path = {_real(cwd): todo_id
                        for cwd, todo_id in session_repo.todo_id_by_cwd(con).items()}
+    processes = _serving_by_path()
+    builder = _project_groups if group_by == GROUP_BY_PROJECT else _workspace_groups
+    return {"group_by": group_by, "groups": builder(con, summaries, todo_id_by_path, processes)}
+
+
+def _workspace_groups(con, summaries, todo_id_by_path, processes):
     categories = {row["id"]: row for row in category_repo.list_all(con)}
-    ports = _ports_by_pid()
-    groups = []
+    heads = []
     for workspace in workspace_repo.list_all(con, status=WORKSPACE_ACTIVE):
         root = _repo_root(session_repo.cwds_by_workspace(con, workspace["id"]))
         if not root:
             continue
         category = categories.get(workspace["category_id"]) or {}
-        groups.append(
+        heads.append(
             {
                 "id": workspace["id"],
                 "name": workspace["name"],
@@ -74,10 +92,64 @@ def overview(con):
                 "category_name": category.get("name"),
                 "category_color": category.get("color"),
                 "repo": root,
-                **_repo_state(root, summaries, todo_id_by_path, ports),
             }
         )
-    return {"groups": groups}
+    return _with_states(heads, summaries, todo_id_by_path, processes)
+
+
+def _project_groups(con, summaries, todo_id_by_path, processes):
+    """저장소 하나 = 그룹 하나. 최근 커밋 시각 내림차순"""
+    heads = [
+        {
+            "id": None,
+            "name": os.path.basename(root),
+            "category_id": None,
+            "category_name": None,
+            "category_color": None,
+            "repo": root,
+        }
+        for root in _known_repo_roots(session_repo.all_cwds(con))
+    ]
+    return sorted(
+        _with_states(heads, summaries, todo_id_by_path, processes),
+        key=_latest_activity,
+        reverse=True,
+    )
+
+
+def _with_states(heads, summaries, todo_id_by_path, processes):
+    """그룹 머리마다 브랜치 상태를 붙인다. 저장소 하나에 git 을 여러 번 부르므로 저장소끼리도
+    겹쳐 부른다 — 순서대로 돌면 저장소 수만큼 곱해진다"""
+    if not heads:
+        return []
+    with ThreadPoolExecutor(max_workers=min(REPO_WORKERS, len(heads))) as pool:
+        states = list(
+            pool.map(
+                lambda head: _repo_state(head["repo"], summaries, todo_id_by_path, processes),
+                heads,
+            )
+        )
+    return [{**head, **state} for head, state in zip(heads, states)]
+
+
+def _latest_activity(group):
+    """그 저장소 안 브랜치들의 가장 최근 커밋 시각(ISO8601). 없으면 빈 문자열"""
+    stamps = [row["commits"][0]["at"] for row in group["rows"] if row["commits"]]
+    return max(stamps) if stamps else ""
+
+
+def _known_repo_roots(cwds):
+    """cwd 들이 걸친 서로 다른 저장소 루트 전부. 워크스페이스 뷰의 _repo_root 는 하나 찾으면
+    멈추지만(워크스페이스 하나 = 저장소 하나 가정), 여기는 저장소 목록 자체가 필요하다"""
+    roots = []
+    for cwd in cwds:
+        # 이미 찾은 저장소 안의 위치면(워크트리 포함) 루트가 정해져 있다 — 되물을 것이 없다
+        if any(cwd == root or cwd.startswith(root + os.sep) for root in roots):
+            continue
+        root = repo_root_of(cwd)
+        if root and root not in roots:
+            roots.append(root)
+    return roots
 
 
 def history(con, todo_ids):
@@ -436,19 +508,20 @@ def _run_write(argv):
         raise Conflict(f"{' '.join(argv)} 실행 실패: {error}")
 
 
-def _repo_state(root, summaries, todo_id_by_path, ports):
+def _repo_state(root, summaries, todo_id_by_path, processes):
     branches = _branches(root)
     base = _base_branch(root, branches)
     shown = _base_first(branches, base)[:BRANCH_LIMIT]
     worktrees = _worktrees(root)
-    processes = _process_map(sorted(set(worktrees.values())), ports)
-    # 브랜치마다 git 을 두 번 부른다. 순서대로 돌면 브랜치 수만큼 곱해져 눈에 띄게
-    # 느려지므로 한꺼번에 띄운다 — subprocess 대기라 스레드로 충분히 겹친다
+    gaps = _divergences(root, base)
+    # 앞선 커밋이 있는 브랜치만 git log 를 부른다. 순서대로 돌면 브랜치 수만큼 곱해져
+    # 눈에 띄게 느려지므로 한꺼번에 띄운다 — subprocess 대기라 스레드로 충분히 겹친다
     with ThreadPoolExecutor(max_workers=GIT_WORKERS) as pool:
         rows = list(
             pool.map(
                 lambda name: _row(
-                    root, base, name, worktrees.get(name), summaries, todo_id_by_path, processes
+                    root, base, name, worktrees.get(name), gaps.get(name),
+                    summaries, todo_id_by_path, processes
                 ),
                 shown,
             )
@@ -466,10 +539,11 @@ def _base_first(branches, base):
     return ([base] if base in branches else []) + rest
 
 
-def _row(root, base, branch, path, summaries, todo_id_by_path, processes):
+def _row(root, base, branch, path, gap, summaries, todo_id_by_path, processes):
     is_base = branch == base
-    commits = [] if is_base else _commits(root, base, branch)
-    behind, ahead = (0, 0) if is_base else _divergence(root, base, branch)
+    behind, ahead = (0, 0) if is_base else (gap or _divergence(root, base, branch))
+    # 앞선 커밋이 없으면 `base..branch` 가 비어 있다 — git log 를 부를 것이 없다
+    commits = _commits(root, base, branch) if ahead else []
     return {
         "branch": branch,
         "path": path,
@@ -517,6 +591,24 @@ def _worktrees(root):
     return found
 
 
+def _divergences(root, base):
+    """브랜치 → (뒤처진 커밋 수, 앞선 커밋 수). 브랜치마다 rev-list 를 부르면 브랜치 수만큼
+    곱해지므로 for-each-ref 로 한 번에 받는다. 못 받은 브랜치는 빠진다 —
+    부르는 쪽이 낱개로 되묻는다 (ahead-behind 필드는 git 2.41 부터)"""
+    if not base:
+        return {}
+    out = _git(root, "for-each-ref", f"--format=%(refname:short){UNIT}%(ahead-behind:{base})",
+               BRANCH_REF)
+    found = {}
+    for line in out.splitlines():
+        name, _, gap = line.partition(UNIT)
+        # 이 필드는 `<앞섬> <뒤처짐>` 순으로, 우리가 쓰는 것과 반대다
+        ahead, _, behind = gap.strip().partition(" ")
+        if ahead.isdigit() and behind.isdigit():
+            found[name] = (int(behind), int(ahead))
+    return found
+
+
 def _divergence(root, base, branch):
     """(뒤처진 커밋 수, 앞선 커밋 수). lazygit 의 ↓↑ 와 같은 기준"""
     parts = _git(root, "rev-list", "--left-right", "--count", f"{base}...{branch}").split()
@@ -549,36 +641,39 @@ def _log(root, revs, *extra):
 def processes_by_path(paths):
     """경로 → 거기서 포트를 듣고 있는 프로세스. 자율 수행 패널도 같은 조회를 쓴다.
 
-    lsof 두 번이라 부르는 쪽에서 경로를 몰아서 넘긴다 — 비면 아예 부르지 않는다
+    lsof 두 번이라 비면 아예 부르지 않는다
     """
-    live = [_real(path) for path in paths if path]
-    if not live:
+    if not any(paths):
         return {}
-    return _process_map(live, _ports_by_pid())
+    serving = _serving_by_path()
+    return {path: serving[path] for path in map(_real, filter(None, paths)) if path in serving}
 
 
-def _process_map(paths, ports):
-    """워크트리 경로 → 거기서 포트를 듣고 있는 프로세스.
+def _serving_by_path():
+    """작업 위치 → 거기서 포트를 듣고 있는 프로세스.
     셸·에디터까지 다 보이면 잡음이라 듣는 포트가 있는 것만 남긴다.
-    lsof 는 한 번에 0.2 초라 경로마다 부르면 탭이 눈에 띄게 느려진다 — 경로를 몰아
-    한 번만 묻는다"""
-    live = [path for path in paths if os.path.isdir(path)]
-    if not live:
+
+    묻는 방향이 중요하다 — 경로로 cwd 를 물으면 lsof 가 프로세스 전체를 훑어 한 번에
+    0.7 초씩 걸리고 저장소마다 되풀이된다. 듣는 포트가 있는 pid 는 이미 알고 있으므로
+    그 pid 들의 cwd 만 되물으면 저장소 수와 무관하게 lsof·ps 각 한 번으로 끝난다
+    """
+    ports = _ports_by_pid()
+    if not ports:
         return {}
-    owned = [(pid, path) for pid, path in _cwd_pids(live) if pid in ports]
-    commands = _commands([pid for pid, _ in owned])
+    commands = _commands(list(ports))
     found = {}
-    for pid, path in owned:
+    for pid, cwd in _cwds_by_pid(list(ports)):
         entry = {"pid": pid, "command": commands.get(pid, ""), "ports": ports[pid]}
-        found.setdefault(path, []).append(entry)
+        found.setdefault(_real(cwd), []).append(entry)
     return found
 
 
-def _cwd_pids(paths):
-    """[(pid, cwd)] — 그 경로들을 작업 위치로 쓰는 프로세스. lsof 한 번"""
+def _cwds_by_pid(pids):
+    """[(pid, cwd)] — 그 pid 들의 작업 위치. lsof 한 번"""
     found = []
     pid = None
-    for line in _run(["lsof", "-a", "-d", "cwd", "-F", "pn", *paths]).splitlines():
+    for line in _run(["lsof", "-a", "-d", "cwd", "-p",
+                      ",".join(str(item) for item in sorted(pids)), "-F", "pn"]).splitlines():
         if line.startswith("p") and line[1:].strip().isdigit():
             pid = int(line[1:])
         elif line.startswith("n") and pid is not None:
@@ -597,7 +692,7 @@ def _ports_by_pid():
         # 이름 줄은 'n*:8765' / 'n127.0.0.1:8765' / 'n[::1]:8765' 형태
         if line.startswith("n") and pid is not None and ":" in line:
             tail = line.rsplit(":", 1)[1].strip()
-            if tail.isdigit():
+            if tail.isdigit() and int(tail) not in TEST_SERVER_PORTS:
                 ports.setdefault(pid, set()).add(int(tail))
     return {pid: sorted(values) for pid, values in ports.items()}
 

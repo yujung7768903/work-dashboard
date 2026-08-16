@@ -195,7 +195,7 @@ def _build_parser():
     _add_json_flag(show_note)
     show_note.set_defaults(handler=_cmd_show_note)
 
-    link_todo = sub.add_parser("link-todo", help="세션이 만든 할일 연결")
+    link_todo = sub.add_parser("link-todo", help="이 세션이 착수하는 할일 연결")
     _add_session_arg(link_todo)
     link_todo.add_argument("todo_id", type=int)
     link_todo.add_argument(
@@ -426,6 +426,10 @@ def _cmd_add_todo(con, args):
         precondition=args.precondition,
     )
     print(f"{created['id']}. {created['title']}")
+    print(
+        f"지금 이 세션이 착수하는 작업이면 link-todo {created['id']} 로 연결한다."
+        " 나중에 할 후속 할일이면 연결하지 않는다 — 착수하는 세션이 연결한다."
+    )
 
 
 def _scope_from_session(con, claude_session_id):
@@ -583,23 +587,29 @@ def _cmd_merge(con, args):
         print(f"{label}: {detail}", flush=True)
     if result["aborted"]:
         raise Validation("중단 — " + result["aborted"])
-    _print_release(result["release"])
+    _print_release(con, result["release"])
 
 
 def _cmd_finish(con, args):
     """병합으로 끝난 작업의 뒷정리. 워크트리 제거는 ExitWorktree 몫이라 안내만 한다"""
-    _print_release(release.finish(con, args.session, worktree=args.worktree))
+    _print_release(con, release.finish(con, args.session, worktree=args.worktree))
 
 
-def _print_release(result):
+def _print_release(con, result):
     """해제 결과. merge 와 finish 가 같은 형식으로 찍어야 읽는 쪽이 헷갈리지 않는다"""
-    print("완료한 할일: " + (", ".join(str(i) for i in result["todos"]) or "(없음)"))
+    print("완료한 할일: " + (_finished_labels(con, result["todos"]) or "(없음)"))
     for pid, command in result["killed"]:
         print(f"종료한 프로세스: {pid} {command}")
     if not result["killed"]:
         print(f"종료한 프로세스: (없음) — {_why_nothing_killed(result)}")
     if result["worktree"]:
         print(f"남은 정리: ExitWorktree 로 워크트리 제거 — {result['worktree']}")
+
+
+def _finished_labels(con, todo_ids):
+    return ", ".join(
+        f"{todo_id}. {todo_repo.get(con, todo_id)['title']}" for todo_id in todo_ids
+    )
 
 
 def _cmd_statusline(con, args):

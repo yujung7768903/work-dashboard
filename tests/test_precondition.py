@@ -162,10 +162,12 @@ class PreconditionAddFormTest(unittest.TestCase):
         self.assertEqual(korean["common.preconditionHint"], PRECONDITION_HINT)
         self.assertIn("common.preconditionHint", INDEX.read_text(encoding="utf-8"))
         self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
-        # 예시는 placeholder 로 보여 준다 (개행은 &#10;). CLI 도움말과 같은 상수를
-        # 그대로 쓰므로 이 자리만 한국어로 남는다
+        # 예시는 placeholder 로 보여 준다. 안내 문구와 같이 사전에서 꺼내 쓰므로
+        # 화면 언어를 따라가고, 한국어 값은 CLI 도움말과 같은 상수여야 한다
+        self.assertEqual(korean["common.preconditionExample"], PRECONDITION_EXAMPLE)
         self.assertIn(
-            PRECONDITION_EXAMPLE.replace("\n", "&#10;"), INDEX.read_text(encoding="utf-8")
+            'data-i18n-placeholder="common.preconditionExample"',
+            INDEX.read_text(encoding="utf-8"),
         )
 
 

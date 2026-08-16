@@ -5,6 +5,10 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9080
 BUSY_TIMEOUT_MS = 5000
 
+# start.sh·stop.sh·restart.sh 를 실제로 실행해 검사하는 테스트가 쓰는 대역.
+# 이 대역을 듣는 서버는 화면(워크트리 탭·상태줄·자율 수행 패널)에 그리지 않는다
+TEST_SERVER_PORTS = range(9900, 10000)
+
 DEFAULT_DB_PATH = os.path.expanduser("~/.claude/work-dashboard/dash.db")
 DB_PATH_ENV = "WORK_DASHBOARD_DB"
 
@@ -16,7 +20,7 @@ SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "
 # tests/test_language.py 가 잡는다.
 # 기본값·폴백은 영어다 — 이 대시보드를 공개로 열 것이므로, 설정을 못 읽거나 번역이
 # 빠졌을 때 처음 보는 사람이 읽을 수 있는 쪽으로 떨어져야 한다.
-# CLI 출력·훅 주입 블록은 아직 한국어 고정 (README '초기 설정 (⑤) > 화면 언어' 참고)
+# CLI 출력·훅 주입 블록은 아직 한국어 고정 — 읽는 쪽이 Claude 라 옮길 이유가 없다
 LANGUAGES = ("en", "ko", "ja", "zh")
 DEFAULT_LANGUAGE = LANGUAGES[0]
 LANGUAGE_KEY = "language"  # meta 테이블 키
@@ -187,7 +191,7 @@ GTASKS_NO_BROWSER = "브라우저를 열 수 없습니다. 아래 주소를 직�
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 COST_FIELD = "estimated_cost_usd"
 MODEL_FAMILIES = (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"))
-MODEL_FAMILY_OTHER = "기타"
+MODEL_FAMILY_OTHER = "Other"  # 화면이 이 이름만 사전에서 꺼내 옮긴다 (usage.modelOther)
 
 # ④ 자율 실행. 사람이 자리를 비운 사이 할일 1건씩 `claude --bg` 잡으로 돌린다.
 # 대상은 두 겹으로 좁힌다 — 사람이 붙인 라벨과, 코드가 판정할 수 없는 조건의 부재.

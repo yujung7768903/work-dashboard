@@ -56,6 +56,9 @@ const MODEL_CLASS = {
   Fable: "u-c-fable",
 };
 const FALLBACK_CLASS = "u-c-other";
+// 이름을 모르는 모델이 모이는 몫. 서버가 주는 것은 계열을 가르는 이름이라 이것만
+// 사전에서 꺼내 쓴다 — 나머지 넷은 제품 이름이라 언어를 타지 않는다
+const MODEL_OTHER = "Other";
 const BREAKDOWN_ROWS = [
   ["output_tokens", t("usage.output")],
   ["cache_write_tokens", t("usage.cacheWrite")],
@@ -259,12 +262,16 @@ function renderDaily(tokens) {
   }
   box.appendChild(
     headRow(t("usage.dailyTokens"), t("usage.lastDays", { days: days.length }), [
-      legendRow(models.map((model) => ({ name: model, cls: classOf(model) }))),
+      legendRow(models.map((model) => ({ name: modelLabel(model), cls: classOf(model) }))),
     ])
   );
 
-  // name 은 툴팁·범례에 쓰인다. 모델 이름 자체가 라벨이라 키와 같다
-  const series = models.map((model) => ({ key: model, name: model, cls: classOf(model) }));
+  // name 은 툴팁·범례에 쓰인다. 모델 이름이 곧 라벨이라 "기타" 몫만 사전을 탄다
+  const series = models.map((model) => ({
+    key: model,
+    name: modelLabel(model),
+    cls: classOf(model),
+  }));
   const points = tokens.days.map((day) => ({
     label: day.date.slice(DATE_SLICE),
     holiday: isHoliday(day.date),
@@ -282,7 +289,14 @@ function renderDaily(tokens) {
 
 function dayTable(tokens, models) {
   const table = document.createElement("table");
-  table.appendChild(tableRow("th", [t("usage.date"), t("common.total"), ...models, t("usage.listPrice")]));
+  table.appendChild(
+    tableRow("th", [
+      t("usage.date"),
+      t("common.total"),
+      ...models.map(modelLabel),
+      t("usage.listPrice"),
+    ])
+  );
   tokens.days
     .filter((day) => day.total > 0)
     .slice()
@@ -761,6 +775,10 @@ function noTokenText(tokens) {
   return tokens.available
     ? t("usage.noTokens")
     : t("usage.noTokenSource", { source: tokens.source });
+}
+
+function modelLabel(model) {
+  return model === MODEL_OTHER ? t("usage.modelOther") : model;
 }
 
 // 값이 한 번도 안 잡힌 모델은 범례에서 뺀다 — 죽은 항목이 색만 차지한다
