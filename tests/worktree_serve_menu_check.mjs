@@ -71,6 +71,8 @@ const node = () => {
     hidden: false,
     open: false,
     style: { setProperty() {} },
+    setAttribute() {},
+    getBoundingClientRect: () => ({ top: 0 }),
     classList: { toggle() {}, add() {}, remove() {} },
     children: [],
     listeners: {},
@@ -89,6 +91,7 @@ const created = [];
 const elements = { "worktree-list": node() };
 // worktrees.js 는 board.js 를 거쳐 main.js 까지 끌고 들어온다 — main.js 가 모듈
 // 최상단에서 라우팅을 한 번 돌리므로 location·history·window 도 흉내내야 한다
+globalThis.innerHeight = 800;
 globalThis.location = { pathname: "/" };
 globalThis.history = { pushState() {}, replaceState() {} };
 globalThis.window = { addEventListener() {} };
