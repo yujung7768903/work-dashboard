@@ -249,6 +249,45 @@ class RepoTest(unittest.TestCase):
             worktrees.overview(self.con, "bogus")
 
 
+class ProjectOrderTest(unittest.TestCase):
+    """프로젝트 뷰 정렬 — 최근 커밋 시각 내림차순"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.base = os.path.realpath(tempfile.mkdtemp())
+        cls.older = os.path.join(cls.base, "older")
+        cls.newer = os.path.join(cls.base, "newer")
+        cls._init_repo(cls.older, "2020-01-01T00:00:00+00:00")
+        cls._init_repo(cls.newer, "2025-01-01T00:00:00+00:00")
+
+    @classmethod
+    def _init_repo(cls, repo, when):
+        os.makedirs(repo)
+        git(repo, "init", "-q", "-b", "master")
+        git(repo, "config", "user.email", "t@t")
+        git(repo, "config", "user.name", "t")
+        write_commit(repo, "base.txt", "", "기준 커밋")
+        git(repo, "checkout", "-q", "-b", "feat")
+        env = {**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when}
+        subprocess.run(
+            ["git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "작업"],
+            check=True, capture_output=True, env=env,
+        )
+        git(repo, "checkout", "-q", "master")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.base, ignore_errors=True)
+
+    def test_most_recently_committed_repo_comes_first(self):
+        con = temp_db()
+        session_repo.register(con, "sess-older", cwd=self.older)
+        session_repo.register(con, "sess-newer", cwd=self.newer)
+        groups = worktrees.overview(con, worktrees.GROUP_BY_PROJECT)["groups"]
+        names = [g["name"] for g in groups if g["repo"] in (self.older, self.newer)]
+        self.assertEqual(names, ["newer", "older"])
+
+
 class ApplyTest(unittest.TestCase):
     """워크트리 탭 케밥 메뉴의 "적용" — 병합·서버 종료·워크트리 및 브랜치 제거·할일 done.
     apply 는 상태를 바꾸므로 RepoTest 와 저장소를 나눠 각 테스트마다 새로 만든다"""

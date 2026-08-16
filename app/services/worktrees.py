@@ -97,7 +97,7 @@ def _workspace_groups(con, summaries, todo_id_by_path, ports):
 
 
 def _project_groups(con, summaries, todo_id_by_path, ports):
-    """저장소 하나 = 그룹 하나. 워크스페이스 여럿이 같은 저장소를 써도 한 번만 보인다"""
+    """저장소 하나 = 그룹 하나. 최근 커밋 시각 내림차순"""
     groups = []
     for root in _known_repo_roots(session_repo.all_cwds(con)):
         groups.append(
@@ -111,7 +111,13 @@ def _project_groups(con, summaries, todo_id_by_path, ports):
                 **_repo_state(root, summaries, todo_id_by_path, ports),
             }
         )
-    return sorted(groups, key=lambda group: group["name"])
+    return sorted(groups, key=_latest_activity, reverse=True)
+
+
+def _latest_activity(group):
+    """그 저장소 안 브랜치들의 가장 최근 커밋 시각(ISO8601). 없으면 빈 문자열"""
+    stamps = [row["commits"][0]["at"] for row in group["rows"] if row["commits"]]
+    return max(stamps) if stamps else ""
 
 
 def _known_repo_roots(cwds):
