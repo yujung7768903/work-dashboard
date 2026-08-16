@@ -5,7 +5,7 @@ run.sh 를 start.sh 로 바꿨을 때 restart.sh 의 `exec ./run.sh` 가 남아
 """
 import os
 import re
-import socket
+import signal
 import subprocess
 import sys
 import time
@@ -13,12 +13,16 @@ import unittest
 import urllib.error
 import urllib.request
 
-from tests.support import temp_db_path
+from tests.support import free_test_port, temp_db_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = ("start.sh", "stop.sh", "restart.sh", "serving.sh")
 REFERENCE = re.compile(r"(?:\./|\. \./)([a-z_]+\.sh)")
+# start.sh 가 마지막에 찍는 `pid 1234 · 로그 …`
+STARTED_PID = re.compile(r"^pid (\d+)", re.MULTILINE)
 BOOT_TIMEOUT_SEC = 10
+EXIT_TIMEOUT_SEC = 5
+EXIT_POLL_SEC = 0.1
 
 
 class ScriptReferenceTest(unittest.TestCase):
@@ -53,9 +57,10 @@ class StartStopTest(unittest.TestCase):
     """실제로 띄우고 멈춘다. DB 는 임시 파일로 돌려 사용자 DB 를 건드리지 않는다"""
 
     def setUp(self):
-        self.port = _free_port()
+        self.port = free_test_port()
         self.env = dict(os.environ, WORK_DASHBOARD_DB=temp_db_path())
-        self.addCleanup(self._stop)
+        self.started = []
+        self.addCleanup(self._kill_started)
 
     def _run(self, script, *argv):
         result = subprocess.run(
@@ -66,11 +71,17 @@ class StartStopTest(unittest.TestCase):
             env=self.env,
         )
         self.assertEqual(0, result.returncode, result.stderr)
+        self.started += [int(pid) for pid in STARTED_PID.findall(result.stdout)]
         return result.stdout
 
-    def _stop(self):
-        if _listening(self.port):
-            self._run("stop.sh", "--port", str(self.port))
+    def _kill_started(self):
+        """띄운 pid 를 직접 죽인다"""
+        for pid in self.started:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                continue
+            _wait_gone(pid)
 
     def _skip_if_shared(self):
         # 인자 없는 재실행은 이 체크아웃의 서버를 전부 죽인다. 띄우기 전에 부른다
@@ -84,15 +95,21 @@ class StartStopTest(unittest.TestCase):
         self.assertIn("종료", out)
         self.assertFalse(_listening(self.port), "stop.sh 로 멈추지 않음")
 
+    def test_cleanup_kills_the_server_without_the_detector(self):
+        """stop.sh 가 서버를 못 찾아도 뒷정리는 끝나야 한다 — 좀비가 쌓이던 자리"""
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self._kill_started()
+        self.assertFalse(_listening(self.port))
+
     def test_stop_without_server_is_quiet_success(self):
         self.assertIn(
             "돌고 있는 서버 없음", self._run("stop.sh", "--port", str(self.port))
         )
 
     def test_stop_with_port_leaves_other_servers_alone(self):
-        other = _free_port()
+        other = free_test_port()
         self._run("start.sh", "--port", str(other))
-        self.addCleanup(self._run, "stop.sh", "--port", str(other))
         self.assertTrue(_wait_listening(other))
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
@@ -144,10 +161,14 @@ class StartStopTest(unittest.TestCase):
         self.assertTrue(_wait_listening(self.port), "restart.sh 가 같은 포트로 다시 띄우지 않음")
 
 
-def _free_port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def _wait_gone(pid):
+    deadline = time.time() + EXIT_TIMEOUT_SEC
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return
+        time.sleep(EXIT_POLL_SEC)
 
 
 def _serving_pids():

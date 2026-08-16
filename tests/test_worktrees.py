@@ -16,7 +16,7 @@ from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, worktrees
-from tests.support import serve, temp_db
+from tests.support import free_test_port, serve, temp_db
 
 PORCELAIN = """worktree /repo
 HEAD abc
@@ -313,6 +313,13 @@ class ServingProcessTest(unittest.TestCase):
         entry = found[self.serving][0]
         self.assertIn(port, entry["ports"])
         self.assertIn("server.py", entry["command"])
+
+    def test_test_range_port_is_hidden_while_others_are_shown(self):
+        """스크립트 검사가 띄운 서버가 워크트리 탭에 진짜 작업 서버처럼 섞이면 안 된다"""
+        _, port = serve(self.serving, self)
+        serve(self.serving, self, port=free_test_port())
+        found = worktrees.processes_by_path([self.serving])
+        self.assertEqual([[port]], [entry["ports"] for entry in found[self.serving]])
 
     def test_lsof_is_not_called_without_paths(self):
         with mock.patch.object(worktrees, "_run") as never:

@@ -14,7 +14,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from app.constants import STATUS_DONE, WORKSPACE_ACTIVE
+from app.constants import STATUS_DONE, TEST_SERVER_PORTS, WORKSPACE_ACTIVE
 from app.db import now
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
@@ -692,7 +692,7 @@ def _ports_by_pid():
         # 이름 줄은 'n*:8765' / 'n127.0.0.1:8765' / 'n[::1]:8765' 형태
         if line.startswith("n") and pid is not None and ":" in line:
             tail = line.rsplit(":", 1)[1].strip()
-            if tail.isdigit():
+            if tail.isdigit() and int(tail) not in TEST_SERVER_PORTS:
                 ports.setdefault(pid, set()).add(int(tail))
     return {pid: sorted(values) for pid, values in ports.items()}
 
