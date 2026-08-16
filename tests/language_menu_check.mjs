@@ -63,6 +63,9 @@ globalThis.addEventListener = () => {};
 globalThis.window = { addEventListener() {} };
 const box = elements["lang-menu"] ??= node("lang-menu");
 
+// 화면 모듈은 최상단에서 저장해 둔 값(뷰 모드·열 수)을 읽는다. 브라우저 밖에는 없는 것
+globalThis.localStorage = { getItem: () => null, setItem() {} };
+
 const { renderLanguageMenu } = await import("../static/js/language.js");
 await bootKorean(); // 화면 언어 = ko
 renderLanguageMenu();

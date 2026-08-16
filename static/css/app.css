@@ -918,31 +918,33 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   #groups, #done-groups, #workspace-list, #worktree-list { grid-template-columns: 1fr 1fr; }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
-    --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
-    /* 어두운 테마에서는 판을 더 누를 수 없다 — 배경보다 밝게, 카드보다는 어둡게 */
-    --rail: #191c28;
-    --danger: #e46b6b; --good: #3cbe86; --warn: #e5a838;
-    /* 어두운 면에서는 그림자가 안 보이므로 옅은 링으로 카드 경계를 만든다 */
-    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
-    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
-    --shadow-press: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --cat-mix: 28%;
-  }
-  .cat-pill { --cat: #8b95a1; --on-cat: #14181d; }
-  .group, .ws-card { --cat: #444a5c; }
-  button { background-color: #2a2e3f; }
-  button:hover:not(:disabled) { background-color: #343950; }
-  #repo-link:hover { background-color: #343950; }
-  button:disabled { color: #4a4b55; }
-  .side-nav button, .ws-menu > button, .ws-menu-items button, .modal-close {
-    background-color: transparent;
-  }
-  .side-nav button.active { background-color: var(--softer); }
-  #quick-submit { color: #14161f; }
-  select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  }
+/* 어두운 테마. 상단 우측 밝기 메뉴가 고른 값을 <html data-theme> 로 붙이고,
+   기기 설정을 따를 때는 index.html 첫 스크립트가 그 자리에 밝기를 대신 넣는다.
+   토큰은 위 :root 블록을 이겨야 하므로 :root 를 그대로 달고, 아래 요소 규칙만
+   :where() 로 감싸 특이도를 미디어 쿼리 때와 같게 둔다 */
+:root[data-theme="dark"] {
+  --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
+  --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
+  /* 어두운 테마에서는 판을 더 누를 수 없다 — 배경보다 밝게, 카드보다는 어둡게 */
+  --rail: #191c28;
+  --danger: #e46b6b; --good: #3cbe86; --warn: #e5a838;
+  /* 어두운 면에서는 그림자가 안 보이므로 옅은 링으로 카드 경계를 만든다 */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --shadow-press: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --cat-mix: 28%;
+}
+:where([data-theme="dark"]) .cat-pill { --cat: #8b95a1; --on-cat: #14181d; }
+:where([data-theme="dark"]) :is(.group, .ws-card) { --cat: #444a5c; }
+:where([data-theme="dark"]) button { background-color: #2a2e3f; }
+:where([data-theme="dark"]) button:hover:not(:disabled) { background-color: #343950; }
+:where([data-theme="dark"]) #repo-link:hover { background-color: #343950; }
+:where([data-theme="dark"]) button:disabled { color: #4a4b55; }
+:where([data-theme="dark"]) :is(.side-nav button, .ws-menu > button, .ws-menu-items button, .modal-close) {
+  background-color: transparent;
+}
+:where([data-theme="dark"]) .side-nav button.active { background-color: var(--softer); }
+:where([data-theme="dark"]) #quick-submit { color: #14161f; }
+:where([data-theme="dark"]) select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
