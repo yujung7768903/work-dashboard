@@ -12,7 +12,7 @@ from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, session_link
-from tests.support import temp_db, temp_db_path
+from tests.support import serve, temp_db, temp_db_path
 
 SID = "sess-release"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,29 +30,6 @@ def _worktree_dir():
     path = os.path.join(base, "repo", ".claude", "worktrees", "wt")
     os.makedirs(path)
     return path
-
-
-def _serve(root, case, *flags):
-    """그 디렉토리를 cwd 로 실제 포트를 듣는 프로세스. (프로세스, 포트) 를 돌려준다"""
-    with open(os.path.join(root, "server.py"), "w") as handle:
-        handle.write(
-            "import socket, time\n"
-            "sock = socket.socket()\n"
-            "sock.bind(('127.0.0.1', 0))\n"
-            "sock.listen(1)\n"
-            "print(sock.getsockname()[1], flush=True)\n"
-            "time.sleep(30)\n"
-        )
-    proc = subprocess.Popen(
-        [sys.executable, *flags, "server.py"],
-        cwd=root,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    case.addCleanup(proc.stdout.close)
-    case.addCleanup(_stop, proc)
-    # 포트를 찍기 전에 이미 bind·listen 이 끝나 있으므로 이 줄만 읽으면 탐지 가능한 상태다
-    return proc, int(proc.stdout.readline().strip())
 
 
 class FinishTest(unittest.TestCase):
@@ -121,7 +98,7 @@ class WorktreeLookupTest(unittest.TestCase):
         """--worktree 없이도 EnterWorktree 로 옮겨간 워크트리의 서버를 정리해야 한다"""
         worktree = _worktree_dir()
         self._patch_transcript(worktree)
-        proc, _ = _serve(worktree, self)
+        proc, _ = serve(worktree, self)
         result = release.finish(self.con, SID)
         self.assertEqual(worktree, result["worktree"])
         self.assertEqual([proc.pid], [pid for pid, _ in result["killed"]])
@@ -176,14 +153,14 @@ class ServingProcessTest(unittest.TestCase):
 
     def test_running_server_in_worktree_is_found_and_killed(self):
         root = _worktree_dir()
-        proc, _ = _serve(root, self)
+        proc, _ = serve(root, self)
         self.assertEqual([proc.pid], [pid for pid, _ in release.kill_serving(root)])
         self.assertIsNotNone(proc.wait(timeout=5))
 
     def test_server_started_with_a_flag_is_found(self):
         """`python3 -u server.py` 처럼 띄운 프로세스도 실제로 찾아야 한다"""
         root = _worktree_dir()
-        proc, _ = _serve(root, self, "-u")
+        proc, _ = serve(root, self, "-u")
         self.assertIn(proc.pid, [pid for pid, _ in release.serving_processes(root)])
 
     def test_process_without_a_listening_port_is_not_a_server(self):
@@ -204,12 +181,12 @@ class ServingPortTest(unittest.TestCase):
 
     def test_port_of_the_process_serving_that_directory(self):
         root = _worktree_dir()
-        _, port = _serve(root, self)
+        _, port = serve(root, self)
         self.assertEqual(port, release.serving_port(root))
 
     def test_main_checkout_port_is_reported_too(self):
         plain = tempfile.mkdtemp()
-        _, port = _serve(plain, self)
+        _, port = serve(plain, self)
         self.assertEqual(port, release.serving_port(plain))
 
     def test_directory_without_a_listener_is_zero(self):
