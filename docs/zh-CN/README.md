@@ -23,6 +23,8 @@
 - **一条命令完成合并** —— 状态检查 → 拉入目标分支 → 跑测试 → 合并 → 释放待办、服务器与
   分支，严格按此顺序。
 - **自主执行** —— 把带标签的一条待办交给五分钟 cron 拉起的后台 `claude` 任务。默认关闭。
+- **Google 任务同步** —— 双向同步，让看板出现在手机上。每个分类在你亲手打开之前
+  都是关着的。
 - **用量视图** —— 从本地 Claude Code 日志读取的限额窗口，以及每日 token 与费用趋势。
 - **状态栏** —— 把当前待办、工作树和服务器端口渲染进 Claude Code 状态栏。
 - **四种界面语言** —— 英语(默认)、韩语、日语、中文，点击地球图标切换。服务器返回的
@@ -36,6 +38,7 @@
 | --- | --- |
 | 必需 | Python 3.9+(仅标准库)、Git、现代浏览器 |
 | 可选 | Claude Code —— 会话追踪、状态栏与自主执行需要 |
+| 可选 | 该 Python 里的 `ssl` —— 只有 Google 任务同步需要。同样是 3.9，不同构建可能缺它，缺了连接界面会告诉你 |
 | 可选 | Node.js —— 测试中的部分界面检查在 `node` 下运行 |
 | 可选 | `PATH` 中的 `markdownlint-cli2` —— Markdown lint 钩子会用到 |
 
@@ -79,7 +82,7 @@ python3 server.py          # 改为前台运行
 | --- | --- |
 | 看板 | 完整树、下一件待办、正在运行的会话(每 2 秒轮询)、自主执行开关 |
 | 工作区 | 创建工作区，编辑背景、目的、目标与注意事项 |
-| 设置 | 分类与标签 |
+| 设置 | Google 任务连接，其下是分类与标签 |
 | 用量 | 限额窗口与 token、费用趋势 |
 
 看板下有两个子标签：**待办** 和 **工作树**。在工作树子标签里，每行的更多菜单(⋮)可以
@@ -146,6 +149,49 @@ python3 dash.py statusline <会话> [--cwd PATH]
 `merge` 会在把目标分支拉进工作树之后 **只跑一次** 测试，被测的那棵树就是将被合并的那棵。
 如果因冲突中断，解决文件后 `git add`，再执行同一条命令即可接着走。它不会 push，也不会
 删除工作树 —— 那是 `ExitWorktree` 的职责。
+
+### Google 任务
+
+Google 只允许一层嵌套，而这正好是看板的三层。
+
+```text
+Google 列表        =  分类
+ └ 顶层任务         =  工作区
+    └ 子任务        =  该工作区里的待办
+```
+
+列表名就用分类名本身。加前缀会让你在手机上手动建的列表永远配不上，同一个名字最后
+会有两份。
+
+连接在设置标签页里就能走完 —— 它会带你创建 Google Cloud 项目和桌面版 OAuth 客户端，
+把拿到的两个值存进 `~/.claude/work-dashboard/gtasks.json`(权限 600)，再打开授权页。
+用终端就是这样：
+
+```bash
+GTASKS_CLIENT_ID=<ID> GTASKS_CLIENT_SECRET=<SECRET> python3 dash.py gtasks-auth
+python3 dash.py gtasks-sync --dry-run   # 只看会改什么，什么都不写
+python3 dash.py gtasks-sync
+```
+
+对齐列表和交换待办是两个决定。**对齐分类** 会读两边，把候选连同**条数**一起列出来
+—— 这里有 2 条待办的 `学习`，和手机上有 61 条的 `学习`，不是同一个东西，合并之后无法
+撤销。只有你选中的才会被创建和关联，之后每个分类都从**关闭**开始。
+
+标题和完成状态双向同步，改得更晚的一方赢，打平则本地赢。note、着手条件和工作区的各项
+只往上推。在这里删掉，那边也会删；在手机上删掉，这里也会删 —— 已完成的除外。删除还
+需要上一轮见过它的证据(`meta.gtasks_seen_ids`)；没有这个，换一个 Google 账号的瞬间
+所有关联都会变得陌生。
+
+这个 API 没有 webhook，所以不挂定时任务就不会周期运行。设置界面不把间隔写成常量，
+而是从 `crontab -l` 和 `launchd` 里读出来。
+
+```bash
+# 每 10 分钟，写在 crontab -e 里
+*/10 * * * * cd ~/work/work-dashboard && /usr/bin/python3 dash.py gtasks-sync >> /tmp/gtasks.log 2>&1
+```
+
+出错也不会自动关掉同步 —— 不能因为 Wi-Fi 断过一次，就让它停上好几天而没人知道。
+它只会把上一轮的原因显示在标题旁边。
 
 ### 初始设置、语言与自主执行
 
@@ -239,6 +285,7 @@ Context ████░░░░░░ 42% │ Usage ███░░░░░░
 | 项目 | 位置 |
 | --- | --- |
 | 数据库 | `~/.claude/work-dashboard/dash.db`，可用 `WORK_DASHBOARD_DB` 覆盖 |
+| Google 凭据 | `~/.claude/work-dashboard/gtasks.json`(权限 600)，或 `GTASKS_CLIENT_ID`、`GTASKS_CLIENT_SECRET` |
 | 主机与端口 | `server.py --host` / `--port`(默认 `127.0.0.1:9080`) |
 | 界面语言 | 地球图标，或 `dash.py language`。保存在 `meta.language` |
 | 显示偏好 | 明暗、看板列数、导航栏折叠 —— 保存在浏览器的 `localStorage` |
@@ -262,6 +309,7 @@ SQLite 由网页服务器、CLI 与钩子直接打开，中间没有进程代理
 | `worktrees` | 工作树历史，目录被合并或删除后仍保留 |
 | `usage_samples` | 用量视图所依赖的限额与 token 采样 |
 | `autorun_state`、`autorun_runs` | 自主执行的设置与运行记录 |
+| `gtasks_state` | Google 任务同步的总开关、上次同步与原因。分类、工作区、待办各自带着所关联的 Google 列表/任务 id |
 | `meta` | 单值设置与内部标志 |
 
 ## 项目结构

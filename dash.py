@@ -7,9 +7,12 @@ import sys
 from datetime import datetime
 
 from app.constants import (
+    GTASKS_CLIENT_ID_ENV,
+    GTASKS_CLIENT_SECRET_ENV,
     HISTORY_DAY_CHOICES,
     LANGUAGES,
     PRECONDITION_HINT,
+    SECONDS_PER_MINUTE,
     SESSION_ID_ENV,
     STATUS_DOING,
     STATUS_DONE,
@@ -26,6 +29,8 @@ from app.repositories import autorun as autorun_repo
 from app.services import (
     autorun,
     board,
+    gtasks,
+    gtasks_auth,
     history,
     merge,
     planning,
@@ -60,8 +65,17 @@ SESSION_ARG_HELP = (
 # 사용률 막대와 다른 줄에 그리므로 폭은 넉넉하다. 한글은 두 칸을 먹으니 줄 폭의 절반쯤
 STATUSLINE_TITLE_MAX = 40
 USAGE_CLI_DAYS = 7
+# 삭제를 먼저 보여준다 — 되돌리기 어려운 것부터 눈에 들어와야 한다
+GTASKS_ACTION_LABELS = (
+    ("deleted_local", "대시보드에서 삭제"),
+    ("deleted_remote", "구글에서 삭제"),
+    ("created_local", "폰에서 받아 새로 만듦"),
+    ("pulled", "폰이 최신이라 반영"),
+    ("created_remote", "구글로 새로 보냄"),
+    ("pushed", "대시보드가 최신이라 밀어넣음"),
+    ("skipped", "규칙에 막혀 건너뜀"),
+)
 COMPACT_UNITS = ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K"))
-SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
 
 
@@ -247,6 +261,24 @@ def _build_parser():
     usage_cmd = sub.add_parser("usage", help="한도 사용률과 토큰 추이")
     _add_json_flag(usage_cmd)
     usage_cmd.set_defaults(handler=_cmd_usage)
+
+    auth = sub.add_parser("gtasks-auth", help="구글 태스크 최초 인증 (1회)")
+    auth.add_argument(
+        "--client-id",
+        help=f"GCP 데스크톱 OAuth 클라이언트 id. 없으면 {GTASKS_CLIENT_ID_ENV} 환경변수",
+    )
+    auth.add_argument(
+        "--client-secret",
+        help=f"없으면 {GTASKS_CLIENT_SECRET_ENV} 환경변수. 히스토리에 남기지 않으려면 이쪽",
+    )
+    auth.set_defaults(handler=_cmd_gtasks_auth)
+
+    gsync = sub.add_parser("gtasks-sync", help="구글 태스크 양방향 동기화")
+    gsync.add_argument(
+        "--dry-run", action="store_true", help="무엇이 바뀔지만 보고 아무것도 쓰지 않음"
+    )
+    _add_json_flag(gsync)
+    gsync.set_defaults(handler=_cmd_gtasks_sync)
 
     autorun_cmd = sub.add_parser("autorun", help="자율 실행 켜기·끄기·상태")
     autorun_cmd.add_argument("action", choices=AUTORUN_ACTIONS)
@@ -703,6 +735,40 @@ def _cmd_usage(con, args):
     print(f"※ 사이드카에 없는 창: {', '.join(payload['missing_windows'])}")
     for day in payload["tokens"]["days"][-USAGE_CLI_DAYS:]:
         print(f"{day['date']}  {_compact(day['total'])} 토큰  ${day['cost_usd']}")
+
+
+def _cmd_gtasks_auth(con, args):
+    path = gtasks_auth.authorize(args.client_id, args.client_secret)
+    print(f"인증 정보 저장됨: {path}")
+    print("이제 dash.py gtasks-sync 로 동기화할 수 있습니다")
+
+
+def _cmd_gtasks_sync(con, args):
+    """되돌리기 어려운 삭제가 섞이므로 무엇을 했는지 건별로 남긴다"""
+    report = gtasks.run(con, dry_run=args.dry_run)
+    if report is None:
+        # cron 이 부르는 자리다. 꺼 뒀다고 실패로 처리하면 로그가 매번 시끄럽다
+        if args.as_json:
+            _emit_json({"enabled": False})
+        else:
+            print("연동이 꺼져 있어 아무것도 하지 않음 (설정 화면에서 켤 수 있습니다)")
+        return
+    if args.as_json:
+        _emit_json(report)
+        return
+    if args.dry_run:
+        print("[dry-run] 아무것도 쓰지 않음")
+    changed = False
+    for action, label in GTASKS_ACTION_LABELS:
+        items = report[action]
+        if not items:
+            continue
+        changed = True
+        print(f"{label} {len(items)}건")
+        for item in items:
+            print(f"  - {item}")
+    if not changed:
+        print("바뀐 것 없음")
 
 
 def _compact(value):

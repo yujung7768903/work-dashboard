@@ -111,7 +111,7 @@
           <summary>
             <span id="autorun-head">
               <span data-i18n="autorun.title"></span>
-              <label id="autorun-switch" data-i18n-title="autorun.toggleHint">
+              <label class="switch" id="autorun-switch" data-i18n-title="autorun.toggleHint">
                 <input type="checkbox" id="autorun-toggle">
                 <span class="track"></span>
                 <span class="state"></span>
@@ -245,6 +245,19 @@
       </section>
 
       <section id="tab-settings" class="tab" hidden>
+        <!-- 연동이 아래 카테고리 목록의 범위를 정하므로 그보다 먼저 온다.
+             켜기 전에는 관리할 것이 없어 빈 카드 대신 무엇을 할 수 있는지 알린다 -->
+        <h2 class="set-head" id="gtasks-head">
+          <span data-i18n="gtasks.title"></span>
+          <label class="switch" id="gtasks-switch" data-i18n-title="gtasks.toggleHint" hidden>
+            <input type="checkbox" id="gtasks-toggle">
+            <span class="track"></span>
+            <span class="state"></span>
+          </label>
+          <span id="gtasks-warn" hidden>⚠ <span id="gtasks-reason"></span></span>
+        </h2>
+        <div id="gtasks-card" class="set-card"></div>
+
         <!-- 카테고리는 소속(하나), 라벨은 성격(여러 개). 같은 화면에서 색까지 관리한다 -->
         <h2 class="set-head" data-i18n="common.category"></h2>
         <form id="category-add">
@@ -260,6 +273,53 @@
         </form>
         <ul id="label-list" class="set-list"></ul>
       </section>
+
+      <!-- client_id·secret 은 구글 콘솔에서 직접 받아야 한다. 어디서 어떻게 받는지
+           먼저 알려주고, 받아 온 값을 여기서 입력받아 gtasks.json 에 저장한다 -->
+      <dialog id="gtasks-auth">
+        <div id="gtasks-auth-guide">
+          <h3 data-i18n="gtasks.authTitle"></h3>
+          <ol class="gt-steps">
+            <!-- 줄바꿈을 넣으면 공백이 하나 더 생긴다. 앞뒤 여백은 사전 문구가 갖는다 -->
+            <li><span data-i18n="gtasks.authStep1Before"></span><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" data-i18n="gtasks.authConsole"></a><span data-i18n="gtasks.authStep1After"></span></li>
+            <li data-i18n="gtasks.authStep2"></li>
+            <li data-i18n="gtasks.authStep3"></li>
+            <li data-i18n="gtasks.authStep4"></li>
+            <li data-i18n="gtasks.authStep5"></li>
+          </ol>
+          <div class="gt-actions">
+            <button type="button" id="gtasks-auth-cancel" data-i18n="common.cancel"></button>
+            <button type="button" id="gtasks-auth-next" data-i18n="gtasks.authNext"></button>
+          </div>
+        </div>
+        <form id="gtasks-auth-form" hidden>
+          <h3 data-i18n="gtasks.formTitle"></h3>
+          <label class="gt-field">
+            <span data-i18n="gtasks.clientId"></span>
+            <input id="gtasks-client-id" required autocomplete="off">
+          </label>
+          <label class="gt-field">
+            <span data-i18n="gtasks.clientSecret"></span>
+            <input id="gtasks-client-secret" type="password" required autocomplete="off">
+          </label>
+          <p class="gt-note" data-i18n="gtasks.formNote"></p>
+          <div class="gt-actions">
+            <button type="button" id="gtasks-auth-back" data-i18n="gtasks.authBack"></button>
+            <button type="submit" data-i18n="gtasks.connect"></button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- 합집합을 보여주고 확인을 받는다. 확인 전에는 양쪽 어디도 건드리지 않는다 -->
+      <dialog id="gtasks-plan">
+        <h3 data-i18n="gtasks.planTitle"></h3>
+        <p class="gt-note" data-i18n="gtasks.planRule"></p>
+        <div id="gtasks-plan-list"></div>
+        <div class="gt-actions">
+          <button type="button" id="gtasks-plan-cancel" data-i18n="common.cancel"></button>
+          <button type="button" id="gtasks-plan-go" data-i18n="gtasks.planGo"></button>
+        </div>
+      </dialog>
 
       <section id="tab-usage" class="tab" hidden>
         <div class="u-shell">

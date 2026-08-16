@@ -21,10 +21,29 @@ INDEX_FILE = "index.html"
 # api.js 의 호출은 전부 request("<메서드>", "/<머리>...") 한 가지 모양이다
 CALL = re.compile(r"""request\(\s*["'](GET|POST|PATCH|DELETE)["']\s*,\s*[`"']/([A-Za-z0-9_-]+)""")
 TAB = re.compile(r'data-tab="([a-z-]+)"')
+# server.py 의 라우터는 메서드마다 함수 하나, 그 안은 `if head == "..."` 사슬이다
+ROUTER = re.compile(r"^def _route_(get|post|patch|delete)\(", re.M)
+# GET·POST·PATCH 는 `if head == "x"` 사슬, DELETE 는 이름표를 키로 갖는 표를 쓴다
+HEAD = re.compile(r'head == "([A-Za-z0-9_-]+)"|^\s{8}"([A-Za-z0-9_-]+)": ', re.M)
 
 
 def api_calls():
     return sorted(set(CALL.findall(API_JS.read_text(encoding="utf-8"))))
+
+
+def routed_heads():
+    """server.py 소스에서 메서드별 등록 목록을 읽는다. 부르지 않고 확인만 한다"""
+    source = pathlib.Path(server.__file__).read_text(encoding="utf-8")
+    starts = [(m.group(1).upper(), m.start()) for m in ROUTER.finditer(source)]
+    found = {}
+    for index, (method, start) in enumerate(starts):
+        end = starts[index + 1][1] if index + 1 < len(starts) else len(source)
+        pairs = HEAD.findall(source[start:end])
+        found[method] = {chain or table for chain, table in pairs}
+    return found
+
+
+ROUTED = routed_heads()
 
 
 def tab_paths():
@@ -36,22 +55,24 @@ class ApiContractTest(unittest.TestCase):
         self.con = temp_db()
 
     def _is_routed(self, method, head):
-        """라우트가 있으면 True. 인자가 비어서 나는 오류는 '있다' 로 친다 —
-        여기서 보는 건 동작이 아니라 등록 여부다.
-        id 가 있어야 머리까지 못 가는 메서드가 있어 두 모양 다 시도한다"""
-        for path in (f"/api/{head}", f"/api/{head}/1"):
-            try:
-                server.route(self.con, method, path, {}, {})
-                return True
-            except UnknownEndpoint:
-                continue
-            except Exception:
-                return True
-        return False
+        """등록 여부만 본다. 핸들러를 부르지 않는다.
+
+        예전에는 실제로 route() 를 실행해 UnknownEndpoint 만 '없음' 으로 쳤다. 그러면
+        등록 확인을 핑계로 모든 엔드포인트가 한 번씩 진짜로 돈다 — DB 는 temp_db 로
+        갈렸지만 파일 경로는 전역이라, POST /api/gtasks-disconnect 가 사용자의 실제
+        gtasks.json 에서 refresh_token 을 지웠다. 되돌리려면 구글 재인증뿐이다
+        """
+        return head in ROUTED[method]
 
     def test_regex_still_matches_api_js(self):
         """api.js 의 작성 방식이 바뀌면 아래 테스트가 조용히 0 건을 검사하게 된다"""
         self.assertGreater(len(api_calls()), 10)
+
+    def test_router_extraction_still_matches_server(self):
+        """server.py 의 라우터 모양이 바뀌면 위 대조가 조용히 빈 집합을 보게 된다"""
+        self.assertEqual(sorted(ROUTED), ["DELETE", "GET", "PATCH", "POST"])
+        for method, heads in ROUTED.items():
+            self.assertGreater(len(heads), 2, f"{method} 라우트를 못 읽었다")
 
     def test_every_endpoint_api_js_calls_is_routed(self):
         missing = [

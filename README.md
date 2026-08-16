@@ -27,6 +27,8 @@ running and the next session knows where things stand.
   merge → release the todo, the server and the branch, in that order.
 - **Autonomous runs** — hand a labelled todo to a background `claude` job on a
   five-minute cron. Off by default.
+- **Google Tasks sync** — two-way sync with Google Tasks, so the board is on your
+  phone. Off per category until you turn each one on.
 - **Usage view** — rate-limit windows and daily token and cost trends, read from
   local Claude Code logs.
 - **Status line** — the current todo, worktree and server port, rendered into the
@@ -42,6 +44,7 @@ running and the next session knows where things stand.
 | --- | --- |
 | Required | Python 3.9+ (standard library only), Git, a modern browser |
 | Optional | Claude Code — for session tracking, status line and autonomous runs |
+| Optional | `ssl` in that Python build — only for Google Tasks sync. Some 3.9 builds ship without it; the connection screen says so when `import ssl` fails |
 | Optional | Node.js — some UI checks in the test suite run under `node` |
 | Optional | `markdownlint-cli2` on `PATH` — used by the markdown lint hook |
 
@@ -91,7 +94,7 @@ started inside a worktree.
 | --- | --- |
 | Board | The whole tree, the next todo, running sessions (polled every 2s) and the autonomous-run switch |
 | Workspaces | Creating a workspace and editing its background, purpose, goal and considerations |
-| Settings | Categories and labels |
+| Settings | The Google Tasks connection, then categories and labels |
 | Usage | Rate-limit windows and the token and cost trend |
 
 The board has two sub-tabs: **Todos** and **Worktrees**. On the worktree
@@ -164,6 +167,56 @@ into the worktree, so what is tested is what is merged. If it stops on a
 conflict, resolve the files, `git add` them and run the same command again to
 continue. It does not push, and it does not remove the worktree — `ExitWorktree`
 does that.
+
+### Google Tasks
+
+Google allows one level of nesting, which is exactly the shape of the board:
+
+```text
+Google list          =  category
+ └ top-level task    =  workspace
+    └ subtask        =  a todo in that workspace
+```
+
+List names are category names verbatim. A prefix would leave the lists you made
+on your phone unmatched forever, and you would end up with two of each.
+
+Connect from the Settings tab: it walks through creating a Google Cloud project
+with the Tasks API and a desktop OAuth client, stores the two values in
+`~/.claude/work-dashboard/gtasks.json` (mode 600) and opens the consent screen.
+The same thing from the CLI:
+
+```bash
+GTASKS_CLIENT_ID=<ID> GTASKS_CLIENT_SECRET=<SECRET> python3 dash.py gtasks-auth
+python3 dash.py gtasks-sync --dry-run   # what would change; writes nothing
+python3 dash.py gtasks-sync
+```
+
+Matching lists and exchanging todos are separate decisions. **Match categories**
+reads both sides and lists the candidates with their counts — a `Study` with two
+todos here and a `Study` with 61 on the phone are not the same thing, and
+merging them cannot be undone. Only what you pick is created and linked, and
+every category then starts **off**.
+
+Titles and completion travel both ways, the newer edit wins and a tie goes to
+the local side. Notes, preconditions and the workspace fields are pushed up
+only. What you delete here is deleted there; what you delete on the phone is
+deleted here unless it was already completed. A delete also needs proof that the
+task was seen on the previous run (`meta.gtasks_seen_ids`) — without it,
+switching Google accounts would make every link look stale at once.
+
+There is no webhook, so nothing runs periodically unless you schedule it. The
+settings screen reads `crontab -l` and `launchd` instead of printing an interval
+it cannot vouch for.
+
+```bash
+# every 10 minutes, from crontab -e
+*/10 * * * * cd ~/work/work-dashboard && /usr/bin/python3 dash.py gtasks-sync >> /tmp/gtasks.log 2>&1
+```
+
+A failure never switches the sync off — one dropped wifi should not stop it for
+days without anyone noticing. The reason from the last run is shown next to the
+title instead.
 
 ### Setup, language and autonomous runs
 
@@ -264,6 +317,7 @@ cron entry and not a daemon.
 | What | Where |
 | --- | --- |
 | Database | `~/.claude/work-dashboard/dash.db`, overridden by `WORK_DASHBOARD_DB` |
+| Google credentials | `~/.claude/work-dashboard/gtasks.json` (mode 600), or `GTASKS_CLIENT_ID` / `GTASKS_CLIENT_SECRET` |
 | Host and port | `server.py --host` / `--port` (default `127.0.0.1:9080`) |
 | UI language | The globe icon, or `dash.py language`. Stored as `meta.language` |
 | Appearance | Brightness, board column count and rail state — stored per browser in `localStorage` |
@@ -288,6 +342,7 @@ the six default categories once. All `*_at` columns are ISO 8601 UTC text.
 | `worktrees` | Worktree history, kept after the directory is merged away or deleted |
 | `usage_samples` | Rate-limit and token samples behind the usage view |
 | `autorun_state`, `autorun_runs` | Autonomous-run settings and the log of runs |
+| `gtasks_state` | Google Tasks sync — the master switch, the last sync and its error. Categories, workspaces and todos each carry the id of the Google list or task they are linked to |
 | `meta` | Single-value settings and internal flags |
 
 ## Project structure
