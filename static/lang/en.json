@@ -251,6 +251,7 @@
   "error.languageInvalid": "The language must be one of {codes}",
   "error.unsupportedMethod": "Unsupported method: {method}",
   "error.unknownReorderKind": "Unknown reorder kind: {kind}",
+  "error.groupByInvalid": "group_by must be one of {choices}",
   "error.branchNotFound": "Branch {branch} was not found",
   "error.worktreeNotFound": "No worktree was found for branch {branch}",
   "error.baseBranchNotTarget": "The base branch is not a target for {action}",
