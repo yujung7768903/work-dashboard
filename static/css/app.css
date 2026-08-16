@@ -908,8 +908,9 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 
 /* 어두운 테마. 상단 우측 밝기 메뉴가 고른 값을 <html data-theme> 로 붙이고,
    기기 설정을 따를 때는 index.html 첫 스크립트가 그 자리에 밝기를 대신 넣는다.
-   :where() 로 감싸 특이도를 0 으로 둔다 — 붙이기 전 규칙들과 순서만으로 겨루게 */
-:where([data-theme="dark"]) {
+   토큰은 위 :root 블록을 이겨야 하므로 :root 를 그대로 달고, 아래 요소 규칙만
+   :where() 로 감싸 특이도를 미디어 쿼리 때와 같게 둔다 */
+:root[data-theme="dark"] {
   --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
   --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
   /* 어두운 테마에서는 판을 더 누를 수 없다 — 배경보다 밝게, 카드보다는 어둡게 */
