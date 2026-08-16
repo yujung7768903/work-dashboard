@@ -184,16 +184,39 @@ class GtasksSyncTest(unittest.TestCase):
 
     # ── 내려받기 ──────────────────────────────────────────────────────────
 
-    def test_폰에서_만든_최상위는_워크스페이스가_아니라_할일이_된다(self):
-        """최상위를 워크스페이스로 승격시키면 회차마다 워크스페이스가 늘어난다"""
-        self.client.insert(self.list_id, {"title": "폰에서 적은 일", "status": GTASKS_STATUS_TODO})
+    def test_폰에서_만든_최상위는_워크스페이스가_된다(self):
+        """구조를 그대로 받는다 — 최상위가 워크스페이스, 그 하위가 워크스페이스의 할일"""
+        top = self.client.insert(
+            self.list_id, {"title": "결제 개편", "status": GTASKS_STATUS_TODO}
+        )
+        self.client.insert(
+            self.list_id, {"title": "스펙 정리", "status": GTASKS_STATUS_TODO}, parent=top["id"]
+        )
 
-        report = self._sync()
+        self._sync()
+
+        spaces = workspace_repo.list_all(self.con)
+        self.assertEqual([s["name"] for s in spaces], ["결제 개편"])
+        kids = todo_repo.list_by_workspace(self.con, spaces[0]["id"])
+        self.assertEqual([t["title"] for t in kids], ["스펙 정리"])
+
+    def test_받은_워크스페이스는_다음_회차에_또_만들어지지_않는다(self):
+        """링크가 남아 '이미 짝이 있는 것'으로 걸러진다 — 승격을 막던 이유가 이것이었다"""
+        self.client.insert(self.list_id, {"title": "결제 개편", "status": GTASKS_STATUS_TODO})
+
+        self._sync()
+        self._sync()
+
+        self.assertEqual(len(workspace_repo.list_all(self.con)), 1)
+
+    def test_올린_카테고리_직속_할일이_워크스페이스로_승격되지_않는다(self):
+        """최상위로 올라가지만 링크가 남으므로 워크스페이스로 오해받지 않는다"""
+        self._todo()
+
+        self._sync()
+        self._sync()
 
         self.assertEqual(workspace_repo.list_all(self.con), [])
-        titles = [t["title"] for t in todo_repo.list_by_category(self.con, self.category["id"])]
-        self.assertIn("폰에서 적은 일", titles)
-        self.assertEqual(len(report["created_local"]), 1)
 
     def test_폰에서_만든_하위는_그_워크스페이스의_할일이_된다(self):
         space = self._space()

@@ -10,10 +10,9 @@
 - 제목과 완료 여부만 양방향. 양쪽이 다르면 수정 시각이 최신인 쪽이 이긴다
 - notes 는 내려보내기 전용. 한 칸짜리 notes 에 여러 필드를 왕복시키면 반드시 깨지므로,
   폰에서 메모를 고쳐도 대시보드는 안 바뀐다
-- 워크스페이스가 없는 할일은 최상위로 올린다. 다만 내려올 때 '최상위 = 워크스페이스'로
-  보면 그 할일들이 다음 회차에 워크스페이스로 승격돼 수가 계속 늘어난다. 그래서 **우리가
-  워크스페이스로 링크해 둔 최상위만** 워크스페이스로 보고, 폰에서 새로 만든 최상위는
-  카테고리 직속 할일로 만든다
+- 워크스페이스가 없는 할일은 최상위로 올린다. 그 최상위는 링크가 남으므로 다음 회차에
+  '이미 짝이 있는 것'으로 걸러진다 — 짝 없는 최상위만 워크스페이스로 받으므로 수가
+  회차마다 늘어나지 않는다
 - 삭제: 대시보드에서 지우면 구글에서도 지운다. 폰에서 지운 미완료는 대시보드에서도
   지우고, **완료된 것은 그대로 둔다** — 구글 앱의 '완료된 항목 삭제' 한 번으로 완료
   기록이 통째로 사라지면 안 되기 때문이다
@@ -251,12 +250,16 @@ def _patch(client, list_id, task, body, label, report, dry_run):
 
 
 def _create_local(con, category, linked_space, task, report, dry_run):
-    """폰에서 새로 만든 태스크.
+    """폰에서 새로 만든 태스크. 구조를 그대로 받는다 — 최상위는 워크스페이스, 하위는 그 할일
 
-    최상위라도 워크스페이스로 승격시키지 않는다 — 그러면 회차마다 워크스페이스가 늘어난다.
-    부모가 워크스페이스면 그 소속 할일로, 아니면 카테고리 직속 할일로 들어온다
+    우리가 올린 것은 링크가 남아 위에서 이미 걸러졌다. 여기까지 온 최상위는 폰에서
+    새로 만든 것이므로 승격시켜도 회차마다 늘어나지 않는다
     """
     title = (task.get("title") or "").strip() or GTASKS_UNTITLED
+    if not task.get("parent"):
+        _create_space(con, category, linked_space, task, title, report, dry_run)
+        return
+    # 부모가 워크스페이스면 그 소속으로. 아니면(카테고리 직속 할일의 자식) 직속으로 둔다
     parent = linked_space.get(task.get("parent"))
     where = f"{category['name']}" + (f" / [{parent['name']}]" if parent else "")
     report["created_local"].append(f"{where} / {title}")
@@ -272,6 +275,22 @@ def _create_local(con, category, linked_space, task, report, dry_run):
     todo_repo.set_google_link(con, todo["id"], task["id"])
     if _remote_done(task):
         todo_repo.update(con, todo["id"], status=STATUS_DONE)
+
+
+def _create_space(con, category, linked_space, task, title, report, dry_run):
+    """최상위 태스크 하나가 워크스페이스 하나.
+
+    같은 회차의 하위가 이 워크스페이스를 부모로 찾을 수 있게 linked_space 에 바로 넣는다 —
+    최상위를 먼저 도는 정렬이 이걸 전제로 한다
+    """
+    report["created_local"].append(f"{category['name']} / [{title}]")
+    if dry_run:
+        return
+    space = workspace_repo.create(con, category["id"], title)
+    workspace_repo.set_google_link(con, space["id"], task["id"])
+    linked_space[task["id"]] = space
+    if _remote_done(task):
+        workspace_repo.update(con, space["id"], status=WORKSPACE_DONE)
 
 
 def _push_space(con, client, list_id, space, remote, linked_space, previous, seen, report, dry_run):
