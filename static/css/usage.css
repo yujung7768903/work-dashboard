@@ -318,6 +318,4 @@
 /* 어두운 테마에서는 판을 배경보다 눌러 만들 수 없다 — 색이 붙어 판이 사라진다.
    채움은 --rail 이 한 단 밝게 잡고, 경계는 카드와 같은 옅은 링으로 긋는다.
    밝은 테마는 배경보다 어두운 판이라 링 없이도 갈린다 */
-@media (prefers-color-scheme: dark) {
-  .u-rail { box-shadow: var(--shadow-card); }
-}
+:where([data-theme="dark"]) .u-rail { box-shadow: var(--shadow-card); }

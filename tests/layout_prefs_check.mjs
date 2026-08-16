@@ -46,6 +46,8 @@ globalThis.document = {
   body,
   getElementById: element,
   querySelectorAll: () => columnButtons,
+  // 열 수 버튼은 할일 탭·워크트리 탭이 함께 써서 문서에 위임으로 받는다
+  addEventListener: (type, handler) => ((listeners.document ??= {})[type] = handler),
 };
 
 await bootKorean();
@@ -67,7 +69,7 @@ if (first) {
 }
 
 // 한 줄 아이콘을 누르면 그 값이 화면과 저장소에 같이 남는다
-listeners["view-columns"].click({ target: { closest: () => ({ dataset: { columns: "1" } }) } });
+listeners.document.click({ target: { closest: () => ({ dataset: { columns: "1" } }) } });
 assert.equal(body.dataset.boardColumns, "1");
 assert.equal(columnButtons[0].active, true);
 assert.equal(store.get("board-columns"), "1");

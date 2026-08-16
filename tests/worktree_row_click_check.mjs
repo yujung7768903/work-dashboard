@@ -28,13 +28,15 @@ const GROUPS = [
 
 const asked = [];
 globalThis.fetch = async (url, options) => {
-  asked.push(`${options?.method ?? "GET"} ${url}`);
+  // 목록은 뷰 모드를 물음표 뒤에 달고 온다. 어느 모드든 같은 응답이므로 경로만 본다
+  const path = url.split("?")[0];
+  asked.push(`${options?.method ?? "GET"} ${path}`);
   const body = {
     "/api/worktrees": { groups: GROUPS },
     "/api/workspaces": [],
     "/api/categories": [],
     "/api/todos/57": { todo: { id: 57, title: "제목" }, sessions: [] },
-  }[url];
+  }[path];
   return { ok: Boolean(body), status: body ? 200 : 404, json: async () => body ?? {} };
 };
 
@@ -87,6 +89,9 @@ globalThis.document = {
 };
 
 await bootKorean();
+// 화면 모듈은 최상단에서 저장해 둔 값(뷰 모드·열 수)을 읽는다. 브라우저 밖에는 없는 것
+globalThis.localStorage = { getItem: () => null, setItem() {} };
+
 const worktrees = await import("../static/js/worktrees.js");
 await worktrees.renderWorktrees();
 
