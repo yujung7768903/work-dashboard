@@ -81,6 +81,8 @@
   "gtasks.planPair": "ダッシュボード {local} ↔ Google {remote}",
   "gtasks.planOne": "{n} 件",
   "gtasks.planGo": "同期を開始",
+  "gtasks.every": "{minutes}分ごと",
+  "gtasks.noSchedule": "自動実行なし",
   "gtasks.lastSync": "最終同期 {when}",
   "gtasks.neverSynced": "まだ同期していません",
   "gtasks.syncNow": "今すぐ同期",

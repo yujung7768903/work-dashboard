@@ -169,6 +169,10 @@ GTASKS_ERROR_EXPIRED = "로그인 만료"
 # 인증 전에 동기화 쪽을 건드리면 load_config 의 원문(파일 경로 + CLI 명령)이 그대로 뜬다.
 # 화면에는 다음에 누를 것을 알려준다 — 경로를 읽고 터미널을 열라는 뜻이 아니다
 GTASKS_NEED_CONNECT = "아래 '연결하기' 버튼으로 구글 태스크와 연동을 먼저 진행해 주세요"
+# 자동 실행이 걸려 있는지 launchd·crontab 에서 찾을 때 쓰는 표식
+GTASKS_SYNC_CMD = "gtasks-sync"
+SCHEDULE_TIMEOUT_SEC = 2
+SECONDS_PER_MINUTE = 60
 # app/services/usage.py 의 str.removeprefix 가 3.9 에서 들어왔다 — 이 프로젝트의 하한
 PYTHON_MIN = "3.9"
 # 같은 3.9 라도 ssl 없이 빌드되면 urllib 에 https 핸들러가 안 붙어

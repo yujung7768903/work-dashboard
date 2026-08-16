@@ -12,6 +12,7 @@ from app.constants import (
     HISTORY_DAY_CHOICES,
     LANGUAGES,
     PRECONDITION_HINT,
+    SECONDS_PER_MINUTE,
     SESSION_ID_ENV,
     STATUS_DOING,
     STATUS_DONE,
@@ -75,7 +76,6 @@ GTASKS_ACTION_LABELS = (
     ("skipped", "규칙에 막혀 건너뜀"),
 )
 COMPACT_UNITS = ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K"))
-SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
 
 

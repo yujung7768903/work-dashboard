@@ -81,6 +81,8 @@
   "gtasks.planPair": "仪表盘 {local} ↔ Google {remote}",
   "gtasks.planOne": "{n} 项",
   "gtasks.planGo": "开始同步",
+  "gtasks.every": "每 {minutes} 分钟",
+  "gtasks.noSchedule": "未设置自动运行",
   "gtasks.lastSync": "上次同步 {when}",
   "gtasks.neverSynced": "尚未同步",
   "gtasks.syncNow": "立即同步",

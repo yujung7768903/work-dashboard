@@ -7,11 +7,18 @@
 짝은 **이름이 같은지**로만 맺는다. 접두어를 붙이면 폰에서 손으로 만든 목록이 영영
 안 붙어 같은 이름이 둘씩 생긴다
 """
+import os
+import re
+import subprocess
+
 from app.constants import (
     GTASKS_ERROR_NO_AUTH,
     GTASKS_NEED_CONNECT,
     GTASKS_NO_SSL,
     GTASKS_SEEN_KEY,
+    GTASKS_SYNC_CMD,
+    SCHEDULE_TIMEOUT_SEC,
+    SECONDS_PER_MINUTE,
 )
 from app.db import meta_set
 from app.errors import DomainError, Validation
@@ -39,6 +46,8 @@ def panel(con):
         "has_client": bool(stored.get("client_id") and stored.get("client_secret")),
         "client_id": stored.get("client_id") or "",
         "reason": _reason(state, connected),
+        # 자동 실행 주기(초). 등록된 게 없으면 None — 화면이 '자동 실행 없음' 을 띄운다
+        "every_sec": schedule(),
         "categories": [
             {
                 "id": category["id"],
@@ -77,6 +86,51 @@ def disconnect(con):
     meta_set(con, GTASKS_SEEN_KEY, "[]")
     gtasks_state.set_enabled(con, False)
     return panel(con)
+
+
+def schedule():
+    """자동 실행이 등록돼 있으면 주기(초). 없으면 None
+
+    상수로 '10분마다' 라고 적으면 아무것도 등록 안 한 사람에게 거짓말이 된다.
+    등록 위치는 사람마다 다르므로 launchd 와 crontab 을 둘 다 본다
+    """
+    return _launchd_interval() or _cron_interval()
+
+
+def _launchd_interval():
+    folder = os.path.expanduser("~/Library/LaunchAgents")
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return None
+    for name in names:
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                text = handle.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if GTASKS_SYNC_CMD not in text:
+            continue
+        found = re.search(r"StartInterval</key>\s*<integer>(\d+)</integer>", text)
+        if found:
+            return int(found.group(1))
+    return None
+
+
+def _cron_interval():
+    try:
+        done = subprocess.run(
+            ["crontab", "-l"], capture_output=True, text=True, timeout=SCHEDULE_TIMEOUT_SEC
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in done.stdout.splitlines():
+        if GTASKS_SYNC_CMD not in line or line.lstrip().startswith("#"):
+            continue
+        found = re.match(r"\*/(\d+) \* \* \* \*", line.strip())
+        if found:
+            return int(found.group(1)) * SECONDS_PER_MINUTE
+    return None
 
 
 def _reason(state, connected):

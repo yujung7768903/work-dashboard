@@ -81,6 +81,8 @@
   "gtasks.planPair": "Dashboard {local} ↔ Google {remote}",
   "gtasks.planOne": "{n} items",
   "gtasks.planGo": "Start syncing",
+  "gtasks.every": "every {minutes} min",
+  "gtasks.noSchedule": "no schedule",
   "gtasks.lastSync": "Last synced {when}",
   "gtasks.neverSynced": "Never synced",
   "gtasks.syncNow": "Sync now",

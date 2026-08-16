@@ -3,6 +3,7 @@
 매핑은 세 층이다 — 구글 목록=카테고리, 최상위 태스크=워크스페이스, 하위=그 워크스페이스의 할일
 """
 import os
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -540,6 +541,45 @@ class GtasksSetupTest(unittest.TestCase):
         self.assertEqual(category_repo.list_all(self.con)[0]["google_list_id"], linked)
         # 본 기록을 남기면 다시 붙였을 때 사라진 태스크를 '폰에서 지웠다'로 읽는다
         self.assertEqual(gtasks._load_seen(self.con), set())
+
+    def test_등록된_자동_실행이_없으면_주기가_없다고_알린다(self):
+        """상수로 '10분마다' 라고 적으면 아무것도 등록 안 한 사람에게 거짓말이 된다"""
+        with mock.patch.object(gtasks_setup, "schedule", return_value=None):
+            self.assertIsNone(gtasks_setup.panel(self.con)["every_sec"])
+
+    def test_launchd_에_걸어_두면_주기를_읽는다(self):
+        folder = tempfile.mkdtemp()
+        with open(os.path.join(folder, "sync.plist"), "w", encoding="utf-8") as handle:
+            handle.write(
+                "<plist><dict>"
+                "<key>ProgramArguments</key><array>"
+                "<string>dash.py</string><string>gtasks-sync</string></array>"
+                "<key>StartInterval</key><integer>600</integer>"
+                "</dict></plist>"
+            )
+
+        with mock.patch.object(gtasks_setup.os.path, "expanduser", return_value=folder):
+            self.assertEqual(gtasks_setup._launchd_interval(), 600)
+
+    def test_crontab_에_걸어_두면_주기를_읽는다(self):
+        line = "*/10 * * * * cd ~/work && python3 dash.py gtasks-sync\n"
+        done = subprocess.CompletedProcess([], 0, stdout=line, stderr="")
+
+        with mock.patch.object(gtasks_setup.subprocess, "run", return_value=done):
+            self.assertEqual(gtasks_setup._cron_interval(), 600)
+
+    def test_주석_처리된_줄은_등록으로_보지_않는다(self):
+        line = "# */10 * * * * python3 dash.py gtasks-sync\n"
+        done = subprocess.CompletedProcess([], 0, stdout=line, stderr="")
+
+        with mock.patch.object(gtasks_setup.subprocess, "run", return_value=done):
+            self.assertIsNone(gtasks_setup._cron_interval())
+
+    def test_crontab_이_없거나_막혀도_화면은_뜬다(self):
+        """설정 탭을 여는 길목이라 여기서 터지면 화면 자체가 안 뜬다"""
+        for blow_up in (OSError("없음"), subprocess.TimeoutExpired("crontab", 2)):
+            with mock.patch.object(gtasks_setup.subprocess, "run", side_effect=blow_up):
+                self.assertIsNone(gtasks_setup._cron_interval())
 
     def test_ssl_이_없으면_화면을_여는_순간_그_사유부터_보인다(self):
         """자격증명을 다 입력한 뒤에 알려주면 헛수고가 된다"""

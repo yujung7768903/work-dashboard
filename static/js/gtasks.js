@@ -87,10 +87,17 @@ function span(className) {
 function footer(panel) {
   const foot = document.createElement("div");
   foot.className = "gt-foot";
+  // 자율 수행 줄과 같은 모양 — 주기와 마지막 수행을 한 줄에 둔다.
+  // 주기는 상수로 적지 않는다. 아무것도 등록 안 한 사람에게는 거짓말이 된다
   const when = document.createElement("span");
-  when.textContent = panel.state.last_sync_at
-    ? t("gtasks.lastSync", { when: stamp(panel.state.last_sync_at) })
-    : t("gtasks.neverSynced");
+  when.textContent = [
+    panel.every_sec
+      ? t("gtasks.every", { minutes: Math.round(panel.every_sec / 60) })
+      : t("gtasks.noSchedule"),
+    panel.state.last_sync_at
+      ? t("gtasks.lastSync", { when: stamp(panel.state.last_sync_at) })
+      : t("gtasks.neverSynced"),
+  ].join(" | ");
   const now = document.createElement("button");
   now.textContent = t("gtasks.syncNow");
   now.disabled = !panel.state.enabled;
