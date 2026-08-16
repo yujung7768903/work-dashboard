@@ -108,11 +108,12 @@ class StartStopTest(unittest.TestCase):
         )
 
     def test_stop_with_port_leaves_other_servers_alone(self):
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        # 먼저 띄운 포트는 other 후보에서 빠진다
         other = free_test_port()
         self._run("start.sh", "--port", str(other))
         self.assertTrue(_wait_listening(other))
-        self._run("start.sh", "--port", str(self.port))
-        self.assertTrue(_wait_listening(self.port))
         self._run("stop.sh", "--port", str(self.port))
         self.assertFalse(_listening(self.port), "지정한 포트가 안 멈췄다")
         self.assertTrue(_listening(other), "지정하지 않은 포트까지 멈췄다")
