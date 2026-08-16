@@ -15,6 +15,22 @@ running and the next session knows where things stand.
 > Single user, no authentication, no external services. Everything lives in one
 > SQLite file on your machine.
 
+![The board, with each workspace holding its todos](docs/screenshots/board-en.png)
+
+Every todo carries the sessions and worktrees that are working on it. Hooks mark
+a session `working` when you send a prompt and `idle` when it stops, so a session
+that is waiting for you no longer looks like one that is still busy.
+
+![The worktree sub-tab, grouped by workspace](docs/screenshots/worktrees-en.png)
+
+The worktree sub-tab shows how far each branch has drifted and what its session
+was doing, and the kebab menu merges the branch or starts its dev server.
+
+![The usage view, with rate-limit windows and token trends](docs/screenshots/usage-en.png)
+
+The usage view reads the local Claude Code logs for rate-limit windows and daily
+token and cost trends.
+
 ## Features
 
 - **Three-layer board** — categories group workspaces, workspaces hold todos.
