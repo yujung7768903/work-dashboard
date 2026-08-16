@@ -34,7 +34,10 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 const node = () => {
   const made = {
     textContent: "", title: "", className: "", hidden: false, open: false,
-    style: { setProperty() {} },
+    // 목록 자리는 화면 위에서 200px 아래 — 로딩 칸은 남은 600px 을 받아야 한다
+    getBoundingClientRect: () => ({ top: 200 }),
+    css: {},
+    style: { setProperty: (name, value) => (made.css[name] = value) },
     classList: { toggle() {}, add() {}, remove() {} },
     children: [],
     attributes: {},
@@ -56,6 +59,7 @@ const node = () => {
 const elements = {};
 // worktrees.js 는 board.js 를 거쳐 main.js 까지 끌고 들어온다(순환 참조) — main.js 가
 // 모듈 최상단에서 라우팅을 한 번 돌리므로 history·location·window 도 흉내내야 한다
+globalThis.innerHeight = 800;
 globalThis.location = { pathname: "/" };
 globalThis.history = { pushState() {}, replaceState() {} };
 globalThis.window = { addEventListener() {} };
@@ -77,6 +81,8 @@ const spinner = list.children[0];
 assert.equal(spinner.className, "wt-loading");
 assert.equal(spinner.attributes.role, "status");
 assert.equal(spinner.attributes["aria-label"], "불러오는 중");
+// 화면 아래까지 남은 높이를 그대로 받아야 그 한가운데에 설 수 있다
+assert.equal(spinner.css["--wt-loading-room"], "600px");
 
 // 응답이 오면 원은 사라지고 목록이 그 자리를 차지한다
 release();

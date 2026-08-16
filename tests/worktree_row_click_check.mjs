@@ -48,6 +48,8 @@ const node = () => {
     textContent: "", title: "", href: "", target: "", rel: "", className: "",
     hidden: false, open: false,
     style: { setProperty() {} },
+    setAttribute() {},
+    getBoundingClientRect: () => ({ top: 0 }),
     // 어떤 클래스가 붙었는지 봐야 한다 — 누를 수 있는 칸에만 linked 가 붙는다
     classes: new Set(),
     classList: {
@@ -74,6 +76,7 @@ const created = [];
 const elements = { "worktree-list": node() };
 // worktrees.js 는 board.js 를 거쳐 main.js 까지 끌고 들어온다(순환 참조) — main.js 가
 // 모듈 최상단에서 라우팅을 한 번 돌리므로 history·location·window 도 흉내내야 한다
+globalThis.innerHeight = 800;
 globalThis.location = { pathname: "/" };
 globalThis.history = { pushState() {}, replaceState() {} };
 globalThis.window = { addEventListener() {} };
