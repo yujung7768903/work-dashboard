@@ -36,6 +36,17 @@ server_args() {
   echo "${cmd#*server.py}"
 }
 
+with_port() {
+  # 받은 pid 중 `--port <포트>` 로 뜬 것만
+  local want=$1 pid
+  shift
+  for pid in "$@"; do
+    case " $(server_args "$pid") " in
+    *" --port $want "*) echo "$pid" ;;
+    esac
+  done
+}
+
 stop_serving() {
   # 인자로 받은 pid 들을 멈추고 실제로 죽을 때까지 기다린다
   local pid _try

@@ -33,20 +33,6 @@ def _worktree_dir():
 
 
 def _serve(root, case, *flags):
-    """워크트리를 cwd 로 도는 서버 프로세스. 탐지될 때까지 기다려 돌려준다"""
-    with open(os.path.join(root, "server.py"), "w") as handle:
-        handle.write("import time\ntime.sleep(30)\n")
-    proc = subprocess.Popen([sys.executable, *flags, "server.py"], cwd=root)
-    case.addCleanup(_stop, proc)
-    deadline = time.time() + 5
-    while time.time() < deadline:
-        if release.serving_processes(root):
-            return proc
-        time.sleep(0.2)
-    case.fail(f"워크트리에서 도는 서버를 찾지 못함: {flags}")
-
-
-def _listen(root, case):
     """그 디렉토리를 cwd 로 실제 포트를 듣는 프로세스. (프로세스, 포트) 를 돌려준다"""
     with open(os.path.join(root, "server.py"), "w") as handle:
         handle.write(
@@ -58,7 +44,10 @@ def _listen(root, case):
             "time.sleep(30)\n"
         )
     proc = subprocess.Popen(
-        [sys.executable, "server.py"], cwd=root, stdout=subprocess.PIPE, text=True
+        [sys.executable, *flags, "server.py"],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        text=True,
     )
     case.addCleanup(proc.stdout.close)
     case.addCleanup(_stop, proc)
@@ -132,7 +121,7 @@ class WorktreeLookupTest(unittest.TestCase):
         """--worktree 없이도 EnterWorktree 로 옮겨간 워크트리의 서버를 정리해야 한다"""
         worktree = _worktree_dir()
         self._patch_transcript(worktree)
-        proc = _serve(worktree, self)
+        proc, _ = _serve(worktree, self)
         result = release.finish(self.con, SID)
         self.assertEqual(worktree, result["worktree"])
         self.assertEqual([proc.pid], [pid for pid, _ in result["killed"]])
@@ -187,15 +176,27 @@ class ServingProcessTest(unittest.TestCase):
 
     def test_running_server_in_worktree_is_found_and_killed(self):
         root = _worktree_dir()
-        proc = _serve(root, self)
+        proc, _ = _serve(root, self)
         self.assertEqual([proc.pid], [pid for pid, _ in release.kill_serving(root)])
         self.assertIsNotNone(proc.wait(timeout=5))
 
     def test_server_started_with_a_flag_is_found(self):
         """`python3 -u server.py` 처럼 띄운 프로세스도 실제로 찾아야 한다"""
         root = _worktree_dir()
-        proc = _serve(root, self, "-u")
+        proc, _ = _serve(root, self, "-u")
         self.assertIn(proc.pid, [pid for pid, _ in release.serving_processes(root)])
+
+    def test_process_without_a_listening_port_is_not_a_server(self):
+        """워크트리를 cwd 로 도는 훅·도구가 이름만으로 서버로 잡히면 안 된다"""
+        root = _worktree_dir()
+        with open(os.path.join(root, "server.py"), "w") as handle:
+            handle.write("import time\ntime.sleep(30)\n")
+        proc = subprocess.Popen([sys.executable, "server.py"], cwd=root)
+        self.addCleanup(_stop, proc)
+        time.sleep(0.5)
+        self.assertEqual([], release.serving_processes(root))
+        self.assertEqual([], release.kill_serving(root))
+        self.assertIsNone(proc.poll())
 
 
 class ServingPortTest(unittest.TestCase):
@@ -203,12 +204,12 @@ class ServingPortTest(unittest.TestCase):
 
     def test_port_of_the_process_serving_that_directory(self):
         root = _worktree_dir()
-        _, port = _listen(root, self)
+        _, port = _serve(root, self)
         self.assertEqual(port, release.serving_port(root))
 
     def test_main_checkout_port_is_reported_too(self):
         plain = tempfile.mkdtemp()
-        _, port = _listen(plain, self)
+        _, port = _serve(plain, self)
         self.assertEqual(port, release.serving_port(plain))
 
     def test_directory_without_a_listener_is_zero(self):

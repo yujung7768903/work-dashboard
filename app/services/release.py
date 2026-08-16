@@ -248,15 +248,22 @@ def _port_of(name):
 
 
 def serving_processes(root):
-    """cwd 가 root 인 서버 프로세스 [(pid, 명령)]. 워크트리가 아니면 빈 목록"""
+    """cwd 가 root 이고 포트를 듣고 있는 서버 프로세스 [(pid, 명령)].
+    워크트리가 아니면 빈 목록"""
     if not _is_worktree(root):
         return []
     mine = {os.getpid(), os.getppid()}
+    listening = _listening_ports()
     return [
         (pid, command)
         for pid, command in _processes_with_cwd(root)
-        if pid not in mine and _is_server(command)
+        if pid not in mine and _is_server(command) and _listens(pid, listening)
     ]
+
+
+def _listens(pid, listening):
+    """듣고 있는 포트가 있는지. 목록 자체를 못 얻었으면 이름 판정만으로 본다"""
+    return not listening or pid in listening
 
 
 def _is_worktree(path):
