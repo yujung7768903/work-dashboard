@@ -75,6 +75,28 @@ class DemoSeedTest(unittest.TestCase):
             self.assertIn("master", branches)
             self.assertTrue([name for name in branches if name.startswith("worktree-")])
 
+    def test_google_tasks_looks_connected(self):
+        state = self.con.execute("SELECT * FROM gtasks_state WHERE id=1").fetchone()
+        self.assertEqual(state["enabled"], 1)
+        self.assertTrue(state["last_sync_at"])
+        self.assertIsNone(state["last_error"])
+        linked = self.con.execute(
+            "SELECT name, gtasks_enabled FROM categories WHERE google_list_id IS NOT NULL"
+        ).fetchall()
+        # 켠 것과 끈 것이 섞여 있어야 카테고리별 스위치가 무엇인지 화면에서 읽힌다
+        self.assertTrue([row for row in linked if row["gtasks_enabled"]])
+        self.assertTrue([row for row in linked if not row["gtasks_enabled"]])
+
+    def test_google_credentials_and_schedule_are_where_the_panel_looks(self):
+        path = self.home / ".claude/work-dashboard/gtasks.json"
+        self.assertTrue(json.loads(path.read_text())["refresh_token"])
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        agents = list((self.home / "Library/LaunchAgents").glob("*.plist"))
+        self.assertTrue(agents)
+        plist = agents[0].read_text()
+        self.assertIn("gtasks-sync", plist)
+        self.assertIn("<integer>600</integer>", plist)
+
     def test_launcher_points_at_the_demo_home(self):
         script = (self.root / "serve.sh").read_text()
         self.assertIn(f'export HOME="{self.home}"', script)

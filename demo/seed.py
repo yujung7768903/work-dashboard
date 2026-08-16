@@ -31,6 +31,35 @@ SEED = 20260816
 CATEGORIES = ("Development", "Ops", "Incident", "Dev environment", "Skills", "Process")
 LABELS = (("auto", "#2aa77a"), ("bug", "#e0574a"), ("research", "#2d8bdf"), ("quick", "#8a9a2d"))
 
+# 구글 태스크 연동. (카테고리, 짝지어진 구글 목록 id, 동기화 켜짐)
+GTASKS_LINKS = (
+    ("Development", "MDQxNTI3ODkzNzE0OTAyNDg2MDA6MDow", True),
+    ("Ops", "MTE5MDMyNDcyNTUwNjYyMjM3ODQ6MDow", True),
+    ("Process", "Nzg0NTIyOTA2MTIyOTk0NDAxMjA6MDow", False),
+)
+# 승인까지 끝난 모양만 갖춘 값. 실제 계정에 닿지 않는다
+GTASKS_CLIENT = {
+    "client_id": "000000000000-demo0not0a0real0client.apps.googleusercontent.com",
+    "client_secret": "GOCSPX-demo-not-a-real-secret",
+    "refresh_token": "1//0-demo-not-a-real-refresh-token",
+}
+GTASKS_INTERVAL_SEC = 600
+# 연동 화면은 주기를 launchd·crontab 에서 찾아 읽는다. 데모 HOME 아래 등록해 둔다
+LAUNCH_AGENT = """<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.demo.gtasks-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>dash.py</string>
+    <string>gtasks-sync</string>
+  </array>
+  <key>StartInterval</key><integer>{interval}</integer>
+</dict>
+</plist>
+"""
+
 # 저장소마다 master 커밋과 워크트리(브랜치 + 앞선 커밋 수)
 REPOS = {
     "billing-api": {
@@ -323,7 +352,20 @@ def build_usage_files(home, now):
         "oauthAccount": {"accountUuid": ACCOUNT_UUID, "userRateLimitTier": ACCOUNT_TIER},
     })
     build_cost_log(os.path.join(home, ".claude/metrics/costs.jsonl"), now)
+    build_gtasks_files(home)
     return five_reset, seven_reset
+
+
+def build_gtasks_files(home):
+    """연동이 이미 붙어 있는 것으로 보이게 하는 두 자리 — 자격증명과 자동 실행 등록"""
+    path = os.path.join(home, ".claude/work-dashboard/gtasks.json")
+    write_json(path, GTASKS_CLIENT)
+    os.chmod(path, 0o600)
+    agents = os.path.join(home, "Library/LaunchAgents")
+    os.makedirs(agents, exist_ok=True)
+    with open(os.path.join(agents, "com.demo.gtasks-sync.plist"), "w",
+              encoding="utf-8") as handle:
+        handle.write(LAUNCH_AGENT.format(interval=GTASKS_INTERVAL_SEC))
 
 
 def build_cost_log(path, now):
@@ -410,6 +452,7 @@ def seed_db(db_path, repos, now, resets):
         todo_ids[title] = add_todo(con, category_ids[category], None, title, None, labels,
                                    None, status, order, now, label_ids)
 
+    seed_gtasks(con, category_ids, now)
     seed_sessions(con, repos, category_ids, todo_ids, now)
     seed_worktree_history(con, repos, now)
     seed_usage_samples(con, now, resets)
@@ -458,6 +501,18 @@ def seed_sessions(con, repos, category_ids, todo_ids, now):
                 "INSERT INTO session_todos(session_id, todo_id, created_at) VALUES(?,?,?)",
                 (cursor.lastrowid, todo_ids[todo_title],
                  stamp(now - timedelta(minutes=started))))
+
+
+def seed_gtasks(con, category_ids, now):
+    """맞추기까지 끝난 상태. 켠 카테고리와 끈 카테고리가 섞여 있어야 화면이 설명된다"""
+    con.execute(
+        "INSERT OR REPLACE INTO gtasks_state(id, enabled, last_sync_at, last_error,"
+        " updated_at) VALUES(1,1,?,NULL,?)",
+        (stamp(now - timedelta(minutes=6)), stamp(now)))
+    for name, list_id, enabled in GTASKS_LINKS:
+        con.execute(
+            "UPDATE categories SET google_list_id=?, gtasks_enabled=? WHERE id=?",
+            (list_id, 1 if enabled else 0, category_ids[name]))
 
 
 def seed_worktree_history(con, repos, now):
@@ -531,6 +586,19 @@ def seed_autorun(con, todo_ids, now):
              stamp(now - timedelta(minutes=ended))))
 
 
+def python_with_ssl():
+    """ssl 이 들어 있는 파이썬. 없는 것으로 띄우면 연동 화면이 HTTPS 경고를 단다"""
+    for candidate in (sys.executable, "/usr/bin/python3", "/opt/homebrew/bin/python3"):
+        try:
+            done = subprocess.run((candidate, "-c", "import ssl"), capture_output=True)
+        except OSError:
+            continue
+        if done.returncode == 0:
+            return candidate
+    print("ssl 이 있는 파이썬을 못 찾음 — 연동 화면에 HTTPS 경고가 뜬다")
+    return sys.executable
+
+
 def write_launcher(root, home, port):
     path = os.path.join(root, "serve.sh")
     db_path = os.path.join(home, ".claude/work-dashboard/dash.db")
@@ -542,7 +610,7 @@ def write_launcher(root, home, port):
             f'export HOME="{home}"\n'
             f'export WORK_DASHBOARD_DB="{db_path}"\n'
             f'cd "{REPO_ROOT}"\n'
-            f'exec python3 server.py --port {port} "$@"\n')
+            f'exec "{python_with_ssl()}" server.py --port {port} "$@"\n')
     os.chmod(path, 0o755)
     return path
 
