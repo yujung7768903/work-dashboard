@@ -20,6 +20,7 @@ from app.errors import (
 )
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
+from app.repositories import gtasks_state
 from app.repositories import labels as label_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
@@ -28,6 +29,8 @@ from app.repositories import workspaces as workspace_repo
 from app.services import (
     autorun,
     board,
+    gtasks,
+    gtasks_setup,
     planning,
     release,
     session_link,
@@ -138,6 +141,8 @@ def _route_get(con, head, item_id, query):
         return worktrees.overview(con, _single(query, "group_by", worktrees.GROUP_BY_WORKSPACE))
     if head == "autorun":
         return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
+    if head == "gtasks":
+        return gtasks_setup.panel(con)
     if head == "settings":
         return settings_repo.payload(con)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
@@ -171,6 +176,24 @@ def _route_post(con, head, body):
             return worktrees.control(repo, branch, action)
         writer = worktrees.discard if action == "discard" else worktrees.apply
         return writer(con, repo, branch)
+    if head == "gtasks-auth":
+        # 브라우저 동의창은 이 서버가 연다. ThreadingHTTPServer 라 기다리는 동안에도
+        # 다른 화면은 그대로 뜬다. 자격증명은 gtasks.json·환경변수에서도 찾는다
+        return gtasks_setup.connect(
+            con, body.get("client_id"), body.get("client_secret")
+        )
+    if head == "gtasks-plan":
+        # 무엇이 만들어질지 먼저 보여주고 확인을 받는다. 여기서는 아무것도 쓰지 않는다
+        return gtasks_setup.plan(con)
+    if head == "gtasks-setup":
+        # 고른 것만 만든다. 안 고른 것은 양쪽 어디도 건드리지 않는다
+        result = gtasks_setup.apply(con, body.get("chosen"))
+        return {"result": result, "panel": gtasks_setup.panel(con)}
+    if head == "gtasks-sync":
+        return {"report": gtasks.run(con), "panel": gtasks_setup.panel(con)}
+    if head == "gtasks-disconnect":
+        # 양쪽 데이터는 건드리지 않는다. 구글 계정 승인만 버린다
+        return gtasks_setup.disconnect(con)
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -179,6 +202,10 @@ def _route_patch(con, head, item_id, body):
         # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
         state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
         return {"state": state, "runs": autorun.panel_runs(con)}
+    if head == "gtasks":
+        # 끄는 길. 켜는 것은 카테고리 확인을 거쳐야 하므로 gtasks-setup 이 맡는다
+        gtasks_state.set_enabled(con, bool(body.get("enabled")))
+        return gtasks_setup.panel(con)
     if head == "settings":
         # autorun 과 같은 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려준다
         settings_repo.set_language(con, body.get("language"))
@@ -196,6 +223,9 @@ def _route_patch(con, head, item_id, body):
     if head == "autorun-runs":
         # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
         return autorun.confirm_run(con, item_id)
+    if head == "gtasks-categories":
+        category_repo.set_gtasks_enabled(con, item_id, bool(body.get("enabled")))
+        return gtasks_setup.panel(con)
     if head == "sessions":
         session = session_repo.classify_by_ids(
             con,

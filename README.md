@@ -44,6 +44,7 @@ running and the next session knows where things stand.
 | Optional | Claude Code — for session tracking, status line and autonomous runs |
 | Optional | Node.js — some UI checks in the test suite run under `node` |
 | Optional | `markdownlint-cli2` on `PATH` — used by the markdown lint hook |
+| Optional | A Python with `ssl` — needed for the Google Tasks sync. Even a 3.9 can be built without it, so check with `python3 -c "import ssl"` |
 
 ## Quickstart
 
@@ -259,6 +260,177 @@ nothing turns it back on.
 A tick that finds no eligible todo does nothing at all, which is why this is a
 cron entry and not a daemon.
 
+## Google Tasks sync
+
+Bolted on so the board can be read and ticked off from a phone. Google allows
+exactly one level of nesting, which the three layers drop straight into.
+
+```text
+Google list        =  Category
+ └ Top-level task  =  Workspace
+    └ Subtask      =  A todo in that workspace
+```
+
+List names are the category names **verbatim**. Prefix them and a list made by
+hand on the phone never matches, leaving two of everything forever.
+
+The structure travels both ways. **A top-level task created on the phone becomes
+a workspace, and its subtasks become that workspace's todos.** A todo with no
+workspace also goes up as a top-level task, but the link it leaves behind means
+the next run reads it as already paired — only *unpaired* top-level tasks are
+taken as workspaces, so nothing multiplies run after run.
+
+### First-time setup
+
+This can be finished on screen, without a terminal. `Connect` in the Settings tab
+walks through where to get the credentials, takes the two values, writes them to
+`~/.claude/work-dashboard/gtasks.json` (mode 600) and opens the consent screen.
+What you typed survives a failed consent, so nothing has to be typed twice.
+
+What the walkthrough covers: create a project in the
+[Google Cloud Console](https://console.cloud.google.com/), enable the **Google
+Tasks API**, then create **Credentials → OAuth client ID → Desktop app**.
+
+From a terminal instead, credentials are resolved in the order
+**argument > environment variable > `gtasks.json`**.
+
+```bash
+# (a) environment — no secret left in shell history
+GTASKS_CLIENT_ID=<ID> GTASKS_CLIENT_SECRET=<SECRET> python3 dash.py gtasks-auth
+
+# (b) written to the file beforehand, so the command needs no arguments
+cat > ~/.claude/work-dashboard/gtasks.json <<'EOF'
+{ "client_id": "<ID>", "client_secret": "<SECRET>" }
+EOF
+chmod 600 ~/.claude/work-dashboard/gtasks.json
+python3 dash.py gtasks-auth
+
+# (c) flags — they stay in shell history, so this is the last resort
+python3 dash.py gtasks-auth --client-id <ID> --client-secret <SECRET>
+```
+
+Consent adds a `refresh_token` to the same file, making three keys. **It cannot
+be written in by hand** — only Google's consent screen issues one. If you already
+have all three from somewhere else, write them in and skip `gtasks-auth`. Where a
+browser cannot open (headless, no default browser), the authorisation URL is
+printed rather than waited on.
+
+### The settings screen
+
+Authentication on its own syncs nothing. **Categories are matched before anything
+is switched on.**
+
+1. `Connect` — shown only while there is no authentication. Credentials already
+   on file skip the walkthrough and the input.
+2. `Match categories` — reads both sides and offers the candidates **as
+   checkboxes, each carrying the count from both sides**, in three groups: on
+   both sides (checking merges them), dashboard only, Google only.
+3. `Start syncing` — creates, links and enables **only what was checked**.
+   Anything left unchecked is created on neither side. No todos move here.
+4. Only then do the master switch and the per-category switches appear. **Every
+   category starts off** — matching lists and exchanging todos are separate
+   decisions, and starting on would push every category's todos to the phone in
+   the first sync. Turning the master off greys the rest out without changing
+   their values.
+
+**Showing both counts is the whole point.** Same name is not same thing: a
+dashboard `Study` holding 2 todos and a phone `Study` holding 61 are unrelated,
+and checking on the name alone merges two piles with no way back.
+
+The picker appears once, at step 2. After that the master switch is a switch —
+there is no reason to re-confirm lists that are already matched, and before
+matching there is nothing to switch on, so the switch is hidden entirely.
+`Add categories` pulls in further Google lists later on; ones already linked show
+up locked.
+
+`Disconnect` discards the Google **account authorisation only**. Todos on both
+sides, the category links and `client_id`/`client_secret` all stay, so
+reconnecting resumes where it left off. `meta.gtasks_seen_ids` is cleared,
+though — left behind, it would read tasks that vanished in the meantime as
+"deleted on the phone" and delete perfectly good todos.
+
+**A failure never switches the integration off.** One dropped wifi should not
+silently disable a setting for days. Instead the reason appears next to the title
+(`⚠ Sign-in expired`) and a human decides. That reason is whatever the last sync
+left in `gtasks_state.last_error` — opening the tab does not ask Google.
+
+### Syncing
+
+**`gtasks-sync` takes no credentials.** Setup is a one-off; after it, the stored
+`refresh_token` fetches access tokens by itself. **If the integration is off it
+does nothing and exits** — cron calls it constantly, so that is not a failure.
+
+```bash
+python3 dash.py gtasks-sync --dry-run   # report what would change, write nothing
+python3 dash.py gtasks-sync
+```
+
+**Run `--dry-run` first** — every open todo is created on Google.
+
+The API has no webhooks, so calling it on a schedule is the only option, and
+**nothing is scheduled by default** — with no schedule in place it runs only when
+`Sync now` is pressed. The settings screen says exactly that
+(`no schedule | Never synced`). Rather than printing a hard-coded interval,
+it reads `StartInterval` from launchd (`~/Library/LaunchAgents/*.plist`) and
+looks for `gtasks-sync` in `crontab -l` — telling someone who scheduled nothing
+that it runs "every 10 minutes" would be a lie.
+
+```bash
+# every ten minutes. crontab -e
+*/10 * * * * cd ~/work/work-dashboard && /usr/bin/python3 dash.py gtasks-sync >> /tmp/gtasks.log 2>&1
+```
+
+### Sync rules
+
+| Field | Direction | On conflict |
+| --- | --- | --- |
+| Title | Both ways | Newer of `updated_at` and `updated` wins |
+| Completion | Both ways | Same |
+| Note and preconditions | Push only | Editing on the phone changes nothing here |
+| Workspace background, purpose, goal, considerations | Push only | Carried as four lines in the single `notes` field |
+| Labels | Not synced | — |
+
+- Timestamps are consulted **only when the content actually differs**. Otherwise
+  what we just pushed makes the remote look newer every time, and the two sides
+  ping-pong forever.
+- They are compared truncated to the second. `db.now()` writes whole seconds and
+  Google returns milliseconds; left alone, a local edit made within the same
+  second is silently reverted.
+- A tie goes to the local side.
+- A completion arriving from the phone that a local rule rejects (an autonomous
+  run awaiting review, say) is **skipped and reported**. Local rules win.
+- The phone has no `todo`/`doing` distinction. Un-completing there comes back as
+  `todo` even if it was `doing`; a workspace likewise comes back `active` rather
+  than `paused`.
+- A category switched off is skipped whole. Its list link stays, so switching it
+  back on does not create a second list.
+
+### Deletion
+
+`meta.gtasks_seen_ids` holds the task ids from the previous run, and that is the
+only thing separating "newly created on the phone" from "deleted on the
+dashboard".
+
+| Case | What happens |
+| --- | --- |
+| Deleted on the dashboard | Deleted on Google too |
+| Deleted on the phone, not completed | Deleted on the dashboard too |
+| Deleted on the phone, completed | Left alone — "delete completed items" must not dig up graves |
+
+Links on completed items are kept as well. Drop the link and the next run reads
+them as not yet pushed and digs the grave straight back up.
+
+Deleting requires **evidence it was seen on the previous run**. A link with no
+sighting means the list or the account changed, so it is pushed again rather than
+deleted — without that condition, moving to a different account would make every
+link unfamiliar at once and wipe out every open todo.
+
+**Workspaces are the awkward case.** Google deletes subtasks along with their
+parent, while on the dashboard the workspace's todos survive, uncategorised.
+Leaving their links in place would have the next run read them as deleted on the
+phone. So the links of the subtasks about to disappear are cut before the parent
+is deleted, and those todos are pushed back as top-level tasks in the same run.
+
 ## Configuration
 
 | What | Where |
@@ -279,16 +451,17 @@ the six default categories once. All `*_at` columns are ISO 8601 UTC text.
 
 | Table | Role |
 | --- | --- |
-| `categories` | Top-level grouping. Does not affect priority |
-| `workspaces` | A branch- or Jira-sized piece of work, with background, purpose, goal and considerations |
-| `todos` | A todo. May belong to a workspace, or hang directly off a category |
+| `categories` | Top-level grouping. Does not affect priority. `google_list_id` links the Google list, `gtasks_enabled` is the per-category sync switch (off by default) |
+| `workspaces` | A branch- or Jira-sized piece of work, with background, purpose, goal and considerations. `google_task_id` links the top-level Google task |
+| `todos` | A todo. May belong to a workspace, or hang directly off a category. `google_task_id` links the Google subtask |
 | `labels`, `todo_labels` | Labels describe a todo's nature; a todo can carry several |
 | `sessions` | Claude Code sessions, registered and updated by the hooks |
 | `session_todos` | Which todo a session claimed. A session's workspace is derived from here |
 | `worktrees` | Worktree history, kept after the directory is merged away or deleted |
 | `usage_samples` | Rate-limit and token samples behind the usage view |
 | `autorun_state`, `autorun_runs` | Autonomous-run settings and the log of runs |
-| `meta` | Single-value settings and internal flags |
+| `gtasks_state` | Google Tasks settings — `enabled`, `last_sync_at`, `last_error`. A single row, for the same reason as `autorun_state` |
+| `meta` | Single-value settings and internal flags, `gtasks_seen_ids` among them |
 
 ## Project structure
 
