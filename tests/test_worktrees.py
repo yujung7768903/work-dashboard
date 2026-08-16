@@ -3,9 +3,11 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from app.constants import STATUS_DOING, STATUS_DONE
 from app.errors import Conflict, NotFound, Validation
@@ -14,7 +16,7 @@ from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, worktrees
-from tests.support import temp_db
+from tests.support import free_test_port, serve, temp_db
 
 PORCELAIN = """worktree /repo
 HEAD abc
@@ -93,6 +95,22 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(
             worktrees._short("/usr/bin/python3 server.py --port 9080"), "python3 server.py"
         )
+
+    def test_divergence_batch_flips_the_field_order(self):
+        """for-each-ref 는 `앞섬 뒤처짐` 순으로 준다 — 화면이 읽는 (뒤처짐, 앞섬) 으로 뒤집는다"""
+        unit = worktrees.UNIT
+        with mock.patch.object(
+            worktrees, "_git",
+            return_value=f"master{unit}0 0\nworktree-feat{unit}3 7\nold{unit}\n",
+        ):
+            found = worktrees._divergences("/repo", "master")
+        self.assertEqual(found["master"], (0, 0))
+        self.assertEqual(found["worktree-feat"], (7, 3))
+        # 격차를 못 받은 브랜치는 빠진다 — 부르는 쪽이 낱개로 되묻는다
+        self.assertNotIn("old", found)
+
+    def test_divergence_batch_is_not_asked_without_a_base(self):
+        self.assertEqual(worktrees._divergences("/repo", ""), {})
 
 
 def git(root, *args):
@@ -183,6 +201,25 @@ class RepoTest(unittest.TestCase):
         self.assertFalse(row["is_base"])
         self.assertEqual(os.path.realpath(row["path"]), os.path.realpath(self.worktree))
 
+    def test_rows_fall_back_when_the_batch_gap_is_missing(self):
+        """ahead-behind 필드를 모르는 git 이면 브랜치마다 낱개로 되묻는다"""
+        with mock.patch.object(worktrees, "_divergences", return_value={}):
+            row = next(r for r in self._group()["rows"] if r["branch"] == "worktree-feat")
+        self.assertEqual((row["ahead"], row["behind"]), (1, 0))
+        self.assertEqual([commit["subject"] for commit in row["commits"]], ["feat: 새 기능"])
+
+    def test_repo_root_is_asked_once_for_a_repo_and_its_worktrees(self):
+        """워크트리는 저장소 안이라 루트가 정해져 있다 — 위치마다 git 을 되묻지 않는다"""
+        asked = []
+        original = worktrees.repo_root_of
+        with mock.patch.object(
+            worktrees, "repo_root_of",
+            lambda cwd: (asked.append(cwd), original(cwd))[1],
+        ):
+            roots = worktrees._known_repo_roots([self.repo, self.worktree, self.repo])
+        self.assertEqual(roots, [self.repo])
+        self.assertEqual(asked, [self.repo])
+
     def test_base_row_carries_no_commits(self):
         row = self._group()["rows"][0]
         self.assertTrue(row["is_base"])
@@ -211,6 +248,123 @@ class RepoTest(unittest.TestCase):
         """세션이 한 번도 안 돈 워크스페이스는 저장소를 모르므로 그리지 않는다"""
         groups = worktrees.overview(self.con)["groups"]
         self.assertEqual([group["id"] for group in groups], [])
+
+    def _project_group(self):
+        groups = worktrees.overview(self.con, worktrees.GROUP_BY_PROJECT)["groups"]
+        return next(
+            g for g in groups if os.path.realpath(g["repo"]) == os.path.realpath(self.repo)
+        )
+
+    def test_project_view_shows_a_repo_with_no_workspace_or_todo_link(self):
+        """세션이 그 위치에서 돌았다는 사실만으로 프로젝트 뷰에는 보인다 —
+        워크스페이스에 속하지 않고 할일도 안 잡아도 된다"""
+        session_repo.register(self.con, "sess-untied", cwd=self.repo)
+        group = self._project_group()
+        self.assertEqual(group["name"], "repo")
+        self.assertEqual([row["branch"] for row in group["rows"]], ["master", "worktree-feat"])
+
+    def test_workspace_view_excludes_that_same_untied_session(self):
+        """반면 워크스페이스 뷰는 그 세션을 워크스페이스로 엮지 못해 여전히 안 보인다"""
+        session_repo.register(self.con, "sess-untied-2", cwd=self.repo)
+        groups = worktrees.overview(self.con, worktrees.GROUP_BY_WORKSPACE)["groups"]
+        self.assertEqual(groups, [])
+
+    def test_project_view_shows_a_shared_repo_only_once(self):
+        """같은 저장소를 워크스페이스 둘이 나눠 써도 프로젝트 뷰에는 한 번만"""
+        other = workspace_repo.create(self.con, self.workspace["category_id"], "다른 워크스페이스")
+        for index, workspace in enumerate((self.workspace, other)):
+            session_id = f"sess-dup-{index}"
+            session_repo.register(self.con, session_id, cwd=self.repo)
+            todo = todo_repo.create(self.con, f"작업{index}", workspace_id=workspace["id"])
+            session_repo.link_todo(self.con, session_id, todo["id"])
+        groups = worktrees.overview(self.con, worktrees.GROUP_BY_PROJECT)["groups"]
+        matches = [g for g in groups if os.path.realpath(g["repo"]) == os.path.realpath(self.repo)]
+        self.assertEqual(len(matches), 1)
+
+    def test_overview_rejects_an_unknown_group_by(self):
+        with self.assertRaises(Validation):
+            worktrees.overview(self.con, "bogus")
+
+
+class ServingProcessTest(unittest.TestCase):
+    """포트를 듣는 프로세스를 실제로 띄워 확인한다. 이 조회는 pid 쪽에서 되묻는 방향이라
+    (경로로 묻지 않는다) 경로가 몇 개든 lsof 호출 수가 늘지 않아야 한다"""
+
+    def setUp(self):
+        # git 처럼 lsof 도 실제 경로를 돌려준다 — macOS 의 /var 는 /private/var 심볼릭 링크
+        self.base = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+        self.serving = os.path.join(self.base, "serving")
+        self.quiet = os.path.join(self.base, "quiet")
+        os.makedirs(self.serving)
+        os.makedirs(self.quiet)
+
+    def test_only_the_path_with_a_listening_port_is_found(self):
+        _, port = serve(self.serving, self)
+        # 같은 자리에서 도는 프로세스라도 듣는 포트가 없으면 잡히면 안 된다 —
+        # 셸·에디터까지 다 보이면 포트 칸이 잡음이 된다
+        idle = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                cwd=self.quiet)
+        self.addCleanup(idle.wait)
+        self.addCleanup(idle.kill)
+
+        found = worktrees.processes_by_path([self.serving, self.quiet])
+        self.assertEqual(sorted(found), [self.serving])
+        entry = found[self.serving][0]
+        self.assertIn(port, entry["ports"])
+        self.assertIn("server.py", entry["command"])
+
+    def test_test_range_port_is_hidden_while_others_are_shown(self):
+        """스크립트 검사가 띄운 서버가 워크트리 탭에 진짜 작업 서버처럼 섞이면 안 된다"""
+        _, port = serve(self.serving, self)
+        serve(self.serving, self, port=free_test_port())
+        found = worktrees.processes_by_path([self.serving])
+        self.assertEqual([[port]], [entry["ports"] for entry in found[self.serving]])
+
+    def test_lsof_is_not_called_without_paths(self):
+        with mock.patch.object(worktrees, "_run") as never:
+            self.assertEqual(worktrees.processes_by_path([]), {})
+            self.assertEqual(worktrees.processes_by_path(["", None]), {})
+        never.assert_not_called()
+
+
+class ProjectOrderTest(unittest.TestCase):
+    """프로젝트 뷰 정렬 — 최근 커밋 시각 내림차순"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.base = os.path.realpath(tempfile.mkdtemp())
+        cls.older = os.path.join(cls.base, "older")
+        cls.newer = os.path.join(cls.base, "newer")
+        cls._init_repo(cls.older, "2020-01-01T00:00:00+00:00")
+        cls._init_repo(cls.newer, "2025-01-01T00:00:00+00:00")
+
+    @classmethod
+    def _init_repo(cls, repo, when):
+        os.makedirs(repo)
+        git(repo, "init", "-q", "-b", "master")
+        git(repo, "config", "user.email", "t@t")
+        git(repo, "config", "user.name", "t")
+        write_commit(repo, "base.txt", "", "기준 커밋")
+        git(repo, "checkout", "-q", "-b", "feat")
+        env = {**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when}
+        subprocess.run(
+            ["git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "작업"],
+            check=True, capture_output=True, env=env,
+        )
+        git(repo, "checkout", "-q", "master")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.base, ignore_errors=True)
+
+    def test_most_recently_committed_repo_comes_first(self):
+        con = temp_db()
+        session_repo.register(con, "sess-older", cwd=self.older)
+        session_repo.register(con, "sess-newer", cwd=self.newer)
+        groups = worktrees.overview(con, worktrees.GROUP_BY_PROJECT)["groups"]
+        names = [g["name"] for g in groups if g["repo"] in (self.older, self.newer)]
+        self.assertEqual(names, ["newer", "older"])
 
 
 class ApplyTest(unittest.TestCase):

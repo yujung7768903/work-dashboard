@@ -11,8 +11,12 @@ export const LANGUAGES = [
 ];
 
 const FALLBACK_LANGUAGE = "en";
-// 서버가 오류를 한국어로 내려주므로, 그 문장을 키로 되짚을 때만 이 사전이 필요하다
+// 서버는 오류·알림·자율 수행 사유를 한국어로 내려준다. 그 문장을 키로 되짚어야 해서
+// 고른 언어가 한국어가 아니면 한국어 사전도 함께 깐다
 const SERVER_LANGUAGE = "ko";
+// 되짚기 대상인 서버 문구의 키. 화면 라벨까지 틀로 세우면 "{count}개" 같은 짧은 라벨이
+// 서버 문장을 먼저 물어 엉뚱한 키로 옮겨진다
+const SERVER_PREFIXES = ["error.", "notice.", "reason."];
 const DICTIONARY_PATH = (code) => `/lang/${code}.json`;
 // 텍스트가 아니라 속성에 들어가는 문구. 텍스트가 없는 input 은 이쪽만 바뀐다
 const ATTRIBUTES = [
@@ -21,6 +25,8 @@ const ATTRIBUTES = [
   ["aria-label", "data-i18n-aria-label"],
 ];
 const TEXT_NODE = 3;
+const PLACEHOLDER = /\{(\w+)\}/g;
+const REGEXP_SPECIAL = /[.*+?^${}()|[\]\\]/g;
 
 let dictionary = {};
 let fallback = {};
@@ -40,22 +46,23 @@ export function language() {
 }
 
 /** 사전을 직접 넣는다. init() 과 node 체크(tests/i18n_boot.mjs)가 같은 문으로 들어온다 */
-export function useDictionary(base, chosen = {}, code = FALLBACK_LANGUAGE) {
+export function useDictionary(base, chosen = {}, code = FALLBACK_LANGUAGE, korean = {}) {
   fallback = base;
   dictionary = chosen;
   current = code;
-  byKorean = null;
+  indexKorean(korean);
 }
 
 // 첫 렌더 전에 한 번(boot.js). 이게 끝난 뒤에 화면 모듈을 들여야 모듈 최상단에서
 // t() 로 만드는 상수(배지·라벨 표)까지 번역된다
 export async function init() {
   const code = await fetchLanguage();
-  const [base, chosen] = await Promise.all([
+  const [base, chosen, korean] = await Promise.all([
     loadDictionary(FALLBACK_LANGUAGE),
     code === FALLBACK_LANGUAGE ? Promise.resolve({}) : loadDictionary(code),
+    code === SERVER_LANGUAGE ? Promise.resolve({}) : loadDictionary(SERVER_LANGUAGE),
   ]);
-  useDictionary(base, chosen, code);
+  useDictionary(base, chosen, code, korean);
   document.documentElement.lang = current;
   document.title = t("app.title");
   translateStatic(document);
@@ -82,23 +89,62 @@ async function loadDictionary(code) {
   }
 }
 
-// 한국어 원문 → 키. 서버 오류 문구를 옮길 때만 쓴다(api.js). 사전을 뒤집어 만들므로
-// 문구 목록이 두 벌이 되지 않는다. 오류가 실제로 났을 때 한 번만 받아 온다 —
-// 평소 화면에는 한국어 사전이 필요 없다
-let byKorean = null;
+// 한국어 원문 → 키. 서버가 내려준 문구를 옮길 때 쓴다. 사전을 뒤집어 만들므로 문구
+// 목록이 두 벌이 되지 않는다
+let byKorean = {};
+// 이름·건수가 박힌 문구는 원문이 매번 달라 그대로는 못 찾는다. {값} 자리를 뚫어 둔 틀로
+// 세워 두고 되짚어 값을 뽑아낸다. 먼저 맞는 틀을 쓰므로 사전에 적은 순서가 곧 우선순위다
+let templates = [];
+
+function indexKorean(korean) {
+  byKorean = {};
+  templates = [];
+  Object.entries(korean).forEach(([key, value]) => {
+    byKorean[value] = key;
+    const names = Array.from(value.matchAll(PLACEHOLDER), (found) => found[1]);
+    if (names.length && SERVER_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      templates.push({ key, names, pattern: toPattern(value) });
+    }
+  });
+}
+
+// "{count}건 남음" → /^(.+?)건 남음$/
+function toPattern(value) {
+  let source = "";
+  let read = 0;
+  for (const found of value.matchAll(PLACEHOLDER)) {
+    source += escapeRegExp(value.slice(read, found.index)) + "(.+?)";
+    read = found.index + found[0].length;
+  }
+  return new RegExp(`^${source}${escapeRegExp(value.slice(read))}$`, "s");
+}
+
+function escapeRegExp(text) {
+  return text.replace(REGEXP_SPECIAL, "\\$&");
+}
 
 /** 서버가 한국어로 내려준 문구를 지금 언어로. 사전에 없는 문장은 그대로 둔다 */
-export async function fromKorean(text) {
+export function fromKorean(text) {
   if (current === SERVER_LANGUAGE) return text;
-  if (!byKorean) {
-    const korean = await loadDictionary(SERVER_LANGUAGE);
-    byKorean = {};
-    Object.entries(korean).forEach(([key, value]) => {
-      byKorean[value] = key;
-    });
-  }
   const key = byKorean[text];
-  return key ? t(key) : text;
+  if (key) return t(key);
+  for (const template of templates) {
+    const found = template.pattern.exec(text);
+    if (found) return t(template.key, params(template.names, found));
+  }
+  return text;
+}
+
+// 뽑아낸 값도 사전에 있으면 함께 옮긴다 — 서버가 "기준 브랜치는 적용 대상이 아님"
+// 처럼 한국어 라벨을 끼워 넣는 문장이 반만 옮겨지지 않게
+function params(names, found) {
+  return Object.fromEntries(
+    names.map((name, index) => {
+      const part = found[index + 1];
+      const key = byKorean[part];
+      return [name, key ? t(key) : part];
+    })
+  );
 }
 
 // index.html 의 data-i18n. 아이콘 svg 를 지우지 않으려고 텍스트 노드만 건드리고,

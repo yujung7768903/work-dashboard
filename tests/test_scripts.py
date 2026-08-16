@@ -5,7 +5,7 @@ run.sh 를 start.sh 로 바꿨을 때 restart.sh 의 `exec ./run.sh` 가 남아
 """
 import os
 import re
-import socket
+import signal
 import subprocess
 import sys
 import time
@@ -13,12 +13,16 @@ import unittest
 import urllib.error
 import urllib.request
 
-from tests.support import temp_db_path
+from tests.support import free_test_port, temp_db_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = ("start.sh", "stop.sh", "restart.sh", "serving.sh")
 REFERENCE = re.compile(r"(?:\./|\. \./)([a-z_]+\.sh)")
+# start.sh 가 마지막에 찍는 `pid 1234 · 로그 …`
+STARTED_PID = re.compile(r"^pid (\d+)", re.MULTILINE)
 BOOT_TIMEOUT_SEC = 10
+EXIT_TIMEOUT_SEC = 5
+EXIT_POLL_SEC = 0.1
 
 
 class ScriptReferenceTest(unittest.TestCase):
@@ -53,9 +57,10 @@ class StartStopTest(unittest.TestCase):
     """실제로 띄우고 멈춘다. DB 는 임시 파일로 돌려 사용자 DB 를 건드리지 않는다"""
 
     def setUp(self):
-        self.port = _free_port()
+        self.port = free_test_port()
         self.env = dict(os.environ, WORK_DASHBOARD_DB=temp_db_path())
-        self.addCleanup(self._stop)
+        self.started = []
+        self.addCleanup(self._kill_started)
 
     def _run(self, script, *argv):
         result = subprocess.run(
@@ -66,39 +71,134 @@ class StartStopTest(unittest.TestCase):
             env=self.env,
         )
         self.assertEqual(0, result.returncode, result.stderr)
+        self.started += [int(pid) for pid in STARTED_PID.findall(result.stdout)]
         return result.stdout
 
-    def _stop(self):
-        if _listening(self.port):
-            self._run("stop.sh")
+    def _kill_started(self):
+        """띄운 pid 를 직접 죽인다"""
+        for pid in self.started:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                continue
+            _wait_gone(pid)
+
+    def _skip_if_shared(self):
+        # 인자 없는 재실행은 이 체크아웃의 서버를 전부 죽인다. 띄우기 전에 부른다
+        if _serving_pids():
+            self.skipTest("이 체크아웃에 다른 서버가 떠 있음")
 
     def test_start_then_stop(self):
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port), "start.sh 로 뜨지 않음")
-        out = self._run("stop.sh")
+        out = self._run("stop.sh", "--port", str(self.port))
         self.assertIn("종료", out)
         self.assertFalse(_listening(self.port), "stop.sh 로 멈추지 않음")
 
+    def test_cleanup_kills_the_server_without_the_detector(self):
+        """stop.sh 가 서버를 못 찾아도 뒷정리는 끝나야 한다 — 좀비가 쌓이던 자리"""
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self._kill_started()
+        self.assertFalse(_listening(self.port))
+
     def test_stop_without_server_is_quiet_success(self):
-        self.assertIn("돌고 있는 서버 없음", self._run("stop.sh"))
+        self.assertIn(
+            "돌고 있는 서버 없음", self._run("stop.sh", "--port", str(self.port))
+        )
+
+    def test_stop_with_port_leaves_other_servers_alone(self):
+        other = free_test_port()
+        self._run("start.sh", "--port", str(other))
+        self.assertTrue(_wait_listening(other))
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self._run("stop.sh", "--port", str(self.port))
+        self.assertFalse(_listening(self.port), "지정한 포트가 안 멈췄다")
+        self.assertTrue(_listening(other), "지정하지 않은 포트까지 멈췄다")
+
+    def test_without_lan_only_this_machine(self):
+        """기본은 루프백. 옵션을 안 준 실행이 LAN 에 열리면 인증 없는 화면이 그냥 노출된다"""
+        lan = _lan_address()
+        if not lan:
+            self.skipTest("LAN 주소 없음")
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self.assertFalse(_listening(self.port, lan), "옵션 없이 LAN 에 열렸다")
+
+    def test_lan_opens_to_other_devices(self):
+        """--lan 은 server.py 가 모르는 이름 — start.sh 가 --host 0.0.0.0 으로 바꿔 넘기고,
+        찍는 주소도 0.0.0.0 이 아니라 붙여넣을 수 있는 실제 주소여야 한다"""
+        lan = _lan_address()
+        if not lan:
+            self.skipTest("LAN 주소 없음")
+        out = self._run("start.sh", "--lan", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        self.assertTrue(_listening(self.port, lan), "--lan 인데 LAN 주소로 안 열림")
+        self.assertIn(f"http://{lan}:{self.port}", out)
+        self.assertNotIn("0.0.0.0", out)
+
+    def test_restart_keeps_lan_open_and_still_shows_the_address(self):
+        """재실행은 --lan 이 아니라 --host 0.0.0.0 을 물려받는다 — 플래그 이름만 보면
+        그때 주소도 경고도 사라진다"""
+        lan = _lan_address()
+        if not lan:
+            self.skipTest("LAN 주소 없음")
+        self._skip_if_shared()
+        self._run("start.sh", "--lan", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        out = self._run("restart.sh")
+        self.assertTrue(_wait_listening(self.port))
+        self.assertTrue(_listening(self.port, lan), "재실행 뒤 LAN 이 닫혔다")
+        self.assertIn(f"http://{lan}:{self.port}", out)
 
     def test_restart_inherits_port(self):
         """인자를 안 주면 죽는 서버의 포트를 물려받는다"""
+        self._skip_if_shared()
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
         self.assertIn("종료", self._run("restart.sh"))
         self.assertTrue(_wait_listening(self.port), "restart.sh 가 같은 포트로 다시 띄우지 않음")
 
 
-def _free_port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+def _wait_gone(pid):
+    deadline = time.time() + EXIT_TIMEOUT_SEC
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return
+        time.sleep(EXIT_POLL_SEC)
 
 
-def _listening(port):
+def _serving_pids():
+    """이 체크아웃을 cwd 로 돌고 있는 서버 pid"""
+    found = subprocess.run(
+        ["bash", "-c", ". ./serving.sh; serving_pids"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    return found.stdout.split()
+
+
+def _lan_address():
+    """이 기기의 LAN 주소. 못 찾으면 빈 문자열 (start.sh 와 같은 인터페이스 순서)"""
+    for interface in ("en0", "en1"):
+        try:
+            found = subprocess.run(
+                ["ipconfig", "getifaddr", interface], capture_output=True, text=True
+            )
+        except OSError:  # macOS 밖에는 ipconfig 가 없다
+            return ""
+        if found.returncode == 0 and found.stdout.strip():
+            return found.stdout.strip()
+    return ""
+
+
+def _listening(port, host="127.0.0.1"):
     try:
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/api/usage", timeout=1).read()
+        urllib.request.urlopen(f"http://{host}:{port}/api/usage", timeout=1).read()
         return True
     except (urllib.error.URLError, OSError):
         return False

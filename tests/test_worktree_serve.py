@@ -7,6 +7,8 @@ import sys
 import tempfile
 import unittest
 
+from tests.support import serve
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "hooks", "worktree_serve.py")
 
@@ -58,14 +60,18 @@ class WorktreeServeTest(unittest.TestCase):
 
     def test_running_server_is_detected_on_this_platform(self):
         """실제 프로세스로 확인 — /proc 이 없는 macOS 에서도 찾아야 한다"""
-        script = os.path.join(self.web, "server.py")
-        with open(script, "w") as handle:
+        serve(self.web, self)
+        self.assertTrue(self.hook._is_served(self.web))
+        self.assertFalse(self.hook._is_served(self.lib))
+
+    def test_process_without_a_listening_port_is_not_served(self):
+        """워크트리를 cwd 로 도는 훅이 서버로 잡히면 훅이 그냥 지나가 서버가 안 뜬다"""
+        with open(os.path.join(self.web, "server.py"), "w") as handle:
             handle.write("import time\ntime.sleep(60)\n")
         process = subprocess.Popen([sys.executable, "server.py"], cwd=self.web)
         self.addCleanup(process.wait)
         self.addCleanup(process.kill)
-        self.assertTrue(self.hook._is_served(self.web))
-        self.assertFalse(self.hook._is_served(self.lib))
+        self.assertFalse(self.hook._is_served(self.web))
 
     def test_non_web_worktree_passes(self):
         transcript = self._transcript(os.path.join(self.lib, "util.py"))

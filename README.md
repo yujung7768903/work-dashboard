@@ -31,8 +31,10 @@ running and the next session knows where things stand.
   local Claude Code logs.
 - **Status line** — the current todo, worktree and server port, rendered into the
   Claude Code status line.
-- **Four UI languages** — English (default), Korean, Japanese and Chinese,
-  switchable from the globe icon.
+- **Four UI languages** — English (default), Korean, Japanese and Chinese from
+  the globe icon. Messages the server produces follow the choice too.
+- **Light and dark** — system, light or dark from the sun-and-moon icon, kept
+  per browser rather than per account.
 
 ## Requirements
 
@@ -56,8 +58,10 @@ there is no migration or setup step.
 
 ```bash
 ./start.sh --port 9081     # a different port, e.g. for a worktree
+./start.sh --lan           # also reachable from your phone or tablet
 ./restart.sh               # restart the server started from this directory
 ./stop.sh                  # stop it
+./stop.sh --port 9081      # stop only the one on that port
 python3 server.py          # run in the foreground instead
 ```
 
@@ -66,11 +70,20 @@ path. Logs are one file per day (`logs/YYYY-MM-DD.log`); files untouched for mor
 than seven days are removed on the next start.
 
 `stop.sh` and `restart.sh` only act on servers whose working directory is this
-one, so worktree servers and the main checkout never stop each other.
+one, so worktree servers and the main checkout never stop each other. Add
+`--port` when a single directory is running more than one.
+
+`--lan` is the only flag `start.sh` reads itself. It binds to `0.0.0.0` and
+prints the address other devices can actually open — `http://192.168.x.x:9080`
+rather than the `0.0.0.0` that `server.py` echoes back.
 
 > [!WARNING]
-> `python3 server.py --host 0.0.0.0` exposes the dashboard to your LAN, and there
-> is no authentication.
+> With `--lan`, anything on the same network can open the dashboard, and there is
+> no authentication.
+
+Port 9080 belongs to the main checkout so that it always has the same address.
+Worktrees run from 9081 up, and `server.py` refuses `--port 9080` when it is
+started inside a worktree.
 
 ## The web UI
 
@@ -83,7 +96,10 @@ one, so worktree servers and the main checkout never stop each other.
 
 The board has two sub-tabs: **Todos** and **Worktrees**. On the worktree
 sub-tab, the kebab menu (⋮) on each row applies (merges) or deletes the
-worktree, and starts, restarts or stops its server.
+worktree, and starts, restarts or stops its server. That sub-tab groups
+worktrees by workspace or by project; the project view also lists worktrees no
+workspace claims. Both sub-tabs lay their cards out in one or two columns, and
+the left rail collapses to icons.
 
 Clicking a todo row or a session row opens the same dialog with three tabs:
 
@@ -118,10 +134,16 @@ python3 dash.py done-today [--date YYYY-MM-DD]
 ```bash
 python3 dash.py sessions                             # running sessions
 python3 dash.py classify --category <name> [--workspace <id>]
-python3 dash.py link-todo <todo-id> [--status done]  # claim a todo for this session
+python3 dash.py link-todo <todo-id> [--status done] [--past]
 python3 dash.py show-todo --session
 python3 dash.py show-note <todo-id>                  # the full context note
 ```
+
+`link-todo` declares that the session has started that todo and moves it to
+`doing`. Link only what is actually being worked on — `merge` closes every todo
+linked to the session, so a follow-up todo created for later stays unlinked
+until the session that picks it up links it. `--past` links a finished history
+session and leaves the status alone.
 
 Session arguments may be omitted: the CLI falls back to `CLAUDE_CODE_SESSION_ID`,
 which Claude Code sets for every process a session spawns.
@@ -184,7 +206,7 @@ blocking is the point.
 | Hook | Event | What it does |
 | --- | --- | --- |
 | `hooks/dash_hook.py` | `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | Registers sessions, tracks their state, and injects the context block above |
-| `hooks/worktree_serve.py` | `Stop` | If you changed a worktree but nothing is serving it, blocks and hands over a free port (9080–9139) |
+| `hooks/worktree_serve.py` | `Stop` | If you changed a worktree but nothing is serving it, blocks and hands over a free port (9081–9139) |
 | `hooks/worktree_guard.py` | `PreToolUse` (`Write`, `Edit`, `NotebookEdit`) | Blocks source edits in the main checkout under `~/work/`. `ALLOW_MAIN_CHECKOUT=1` bypasses |
 | `hooks/commit_scope_guard.py` | `PreToolUse` (`Bash`) | Blocks pathspec-less `git add -A` and `git commit -a`. `ALLOW_BROAD_COMMIT=1` bypasses |
 | `hooks/md_lint.py` | `PostToolUse` (`Write`, `Edit`, `NotebookEdit`) | Lints saved `.md` files in this repository with `markdownlint-cli2` |
@@ -244,6 +266,7 @@ cron entry and not a daemon.
 | Database | `~/.claude/work-dashboard/dash.db`, overridden by `WORK_DASHBOARD_DB` |
 | Host and port | `server.py --host` / `--port` (default `127.0.0.1:9080`) |
 | UI language | The globe icon, or `dash.py language`. Stored as `meta.language` |
+| Appearance | Brightness, board column count and rail state — stored per browser in `localStorage` |
 | UI strings | `static/lang/{en,ko,ja,zh}.json`, keyed identically. English is the fallback |
 | Design tokens | `:root` in `static/css/app.css` — the single source for spacing, type and radii |
 | Markdown rules | `.markdownlint.json` |
@@ -286,7 +309,7 @@ work-dashboard/
 │   ├── index.html        # single page; carries data-i18n keys, never text
 │   ├── lang/             # en · ko · ja · zh, identical key sets
 │   ├── css/              # app.css defines the tokens, usage.css only uses them
-│   └── js/               # boot, i18n, board, workspace, sessions, usage, charts
+│   └── js/               # boot, i18n, theme, layout, board, workspace, sessions, usage
 ├── tests/                # python3 -m tests
 └── docs/superpowers/     # specs and plans
 ```
@@ -300,7 +323,9 @@ python3 -m tests
 The suite covers the repositories, services, CLI and hooks, checks that the four
 language files agree on keys and placeholders, and enforces that CSS spacing and
 type use design tokens rather than raw pixels. UI behaviour checks run under
-`node` and are invoked by the Python test of the same name.
+`node` and are invoked by the Python test of the same name. The tests that
+exercise `start.sh` and its siblings bring up real servers on ports 9900–9999, a
+band the dashboard never displays.
 
 ## Design documents
 

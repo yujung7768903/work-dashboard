@@ -30,6 +30,9 @@ Claude 는 CLI 로 다루고, 둘이 같은 sqlite 파일을 읽고 쓴다. 프�
 - **사용량 화면** — 로컬 Claude Code 로그에서 읽은 한도 창과 일별 토큰·비용 추이.
 - **상태줄** — 지금 잡은 할일, 워크트리, 서버 포트를 Claude Code 상태줄에 그린다.
 - **화면 언어 4종** — 영어(기본) · 한국어 · 일본어 · 중국어. 지구본 아이콘에서 바꾼다.
+  서버가 만들어 내려주는 문구도 고른 언어를 따른다.
+- **밝게·어둡게** — 해·달 아이콘에서 기기 설정 / 밝게 / 어둡게를 고른다. 계정이 아니라
+  브라우저마다 남는다.
 
 ## 요구사항
 
@@ -53,8 +56,10 @@ cd work-dashboard
 
 ```bash
 ./start.sh --port 9081     # 다른 포트. 예를 들어 워크트리용
+./start.sh --lan           # 폰·아이패드에서도 열리게
 ./restart.sh               # 이 디렉토리에서 띄운 서버를 다시 시작
 ./stop.sh                  # 중지
+./stop.sh --port 9081      # 그중 그 포트로 뜬 것만
 python3 server.py          # 포그라운드로 실행
 ```
 
@@ -63,10 +68,18 @@ python3 server.py          # 포그라운드로 실행
 지운다.
 
 `stop.sh` 와 `restart.sh` 는 이 디렉토리를 작업 위치로 쓰는 서버만 건드린다. 워크트리
-서버와 메인 체크아웃 서버가 서로를 죽이지 않는다.
+서버와 메인 체크아웃 서버가 서로를 죽이지 않는다. 한 디렉토리에 서버가 여럿이면
+`--port` 로 대상을 좁힌다.
+
+`--lan` 은 `start.sh` 가 스스로 읽는 유일한 플래그다. `0.0.0.0` 에 바인딩하고, 다른
+기기에 그대로 붙여넣을 수 있는 주소(`http://192.168.x.x:9080`)로 바꿔 찍는다 —
+`server.py` 가 되돌려 찍는 `0.0.0.0` 이 아니라.
 
 > [!WARNING]
-> `python3 server.py --host 0.0.0.0` 은 대시보드를 LAN 에 노출한다. 인증은 없다.
+> `--lan` 을 주면 같은 네트워크의 누구나 대시보드를 열 수 있다. 인증은 없다.
+
+9080 은 메인 체크아웃 자리다. 늘 같은 주소여야 하기 때문이고, 워크트리는 9081 부터
+쓴다. 워크트리 안에서 뜬 `server.py` 는 `--port 9080` 을 거절한다.
 
 ## 웹 화면
 
@@ -78,7 +91,10 @@ python3 server.py          # 포그라운드로 실행
 | 사용량 | 한도 창과 토큰·비용 추이 |
 
 보드에는 하위 탭이 둘 있다 — **할일**과 **워크트리**. 워크트리 하위 탭에서는 각 줄의
-케밥 메뉴(⋮)로 그 워크트리를 적용(병합)·삭제하고, 서버를 실행·재실행·중지한다.
+케밥 메뉴(⋮)로 그 워크트리를 적용(병합)·삭제하고, 서버를 실행·재실행·중지한다. 이 탭은
+워크스페이스별·프로젝트별로 묶어 볼 수 있고, 프로젝트별 보기는 어느 워크스페이스에도
+안 걸린 워크트리까지 보여준다. 두 하위 탭 모두 카드를 1열·2열로 배치할 수 있고, 좌측
+레일은 아이콘만 남게 접힌다.
 
 할일 줄과 세션 줄은 같은 팝업을 열고, 팝업은 탭 세 개다.
 
@@ -113,10 +129,15 @@ python3 dash.py done-today [--date YYYY-MM-DD]
 ```bash
 python3 dash.py sessions                             # 돌고 있는 세션
 python3 dash.py classify --category <이름> [--workspace <id>]
-python3 dash.py link-todo <할일id> [--status done]    # 이 세션이 할일을 잡는다
+python3 dash.py link-todo <할일id> [--status done] [--past]
 python3 dash.py show-todo --session
 python3 dash.py show-note <할일id>                    # 컨텍스트 노트 전문
 ```
+
+`link-todo` 는 이 세션이 그 할일에 착수했다는 선언이고, 할일을 `doing` 으로 올린다.
+실제로 하고 있는 것 하나만 연결한다 — `merge` 는 세션에 연결된 할일을 전부 닫으므로,
+나중에 하려고 만들어 둔 후속 할일은 착수하는 세션이 연결할 때까지 연결하지 않는다.
+`--past` 는 끝난 히스토리 세션을 연결하며 상태는 건드리지 않는다.
 
 세션 인자는 생략할 수 있다. 생략하면 Claude Code 가 세션이 띄운 모든 프로세스에 넣어
 주는 `CLAUDE_CODE_SESSION_ID` 로 자기 세션을 찾는다.
@@ -177,7 +198,7 @@ python3 dash.py autorun-finish               # 완료 — 검토 대기로
 | 훅 | 이벤트 | 하는 일 |
 | --- | --- | --- |
 | `hooks/dash_hook.py` | `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | 세션 등록·상태 추적과 위 컨텍스트 블록 주입 |
-| `hooks/worktree_serve.py` | `Stop` | 고친 워크트리에 서비스 중인 서버가 없으면 막고 빈 포트(9080–9139)를 건네준다 |
+| `hooks/worktree_serve.py` | `Stop` | 고친 워크트리에 서비스 중인 서버가 없으면 막고 빈 포트(9081–9139)를 건네준다 |
 | `hooks/worktree_guard.py` | `PreToolUse` (`Write`·`Edit`·`NotebookEdit`) | `~/work/` 메인 체크아웃의 소스 편집을 막는다. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
 | `hooks/commit_scope_guard.py` | `PreToolUse` (`Bash`) | pathspec 없는 `git add -A`·`git commit -a` 를 막는다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
 | `hooks/md_lint.py` | `PostToolUse` (`Write`·`Edit`·`NotebookEdit`) | 이 저장소에 저장된 `.md` 를 `markdownlint-cli2` 로 검사 |
@@ -235,6 +256,7 @@ Context ████░░░░░░ 42% │ Usage ███░░░░░░
 | DB | `~/.claude/work-dashboard/dash.db`. `WORK_DASHBOARD_DB` 로 덮어쓴다 |
 | 호스트·포트 | `server.py --host` / `--port` (기본 `127.0.0.1:9080`) |
 | 화면 언어 | 지구본 아이콘 또는 `dash.py language`. `meta.language` 에 저장 |
+| 화면 취향 | 밝기·보드 열 수·레일 접힘 — 브라우저의 `localStorage` 에 저장 |
 | 화면 문구 | `static/lang/{en,ko,ja,zh}.json`. 키가 서로 같고 영어가 폴백 |
 | 디자인 토큰 | `static/css/app.css` 의 `:root` — 간격·글자·둥글기의 유일한 출처 |
 | 마크다운 규칙 | `.markdownlint.json` |
@@ -277,7 +299,7 @@ work-dashboard/
 │   ├── index.html        # 단일 페이지. 문구 대신 data-i18n 키만 갖는다
 │   ├── lang/             # en · ko · ja · zh, 키 집합이 같다
 │   ├── css/              # app.css 가 토큰을 정의하고 usage.css 는 참조만
-│   └── js/               # boot·i18n·board·workspace·sessions·usage·chart
+│   └── js/               # boot·i18n·theme·layout·board·workspace·sessions·usage
 ├── tests/                # python3 -m tests
 └── docs/superpowers/     # 설계 문서와 계획
 ```
@@ -290,7 +312,8 @@ python3 -m tests
 
 리포지토리·서비스·CLI·훅을 덮고, 네 언어 파일의 키와 자리표시자가 일치하는지 보며,
 CSS 의 간격·글자가 생 px 이 아니라 디자인 토큰을 쓰는지 강제한다. 화면 동작 검증은
-`node` 로 돌고 같은 이름의 파이썬 테스트가 부른다.
+`node` 로 돌고 같은 이름의 파이썬 테스트가 부른다. `start.sh` 같은 스크립트를 실제로
+실행해 보는 테스트는 9900–9999 포트에 서버를 띄우며, 이 대역은 화면에 그리지 않는다.
 
 ## 설계 문서
 

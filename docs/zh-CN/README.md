@@ -25,7 +25,10 @@
 - **自主执行** —— 把带标签的一条待办交给五分钟 cron 拉起的后台 `claude` 任务。默认关闭。
 - **用量视图** —— 从本地 Claude Code 日志读取的限额窗口，以及每日 token 与费用趋势。
 - **状态栏** —— 把当前待办、工作树和服务器端口渲染进 Claude Code 状态栏。
-- **四种界面语言** —— 英语(默认)、韩语、日语、中文，点击地球图标切换。
+- **四种界面语言** —— 英语(默认)、韩语、日语、中文，点击地球图标切换。服务器返回的
+  提示语也跟随所选语言。
+- **浅色与深色** —— 点击日月图标在跟随系统 / 浅色 / 深色之间选择。它记在浏览器里，
+  而不是账号里。
 
 ## 环境要求
 
@@ -48,8 +51,10 @@ cd work-dashboard
 
 ```bash
 ./start.sh --port 9081     # 换个端口，例如给工作树用
+./start.sh --lan           # 让手机、平板也能打开
 ./restart.sh               # 重启由本目录启动的服务器
 ./stop.sh                  # 停止
+./stop.sh --port 9081      # 只停在该端口上的那个
 python3 server.py          # 改为前台运行
 ```
 
@@ -57,10 +62,16 @@ python3 server.py          # 改为前台运行
 (`logs/YYYY-MM-DD.log`)，超过七天未被写入的文件会在下次启动时清理。
 
 `stop.sh` 与 `restart.sh` 只作用于以本目录为工作目录的服务器，因此工作树的服务器和主
-检出的服务器不会互相误杀。
+检出的服务器不会互相误杀。同一个目录里跑着多个时，用 `--port` 把范围收窄到一个。
+
+`--lan` 是 `start.sh` 自己解析的唯一参数：它绑定到 `0.0.0.0`，并打印其他设备可以直接
+粘贴的地址(`http://192.168.x.x:9080`)，而不是 `server.py` 原样回显的 `0.0.0.0`。
 
 > [!WARNING]
-> `python3 server.py --host 0.0.0.0` 会把看板暴露到局域网，而且没有任何鉴权。
+> 加上 `--lan` 后，同一网络里的任何人都能打开看板，而且没有任何鉴权。
+
+9080 是主检出的位置，为的是它始终是同一个地址；工作树从 9081 起用。在工作树里启动的
+`server.py` 会拒绝 `--port 9080`。
 
 ## 网页界面
 
@@ -72,7 +83,9 @@ python3 server.py          # 改为前台运行
 | 用量 | 限额窗口与 token、费用趋势 |
 
 看板下有两个子标签：**待办** 和 **工作树**。在工作树子标签里，每行的更多菜单(⋮)可以
-应用(合并)或删除该工作树，并启动、重启、停止它的服务器。
+应用(合并)或删除该工作树，并启动、重启、停止它的服务器。该子标签可以按工作区或按项目
+分组，按项目的视图还会列出不属于任何工作区的工作树。两个子标签都能把卡片排成一列或
+两列，左侧导航栏也可以折叠成图标。
 
 待办行与会话行打开的是同一个弹窗，弹窗分为三个标签页。
 
@@ -107,10 +120,14 @@ python3 dash.py done-today [--date YYYY-MM-DD]
 ```bash
 python3 dash.py sessions                             # 正在运行的会话
 python3 dash.py classify --category <名称> [--workspace <id>]
-python3 dash.py link-todo <待办id> [--status done]    # 让本会话认领一条待办
+python3 dash.py link-todo <待办id> [--status done] [--past]
 python3 dash.py show-todo --session
 python3 dash.py show-note <待办id>                    # 上下文备注全文
 ```
+
+`link-todo` 是"本会话已着手这条待办"的声明，会把它推进到 `doing`。只关联真正在做的
+那一条 —— `merge` 会关闭所有与该会话关联的待办，因此为以后准备的后续待办先不关联，
+等真正着手的会话去关联。`--past` 用于关联已结束的历史会话，不改动待办状态。
 
 会话参数可以省略：省略时 CLI 会退回到 `CLAUDE_CODE_SESSION_ID`，这是 Claude Code 为会话
 派生的每个进程都设置的变量。
@@ -168,7 +185,7 @@ python3 dash.py autorun-finish               # 完成 —— 转入待复核
 | 钩子 | 事件 | 作用 |
 | --- | --- | --- |
 | `hooks/dash_hook.py` | `SessionStart`、`UserPromptSubmit`、`Stop`、`SessionEnd` | 注册会话、追踪状态，并注入上面的上下文块 |
-| `hooks/worktree_serve.py` | `Stop` | 改过的工作树若没有服务器在跑，则拦截并给出一个空闲端口(9080–9139) |
+| `hooks/worktree_serve.py` | `Stop` | 改过的工作树若没有服务器在跑，则拦截并给出一个空闲端口(9081–9139) |
 | `hooks/worktree_guard.py` | `PreToolUse`(`Write`、`Edit`、`NotebookEdit`) | 拦截 `~/work/` 主检出中的源码编辑。`ALLOW_MAIN_CHECKOUT=1` 可绕过 |
 | `hooks/commit_scope_guard.py` | `PreToolUse`(`Bash`) | 拦截不带 pathspec 的 `git add -A` 与 `git commit -a`。`ALLOW_BROAD_COMMIT=1` 可绕过 |
 | `hooks/md_lint.py` | `PostToolUse`(`Write`、`Edit`、`NotebookEdit`) | 用 `markdownlint-cli2` 检查本仓库中保存的 `.md` |
@@ -224,6 +241,7 @@ Context ████░░░░░░ 42% │ Usage ███░░░░░░
 | 数据库 | `~/.claude/work-dashboard/dash.db`，可用 `WORK_DASHBOARD_DB` 覆盖 |
 | 主机与端口 | `server.py --host` / `--port`(默认 `127.0.0.1:9080`) |
 | 界面语言 | 地球图标，或 `dash.py language`。保存在 `meta.language` |
+| 显示偏好 | 明暗、看板列数、导航栏折叠 —— 保存在浏览器的 `localStorage` |
 | 界面文案 | `static/lang/{en,ko,ja,zh}.json`，键完全一致，英语为兜底 |
 | 设计 token | `static/css/app.css` 的 `:root` —— 间距、字号与圆角的唯一来源 |
 | Markdown 规则 | `.markdownlint.json` |
@@ -265,7 +283,7 @@ work-dashboard/
 │   ├── index.html        # 单页。不含文案，只带 data-i18n 键
 │   ├── lang/             # en · ko · ja · zh，键集合一致
 │   ├── css/              # app.css 定义 token，usage.css 只引用
-│   └── js/               # boot、i18n、board、workspace、sessions、usage、chart
+│   └── js/               # boot、i18n、theme、layout、board、workspace、sessions、usage
 ├── tests/                # python3 -m tests
 └── docs/superpowers/     # 设计文档与计划
 ```
@@ -278,7 +296,8 @@ python3 -m tests
 
 测试覆盖仓储层、服务层、CLI 与钩子，校验四个语言文件的键与占位符一致，并强制 CSS 的
 间距与字号使用设计 token 而非裸像素值。界面行为检查在 `node` 下运行，由同名的 Python
-测试调用。
+测试调用。那些真正执行 `start.sh` 等脚本的测试会在 9900–9999 端口拉起服务器，界面不会
+显示这一段端口。
 
 ## 设计文档
 

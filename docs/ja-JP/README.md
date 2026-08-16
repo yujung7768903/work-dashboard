@@ -32,6 +32,9 @@ Claude は CLI から操作し、両者が同じ SQLite ファイルを読み書
 - **ステータスライン** — 現在のタスク・ワークツリー・サーバーポートを Claude Code の
   ステータスラインに描画する。
 - **UI 言語 4 種** — 英語(既定)・韓国語・日本語・中国語。地球アイコンから切り替える。
+  サーバーが返す文言も選んだ言語に従う。
+- **ライト・ダーク** — 太陽と月のアイコンから、端末の設定 / ライト / ダークを選ぶ。
+  アカウントではなくブラウザごとに残る。
 
 ## 必要なもの
 
@@ -55,8 +58,10 @@ cd work-dashboard
 
 ```bash
 ./start.sh --port 9081     # 別のポート。たとえばワークツリー用
+./start.sh --lan           # スマホやタブレットからも開けるように
 ./restart.sh               # このディレクトリから起動したサーバーを再起動
 ./stop.sh                  # 停止
+./stop.sh --port 9081      # そのポートで動いているものだけ
 python3 server.py          # フォアグラウンドで実行
 ```
 
@@ -66,10 +71,17 @@ python3 server.py          # フォアグラウンドで実行
 
 `stop.sh` と `restart.sh` は、このディレクトリを作業ディレクトリとするサーバーだけを
 対象にする。ワークツリーのサーバーとメインチェックアウトのサーバーが互いを止めることは
-ない。
+ない。1 つのディレクトリで複数動いているときは `--port` で対象を絞る。
+
+`--lan` は `start.sh` 自身が解釈する唯一のフラグで、`0.0.0.0` にバインドしたうえで、
+他の端末にそのまま貼り付けられるアドレス(`http://192.168.x.x:9080`)を表示する —
+`server.py` がそのまま返す `0.0.0.0` ではなく。
 
 > [!WARNING]
-> `python3 server.py --host 0.0.0.0` はダッシュボードを LAN に公開する。認証はない。
+> `--lan` を付けると、同じネットワーク上の誰でもダッシュボードを開ける。認証はない。
+
+9080 はメインチェックアウトの席だ。常に同じアドレスであるためで、ワークツリーは 9081
+から使う。ワークツリー内で起動した `server.py` は `--port 9080` を拒否する。
 
 ## Web 画面
 
@@ -82,7 +94,9 @@ python3 server.py          # フォアグラウンドで実行
 
 ボードにはサブタブが 2 つある — **タスク** と **ワークツリー**。ワークツリーのサブタブ
 では、各行のケバブメニュー(⋮)からそのワークツリーを適用(マージ)・削除し、サーバーを
-起動・再起動・停止する。
+起動・再起動・停止する。このサブタブはワークスペース別・プロジェクト別にまとめて表示で
+き、プロジェクト別ビューではどのワークスペースにも紐づかないワークツリーも並ぶ。どちら
+のサブタブもカードを 1 列・2 列に切り替えられ、左のレールはアイコンだけに畳める。
 
 タスクの行とセッションの行は同じダイアログを開き、ダイアログはタブ 3 つで構成される。
 
@@ -117,10 +131,15 @@ python3 dash.py done-today [--date YYYY-MM-DD]
 ```bash
 python3 dash.py sessions                             # 実行中のセッション
 python3 dash.py classify --category <名前> [--workspace <id>]
-python3 dash.py link-todo <タスクid> [--status done]  # このセッションがタスクを取る
+python3 dash.py link-todo <タスクid> [--status done] [--past]
 python3 dash.py show-todo --session
 python3 dash.py show-note <タスクid>                  # コンテキストノート全文
 ```
+
+`link-todo` は、このセッションがそのタスクに着手したという宣言であり、タスクを `doing`
+に進める。実際に取り組んでいるものだけを紐づける — `merge` はセッションに紐づいた
+タスクをすべて閉じるので、後回しのために作った後続タスクは、実際に着手するセッションが
+紐づけるまで紐づけない。`--past` は終わった履歴セッションを紐づけ、状態は変えない。
 
 セッション引数は省略できる。省略すると、Claude Code がセッションの起動する全プロセスに
 渡す `CLAUDE_CODE_SESSION_ID` から自分のセッションを特定する。
@@ -181,7 +200,7 @@ python3 dash.py autorun-finish               # 完了 — レビュー待ちへ
 | フック | イベント | 役割 |
 | --- | --- | --- |
 | `hooks/dash_hook.py` | `SessionStart`・`UserPromptSubmit`・`Stop`・`SessionEnd` | セッションの登録と状態追跡、上記コンテキストブロックの注入 |
-| `hooks/worktree_serve.py` | `Stop` | 変更したワークツリーを提供するサーバーがなければブロックし、空きポート(9080–9139)を渡す |
+| `hooks/worktree_serve.py` | `Stop` | 変更したワークツリーを提供するサーバーがなければブロックし、空きポート(9081–9139)を渡す |
 | `hooks/worktree_guard.py` | `PreToolUse`(`Write`・`Edit`・`NotebookEdit`) | `~/work/` のメインチェックアウトでのソース編集をブロック。`ALLOW_MAIN_CHECKOUT=1` で回避 |
 | `hooks/commit_scope_guard.py` | `PreToolUse`(`Bash`) | pathspec のない `git add -A`・`git commit -a` をブロック。`ALLOW_BROAD_COMMIT=1` で回避 |
 | `hooks/md_lint.py` | `PostToolUse`(`Write`・`Edit`・`NotebookEdit`) | このリポジトリに保存された `.md` を `markdownlint-cli2` で検査 |
@@ -240,6 +259,7 @@ Context ████░░░░░░ 42% │ Usage ███░░░░░░
 | DB | `~/.claude/work-dashboard/dash.db`。`WORK_DASHBOARD_DB` で上書き |
 | ホスト・ポート | `server.py --host` / `--port`(既定 `127.0.0.1:9080`) |
 | UI 言語 | 地球アイコン、または `dash.py language`。`meta.language` に保存 |
+| 表示の好み | 明るさ・ボードの列数・レールの畳み — ブラウザの `localStorage` に保存 |
 | UI 文言 | `static/lang/{en,ko,ja,zh}.json`。キーは共通で、英語がフォールバック |
 | デザイントークン | `static/css/app.css` の `:root` — 余白・文字・角丸の唯一の出典 |
 | Markdown ルール | `.markdownlint.json` |
@@ -282,7 +302,7 @@ work-dashboard/
 │   ├── index.html        # 単一ページ。文言は持たず data-i18n キーだけを持つ
 │   ├── lang/             # en · ko · ja · zh、キー集合は同一
 │   ├── css/              # app.css がトークンを定義し、usage.css は参照のみ
-│   └── js/               # boot・i18n・board・workspace・sessions・usage・chart
+│   └── js/               # boot・i18n・theme・layout・board・workspace・sessions・usage
 ├── tests/                # python3 -m tests
 └── docs/superpowers/     # 設計ドキュメントと計画
 ```
@@ -295,7 +315,9 @@ python3 -m tests
 
 リポジトリ・サービス・CLI・フックを対象にし、4 つの言語ファイルでキーとプレースホルダーが
 一致することを確認し、CSS の余白と文字が生の px ではなくデザイントークンを使うことを
-強制する。画面の挙動チェックは `node` で動き、同名の Python テストが呼び出す。
+強制する。画面の挙動チェックは `node` で動き、同名の Python テストが呼び出す。`start.sh`
+などのスクリプトを実際に実行するテストは 9900–9999 番でサーバーを起動し、この帯域は
+画面には描かれない。
 
 ## 設計ドキュメント
 

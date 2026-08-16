@@ -29,6 +29,7 @@ from app.services import (
     autorun,
     board,
     planning,
+    release,
     session_link,
     session_todo,
     usage,
@@ -134,7 +135,7 @@ def _route_get(con, head, item_id, query):
     if head == "usage":
         return usage.snapshot(con)
     if head == "worktrees":
-        return worktrees.overview(con)
+        return worktrees.overview(con, _single(query, "group_by", worktrees.GROUP_BY_WORKSPACE))
     if head == "autorun":
         return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
     if head == "settings":
@@ -326,6 +327,14 @@ def main(argv=None):
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args(argv)
+    # 9080 은 메인 체크아웃(master) 전용. 띄우는 길이 여럿이라(start.sh 수동 실행,
+    # restart.sh 의 인자 물려받기, 보드 케밥 메뉴, Stop 훅) 포트를 고르는 쪽마다 막으면
+    # 하나는 빠진다 — 다 거쳐 가는 여기서 한 번 막는다
+    if args.port == DEFAULT_PORT and release.WORKTREE_MARK in os.getcwd():
+        raise SystemExit(
+            f"포트 {DEFAULT_PORT} 는 메인 체크아웃(master) 전용입니다."
+            f" 워크트리는 다른 포트로 띄우세요 (예: --port {DEFAULT_PORT + 1})"
+        )
     connect()
     try:
         httpd = ThreadingHTTPServer((args.host, args.port), Handler)
