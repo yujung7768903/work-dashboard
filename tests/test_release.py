@@ -320,7 +320,7 @@ class CliTest(unittest.TestCase):
         todo = todo_repo.create(con, "할일", category_id=category_repo.get_by_name(con, "개발")["id"])
         session_repo.link_todo(con, SID, todo["id"])
         out = self._dash(path, "finish", SID)
-        self.assertIn(f"완료한 할일: {todo['id']}", out)
+        self.assertIn(f"완료한 할일: {todo['id']}. {todo['title']}", out)
         self.assertIn("종료한 프로세스: (없음)", out)
         self.assertEqual(STATUS_DONE, todo_repo.get(con, todo["id"])["status"])
 
