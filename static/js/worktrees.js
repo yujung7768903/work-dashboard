@@ -1,7 +1,7 @@
 // 보드의 워크트리 하위 탭. 워크스페이스마다 저장소 하나, 그 아래 브랜치·워크트리 행
 import * as api from "./api.js";
 import { CHEVRON_SVG, currentCategoryId } from "./board.js";
-import { t } from "./i18n.js";
+import { fromKorean, t } from "./i18n.js";
 import { run } from "./main.js";
 import { openDetail } from "./sessions.js";
 import { menuItem } from "./workspace.js";
@@ -253,8 +253,9 @@ function runRowAction(call, confirmMessage) {
     // 확인을 누른 다음에야 포트 배지가 붙어 한 박자 늦게 보인다.
     // 병합이 끊은 세션, 서버 실행·중지 결과가 다 message 로 온다 —
     // 실행은 몇 초 걸리고 끝나도 배지만 조용히 붙어 완료 여부를 알 수 없다
+    // 서버가 한국어로 적어 준 문장이라 사전에서 되짚어 지금 언어로 옮긴다
     const notice = result?.message;
-    if (notice) alert(notice);
+    if (notice) alert(fromKorean(notice));
   });
 }
 

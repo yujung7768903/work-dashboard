@@ -413,13 +413,21 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .todo { cursor: pointer; }
 .todo.done .title { color: var(--muted); text-decoration: line-through; }
 /* 상태(todo·doing·done)는 모서리만 살짝 둥근 네모. 옆의 라벨은 양끝이 둥근 알약이라
-   모양만으로 '단계' 와 '성격' 이 구분된다 */
+   모양만으로 '단계' 와 '성격' 이 구분된다.
+   폭은 라벨 길이와 무관하게 고정 — 76px 은 네 사전에서 가장 긴 'Needs review' 기준 */
 .todo > button:first-child {
-  min-width: 4.6em; font-size: var(--fs-micro); font-weight: 600;
+  flex: none; width: 76px;
+  font-size: var(--fs-micro); font-weight: 600;
   padding: var(--sp-4) var(--sp-8);
   border-radius: var(--r-ctl); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .todo.doing > button:first-child { background: var(--softer); color: var(--accent); }
+/* 상태와 제목 사이 칸. 폭이 고정이라 자릿수가 달라도 제목 시작점이 같다 */
+.todo-id {
+  flex: none; width: 32px; text-align: right;
+  color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+}
 
 /* 제목과 케밥 사이 세 번째 칸. 넘치면 잘라내지 않고 아래로 접는다.
    flex: none 이라 라벨이 없으면 폭 0 — 제목 칸을 뺏지 않는다 */
