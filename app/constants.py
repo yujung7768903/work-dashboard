@@ -5,6 +5,10 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9080
 BUSY_TIMEOUT_MS = 5000
 
+# start.sh·stop.sh·restart.sh 를 실제로 실행해 검사하는 테스트가 쓰는 대역.
+# 이 대역을 듣는 서버는 화면(워크트리 탭·상태줄·자율 수행 패널)에 그리지 않는다
+TEST_SERVER_PORTS = range(9900, 10000)
+
 DEFAULT_DB_PATH = os.path.expanduser("~/.claude/work-dashboard/dash.db")
 DB_PATH_ENV = "WORK_DASHBOARD_DB"
 

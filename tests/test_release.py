@@ -12,7 +12,7 @@ from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, session_link
-from tests.support import serve, temp_db, temp_db_path
+from tests.support import free_test_port, serve, temp_db, temp_db_path
 
 SID = "sess-release"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -188,6 +188,14 @@ class ServingPortTest(unittest.TestCase):
         plain = tempfile.mkdtemp()
         _, port = serve(plain, self)
         self.assertEqual(port, release.serving_port(plain))
+
+    def test_test_range_port_is_not_reported(self):
+        """스크립트 검사가 띄운 서버가 상태줄·서비스 판정에 섞이면 안 된다"""
+        root = _worktree_dir()
+        _, port = serve(root, self)
+        serve(root, self, port=free_test_port())
+        # 대역이 더 작아 걸러지지 않으면 min() 이 그쪽을 고른다
+        self.assertEqual(port, release.serving_port(root))
 
     def test_directory_without_a_listener_is_zero(self):
         self.assertEqual(0, release.serving_port(tempfile.mkdtemp()))

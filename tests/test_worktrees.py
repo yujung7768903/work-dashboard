@@ -14,7 +14,7 @@ from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import release, worktrees
-from tests.support import temp_db
+from tests.support import free_test_port, serve, temp_db
 
 PORCELAIN = """worktree /repo
 HEAD abc
@@ -286,6 +286,18 @@ class ProjectOrderTest(unittest.TestCase):
         groups = worktrees.overview(con, worktrees.GROUP_BY_PROJECT)["groups"]
         names = [g["name"] for g in groups if g["repo"] in (self.older, self.newer)]
         self.assertEqual(names, ["newer", "older"])
+
+
+class ProcessTest(unittest.TestCase):
+    def test_test_range_port_is_hidden_while_others_are_shown(self):
+        """스크립트 검사가 띄운 서버가 워크트리 탭에 진짜 작업 서버처럼 섞이면 안 된다"""
+        root = tempfile.mkdtemp()
+        _, port = serve(root, self)
+        serve(root, self, port=free_test_port())
+        found = worktrees.processes_by_path([root])
+        self.assertEqual(
+            [[port]], [entry["ports"] for entry in found[os.path.realpath(root)]]
+        )
 
 
 class ApplyTest(unittest.TestCase):
