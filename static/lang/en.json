@@ -84,6 +84,7 @@
   "gtasks.lastSync": "Last synced {when}",
   "gtasks.neverSynced": "Never synced",
   "gtasks.syncNow": "Sync now",
+  "gtasks.addCategories": "Add categories",
   "gtasks.disconnect": "Disconnect",
   "gtasks.confirmDisconnect": "This unlinks your Google account. Tasks on both sides stay as they are, and syncing resumes if you reconnect.",
   "session.runningInitial": "Running sessions (0)",

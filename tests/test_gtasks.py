@@ -428,6 +428,35 @@ class GtasksSetupTest(unittest.TestCase):
         self.assertTrue(rows[self.names[0]]["gtasks_enabled"])
         self.assertTrue(gtasks_state.state(self.con)["enabled"])
 
+    def test_맞춘_뒤에도_구글에만_있는_목록을_다시_고를_수_있다(self):
+        """맞추기를 마치면 팝업으로 돌아올 길이 없어 폰의 목록을 영영 못 가져왔다"""
+        gtasks_setup.apply(self.con, [self.names[0]], client=self.client)
+        self.client.create_list("나중에 만든 목록")
+
+        plan = gtasks_setup.plan(self.con, client=self.client)
+        found = {item["name"]: item for item in plan["items"]}
+
+        self.assertTrue(found[self.names[0]]["linked"])  # 이미 맺은 것은 잠긴 채로 보인다
+        self.assertIn("나중에 만든 목록", found)
+        self.assertFalse(found["나중에 만든 목록"]["linked"])
+
+        gtasks_setup.apply(self.con, ["나중에 만든 목록"], client=self.client)
+
+        rows = {row["name"]: row for row in category_repo.list_all(self.con)}
+        self.assertTrue(rows["나중에 만든 목록"]["gtasks_enabled"])
+
+    def test_다시_고를_때_꺼_둔_카테고리가_되살아나지_않는다(self):
+        """apply 는 받은 것만 켠다 — 잠긴 항목을 화면이 같이 보내면 꺼 둔 것이 되살아난다"""
+        gtasks_setup.apply(self.con, [self.names[0], self.names[1]], client=self.client)
+        target = category_repo.get_by_name(self.con, self.names[0])
+        category_repo.set_gtasks_enabled(self.con, target["id"], False)
+        self.client.create_list("새 목록")
+
+        gtasks_setup.apply(self.con, ["새 목록"], client=self.client)
+
+        rows = {row["name"]: row for row in category_repo.list_all(self.con)}
+        self.assertFalse(rows[self.names[0]]["gtasks_enabled"])
+
     def test_고르지_않은_것은_양쪽_어디도_건드리지_않는다(self):
         """예전에는 합집합을 통째로 만들어 폰의 목록이 전부 카테고리가 됐다"""
         self.client.create_list("운동")

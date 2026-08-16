@@ -95,7 +95,11 @@ function footer(panel) {
   now.textContent = t("gtasks.syncNow");
   now.disabled = !panel.state.enabled;
   now.addEventListener("click", () => busy(now, async () => paint((await api.syncGtasks()).panel)));
-  foot.append(when, disconnectButton(), now);
+  // 맞추기를 마치면 이 팝업으로 돌아올 길이 없었다 — 폰에만 있는 목록을 영영 못 가져온다
+  const more = document.createElement("button");
+  more.textContent = t("gtasks.addCategories");
+  more.addEventListener("click", () => busy(more, openPlan));
+  foot.append(when, more, disconnectButton(), now);
   return foot;
 }
 
@@ -175,7 +179,8 @@ async function openPlan() {
   const boxes = fillPlan(plan.items);
   const chosen = await askPlan();
   if (!chosen) return;
-  const picked = boxes.filter((box) => box.checked).map((box) => box.value);
+  // 잠긴 것(이미 맺어 둔 것)은 빼고 새로 고른 것만 보낸다
+  const picked = boxes.filter((box) => box.checked && !box.disabled).map((box) => box.value);
   if (!picked.length) return;
   paint((await api.setupGtasks(picked)).panel);
 }
@@ -206,6 +211,9 @@ function fillPlan(items) {
       const box = document.createElement("input");
       box.type = "checkbox";
       box.value = item.name;
+      // 이미 맺어 둔 것은 켠 채로 잠근다 — 여기서 다시 보내면 카드에서 꺼 둔 것이 되살아난다
+      box.checked = item.linked;
+      box.disabled = item.linked;
       boxes.push(box);
       line.append(box, text(item.name), count(item));
       list.appendChild(line);

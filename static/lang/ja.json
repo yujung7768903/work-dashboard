@@ -84,6 +84,7 @@
   "gtasks.lastSync": "最終同期 {when}",
   "gtasks.neverSynced": "まだ同期していません",
   "gtasks.syncNow": "今すぐ同期",
+  "gtasks.addCategories": "カテゴリを追加",
   "gtasks.disconnect": "連携を解除",
   "gtasks.confirmDisconnect": "Google アカウントの連携を解除します。両方の ToDo はそのまま残り、再連携すれば同期が再開します。",
   "session.runningInitial": "実行中のセッション 0件",

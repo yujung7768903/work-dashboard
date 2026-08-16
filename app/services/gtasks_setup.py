@@ -118,8 +118,11 @@ def plan(con, client=None):
     """
     client = _client_or_guide(client)
     local = {}
+    linked = set()
     for category in category_repo.list_all(con):
         local[category["name"]] = len(todo_repo.list_by_category(con, category["id"]))
+        if category["google_list_id"]:
+            linked.add(category["name"])
     remote = {}
     for row in client.lists():
         title = _title(row)
@@ -130,7 +133,14 @@ def plan(con, client=None):
     names = list(local) + [title for title in remote if title not in local]
     return {
         "items": [
-            {"name": name, "local": local.get(name), "remote": remote.get(name)}
+            {
+                "name": name,
+                "local": local.get(name),
+                "remote": remote.get(name),
+                # 이미 맺어 둔 것은 화면에서 잠근다. 여기서 다시 켜면 카드에서 꺼 둔
+                # 카테고리가 되살아난다 — 끄고 켜는 것은 카드 스위치의 몫이다
+                "linked": name in linked,
+            }
             for name in names
         ]
     }

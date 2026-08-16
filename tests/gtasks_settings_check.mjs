@@ -30,9 +30,9 @@ globalThis.fetch = async (url, options) => {
       status: 200,
       json: async () => ({
         items: [
-          { name: "개발", local: 48, remote: 9 },
-          { name: "블로그", local: 3, remote: null },
-          { name: "운동", local: null, remote: 5 },
+          { name: "개발", local: 48, remote: 9, linked: false },
+          { name: "블로그", local: 3, remote: null, linked: planLocked },
+          { name: "운동", local: null, remote: 5, linked: false },
         ],
       }),
     };
@@ -126,13 +126,15 @@ function node(tag = "div") {
 
 let planPick = ["개발"];
 let planGo = true;
+let planLocked = false;
 const elements = { "gtasks-plan": node() };
 // 팝업이 뜨면 정해 둔 것만 체크하고 버튼을 누른다
 elements["gtasks-plan"].onShow = () => {
   flatten(elements["gtasks-plan-list"])
     .filter((kid) => kid.type === "checkbox")
     .forEach((box) => {
-      box.checked = planPick.includes(box.value);
+      // 잠긴 줄(이미 맺어 둔 것)은 사용자가 건드릴 수 없다
+      if (!box.disabled) box.checked = planPick.includes(box.value);
     });
   document.getElementById(planGo ? "gtasks-plan-go" : "gtasks-plan-cancel").onclick();
 };
@@ -282,6 +284,26 @@ assert.ok(
 );
 // 취소하고 돌아온 자리에서 버튼이 죽어 있으면 다시 시도할 길이 없다
 assert.equal(again.disabled, false, "취소했더니 버튼이 잠긴 채로 남았다");
+
+// ── 6-a. 맞춘 뒤에도 팝업으로 돌아갈 수 있고, 잠긴 줄은 다시 안 보낸다 ────────
+planGo = true; // 앞 절에서 취소로 두고 왔다
+planLocked = true;
+planPick = ["운동"];
+panel = {
+  ...panel,
+  state: { ...panel.state, enabled: 1 },
+  categories: panel.categories.map((row) => ({ ...row, linked: true })),
+};
+await gtasks.renderGtasks();
+const more = flatten(elements["gtasks-card"]).find((kid) => kid.textContent === "카테고리 가져오기");
+assert.ok(more, "맞춘 뒤에 팝업으로 돌아갈 길이 없다");
+await more.listeners.click();
+assert.deepEqual(
+  sent["POST /api/gtasks-setup"],
+  { chosen: ["운동"] },
+  "잠긴 줄까지 같이 보내면 카드에서 꺼 둔 카테고리가 되살아난다"
+);
+planLocked = false;
 
 // ── 6. 하나도 안 고르고 진행하면 아무것도 안 만든다 ──────────────────────────
 planGo = true;
