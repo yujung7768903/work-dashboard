@@ -16,7 +16,7 @@ import urllib.request
 from tests.support import free_test_port, temp_db_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPTS = ("start.sh", "stop.sh", "restart.sh", "serving.sh")
+SCRIPTS = ("setup.sh", "start.sh", "stop.sh", "restart.sh", "serving.sh")
 REFERENCE = re.compile(r"(?:\./|\. \./)([a-z_]+\.sh)")
 # start.sh 가 마지막에 찍는 `pid 1234 · 로그 …`
 STARTED_PID = re.compile(r"^pid (\d+)", re.MULTILINE)

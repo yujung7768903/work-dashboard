@@ -67,11 +67,24 @@ token and cost trends.
 ```bash
 git clone https://github.com/yujung7768903/work-dashboard.git
 cd work-dashboard
+./setup.sh
 ./start.sh
 ```
 
 Then open `http://127.0.0.1:9080`. The database is created on first connect, so
-there is no migration or setup step.
+there is no migration step.
+
+`setup.sh` registers the [hooks](#hooks) in `~/.claude/settings.json` as eight
+entries with absolute paths. A second run reports no change, and once you move
+the checkout it rewrites those paths instead of adding a second copy. Hooks you
+added yourself are left alone, and the previous file is kept as
+`settings.json.bak`.
+
+Open a Claude Code session next. With no workspaces yet, that session is handed
+the first-time setup procedure: it reads a one-line-per-session summary of your
+recent history from `~/.claude/projects`, groups it, and proposes workspaces and
+todos for you to correct before anything is written. `python3 dash.py onboard
+--skip` declines it for good.
 
 ```bash
 ./start.sh --port 9081     # a different port, e.g. for a worktree
@@ -230,9 +243,10 @@ blocking is the point.
 | `hooks/stale_base.py` | `UserPromptSubmit` | Warns once per session when the branch is behind its upstream or base branch |
 
 `worktree_serve.py` is already registered in this repository's
-`.claude/settings.json`, so a fresh clone needs no setup for it. Register the
-other five in `~/.claude/settings.json` with an absolute path — pointing at the
-main checkout, not a worktree, since worktrees are deleted after a merge.
+`.claude/settings.json`, so a fresh clone needs no setup for it. `./setup.sh`
+registers the other five in `~/.claude/settings.json` with an absolute path —
+pointing at the main checkout, not a worktree, since worktrees are deleted after
+a merge. By hand it looks like this:
 
 ```json
 {
@@ -485,6 +499,7 @@ the six default categories once. All `*_at` columns are ISO 8601 UTC text.
 work-dashboard/
 ├── dash.py               # CLI entry point — parses, delegates, prints
 ├── server.py             # HTTP entry point (http.server, no framework)
+├── setup.sh              # registers the hooks in ~/.claude/settings.json
 ├── start.sh              # background start, dated logs, 7-day retention
 ├── stop.sh · restart.sh  # act only on this directory's server
 ├── serving.sh            # shared server discovery and shutdown functions

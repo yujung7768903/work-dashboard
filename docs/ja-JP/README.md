@@ -67,11 +67,21 @@ Claude は CLI から操作し、両者が同じ SQLite ファイルを読み書
 ```bash
 git clone https://github.com/yujung7768903/work-dashboard.git
 cd work-dashboard
+./setup.sh
 ./start.sh
 ```
 
-そして `http://127.0.0.1:9080` を開く。DB は初回接続時に作られるので、マイグレーションや
-セットアップの手順はない。
+そして `http://127.0.0.1:9080` を開く。DB は初回接続時に作られるので、マイグレーションの
+手順はない。
+
+`setup.sh` は[フック](#フック)を `~/.claude/settings.json` に 8 項目、絶対パスで登録する。
+二度目の実行は「変更なし」と出すだけで、チェックアウトを移した後は項目を増やさずパスを
+書き換える。自分で足したフックはそのまま残り、前のファイルは `settings.json.bak` になる。
+
+次に Claude Code のセッションを開く。ワークスペースがまだ無ければ、そのセッションに初期
+設定の手順が注入される — `~/.claude/projects` の最近の履歴をセッション 1 行に要約して読み、
+まとめてワークスペースと ToDo を提案し、こちらが直したものだけを DB に書く。使わないなら
+`python3 dash.py onboard --skip` で二度と出ないようにする。
 
 ```bash
 ./start.sh --port 9081     # 別のポート。たとえばワークツリー用
@@ -224,9 +234,9 @@ python3 dash.py autorun-finish               # 完了 — レビュー待ちへ
 | `hooks/stale_base.py` | `UserPromptSubmit` | ブランチが upstream や基準ブランチより遅れていればセッションにつき 1 回警告 |
 
 `worktree_serve.py` はこのリポジトリの `.claude/settings.json` に登録済みなので、clone
-した直後でも設定は不要。残る 5 つは `~/.claude/settings.json` に絶対パスで登録する。
-パスはワークツリーではなくメインチェックアウトを指す必要がある — ワークツリーはマージ後に
-削除されるからだ。
+した直後でも設定は不要。残る 5 つは `./setup.sh` が `~/.claude/settings.json` に絶対パスで
+登録する。パスはワークツリーではなくメインチェックアウトを指す必要がある — ワークツリーは
+マージ後に削除されるからだ。手で入れるならこの形になる。
 
 ```json
 {
@@ -465,6 +475,7 @@ SQLite を Web サーバー・CLI・フックが直接開く。仲介するプ�
 work-dashboard/
 ├── dash.py               # CLI エントリポイント — 解析・委譲・出力のみ
 ├── server.py             # HTTP エントリポイント(http.server、フレームワークなし)
+├── setup.sh              # フックを ~/.claude/settings.json に登録
 ├── start.sh              # バックグラウンド起動、日付別ログ、7 日で整理
 ├── stop.sh · restart.sh  # このディレクトリのサーバーだけを扱う
 ├── serving.sh            # サーバー検出・停止の共通関数

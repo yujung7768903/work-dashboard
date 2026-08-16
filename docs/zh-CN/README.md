@@ -59,10 +59,19 @@
 ```bash
 git clone https://github.com/yujung7768903/work-dashboard.git
 cd work-dashboard
+./setup.sh
 ./start.sh
 ```
 
-然后打开 `http://127.0.0.1:9080`。数据库在首次连接时创建，因此没有迁移或初始化步骤。
+然后打开 `http://127.0.0.1:9080`。数据库在首次连接时创建，因此没有迁移步骤。
+
+`setup.sh` 会把[钩子](#钩子)以绝对路径登记到 `~/.claude/settings.json`，共八条。第二次运行
+只会提示没有变化；把检出目录挪走之后，它改写路径而不是再添一条。你自己加的钩子原样保留，
+原文件留作 `settings.json.bak`。
+
+接着开一个 Claude Code 会话。若还没有工作区，这个会话会被注入初始设置流程 —— 它把
+`~/.claude/projects` 里最近的历史按每个会话一行读成摘要，归拢后提出工作区和待办，等你改完
+才写进数据库。不想用就执行 `python3 dash.py onboard --skip`，以后不再出现。
 
 ```bash
 ./start.sh --port 9081     # 换个端口，例如给工作树用
@@ -207,8 +216,8 @@ python3 dash.py autorun-finish               # 完成 —— 转入待复核
 | `hooks/stale_base.py` | `UserPromptSubmit` | 当分支落后于 upstream 或基准分支时，每个会话提醒一次 |
 
 `worktree_serve.py` 已经登记在本仓库的 `.claude/settings.json` 里，新克隆无需额外配置。
-其余五个请以绝对路径登记到 `~/.claude/settings.json`，且路径要指向主检出而不是工作树
-—— 工作树在合并后会被删除。
+其余五个由 `./setup.sh` 以绝对路径登记到 `~/.claude/settings.json`，且路径要指向主检出而
+不是工作树 —— 工作树在合并后会被删除。手工登记则是这个样子：
 
 ```json
 {
@@ -428,6 +437,7 @@ SQLite 由网页服务器、CLI 与钩子直接打开，中间没有进程代理
 work-dashboard/
 ├── dash.py               # CLI 入口 —— 只做解析、委派与输出
 ├── server.py             # HTTP 入口(http.server，无框架)
+├── setup.sh              # 把钩子登记到 ~/.claude/settings.json
 ├── start.sh              # 后台启动、按日志分文件、保留七天
 ├── stop.sh · restart.sh  # 只处理本目录的服务器
 ├── serving.sh            # 服务器探测与停止的公共函数
