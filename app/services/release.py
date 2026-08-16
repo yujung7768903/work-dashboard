@@ -10,7 +10,7 @@ import signal
 import subprocess
 import time
 
-from app.constants import STATUS_DONE
+from app.constants import STATUS_DONE, TEST_SERVER_PORTS
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.services import transcript
@@ -208,7 +208,9 @@ def serving_port(root):
     ports = [
         port
         for pid, port in listeners.items()
-        if pid in cwds and os.path.realpath(cwds[pid]) == target
+        if pid in cwds
+        and os.path.realpath(cwds[pid]) == target
+        and port not in TEST_SERVER_PORTS
     ]
     return min(ports) if ports else 0
 

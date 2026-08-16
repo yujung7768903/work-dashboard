@@ -1,697 +1,333 @@
-# 작업 대시보드
+# Work Dashboard
 
-카테고리 > 워크스페이스 > 할일 3계층으로 작업을 관리하는 1인용 로컬 도구.
-사람은 웹으로, Claude는 CLI로 같은 sqlite DB를 쓴다. 외부 의존성 0.
+**English** · [한국어](docs/ko-KR/README.md) · [日本語](docs/ja-JP/README.md) · [中文](docs/zh-CN/README.md)
 
-## 실행
+A local work tracker for people who pair with Claude Code. You drive it from the
+browser, Claude drives it from the CLI, and both read and write the same SQLite
+file. No frameworks, no bundler, no `pip install`.
+
+Work is organised in three layers — **Category → Workspace → Todo**. On top of
+that, every Claude Code session is registered, classified into a workspace and
+linked to the todo it is actually working on, so the board always shows what is
+running and the next session knows where things stand.
+
+> [!NOTE]
+> Single user, no authentication, no external services. Everything lives in one
+> SQLite file on your machine.
+
+## Features
+
+- **Three-layer board** — categories group workspaces, workspaces hold todos.
+  Priority is expressed by order alone, and everything is drag-reorderable.
+- **Live session tracking** — hooks register each Claude Code session, inject its
+  workspace context, and keep the board in sync while you work.
+- **Worktree lifecycle** — see each git worktree's state and commits, and start,
+  restart or stop its dev server straight from the board.
+- **One-command merge** — status check → pull the target branch in → run tests →
+  merge → release the todo, the server and the branch, in that order.
+- **Autonomous runs** — hand a labelled todo to a background `claude` job on a
+  five-minute cron. Off by default.
+- **Usage view** — rate-limit windows and daily token and cost trends, read from
+  local Claude Code logs.
+- **Status line** — the current todo, worktree and server port, rendered into the
+  Claude Code status line.
+- **Four UI languages** — English (default), Korean, Japanese and Chinese from
+  the globe icon. Messages the server produces follow the choice too.
+- **Light and dark** — system, light or dark from the sun-and-moon icon, kept
+  per browser rather than per account.
+
+## Requirements
+
+| | |
+| --- | --- |
+| Required | Python 3.9+ (standard library only), Git, a modern browser |
+| Optional | Claude Code — for session tracking, status line and autonomous runs |
+| Optional | Node.js — some UI checks in the test suite run under `node` |
+| Optional | `markdownlint-cli2` on `PATH` — used by the markdown lint hook |
+
+## Quickstart
 
 ```bash
-./start.sh                           # 백그라운드로 띄우고 logs/<날짜>.log 에 기록
-./start.sh --port 9081               # 워크트리용 다른 포트
-./start.sh --lan                     # 폰·아이패드에서도 볼 때 (인증 없음, LAN 노출 주의)
-./stop.sh                            # 이 디렉토리에서 돌던 서버만 멈춤
-./stop.sh --port 9081                # 그중 그 포트로 뜬 것만
-./restart.sh                         # 돌던 서버를 죽이고 같은 포트로 다시
-python3 server.py                    # 포그라운드로 볼 때 (http://127.0.0.1:9080)
-python3 server.py --host 0.0.0.0     # --lan 이 하는 것을 손으로
+git clone https://github.com/yujung7768903/work-dashboard.git
+cd work-dashboard
+./start.sh
 ```
 
-`start.sh` 는 인자를 `server.py` 로 그대로 넘기고, pid 와 로그 경로를 출력한다.
-로그는 하루 한 파일(`logs/YYYY-MM-DD.log`)이고 7일 넘게 안 쓴 파일은 다음 실행 때 지운다.
+Then open `http://127.0.0.1:9080`. The database is created on first connect, so
+there is no migration or setup step.
 
-**기본은 이 기기 전용(`127.0.0.1`)이고, `--lan` 을 줄 때만 열린다.** `start.sh` 가 아는
-유일한 자기 인자로, `--host 0.0.0.0` 으로 바꿔 넘긴다. 별칭을 둔 이유는 짧아서가 아니라
-주소 때문이다 — `server.py` 는 받은 host 를 그대로 찍어 `http://0.0.0.0:9080` 이 나오는데
-그건 다른 기기에 붙여넣을 수 없다. `--lan` 은 `ipconfig getifaddr en0`(없으면 `en1`) 로
-실제 주소를 찾아 `http://192.168.x.x:9080` 으로 바꿔 찍고, 인증이 없다는 것을 함께 알린다.
-주소를 못 찾아도 뜬 것은 막지 않고 그 사실만 알린다. 손으로 준 `--host 0.0.0.0` 도 같게
-본다 — 인자 없는 `restart.sh` 는 죽는 서버의 인자를 그대로 물려받아 `--lan` 이 아니라 그
-모양으로 오므로, 플래그 이름만 보면 재실행 때 주소도 경고도 사라진다.
+```bash
+./start.sh --port 9081     # a different port, e.g. for a worktree
+./start.sh --lan           # also reachable from your phone or tablet
+./restart.sh               # restart the server started from this directory
+./stop.sh                  # stop it
+./stop.sh --port 9081      # stop only the one on that port
+python3 server.py          # run in the foreground instead
+```
 
-**9080 은 메인 체크아웃(master) 자리다.** 늘 같은 주소여야 북마크 하나로 열 수 있어서,
-워크트리는 9081 부터 쓴다. 포트를 고르는 쪽(보드 케밥 메뉴의 "실행", `Stop` 훅)은 9080 을
-아예 후보에서 뺐고(`serve.PORT_RANGE`), 손으로 `--port 9080` 을 준 워크트리는 `server.py`
-가 뜨기 전에 막는다 — 띄우는 길이 여럿이라 고르는 쪽만 고치면 하나는 빠진다.
+`start.sh` passes its arguments through to `server.py` and prints the pid and log
+path. Logs are one file per day (`logs/YYYY-MM-DD.log`); files untouched for more
+than seven days are removed on the next start.
 
-`stop.sh`·`restart.sh` 는 "이 디렉토리를 cwd 로 돌고 있는 서버"를 `serving.sh` 의 같은
-함수로 찾는다 — 탐지가 갈리면 restart 가 남의 서버를 죽인다. 프로세스 조회는 `/proc` 이
-있으면(Linux) 그걸로, 없으면(macOS) `lsof`·`ps` 로 한다.
+`stop.sh` and `restart.sh` only act on servers whose working directory is this
+one, so worktree servers and the main checkout never stop each other. Add
+`--port` when a single directory is running more than one.
 
-**한 디렉토리에 서버가 여럿이면 `--port` 로 대상을 좁힌다.** 인자 없는 `stop.sh` 는 이
-디렉토리의 서버를 전부 멈추므로, 테스트처럼 자기 서버만 정리하면 되는 쪽은 `--port` 를
-줘야 사람이 보고 있던 대시보드가 같이 죽지 않는다. `restart.sh` 도 같은 인자를 받는다.
+`--lan` is the only flag `start.sh` reads itself. It binds to `0.0.0.0` and
+prints the address other devices can actually open — `http://192.168.x.x:9080`
+rather than the `0.0.0.0` that `server.py` echoes back.
 
-`restart.sh` 는 이 디렉토리를 cwd 로 돌던 서버만 죽이고 `start.sh` 로 다시 띄운다.
-인자를 안 주면 죽인 서버의 인자를 물려받아 포트를 다시 적지 않아도 되고, 인자를 주면 그 인자로 뜬다.
-다른 워크트리·메인 체크아웃의 서버는 cwd 가 달라 건드리지 않는다.
+> [!WARNING]
+> With `--lan`, anything on the same network can open the dashboard, and there is
+> no authentication.
 
-## 테스트
+Port 9080 belongs to the main checkout so that it always has the same address.
+Worktrees run from 9081 up, and `server.py` refuses `--port 9080` when it is
+started inside a worktree.
+
+## The web UI
+
+| Tab | What it holds |
+| --- | --- |
+| Board | The whole tree, the next todo, running sessions (polled every 2s) and the autonomous-run switch |
+| Workspaces | Creating a workspace and editing its background, purpose, goal and considerations |
+| Settings | Categories and labels |
+| Usage | Rate-limit windows and the token and cost trend |
+
+The board has two sub-tabs: **Todos** and **Worktrees**. On the worktree
+sub-tab, the kebab menu (⋮) on each row applies (merges) or deletes the
+worktree, and starts, restarts or stops its server. That sub-tab groups
+worktrees by workspace or by project; the project view also lists worktrees no
+workspace claims. Both sub-tabs lay their cards out in one or two columns, and
+the left rail collapses to icons.
+
+Clicking a todo row or a session row opens the same dialog with three tabs:
+
+| Dialog tab | What it holds |
+| --- | --- |
+| Overview | Title, history, preconditions and the full context note |
+| Session | Session id, location, the last 10 exchanges, and workspace/category assignment |
+| Worktree | The worktrees this todo used — state, history and commits |
+
+## The CLI
+
+`dash.py` is what Claude Code uses. Every command works on the same database as
+the web UI, so a change on one side shows up on the other after a refresh.
+
+### Board
+
+```bash
+python3 dash.py ls                                   # the whole tree
+python3 dash.py next                                 # the single next todo
+python3 dash.py show <workspace-id|JIRA-1>           # workspace detail
+python3 dash.py add-category <name>
+python3 dash.py add-workspace <category> <name> [--background ...] [--jira KEY]
+python3 dash.py add-todo <title> [--workspace ID] [--note ...] [--precondition ...]
+python3 dash.py move-todo <todo-id> --workspace <id|none>
+python3 dash.py set-status <todo|workspace> <id> <status>
+python3 dash.py reorder <categories|workspaces|todos> <ids...>
+python3 dash.py done-today [--date YYYY-MM-DD]
+```
+
+### Sessions
+
+```bash
+python3 dash.py sessions                             # running sessions
+python3 dash.py classify --category <name> [--workspace <id>]
+python3 dash.py link-todo <todo-id> [--status done] [--past]
+python3 dash.py show-todo --session
+python3 dash.py show-note <todo-id>                  # the full context note
+```
+
+`link-todo` declares that the session has started that todo and moves it to
+`doing`. Link only what is actually being worked on — `merge` closes every todo
+linked to the session, so a follow-up todo created for later stays unlinked
+until the session that picks it up links it. `--past` links a finished history
+session and leaves the status alone.
+
+Session arguments may be omitted: the CLI falls back to `CLAUDE_CODE_SESSION_ID`,
+which Claude Code sets for every process a session spawns.
+
+### Worktrees and merging
+
+```bash
+python3 dash.py merge                        # check → pull target in → test → merge → release
+python3 dash.py merge --message "title"      # merge commit title
+python3 dash.py merge --test "npm test"      # a repository without tests/__main__.py
+python3 dash.py merge --no-test
+python3 dash.py finish [--worktree PATH]     # release only: todo done + server stopped
+python3 dash.py statusline <session> [--cwd PATH]
+```
+
+`merge` runs the test suite exactly once, after the target branch has been pulled
+into the worktree, so what is tested is what is merged. If it stops on a
+conflict, resolve the files, `git add` them and run the same command again to
+continue. It does not push, and it does not remove the worktree — `ExitWorktree`
+does that.
+
+### Setup, language and autonomous runs
+
+```bash
+python3 dash.py onboard [--skip]             # is first-time setup still needed?
+python3 dash.py scan-history --days 7        # one line per past session
+python3 dash.py language [en|ko|ja|zh]       # no argument prints the current value
+python3 dash.py usage                        # rate-limit usage and token trend
+python3 dash.py autorun on|off|status
+python3 dash.py autorun-tick [--dry-run]     # the five-minute cron entry point
+python3 dash.py autorun-prompt <todo-id>     # the exact prompt an autonomous session gets
+python3 dash.py autorun-request "<reason>"   # pause and ask a human to decide
+python3 dash.py autorun-finish               # done, move to review
+```
+
+## Claude Code integration
+
+### Session context
+
+Hooks inject exactly one `<work-dashboard state="...">` block per session. Which
+one depends on the state of the board.
+
+| State | When | What is injected |
+| --- | --- | --- |
+| `classified` | The session has a workspace, matched by the branch's Jira ID or set with `classify --workspace` | Background, purpose, goal, considerations, the todo list, and scope rules |
+| `onboarding` | No workspaces exist yet and the user has not declined | The first-time setup procedure |
+| `unclassified` | Anything else | Location, branch, categories, active workspaces, and how to classify |
+| `released` | Every todo this session claimed is `done` | Take new requests as a new todo, not on top of a finished one |
+
+Classification itself is not automatic — a shell cannot tell what a question is
+about. The hook injects the instruction, and Claude registers it with `classify`
+and `link-todo`.
+
+### Hooks
+
+Every hook exits 0 silently on any failure. A dashboard problem must never stop a
+session from opening or a file from being edited. `exit 2` is only used where
+blocking is the point.
+
+| Hook | Event | What it does |
+| --- | --- | --- |
+| `hooks/dash_hook.py` | `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | Registers sessions, tracks their state, and injects the context block above |
+| `hooks/worktree_serve.py` | `Stop` | If you changed a worktree but nothing is serving it, blocks and hands over a free port (9081–9139) |
+| `hooks/worktree_guard.py` | `PreToolUse` (`Write`, `Edit`, `NotebookEdit`) | Blocks source edits in the main checkout under `~/work/`. `ALLOW_MAIN_CHECKOUT=1` bypasses |
+| `hooks/commit_scope_guard.py` | `PreToolUse` (`Bash`) | Blocks pathspec-less `git add -A` and `git commit -a`. `ALLOW_BROAD_COMMIT=1` bypasses |
+| `hooks/md_lint.py` | `PostToolUse` (`Write`, `Edit`, `NotebookEdit`) | Lints saved `.md` files in this repository with `markdownlint-cli2` |
+| `hooks/stale_base.py` | `UserPromptSubmit` | Warns once per session when the branch is behind its upstream or base branch |
+
+`worktree_serve.py` is already registered in this repository's
+`.claude/settings.json`, so a fresh clone needs no setup for it. Register the
+other five in `~/.claude/settings.json` with an absolute path — pointing at the
+main checkout, not a worktree, since worktrees are deleted after a merge.
+
+```json
+{
+  "hooks": [
+    {
+      "type": "command",
+      "command": "python3 /absolute/path/work-dashboard/hooks/dash_hook.py SessionStart",
+      "timeout": 2
+    }
+  ]
+}
+```
+
+`dash_hook.py` takes the event name as its only argument, so add it once per
+event with the last argument changed.
+
+### Status line
+
+`~/.claude/statusline-command.js` calls `dash.py statusline <session> --cwd <path>`
+and drops its output on the second line, under the usage bars.
+
+```text
+Context ████░░░░░░ 42% │ Usage ███░░░░░░░ 30% │ Weekly ██████░░░░ 55%
+[doing | tab-underline | :9092] split todos and worktrees into board sub-tabs
+```
+
+The bracket is always **status | worktree | port**; missing parts drop out along
+with their separator, and if all three are missing the bracket goes too.
+
+### Autonomous runs
+
+With `autorun on`, a five-minute cron picks one todo and runs it as a background
+`claude` job. Only todos carrying the `auto` label are eligible — permission is
+something a human grants, not something the code infers. It is off by default and
+nothing turns it back on.
+
+```cron
+*/5 * * * * /usr/bin/python3 /absolute/path/work-dashboard/dash.py autorun-tick >/dev/null 2>&1
+```
+
+A tick that finds no eligible todo does nothing at all, which is why this is a
+cron entry and not a daemon.
+
+## Configuration
+
+| What | Where |
+| --- | --- |
+| Database | `~/.claude/work-dashboard/dash.db`, overridden by `WORK_DASHBOARD_DB` |
+| Host and port | `server.py --host` / `--port` (default `127.0.0.1:9080`) |
+| UI language | The globe icon, or `dash.py language`. Stored as `meta.language` |
+| Appearance | Brightness, board column count and rail state — stored per browser in `localStorage` |
+| UI strings | `static/lang/{en,ko,ja,zh}.json`, keyed identically. English is the fallback |
+| Design tokens | `:root` in `static/css/app.css` — the single source for spacing, type and radii |
+| Markdown rules | `.markdownlint.json` |
+
+## Data model
+
+SQLite, opened directly by the web server, the CLI and the hooks — no process
+mediates. `connect()` creates the schema, enables foreign keys and WAL, and seeds
+the six default categories once. All `*_at` columns are ISO 8601 UTC text.
+
+| Table | Role |
+| --- | --- |
+| `categories` | Top-level grouping. Does not affect priority |
+| `workspaces` | A branch- or Jira-sized piece of work, with background, purpose, goal and considerations |
+| `todos` | A todo. May belong to a workspace, or hang directly off a category |
+| `labels`, `todo_labels` | Labels describe a todo's nature; a todo can carry several |
+| `sessions` | Claude Code sessions, registered and updated by the hooks |
+| `session_todos` | Which todo a session claimed. A session's workspace is derived from here |
+| `worktrees` | Worktree history, kept after the directory is merged away or deleted |
+| `usage_samples` | Rate-limit and token samples behind the usage view |
+| `autorun_state`, `autorun_runs` | Autonomous-run settings and the log of runs |
+| `meta` | Single-value settings and internal flags |
+
+## Project structure
+
+```text
+work-dashboard/
+├── dash.py               # CLI entry point — parses, delegates, prints
+├── server.py             # HTTP entry point (http.server, no framework)
+├── start.sh              # background start, dated logs, 7-day retention
+├── stop.sh · restart.sh  # act only on this directory's server
+├── serving.sh            # shared server discovery and shutdown functions
+├── app/
+│   ├── constants.py      # every magic number lives here
+│   ├── db.py             # connection, schema, transactions
+│   ├── repositories/     # per-entity storage and consistency rules
+│   └── services/         # logic spanning several entities
+├── hooks/                # Claude Code hooks
+├── static/               # ES modules, no bundler
+│   ├── index.html        # single page; carries data-i18n keys, never text
+│   ├── lang/             # en · ko · ja · zh, identical key sets
+│   ├── css/              # app.css defines the tokens, usage.css only uses them
+│   └── js/               # boot, i18n, theme, layout, board, workspace, sessions, usage
+├── tests/                # python3 -m tests
+└── docs/superpowers/     # specs and plans
+```
+
+## Tests
 
 ```bash
 python3 -m tests
 ```
 
-## 프로젝트 구조
-
-```text
-work-dashboard/
-│
-├── dash.py                          # CLI 진입점. 파싱·위임·출력만
-├── server.py                        # 웹 서버 진입점 (http.server, 프레임워크 없음)
-├── start.sh                         # 백그라운드 실행. 날짜별 로그 + 7일치 정리
-├── stop.sh                          # 이 디렉토리 서버만 멈춤
-├── restart.sh                       # 이 디렉토리 서버만 죽이고 start.sh 로 재기동
-├── serving.sh                       # 위 둘이 source 하는 서버 탐지·종료 공용 함수
-│
-├── app/                             # 도메인 계층
-│   ├── constants.py                 # 전역 상수. 매직넘버는 전부 여기로
-│   ├── db.py                        # 연결·스키마·트랜잭션
-│   ├── errors.py                    # 도메인 예외
-│   ├── ordering.py                  # 정렬 순서 계산 공용 로직
-│   │
-│   ├── repositories/                # 엔티티별 저장·조회와 정합성 규칙
-│   │   ├── categories.py            # 카테고리
-│   │   ├── settings.py              # 화면 언어처럼 앱에 하나뿐인 설정 (meta 키-값)
-│   │   ├── labels.py                # 라벨 (할일에 여러 개)
-│   │   ├── workspaces.py            # 워크스페이스
-│   │   ├── todos.py                 # 할일
-│   │   ├── sessions.py              # 세션 등록·분류·상태·할일 연결·정리
-│   │   └── autorun.py               # 자율 실행 설정(단일 행)과 실행 기록
-│   │
-│   └── services/                    # 여러 엔티티에 걸치는 로직
-│       ├── board.py                 # 보드 트리 조립
-│       ├── planning.py              # 다음에 할 일 선정
-│       ├── session_link.py          # 세션 주입 블록 조립
-│       ├── session_todo.py          # 웹에서 워크스페이스로 분류할 때 할일 자동 생성
-│       ├── summary.py               # 지시문 한 줄 요약 (claude CLI 호출, 실패 시 None)
-│       ├── worktrees.py             # 워크트리 탭 데이터 + 적용(병합)·삭제
-│       ├── serve.py                 # 워크트리 서버 실행·재실행·중지
-│       ├── release.py               # 병합 후 리소스 해제 (할일 done·서버 종료)
-│       ├── autorun.py               # 자율 실행 tick 판정·프롬프트 조립·잡 실행
-│       ├── transcript.py            # Claude Code jsonl 읽기 (앞·꼬리 조각)
-│       ├── history.py               # 초기 설정용 히스토리 스캔·요약
-│       └── usage.py                 # 한도 사용률·토큰 추이
-│
-├── hooks/
-│   ├── dash_hook.py                 # Claude Code 훅 단일 진입점
-│   ├── worktree_serve.py            # Stop: 고친 워크트리에 서버가 없으면 띄우라고 지시
-│   ├── worktree_guard.py            # PreToolUse: 메인 체크아웃 소스 편집 차단
-│   ├── commit_scope_guard.py        # PreToolUse: 범위 초과 스테이징·커밋 차단
-│   ├── md_lint.py                   # PostToolUse: 저장된 .md 린트
-│   └── stale_base.py                # UserPromptSubmit: 낡은 베이스 위 착수 경고
-│
-├── static/                          # ES 모듈 프론트엔드 (번들러 없음)
-│   ├── index.html                   # 단일 페이지. 문구는 갖지 않고 data-i18n 키만 붙는다
-│   ├── lang/                        # 화면 문구. 언어마다 파일 하나, 키는 네 파일이 같다
-│   │   └── ko.json · en.json · ja.json · zh.json
-│   ├── css/
-│   │   ├── app.css                  # 디자인 토큰 정의 + 공통·보드 스타일
-│   │   └── usage.css                # 사용량 화면 전용 (토큰은 app.css 것을 참조)
-│   └── js/
-│       ├── boot.js                  # 진입점. 언어를 확정한 뒤 main.js 를 들인다
-│       ├── i18n.js                  # 사전 적재와 t(키) — 문구는 여기로만 나온다
-│       ├── language.js              # 상단 우측 언어 메뉴 (지구본 아이콘)
-│       ├── theme.js                 # 상단 우측 밝기 메뉴 (해·달 아이콘)
-│       ├── main.js                  # 탭 전환 (/usage /board 등 경로 = 탭)
-│       ├── api.js                   # fetch 래퍼
-│       ├── board.js                 # 보드 렌더
-│       ├── settings.js              # 설정 탭 — 카테고리·라벨 관리
-│       ├── workspace.js             # 워크스페이스 상세
-│       ├── sessions.js              # 활성 세션 (2초 폴링)
-│       ├── autorun.js               # 자율 수행 패널 (5초 폴링)
-│       ├── usage.js                 # 사용량 화면
-│       ├── chart.js                 # 차트 렌더
-│       └── dnd.js                   # 드래그 재정렬
-│
-├── tests/                           # python3 -m tests 로 일괄 실행
-│   ├── __main__.py                  # 러너
-│   ├── support.py                   # 임시 DB 픽스처
-│   ├── test_*.py                    # 계층별 테스트
-│   └── *_check.mjs                  # 화면 동작 검증 (node. 같은 이름의 테스트가 부른다)
-│
-└── docs/superpowers/                # 설계·계획 문서
-    ├── specs/                       # 단계별 설계와 확정 결정
-    └── plans/                       # 구현 계획
-```
-
-## 훅 동작
-
-훅은 여섯 개다. **어떤 실패에서도 `exit 0` 무출력으로 끝난다** — 대시보드 문제로 Claude 세션이 안 열리거나 편집을 못 하게 되는 것이 최악의 실패이기 때문이다. 의도적으로 막을 때만 `exit 2` 를 쓴다.
-
-### 훅 종류
-
-| 훅 | 등록 위치 | 하는 일 | 동작 방식 |
-| --- | --- | --- | --- |
-| `hooks/dash_hook.py` | `~/.claude/settings.json` (그 PC 전용, 절대 경로). 타임아웃 2초 | 세션 등록·상태 추적, 세션에 워크스페이스·분류·해제 블록 주입 | 인자로 받은 이벤트 이름 하나로 네 갈래 분기하는 단일 진입점. stdin JSON 의 `session_id`·`cwd` 로 DB 를 갱신하고 주입할 블록을 stdout 으로 뱉음. 차단은 하지 않음 |
-| `hooks/worktree_serve.py` | `.claude/settings.json`, 타임아웃 10초 | 고친 워크트리에 확인할 화면이 없으면 띄우라고 지시 | 조건이 맞으면 `Stop` 을 `exit 2` 로 막고 빈 포트(9081–9139)를 골라 줌. `stop_hook_active` 면 통과해 무한 루프를 막음 |
-| `hooks/worktree_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 10초 | `~/work/` 메인 체크아웃의 소스 편집 차단 | 편집 대상이 워크트리 밖의 소스면 `exit 2` + 워크트리로 옮기라는 안내. 문서·설정 확장자(`.md`·`.json`·`.yaml` 등)·`.env*`·`/docs/` 경로, `~/work/` 밖, git 저장소 아닌 곳은 통과. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
-| `hooks/commit_scope_guard.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Bash`. 타임아웃 10초 | 범위를 넘는 스테이징·커밋 차단 | pathspec 없는 `git add -A`/`--all`/`-u`/`.` 와 `git commit -a`/`--all`/`-am` 이면 `exit 2`. `;`·`&&`·파이프로 이어진 복합 명령도 구간별로 검사한다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
-| `hooks/md_lint.py` | `~/.claude/settings.json` (전역, 절대 경로), matcher `Write`·`Edit`·`NotebookEdit`. 타임아웃 15초 | 저장된 `.md` 를 markdownlint-cli2 로 검사 | 린트 에러가 있으면 `exit 2` + stderr 에 에러 목록과 재저장 지시. 바이너리를 PATH 에서 직접 부른다 — 없으면 조용히 통과하므로 새 PC 에서는 `npm i -g markdownlint-cli2` 를 먼저 한다. 검사 범위와 설정은 아래 참고 |
-| `hooks/stale_base.py` | `~/.claude/settings.json` (전역, 절대 경로). 타임아웃 10초 | 낡은 베이스 위 착수 경고 | 브랜치가 `@{u}` 또는 워크트리 기준 브랜치(`master`/`main`)보다 뒤처졌으면 최신화하라는 한 줄을 stdout 에 넣는다. 네트워크 fetch 없이 로컬 ref 만 비교하고, 같은 경고는 세션당 한 번만 낸다. 차단은 하지 않음 |
-
-`worktree_serve.py` 만 등록 위치가 다른 이유는 clone 한 다른 PC 에서도 따로 설정할 것이 없어야 하기 때문이다 — 이 저장소 화면을 띄우는 훅이라 저장소에 커밋되는 `.claude/settings.json` 에 `$CLAUDE_PROJECT_DIR` 기준으로 들어간다. 나머지 다섯은 **프로젝트를 가리지 않아야 해서 전역에 절대 경로로 등록한다**. 절대 경로는 워크트리가 아니라 메인 체크아웃을 가리켜야 한다 — 워크트리는 병합 뒤 지워진다.
-
-`worktree_guard.py` 는 전역에 등록돼도 `~/work/` 아래만 본다(`WORK_ROOT`). 그 밖의 저장소는 워크트리 관례를 쓰지 않으므로 관여하지 않는다.
-
-`md_lint.py` 는 전역에 등록돼도 **이 저장소 트리 안의 `.md` 만** 검사한다(`.claude/worktrees/` 하위 포함). 밖의 `.md` — 임시 디렉터리, 외부에서 받아온 문서, 다른 프로젝트 — 는 이 저장소의 마크다운 규약을 따를 이유가 없으므로 건너뛴다. 규칙은 `markdownlint-cli2` 가 cwd 에서 찾는 `.markdownlint.json` 을 그대로 쓴다.
-
-`worktree_serve.py` 가 거는 조건은 이번 세션에 `.claude/worktrees/<이름>/` 안의 파일을 고쳤고, 그 워크트리에 `server.py`·`manage.py`·`package.json` 중 하나가 있고(= 띄울 수 있는 프로젝트), cwd 가 그 워크트리인 서버 프로세스가 없을 때. **이미 떠 있으면 관여하지 않는다** — 다른 세션이 그 화면을 보고 있을 수 있어 재기동하지 않는다. 막으면서 응답을 `- 워크트리:` / `- url:` / `- 작업 요약:` 세 줄로 끝내라고 지시한다. 프로세스 탐지는 `app/services/release.py` 의 것을 그대로 쓴다(아래 "병합 후 리소스 해제" 참고).
-
-### 실행 단계
-
-| 이벤트 | 트리거 시점 | 훅 종류 |
-| --- | --- | --- |
-| `SessionStart` | 세션 시작/재개/초기화/압축 | `dash_hook.py` |
-| `UserPromptSubmit` | 사용자가 프롬프트 제출 | `dash_hook.py`, `stale_base.py` |
-| `PreToolUse` | 도구 실행 전 (matcher `Write`·`Edit`·`NotebookEdit`) | `worktree_guard.py` |
-| `PreToolUse` | 도구 실행 전 (matcher `Bash`) | `commit_scope_guard.py` |
-| `PostToolUse` | 도구 실행 후 (matcher `Write`·`Edit`·`NotebookEdit`) | `md_lint.py` |
-| `Stop` | Claude 응답 완료 | `dash_hook.py`, `worktree_serve.py` |
-| `SessionEnd` | 세션 종료 | `dash_hook.py` |
-
-`Stop` 은 두 훅이 함께 걸린다 — 등록 위치가 달라 서로를 모른다. `dash_hook.py` 는 상태만 내리고 차단하지 않으므로, 막을지 여부는 `worktree_serve.py` 판정만으로 갈린다. `UserPromptSubmit` 도 두 훅이 걸리는데 둘 다 stdout 에만 쓰므로 주입 블록과 경고가 함께 들어간다.
-
-`dash_hook.py` 가 이벤트별로 하는 일:
-
-| 이벤트 | 하는 일 | 세션에 주입되는 것 |
-| --- | --- | --- |
-| `SessionStart` | `session_id`·`cwd` 로 세션 등록, `cwd` 에서 `git branch --show-current` 조회, 브랜치의 Jira ID 로 워크스페이스 자동 매칭 | 워크스페이스 블록 또는 분류 지시 블록 (아래 네 갈래) |
-| `UserPromptSubmit` | 상태를 `working` 으로, 마지막 지시를 120자로 잘라 저장 | 분류 전이면 분류 지시 재주입, 잡은 할일을 모두 끝냈으면 새 할일 지침, 그 외 무출력 |
-| `Stop` | 상태를 `idle` 로 | 없음 |
-| `SessionEnd` | 상태를 `ended` 로, 종료 시각 기록 | 없음 |
-
-`worktree_serve.py` 가 이벤트별로 하는 일:
-
-| 이벤트 | 하는 일 | 세션에 주입되는 것 |
-| --- | --- | --- |
-| `Stop` | transcript 에서 이번 세션이 고친 워크트리를 뽑아, 웹 프로젝트인데 그 cwd 를 쓰는 서버 프로세스가 없는 것을 찾고 빈 포트(9081–9139)를 고름. `stop_hook_active` 면 아무것도 안 함 | 해당 워크트리가 있으면 `exit 2` 로 종료를 막고 stderr 로 실행 지시 — 실행 방법 확인 위치(그 워크트리의 README·CLAUDE.md), `nohup ... &` 로 띄우라는 것, 빈 포트, `- 워크트리:` / `- url:` / `- 작업 요약:` 마무리 형식. 없으면 무출력 |
-
-`worktree_guard.py` 가 이벤트별로 하는 일:
-
-| 이벤트 | 하는 일 | 세션에 주입되는 것 |
-| --- | --- | --- |
-| `PreToolUse` (`Edit`·`Write`·`NotebookEdit`) | `tool_input` 의 `file_path`·`notebook_path` 를 보고 `~/work/` 안의 저장소인지, 그 저장소의 git 디렉토리에 `/worktrees/` 가 없는지(= 메인 체크아웃) 판정 | 차단 대상이면 `exit 2` 로 편집을 막고 stderr 로 사유 + 우회 두 가지(`EnterWorktree` 로 워크트리에서 같은 경로 편집, `ALLOW_MAIN_CHECKOUT=1`). 통과면 무출력 |
-
-## 세션 상태
-
-훅이 세션에 넣는 `<work-dashboard state="...">` 블록은 **한 번에 하나만** 들어간다. 그 하나가 세션 상태에 따라 네 갈래로 갈린다.
-
-| 순위 | 조건 | `state` | 주입 내용 |
-| --- | --- | --- | --- |
-| 1 | 세션에 워크스페이스가 붙어 있음 — 브랜치의 Jira ID = 워크스페이스의 `jira_id` 로 자동 매칭, 또는 `classify --workspace` | `classified` | 배경·목적·목표·고려사항 + 할일 목록(컨텍스트 노트 유무 표시) + 범위 준수 지침 |
-| 2 | 워크스페이스가 0개이고 사용자가 거절한 적 없음 | `onboarding` | 초기 설정 절차 7단계 (아래 참고) |
-| 3 | 그 외 — 워크스페이스가 있는데 이 세션에 안 붙었거나, 0개인데 자동 분류를 거절한 상태 | `unclassified` | 현재 위치·브랜치, 카테고리 6개, 진행 중 워크스페이스 목록, 분류 절차 지시 |
-| 별도 | 분류됐고 이 세션이 잡은 할일이 **전부 `done`** (프롬프트 시점) | `released` | 새 요청은 끝난 할일에 얹지 말고 새 할일로 받으라는 지시 |
-
-순위 1~3 은 `render_context()` 의 한 갈래라 서로 배타적이고, `released` 만 `released_context()` 에서 나온다(`app/services/session_link.py`). 호출 지점도 갈린다 — `SessionStart` 는 항상 `render_context()`, `UserPromptSubmit` 은 "전부 `done`" 이면 `released_context()`, 아니면 `render_context()`.
-
-모든 블록 꼬리에 공통 규칙이 붙는다 — 다른 세션이 같은 코드·문서를 고칠 수 있으니 착수 전에 최신 상태를 다시 읽으라는 것. `classified`·`unclassified` 에는 아래 해제 절차도 함께 붙는다.
-
-분류는 훅이 못 한다(셸은 질문 내용을 이해할 수 없다). 훅이 넘긴 지시를 받아 Claude 가 아래 명령으로 직접 등록하고, 분류 전이면 매 프롬프트마다 지시가 다시 들어간다.
-
-```bash
-python3 dash.py sessions                                  # 돌고 있는 세션
-python3 dash.py classify --category 개발 --workspace 2
-python3 dash.py link-todo 3                               # 세션이 잡은 할일 연결
-```
-
-세션 인자는 생략하면 `CLAUDE_CODE_SESSION_ID`(= 훅 stdin 의 `session_id` 와 같은 값)로 자기 세션을 찾는다. 주입 블록의 36자 UUID 를 매 명령에 옮겨 적지 않게 하려는 것 — 옮겨 적기 실패가 그대로 분류 누락이 된다. 값을 적으면 그 값이 우선이고, 환경변수도 없으면 인자를 적으라는 에러로 끝난다(사람이 터미널에서 직접 실행하는 경우).
-
-범위를 좁히는 쪽(`next`·`add-todo`·`show-todo`)은 `--session` 플래그를 아예 빼면 예전대로 전체가 대상이고, 값 없이 `--session` 만 적으면 이 세션이다.
-
-### 웹 분류 시 할일 자동 생성
-
-세션 줄을 눌러 팝업에서 **워크스페이스로** 분류하면(`PATCH /api/sessions/<id>`) 그 자리에서 할일을 하나 만들고 세션에 연결한다(`app/services/session_todo.py`). 카테고리만 고르면 만들지 않는다 — 워크스페이스 없는 세션은 대개 단발 조회다.
-
-### 세션의 소속은 할일 하나뿐
-
-`sessions` 에는 워크스페이스 컬럼이 없다. 세션이 어느 워크스페이스 일감인지는 **연결된 할일**(`session_todos` → `todos.workspace_id`)에서 파생하고, 할일이 여럿이면 가장 최근 연결된 것이 이긴다. 소속을 세션과 할일 두 군데 두었더니 세션을 분류해도 보드는 `todos.workspace_id` 로만 그려서 그 워크스페이스에 아무것도 나타나지 않았다.
-
-그래서 분류는 **할일을 연결해야 끝난다**. `classify --workspace <id>` 는 카테고리만 세션에 넣고 그 워크스페이스에서 아직 아무도 안 잡은 할일을 후보로 출력한다. 그중 하나를 `link-todo` 로 잡거나, 없으면 `add-todo --workspace <id>` 로 만들어 연결한다. 무엇이 이 세션의 작업인지는 의미 판단이라 코드가 고르지 않는다.
-
-연결은 **착수 선언**이라 지금 그 세션이 하는 작업에만 붙인다. 작업 중에 발견해 "나중에 하자"로 만들어 두는 후속 할일은 `add-todo` 로 만들기만 하고 연결하지 않는다 — 병합은 연결된 할일을 전부 `done` 으로 닫으므로(아래 "병합 후 리소스 해제"), 만든 세션이 연결해 두면 착수하지도 않은 할일이 끝난 것으로 찍힌다. 그 할일은 실제로 착수하는 세션이 연결한다. 만든 시점과 착수 시점이 갈리는 것이라 코드는 둘을 구분할 수 없고, `add-todo` 출력이 그 자리에서 이 규칙을 알린다.
-
-브랜치명 Jira 로 워크스페이스를 알 수 있으면 할일을 잡기 전에도 그 워크스페이스의 배경·목적·할일 목록을 주입한다. 이 값은 저장하지 않고 매번 다시 계산하며, 블록에 "미연결" 줄이 함께 붙는다.
-
-CLI 로 분류할 때는 Claude 가 지시를 읽고 직접 만들지만, 웹에서 누르는 순간에는 그 자리에 Claude 가 없다. 그러면 보드는 그 작업을 모르고 다음 세션도 무엇을 하던 중인지 알 수 없다. 그래서 **코드가 판단할 수 있는 것만** 만든다.
-
-| 항목 | 근거 | 규칙 |
-| --- | --- | --- |
-| 제목 | 만들 때는 첫 지시의 첫 문장(60자에서 자름), 곧이어 **한 줄 요약**으로 교체 (아래) | 목록 표기로 시작하는 줄은 항목이라 제목이 못 된다 |
-| `note` | 지시 원문 앞 5건 | 위치·브랜치·세션 id + 원문. 요약하지 않는다 — 제목이 요약이므로 근거는 여기에만 남는다 |
-
-#### 제목 요약 (`app/services/summary.py`)
-
-지시 원문을 그대로 제목에 쓰면 보드가 구구절절해진다 — "워크스페이스 카드가 완료된 것까지 다 보이는데, 너무 길어져서 기본적으로…". 어미만 떼는 식의 규칙으로는 줄지 않는다(요약은 의미 판단이다). 그래서 **이미 깔려 있는 `claude` CLI** 를 부른다.
-
-```bash
-claude -p --model <haiku> --tools "" --strict-mcp-config --setting-sources "" \
-  --exclude-dynamic-system-prompt-sections --system-prompt "<제목 요약 지시>" "<지시 원문>"
-```
-
-하네스를 전부 끄는 것이 핵심이다. 기본값으로 부르면 도구·MCP·CLAUDE.md·스킬까지 얹혀 **1분이 넘고, 지시를 작업으로 착각해 파일을 고치려 든다**(실제로 "권한이 필요합니다" 가 응답으로 왔다). 끄면 7~8초에 한 줄만 돌아온다.
-
-- 결과가 비었거나 `SUMMARY_MAX_CHARS` 를 넘으면 **요약이 아니라 설명**이므로 버린다
-- **요약은 기다리지 않는다.** 분류 응답(`PATCH`)은 지시 첫 문장을 제목으로 한 할일을 바로 돌려주고(실측 0.25초), 요약은 뒷일(daemon 스레드, `session_todo.retitle`)이 뒤따라 제목만 갈아 끼운다. 동기로 기다리던 때는 저장 버튼이 8초쯤 멈춘 것처럼 보였다. 뒷일은 **자기 sqlite 연결을 새로 연다** — 요청 스레드의 연결은 다른 스레드에서 쓸 수 없고(`ProgrammingError`), 경로가 비면 `connect()` 가 사용자의 실제 DB 로 떨어지므로 그때는 아무것도 하지 않는다
-- 만들 때 `note` 에 "제목: 요약이 붙지 않아 지시 첫 문장을 그대로 씀"(`AUTO_TODO_NOTE_RAW_TITLE`) 을 남기고, 요약이 붙으면 그 줄을 지운다. 남아 있으면 조회 결과에 `needs_title: true` 로 실려 **보드 줄과 팝업 개요에 `요약 안 됨` 배지**가 붙는다 — 손봐야 할 제목을 사용자가 알아야 하기 때문이다. 컬럼을 늘리지 않고 `note` 한 줄로 판단하므로 그 줄을 지우면 배지도 사라진다
-- 그 사이 사용자가 제목을 고쳤으면 요약이 덮지 않는다. 요약이 실패하면 제목·`note` 를 그대로 둔다 — 요약 하나 때문에 할일이 안 생기면 안 된다
-- **실패는 이유를 로그로 남긴다** (`제목 요약 실패: …`). 조용히 `None` 을 돌려주던 동안은 화면에 배지만 뜨고 왜 안 붙었는지 알 방법이 없었다. 실제로 첫 라이브 실행에서 조용히 실패한 원인이 타임아웃이었고, 뒷일은 아무도 기다리지 않으므로 `SUMMARY_TIMEOUT_SEC` 을 60초로 뒀다. CLI 는 stdin 을 3초 기다리다 경고를 뱉으므로 `stdin=DEVNULL` 로 넘긴다
-
-지시 원문은 transcript 앞 64KB 에서 읽는다. 이때만 `parse_line(collapse=False)` 로 **줄바꿈을 살린다** — 목록 표기를 봐야 하기 때문이다(팝업 대화 목록은 한 줄로 뭉갠 기본값을 쓴다). transcript 를 못 찾으면 훅이 저장한 마지막 지시 한 줄로 대신하고, 그것도 없으면 만들지 않는다.
-
-이미 잡은 할일이 있는 세션은 건드리지 않는다 — 그게 이 세션의 작업이고, 새로 만들면 같은 일이 두 줄이 된다. 만들어진 뒤 팝업은 닫히지 않고 **개요 탭**으로 넘어가 제목·`note` 를 보여준다. 추정으로 만든 것이므로 사용자가 바로 보고 고칠 수 있어야 한다.
-
-### 병합 (한 커맨드)
-
-병합 순서를 사람 기억에 맡기면 테스트를 두 번 돌리거나(중복) 병합 뒤에 돌린다(이미 늦음). 실측으로 병합 한 번이 4분 13초 걸렸고 그중 테스트 2회가 86초, 실제 `git merge` 는 17초였다. 순서를 커맨드가 갖는다.
-
-```bash
-python3 dash.py merge                        # 상태확인 → master 들이기 → 테스트 → 병합 → 해제
-python3 dash.py merge --message "제목"        # 병합 커밋 제목. 기본값은 브랜치 첫 커밋 제목
-python3 dash.py merge --test "npm test"      # tests/__main__.py 가 없는 저장소
-python3 dash.py merge --no-test              # 테스트 없이
-```
-
-| 단계 | 하는 일 | 중단 조건 |
-| --- | --- | --- |
-| 위치 | 워크트리·브랜치와 메인 체크아웃이 보고 있는 대상 브랜치 확인 | 워크트리 아님, detached HEAD, 브랜치가 대상과 같음 |
-| 상태 | 양쪽에 추적 중인 변경이 없는지 | 커밋 안 된 변경 있음 (미추적 파일은 막지 않음 — 잔여 sqlite·워크트리 디렉토리로 병합이 영구히 막히면 그게 더 큰 문제) |
-| 대상 들이기 | 대상 브랜치를 워크트리로 먼저 병합 | 충돌 — 워크트리를 병합 중 상태로 두고 **해결할 파일 목록**과 함께 중단 |
-| 테스트 | **한 번만.** 대상을 이미 들였으므로 병합 결과와 같은 트리다 | 실패 — master 를 건드리지 않음 |
-| 병합 | 메인 체크아웃에서 `--no-ff`, 제목 `merge: <...>` | git 실패 |
-| 해제 | 아래 `finish` 와 같은 처리 | — |
-
-push 는 하지 않는다. 워크트리 제거도 하지 않는다 — `ExitWorktree` 몫이다(아래).
-
-충돌은 사람에게 넘기지 않는다. 판단은 커맨드를 부른 쪽(Claude)이 하고 — 양쪽 기능이 모두 동작하면서 최신 대상 브랜치에 맞게 — 커맨드는 **해결이 실제로 끝났는지만 기계로 확인**한다. 해결한 파일을 `git add` 만 하고 같은 명령을 다시 실행하면 이어받는다.
-
-| 이어받기 확인 | 왜 |
-| --- | --- |
-| 미해결(`U`) 파일이 없는지 | 남아 있으면 그 목록으로 다시 중단한다 |
-| `<<<<<<<` 를 새로 들여오지 않았는지 | 해결했다고 add 했는데 표시가 남는 실수는 테스트가 못 잡는다. `git diff --cached -S` 로 **개수 변화**를 보므로 원래 그 표시가 있던 문서는 걸리지 않는다 |
-| 양쪽 기능이 살아 있는지 | 이어서 도는 테스트가 본다. 그래서 해결분을 커밋한 뒤 테스트가 오고, 실패하면 master 를 건드리지 않는다 |
-
-양쪽 기능을 다 살릴 수 있으면 묻지 않고 해결한다. **하나를 버려야 하거나 동작이 달라지는 선택이면 사용자에게 확인한다** — 같은 기능을 양쪽이 다르게 고친 경우, 한쪽이 지운 파일을 다른 쪽이 고친 경우, 둘 다 살릴 수 없는 경우. 자율 세션이면 `dash.py autorun-request` 로 남겨 보드에 "요청" 으로 띄운다. 워크트리는 병합 중 상태로 그대로 두고 `--abort` 하지 않는다 — 결정이 오면 그 자리에서 이어받는다.
-
-이어받는 동안은 워크트리의 "커밋 안 된 변경" 검사를 건너뛴다 — 병합 중 상태는 당연히 더럽고, 그걸 막으면 해결해도 진행할 방법이 없다. 메인 체크아웃 검사는 그대로 한다.
-
-### 워크트리 탭에서 서버 다루기
-
-보드 워크트리 탭의 케밥 메뉴(⋮)에서 그 워크트리의 서버를 다룬다. 포트를 확인하고 터미널로 옮겨가 `cd` 부터 다시 하는 왕복을 없애는 것이 목적이다. 적용·삭제와 같은 메뉴에 있고, 대상 판정도 같은 것을 쓴다.
-
-| 항목 | 하는 일 | 확인창 |
-| --- | --- | --- |
-| 실행 | 워크트리 루트의 `start.sh` 를 빈 포트(9081–9139)로 실행 | 없음 |
-| 재실행 | 중지한 뒤 **같은 포트**로 다시 (포트가 풀릴 때까지 최대 5초 기다림) | 있음 |
-| 중지 | 그 워크트리를 cwd 로 쓰는 서버에 SIGTERM | 있음 |
-
-- **끝나면 팝업으로 알린다** — `실행했습니다 — http://127.0.0.1:9081/`, `재실행했습니다 — …`, `종료했습니다`(죽인 게 없으면 `종료할 서버가 없었습니다`). 실행은 몇 초 걸리는데 끝나도 포트 배지가 조용히 붙을 뿐이라 수행 중인지 끝난 건지 구분이 안 된다. 문장은 서버가 만들어 `message` 로 보내고 화면은 그대로 띄운다 — 포트를 아는 쪽이 문장을 갖는다(적용이 세션을 끊었을 때의 알림과 같은 경로).
-- **알림은 목록을 다시 그린 뒤에 띄운다.** `alert` 는 화면을 멈추므로 먼저 띄우면 확인을 누른 다음에야 포트 배지가 붙어 한 박자 늦게 보인다. 순서가 뒤집히면 `tests/worktree_serve_menu_check.mjs` 가 잡는다.
-- **세 항목은 상태와 무관하게 항상 보인다.** 안 떠 있으면 재실행은 실행과 같고, 중지는 죽일 게 없어 아무 일도 일어나지 않는다. 상태에 따라 항목이 사라지면 눌러 보기 전에 무엇을 할 수 있는 메뉴인지 알 수 없다.
-- **적용은 그 워크트리를 쓰던 Claude 세션을 끊고 정리한다.** Claude Code 는 세션이 워크트리를 쓰는 동안 잠가 두는데, 병합이 끝난 시점이면 그 세션은 할 일이 없다. 남겨 두면 세션이 끝날 때까지 정리가 밀리고, 세션이 비정상 종료되면 잠금 파일만 남아(git 은 pid 생존을 보지 않는다) 영원히 막힌다. 그래서 병합 뒤 cwd 가 그 워크트리인 `claude` 프로세스에 SIGTERM → 죽을 때까지 대기(최대 5초) → `git worktree unlock` → 제거 순으로 간다. 끊었다는 사실은 `message` 로 알린다 — 대화 기록(`~/.claude/projects/.../<세션>.jsonl`)은 남아 `claude --resume` 으로 이어갈 수 있다. `finish` 는 세션이 자기 자신에 대해 부르는 명령이라 이 종료를 쓰지 않는다.
-- **실행 방법은 `start.sh` 로 본다.** 이름을 바꾸기 전 브랜치로 만든 워크트리에는 아직 `run.sh` 가 있어 그것도 찾는다 — 아는 이름 두 개뿐이고, 둘 다 없으면 실행하지 않고 그 사실을 알린다(`start.sh·run.sh 중 아무것도 없어 실행할 수 없습니다: <경로>`). 진입점을 추측해서 띄우면 엉뚱한 프로세스가 포트를 문다. 백그라운드 실행·로그·기동 대기는 그 스크립트가 이미 한다(위 "실행").
-- **자기 자신은 못 중지한다.** 그 워크트리의 대시보드를 보면서 그 줄을 재실행하려 하면 막고 `./restart.sh` 를 안내한다 — 자기를 죽이면 응답을 돌려줄 주체가 없고, 종료 쪽이 자기 pid 를 건너뛰어 조용히 아무것도 죽이지 않는다.
-- 재실행·중지만 되묻는다. 다른 세션이 그 포트를 보고 있을 수 있어서다(Stop 훅이 "이미 떠 있으면 관여하지 않는" 것과 같은 이유). 확인 문구는 떠 있으면 그 포트를, 없으면 브랜치 이름을 가리킨다.
-- 프로세스 탐지·종료는 `app/services/release.py` 것을 그대로 쓴다 — 화면의 포트 표시, 병합 시 종료, 이 메뉴가 같은 판정이어야 한다.
-
-### 병합 후 리소스 해제
-
-master 에 병합하면 작업은 끝났는데 리소스는 세 개가 남는다 — **연결된 할일**, **그 워크트리를 띄워둔 서버**, **워크트리 디렉토리**. 남겨두면 보드에는 끝난 일이 `doing` 으로 계속 뜨고, 죽은 브랜치의 서버가 포트를 물고 있는다.
-
-할일은 그 세션에 **연결된 것 전부**가 `done` 이 된다 — 무엇이 이번 병합에 들어갔는지 커밋으로는 알 수 없어 연결을 그대로 믿는다. 그래서 연결은 착수한 할일에만 붙여야 하고(위 "세션의 소속은 할일 하나뿐"), 닫은 할일은 id 와 제목을 함께 찍는다.
-
-```bash
-python3 dash.py finish <session>                 # 연결된 할일 done + 그 워크트리의 서버 종료
-python3 dash.py finish <session> --worktree PATH # 자동으로 못 찾을 때 직접 지정
-```
-
-종료 대상 워크트리는 **`--worktree` → transcript 에 남은 마지막 워크트리 cwd → 세션 DB 의 cwd** 순서로 찾는다. 세션 DB 의 cwd 는 SessionStart 훅이 세션이 열릴 때 적은 값이라 `EnterWorktree` 로 옮겨간 뒤에는 메인 체크아웃을 가리키기 때문이다 — Claude Code transcript 는 줄마다 그때의 cwd 를 남기므로 꼬리에서 마지막 워크트리 경로를 읽는다. 그래서 워크트리에서 작업한 세션도 옵션 없이 `finish <session>` 한 번으로 서버까지 정리된다.
-
-찾지 못했을 때는 `(없음)` 으로 조용히 넘기지 않는다. 워크트리를 못 찾았으면 **본 경로**를, 워크트리는 찾았지만 그 cwd 를 쓰는 서버가 없으면 그 경로를 함께 찍는다 — 서버가 남은 것을 모르고 지나가면 죽은 브랜치가 포트를 물고 있는다.
-
-워크트리 제거는 이 명령이 하지 않는다 — Claude 의 cwd 가 그 안이라 밖에서 지우면 셸이 깨진다. `ExitWorktree` 툴이 나가면서 지우는 것이 맞는 순서다(**서버를 먼저 죽이고** 나간다).
-
-종료 대상은 세 겹으로 좁힌다. 잘못 죽이면 사용자가 보던 화면이 꺼지기 때문이다.
-
-- 경로에 `/.claude/worktrees/` 가 없으면 아예 훑지 않는다 → 메인 체크아웃의 대시보드 서버는 안전
-- 명령줄에서 **플래그·`VAR=값`·`nohup`·`env` 를 걷어낸 앞 두 토큰**만 보고 서버인지 판단한다 → `python3 -u server.py`, `nohup env WORK_DASHBOARD_DB=... python3 server.py` 처럼 띄운 서버도 찾고, `zsh -c '... server.py ...'` 같은 자기 셸은 죽이지 않는다 (실행 위치는 프로세스의 cwd 로 이미 걸렀다)
-- **실제로 듣고 있는 포트가 있는 프로세스**만 남긴다 → 워크트리를 cwd 로 도는 훅·도구의 `node` 프로세스는 이름만으로는 서버로 잡히는데, 그것까지 죽이면 남의 훅이 끊기고 훅 쪽에서는 "이미 서버가 떠 있다"고 보여 정작 서버가 안 뜬다. 듣는 소켓 목록을 못 얻는 환경에서는 이 겹을 건너뛴다
-
-프로세스 탐지(`app/services/release.py`)는 `/proc` 이 있으면 그걸로, 없으면(macOS) `lsof -a -d cwd -t` 로 한다. `worktree_serve.py` 훅의 "서버가 떠 있는가" 판정도 같은 함수를 쓴다 — 훅이 떠 있다고 본 프로세스를 `finish` 가 종료하므로 둘의 판정이 갈리면 안 된다.
-
-해제 뒤 같은 세션에서 사용자가 새 요청을 하면 `released` 블록이 주입돼 **새 할일을 만들어** 이어간다. 별도 플래그는 두지 않는다 — 새 할일을 `link-todo` 하는 순간 "전부 done" 이 깨져 블록이 저절로 조용해진다.
-
-### 자율 실행 (④)
-
-사람이 자리를 비운 사이 할일 1건을 `claude --bg` 잡으로 돌린다. 5분 크론이 `autorun-tick` 을 부르고, tick 은 판정만 하고 조건이 안 맞으면 아무것도 하지 않는다.
-
-```bash
-python3 dash.py autorun on|off|status      # 기본 off. 자동으로 다시 켜지는 경로는 없다
-python3 dash.py autorun-tick --dry-run     # 띄우지 않고 판정 사유만
-python3 dash.py autorun-prompt <todo-id>   # 자율 세션에 실제로 들어가는 지시 전문
-python3 dash.py autorun-request "<이유>"   # 판단 보류 — 자율 세션이 스스로 멈출 때 씀
-python3 dash.py autorun-finish              # 완료 — 검토 대기로. 할일 상태는 안 건드림
-```
-
-보드 화면의 "자율 수행" 옆 ON/OFF 스위치도 같은 설정을 켜고 끈다 — CLI 와 상태가 하나다.
-
-트리거는 5분 크론이다 (아래 "크론" 참고). 데몬을 따로 만들지 않는다 — 이미 5분 크론(`resume-limited-jobs.py`)이 돌고 있고, 두 번째 상시 프로세스는 감시 비용만 늘린다. 리밋으로 잡이 멈추면 그 스크립트가 재개하므로 ④는 리밋 처리를 다시 구현하지 않는다.
-
-#### 대상은 두 겹으로 좁힌다
-
-순위 로직은 새로 만들지 않고 `planning.next_todo` 에 술어 하나(`keep`)를 넘겨 후보만 거른다. 자율 실행이 다른 기준으로 고르면 사람이 보는 `next` 순서와 어긋난다.
-
-| 겹 | 규칙 | 왜 |
-| --- | --- | --- |
-| 라벨 | `auto` 라벨이 붙은 할일만 | 자율 실행 허가는 사람이 준다. 코드가 "이건 맡겨도 되겠다" 를 추정하지 않는다 |
-| 조건 | `precondition` 문장이 **없을** 것 | 조건은 자연어라 코드가 충족 여부를 판정할 수 없다. 조건이 붙은 할일은 사람이 풀어야 후보가 된다 |
-| 기록 | `autorun_runs.outcome` 이 `blocked`·`requested` 인 할일은 제외 | `blocked` 는 2회 연속 실패, `requested` 는 판단 보류 — 둘 다 사람이 봐야 다시 후보가 된다 |
-
-조건이 붙은 채로 후보에 오르는 경로는 지금 없지만, 프롬프트는 조건 전문과 재확인 지시를 싣는다 — ⑥(`waiting` 상태)이 들어와 조건 있는 할일도 후보가 되면 그 판단은 자율 세션이 첫 단계로 한다.
-
-#### 시작 금지 조건
-
-| 조건 | 확인 | 동작 |
-| --- | --- | --- |
-| autorun off | `autorun_state.enabled` | 시작 안 함 (기본) |
-| 이미 자율 잡이 돎 | `autorun_runs.ended_at IS NULL` | 시작 안 함 (동시 1건) |
-| 5시간 창 사용률 ≥ `USAGE_CRITICAL_PCT` | 사이드카 `RATE_LIMITS_PATH` | 다음 tick 재확인 |
-| 사용률 데이터가 아예 없음 | 사이드카에 `five_hour.used_percentage` 가 없음 | 시작 안 함 — 모르면 안 돈다 |
-| 후보 없음 | `planning.next_todo` | autorun off |
-| 작업 위치를 모름 | 그 워크스페이스에서 돈 세션이 없음 | 시작 안 함 |
-| 작업 위치가 더러움 | `git status --porcelain` | 시작 안 함 |
-
-사용률은 `usage.snapshot()` 이 아니라 사이드카를 직접 읽는다 — 그 함수는 조회하면서 `usage_samples` 에 한 줄 적립하므로 tick 이 5분마다 부르면 추이 그래프에 tick 이 섞인다.
-
-사이드카가 **낡았다는 이유로는 막지 않는다.** 그 파일은 statusline 이 그려질 때만 갱신되므로(Claude Code 가 사용률을 statusline 페이로드로만 넘긴다) 대화창이 없는 동안은 늘 낡는다. 낡음을 금지 조건으로 뒀더니 자율 실행이 필요한 시간대에 영구히 안 돌았다. 대신 마지막 값으로 판단하고, 그 값의 5시간 창이 `resets_at` 을 지났으면 0으로 본다 — 한도에 닿은 채 찍힌 사진 한 장으로 밤새 막히지 않게.
-
-작업 위치는 **그 워크스페이스에서 세션이 가장 많이 돈 저장소**다(`sessions.cwd_counts_by_workspace`). 워크트리 경로는 `/.claude/worktrees/` 앞에서 잘라 본 저장소로 접고, `.git` 이 없는 위치(홈·scratch)는 걸러낸다. "가장 최근" 으로 골랐더니 다른 저장소에서 이 워크스페이스 할일을 하나 잡은 세션 때문에 1위가 그쪽으로 넘어갔다.
-
-#### 권한과 안전망
-
-권한 모드 플래그는 넘기지 않고 사용자 설정(`settings.json` 의 `defaultMode`)을 그대로 상속한다. `acceptEdits` 로 못박으면 테스트·git 같은 Bash 가 승인 대기에 걸려 잡이 그대로 멈춘다.
-
-그래서 안전망은 권한 플래그가 아니라 **프롬프트 규칙 + 조건부 커밋**이다. 자율 세션은 푸시·PR 은 하지 않는다. 커밋은, 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도 없을 때만 한다 — 그래야 `dash.py merge` 가 "커밋 안 된 변경이 있음" 으로 막히지 않는다. 확인이 필요하거나 끝내지 못했으면 커밋하지 않고 변경을 워크트리에 남긴 채 끝낸다 — 규칙을 넘어선 변경도 `git diff` 로 전부 보이고 `git checkout` 으로 되돌아간다.
-
-`--bg` 하네스는 "끝나면 커밋·푸시하고 draft PR 을 올려라" 를 시스템 프롬프트로 넣는다. 이 중 푸시·PR 은 정반대이므로 `autorun-prompt` 가 그 항목을 지목해 취소하고, 커밋은 위 조건을 달아 다시 지시한다. **프롬프트로 프롬프트를 이기는 구조라 기술적 차단이 아니다** — 실전 잡에서 이 항목들이 지켜지는지를 눈으로 확인해야 한다.
-
-워크트리 격리는 스펙에서 "안 한다" 였지만 뒤집었다. `hooks/worktree_guard.py` 가 켜져(`~/.claude/worktree-guard.on`) 메인 체크아웃 소스 편집을 막으므로, 자율 세션도 `EnterWorktree` 로 워크트리를 만들어 작업한다. 가드를 `ALLOW_MAIN_CHECKOUT=1` 로 무력화하는 쪽은 택하지 않았다.
-
-#### 실행 기록을 닫는 것도 tick 이 한다
-
-닫지 않으면 "이미 돌고 있음" 에 영원히 걸린다. tick 은 먼저 열린 실행의 `~/.claude/jobs/<job-id>/state.json` 을 보고 `done`·`failed`·`stopped` 면 닫는다. `blocked`(리밋)는 열어 둔다 — `resume-limited-jobs.py` 가 다시 민다.
-
-| `outcome` | 언제 |
-| --- | --- |
-| `review` | 잡이 끝났고 세션이 `autorun-finish` 로 "다 끝냈음"을 남김. **검토 대기** — 할일 상태는 아직 `doing`, 사람이 diff 를 보고 병합을 판정할 차례 |
-| `done` | 사람이 자율 수행 패널의 `검토 대기` 배지를 눌러 확인을 마침 — 이때 할일 상태도 `done` 으로 올라간다 |
-| `failed` | 잡이 끝났는데 `autorun-finish` 도 `autorun-request` 도 안 남기고 조용히 멈춤 |
-| `blocked` | 그 실패로 `AUTORUN_FAIL_LIMIT` 에 닿음. 그 할일은 이후 후보에서 빠진다 |
-| `requested` | 세션이 `autorun-request` 로 판단 보류를 남기고 멈춤. 실패가 아니라 **요청** — 그 할일은 이후 후보에서 빠진다 |
-
-성공 신호를 할일 상태가 아니라 실행 기록에 직접 남기는 이유 — `done` 은 "더 안 봐도 됨" 이라는 뜻이어야 하는데, 자율 세션이 끝냈다고 바로 `done` 을 찍으면 아직 사람이 diff 를 보지도 않은 작업이 "끝난 일"로 읽힌다. 그래서 세션은 `todo.status` 를 건드리지 않고 실행 기록에 `finished_at` 만 남기고(`autorun-finish`), 할일은 사람이 확인할 때까지 `doing` 으로 남아 있다 — "다음 할 일"에도 여전히 잡히고, 워크스페이스 완료 집계에도 안 들어가고, 24시간 넘게 `doing` 이면 뜨는 방치 경고도 그대로 적용된다. 방치 경고가 여기서는 "리뷰가 밀렸다"는 뜻이 되는 것도 의도한 것이다. 사람이 확인 버튼을 누르면(`confirm_run`) 그제서야 할일도 `done` 이 된다. 조용히 멈춰 아무 신호도 없으면 `review` 로 낙관하지 않고 `failed` 로 본다 — 미완성 작업이 검토 대상으로 둔갑하면 안 된다. `review` 는 실패로 세지 않는다 — 확인이 밀린 동안 그 할일이 `blocked` 로 올라가면 안 된다.
-
-`blocked` 가 `AUTORUN_BLOCKED_STREAK_LIMIT` 만큼 연속되면 autorun 자체를 끈다. 자율 잡에 사람이 프롬프트를 넣어도 끈다(`UserPromptSubmit` 훅) — 그 잡은 사람 것으로 인계된 것이다. 첫 프롬프트는 자율 실행이 스스로 넣은 지시이므로 `last_prompt` 가 이미 있을 때만 사람이 끼어든 것으로 본다.
-
-#### 판단 보류 (`requested`)
-
-자율 세션은 다음 중 하나면 추측 대신 멈춘다 — 기능을 추가·수정할 때 grill me·superpowers 로 검토(스펙 문서는 안 씀)해 기획 공백이 나올 때, 구현 방향이 여럿인데 어느 쪽인지 `note` 에 안 정해져 있을 때, 토큰·Jira·문서 위치가 필요한데 `note` 에 없을 때. `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 사유를 남기고 할일 상태는 건드리지 않은 채 끝낸다.
-
-`autorun-request` 는 실행 중인 기록에 사유만 적어 두고 **그 자리에서 닫지 않는다.** 여기서 바로 닫으면(`ended_at` 을 채우면) 아직 잡 프로세스가 안 끝났는데 다음 tick 이 동시 1건 규칙을 어기고 새 잡을 띄울 수 있다. 닫는 일은 다른 결과와 똑같이 tick 이 잡 종료(`state.json`)를 확인한 뒤에 한다 — 그때 `outcome_for_close` 가 이 사유를 보고 `failed`·`blocked` 대신 `requested` 로 닫는다. 사유는 자율 수행 패널의 `요청` 배지에 마우스오버로 뜬다.
-
-`blocked` 와 같은 이유로 자동으로는 안 풀린다 — 사람이 `note`·`precondition` 을 손보고 나서만 다시 후보가 된다. 지금은 ③ 결정 대기 큐(`dash.py ask`/`answer`)가 없어 웹에서 바로 답하는 경로는 없다 — 요청 사유를 읽고 할일을 손보는 것까지가 이번 범위다.
-
-### 초기 설정 (⑤)
-
-워크스페이스가 하나도 없는 상태에서 세션을 열면 분류 대신 **초기 설정 블록**이 주입된다. Claude 가 먼저 화면 언어를 묻고(한국어 / English / 日本語 / 中文), 이어서 최근 며칠 치 히스토리를 볼지(7일 / 14일 / 안 함) 묻고, 스캔 결과로 카테고리·워크스페이스를 제안한 뒤 확인받아 등록한다. 언어는 자동 분류를 거절해도 먼저 묻는다 — 화면 언어는 초기 설정 여부와 무관하게 필요하기 때문이다.
-
-```bash
-python3 dash.py language                  # 지금 화면 언어
-python3 dash.py language en               # 초기 설정 때 사용자가 고른 언어를 적는다
-python3 dash.py scan-history --days 7     # 세션당 한 줄 요약 (Claude 가 읽는 입력)
-python3 dash.py onboard                   # 초기 설정이 필요한 상태인지
-python3 dash.py onboard --skip            # 자동 분류 거절. 이후 다시 묻지 않음
-python3 dash.py link-todo 56510381 4 --past   # 할일을 뽑아낸 근거 세션 연결
-```
-
-각 줄 맨 앞의 8자가 세션 id 앞머리이고, 그대로 `link-todo ... --past` 에 넘긴다. `--past` 는 `sessions` 에 없는 세션을 **`state=ended` 로** 등록한다 — `register()` 를 쓰면 `idle` + 지금 시각이 되어 이미 끝난 세션 수십 개가 활성 목록에 살아 있는 것처럼 뜬다. 앞머리가 둘 이상 맞으면 실패한다. 또 `--past` 는 할일 상태를 바꾸지 않는다. 보통의 `link-todo` 는 착수 선언이라 `todo` → `doing` 으로 올리지만, 끝난 세션 연결은 기록이지 착수가 아니기 때문이다.
-
-#### 화면 언어
-
-영어(기본) / 한국어 / 일본어 / 중국어. 고른 값은 `meta.language` 한 줄로 남아 브라우저를 바꾸거나 서버를 내렸다 올려도 유지되고, 웹 설정 탭과 `dash.py language` 가 같은 값을 본다. 바꾸는 곳은 **상단 우측 지구본 아이콘**이다 — 설정 탭 안에 두면 지금 언어를 못 읽는 사람이 그 탭 이름부터 찾아야 한다. 목록은 국기 없이 각 언어의 원어 표기로 적고 지금 언어에 체크가 붙는다 (언어 선택기 관례).
-
-그 왼쪽 **해·달 아이콘**은 밝기(기기 설정 / 밝게 / 어둡게)를 고른다. 언어와 달리 서버가 아니라 브라우저(`localStorage.theme`)에 남는다 — 같은 대시보드를 아이패드는 어둡게, 데스크톱은 밝게 보는 일이 흔하다. 고른 값은 `<html data-theme>` 에 붙고 색은 CSS 변수로만 갈리므로 새로고침 없이 바뀐다. 첫 칠 전에 `index.html` 의 스크립트가 같은 값을 넣는다 — 모듈을 기다리면 어두운 화면이 흰색으로 번쩍인다.
-
-**문구는 코드에 두지 않는다.** `static/lang/<코드>.json` 에 키-값으로 모여 있고 화면은 키만 부른다 (`t("board.nextNone")`, `index.html` 은 `data-i18n="키"`). 한국어도 다른 언어와 같은 자격의 파일이라, 문구를 고치려면 코드가 아니라 이 파일들을 고친다. 값 자리는 `{count}` 처럼 이름으로 적는다 (ICU MessageFormat 의 부분집합이라 나중에 라이브러리로 옮겨도 사전은 그대로 쓴다).
-
-```text
-static/lang/en.json   ← 기본값이자 폴백. 늘 먼저 깔린다
-static/lang/ko.json   ← 고른 언어를 그 위에 덮는다. 빠진 키는 영어로 뜬다
-```
-
-설정을 못 읽거나 번역이 빠졌을 때 **영어로 떨어진다** — 공개로 여는 대시보드라 처음 보는 사람이 읽을 수 있는 자리여야 하고, 화면에 키 문자열이 노출돼서도 안 된다.
-
-`static/js/boot.js` 가 언어를 확정한 **뒤에** 화면 모듈을 들인다 — 여러 모듈이 최상단에서 `t()` 로 라벨 표를 만들기 때문에 순서가 뒤집히면 그것들만 번역이 안 된다. 날짜·시각 표기도 고른 언어를 따른다(`Intl` 의 locale).
-
-**서버가 내려주는 문구는 되짚어 옮긴다.** 오류, 워크트리 서버 실행·중지 알림, 자율 수행 tick 사유는 서버가 한국어로 만든다. `i18n.js` 가 `ko.json` 을 뒤집어 원문 → 키로 되짚고 지금 언어의 문구를 내놓으므로 문구 목록이 두 벌이 되지 않는다. 값이 박힌 문장(`'개발' 카테고리가 이미 있습니다`)은 사전에 `{name}` 자리를 뚫은 틀로 두고, 그 틀로 값을 뽑아 지금 언어의 틀에 끼운다. 뽑아낸 값이 서버가 끼워 넣은 한국어 라벨이면(`기준 브랜치는 적용 대상이 아님`) 그것도 함께 옮긴다.
-
-되짚기 대상은 `error.` · `notice.` · `reason.` 로 시작하는 키뿐이다 — 화면 라벨까지 틀로 세우면 `{count}개` 같은 짧은 라벨이 서버 문장을 먼저 문다. 먼저 맞는 틀을 쓰므로 **사전에 적은 순서가 곧 우선순위**이고, 좁은 틀이 앞에 와야 한다(`{command} 실행 실패` 가 `git {args} 실패` 보다 앞). 고른 언어가 한국어가 아니면 `ko.json` 도 첫 렌더 때 함께 깐다 — tick 사유는 오류가 아니라 평소 화면에 늘 떠 있다.
-
-키를 늘리고 사전 하나를 빠뜨리면 `tests/test_language.py` 가 실패한다 — 화면(JS·HTML)에서 키를 뽑아 네 사전과 대조하고, `{자리}` 개수와 "번역 안 하고 한국어를 복사한 항목"까지 본다. 화면까지 올라오는 예외 문구(`server.py`·저장소·`serve`·`worktrees`)는 AST 로 뽑아 `ko.json` 의 틀과 대조하므로, 서버 문장만 고치고 사전을 안 고치면 거기서 갈라진다. 되짚기 자체는 `tests/i18n_server_text_check.mjs` 가 본다.
-
-아직 한국어 고정인 것:
-
-- CLI(`dash.py`) 출력과 훅이 주입하는 세션 블록 — 읽는 쪽이 Claude 라 옮길 이유가 없다
-- CLI 전용 경로에서만 나는 오류(`merge` · `scan-history` · 세션 연결). 화면이 부르지 않으므로 사전에 두지 않는다
-- 시드 카테고리 6개 — 만들어진 뒤에는 사용자가 이름을 고치는 DB 행이라 화면이 덮어쓰면 안 된다
-
-`scan-history` 는 `~/.claude/projects/*/*.jsonl` **전체**에서 mtime 이 기간 안인 파일만 골라 **앞 64KB** 만 읽고, 프로젝트 위치별로 묶어 세션당 한 줄(시작~최근 날짜 + 첫 지시 200자)로 뱉는다. 전문은 수백 MB 라 세션에 넣을 수 없기 때문이다. 슬래시 명령·자동 압축 요청은 첫 지시에서 걸러낸다.
-
-**묶는 것과 하한선 적용은 코드가 아니라 Claude 가 한다** — 의미 판단이라 셸이 못 한다. 세션 `ONBOARDING_MIN_SESSIONS`건 미만인 묶음은 워크스페이스로 만들지 않고 "기타" 한 줄로만 표시한다. 확인 트리가 검수 가능한 크기를 넘으면 사용자가 읽지 않고 승인하게 되기 때문이다.
-
-묶는 단위는 **작업 위치(디렉토리) 하나 = 워크스페이스 하나**다. 한 저장소 안의 기획·구현·배포는 워크스페이스가 아니라 **착수 순서대로 놓는 할일**이다 — 워크스페이스로 쪼개면 `classified` 블록이 주입할 배경·목적이 세션마다 갈린다. 홈·scratch 성격의 위치만 내용으로 다시 쪼갠다.
-
-할일마다 **그 할일을 뽑아낸 근거 세션을 연결하고**, 그 세션에서 착수할 때 필요한 구체 정보를 뽑아 `note` 에 적는다 — 실패한 명령과 오류 문구, 확정된 수치·기준, 제외한 범위, 참고 경로. 할일 자체가 그 세션에서 나온 것이므로 근거를 버리면 "왜 있는 할일인지" 를 히스토리에서 다시 찾아야 한다.
-
-워크스페이스마다 **할일도 함께 만들고 상태까지 추정해 넣는다.** 빈 워크스페이스도 보드에 카드로는 뜨지만(`board.py`), 카드만 늘어선 화면은 초기 설정이 절반만 된 것처럼 보인다. 추정이 틀려도 보드에서 바로 고칠 수 있다.
-
-워크스페이스 필드를 채울 때의 기준은 **"매 세션 주입돼도 값어치가 있는가"** 하나다.
-
-| 필드 | 넣는 것 | 안 넣는 것 |
-| --- | --- | --- |
-| 배경 | 왜 이 일이 존재하는가. 도메인의 문제 | 기술 스택, URL, 포트, 저장소 주소 |
-| 목적 | 그 문제를 어떤 방향으로 푸는가 | 완료 조건 |
-| 목표 | 끝났다고 판정할 수 있는 상태 | 방향·이유 |
-| 고려사항 | 벗어나면 안 되는 제약·금지 | 구현 디테일, 일시적 이슈 |
-| 할일 `note` | 그 할일 착수할 때만 필요한 구체 정보 | 워크스페이스 전체에 걸린 것 |
-
-완료 플래그는 두지 않는다 — 워크스페이스가 하나라도 생기면 트리거 조건이 저절로 깨진다. 거절만 `meta.onboarding_declined` 에 남는다. 따라서 **워크스페이스를 전부 지우면 초기 설정이 다시 뜬다**(의도된 동작).
-
-`link-todo` 는 `session_todos` 에 연결하면서 `todo` 인 할일을 `doing` 으로 올린다(착수 선언). `--status done` 은 이미 끝난 작업을 뒤늦게 연결할 때, `--past` 는 끝난 히스토리 세션을 소급 연결할 때 쓰며 후자는 상태를 건드리지 않는다.
-
-세션 정리는 별도 크론 없이 조회할 때 함께 수행한다 — `last_seen_at` 이 24시간 지난 `idle` 은 `ended` 로 간주하고, `ended` 이면서 연결된 할일이 없는 세션은 7일 뒤 삭제한다.
-
-## 크론
-
-자리를 비운 사이 도는 것은 전부 crontab 한 곳에 모임. 상시 데몬은 만들지 않음 — 두 번째 프로세스는 감시 비용만 늘리고, 조건이 안 맞으면 아무것도 안 하고 끝나는 tick 은 5분 간격으로 충분함
-
-### 크론 목록 확인
-
-```bash
-crontab -l
-```
-
-### 크론 종류
-
-| 크론 | 하는 일 | 크론식 | 주기 | 소속 |
-| --- | --- | --- | --- | --- |
-| `autorun-tick` | 자율 실행 판정. 끝난 잡의 실행 기록을 닫고, 조건이 맞으면 `auto` 라벨이 붙은 할일 1건을 `claude --bg` 로 띄움. 조건이 안 맞으면 아무것도 안 함 | `*/5 * * * *` | 5분마다 | 이 저장소 (④) |
-| `resume-limited-jobs` | 리밋에 걸려 멈춘 `--bg` 잡을 `--resume` 으로 다시 밂. 한 번에 1건 | `*/5 * * * *` | 5분마다 | Claude Code 설정 |
-| `skill-sync pull` | 스킬 저장소를 GitHub 에서 pull·자동병합 | `0 8,9,10 * * 1-5` | 평일 08·09·10시 | skill-sync 스킬 |
-| `skill-sync apply` | 사용자가 확인해 준 스킬 변경을 반영 | `0 9-20 * * 1-5` | 평일 09~20시 매시 | skill-sync 스킬 |
-
-### 자율 실행과 리밋 재개는 짝
-
-④는 잡을 **띄우는 것까지**만 하고 리밋 처리를 다시 구현하지 않음 — `--bg` 로 띄우면 `~/.claude/jobs/<id>/state.json` 이 생기므로 재개는 `resume-limited-jobs.py` 가 그대로 담당함. 그래서 자율 잡이 리밋에 걸려도 `autorun_runs` 는 열린 채 두고, 재개된 잡이 끝나야 닫음
-
-### 크론 등록
-
-`autorun-tick` 은 아직 미등록 상태
-
-```bash
-crontab -l > /tmp/ct
-echo '*/5 * * * * /usr/bin/python3 /home/ujung/work/work-dashboard/dash.py autorun-tick >/dev/null 2>&1' >> /tmp/ct
-crontab /tmp/ct
-```
-
-등록해도 `dash.py autorun on` 전에는 매 tick 이 "autorun 이 꺼져 있음" 으로 끝남. 기본 off 이고 자동으로 다시 켜지는 경로는 없음
-
-## 상태줄
-
-Claude Code 상태줄에 **이 세션이 잡은 할일과 상태, 작업 중인 워크트리, 그 위치를 서비스하는 서버 포트**를 붙인다. 워크트리를 여럿 띄워 놓으면 지금 창이 어느 작업·어느 워크트리이고 어느 포트를 보는 창인지가 상태줄만 봐도 갈린다.
-
-```text
-Context ████░░░░░░ 42% │ Usage ███░░░░░░░ 30% │ Weekly ██████░░░░ 55%
-[doing | tab-underline | :9092] 보드에 할일·워크트리 탭 분리하고 워크트리 뷰 추가
-```
-
-대괄호 안은 **상태 | 워크트리 | 포트** 순서로 고정이고, 없는 칸은 구분자까지 같이 빠진다(`[master | :9080]`, `[wt-a]`). 셋 다 없으면 대괄호 자체가 없다.
-
-**둘째 줄**에 그린다 — 막대 세 개와 같은 줄에 두면 좁은 창에서 제목이 먼저 잘린다.
-
-```bash
-python3 dash.py statusline <session> [--cwd PATH]   # 상태줄 한 줄. 보여줄 게 없으면 무출력
-```
-
-- **등록 위치**: `~/.claude/statusline-command.js`(그 PC 전용). 상태줄 슬롯은 하나뿐이라 이 스크립트가 사용률 막대까지 같이 그린다. 거기서 `python3 <메인 체크아웃>/dash.py statusline <세션> --cwd <현재 위치>` 를 부르고, **실패하면 빈 문자열로 넘긴다** — 대시보드 문제로 상태줄이 깨지면 안 된다. 워크트리가 아니라 메인 체크아웃 경로를 부르는 이유는 워크트리가 병합 뒤 지워지기 때문이다.
-- **할일**: 연결된 것 중 안 끝난 첫 할일의 상태와 제목(40자에서 자름), 나머지는 뒤에 `+N` 으로. 끝난 것을 앞세우면 지금 뭘 하는지가 가려진다.
-- **워크트리**: 워크트리 디렉토리 이름. 워크트리가 아니면 세션 DB 의 브랜치 이름(메인 체크아웃은 보통 `master`). 브랜치가 아니라 디렉토리 이름을 먼저 쓰는 이유는 세션 DB 의 브랜치가 SessionStart 때 값이라 `EnterWorktree` 로 옮겨간 뒤에는 메인 것을 가리키기 때문이다.
-- **포트**: 그 디렉토리를 cwd 로 쓰는 프로세스가 듣고 있는 포트. 워크트리면 그 워크트리의 서버, 메인 체크아웃이면 거기서 도는 서버다. 위치는 `finish` 와 같은 순서(`--cwd` → transcript 의 마지막 워크트리 → 세션 DB 의 cwd)로 찾는다.
-- **`finish` 와 다른 lsof 경로를 쓴다.** 종료 쪽 `lsof -a -d cwd -t <경로>` 는 전체 프로세스를 훑어 300ms 가 걸려 렌더링마다 쓸 수 없다. 상태줄은 듣고 있는 소켓 목록을 먼저 받고(40ms) 그 pid 들만 cwd 로 확인한다(40ms). 죽이지 않고 읽기만 하므로 워크트리 안으로 제한하지 않는다. 보드 워크트리 탭의 포트 배지와 자율 수행 패널도 같은 방향으로 묻는다(`worktrees.processes_by_path`) — 경로로 물으면 저장소마다 그 300ms 가 되풀이된다.
-
-## 데이터베이스
-
-- **DB**: sqlite3 (파이썬 표준 라이브러리 `sqlite3`, 외부 드라이버 없음)
-- **위치**: `~/.claude/work-dashboard/dash.db`. 환경변수 `WORK_DASHBOARD_DB` 로 덮어쓸 수 있고, `connect(path)` 인자가 있으면 그게 최우선
-- **접근 주체**: 웹 서버·CLI·훅이 같은 파일을 직접 연다. 서버 프로세스가 중재하지 않음
-
-`app/db.py` 의 `connect()` 가 최초 호출될 때 하는 일 (매 연결마다 실행되지만 전부 멱등):
-
-- DB 파일의 부모 디렉터리를 `makedirs(exist_ok=True)` 로 생성
-- `PRAGMA foreign_keys=ON` — 참조 무결성 강제
-- `PRAGMA journal_mode=WAL` — 웹·CLI·훅 동시 접근 대비
-- `PRAGMA busy_timeout=5000` — 잠금 대기 5초
-- `CREATE TABLE IF NOT EXISTS` 로 테이블 13개 생성
-- 카테고리 6개(개발 / 운영 / 장애 대응 / 개발환경 개선 / 스킬 개발 / 프로세스 개선) 시드. `meta` 의 `categories_seeded` 플래그로 **최초 1회만** — 사용자가 지운 카테고리가 되살아나면 안 되기 때문
-
-시각 컬럼(`*_at`)은 전부 TEXT 이며 ISO8601 UTC 초 단위(`2026-07-31T04:12:33+00:00`).
-
-### 테이블 구조
-
-| 테이블 | 역할 | 주요 컬럼 | 참조 |
-| --- | --- | --- | --- |
-| `categories` | 최상위 그룹핑. 우선순위 계산에는 관여 안 함 | `id`, `name`(UNIQUE), `sort_order`, `created_at` | — |
-| `workspaces` | 브랜치·Jira 단위 큰 작업. 배경·목적·목표·고려사항 보관 | `id`, `name`, `background`, `purpose`, `goal`, `considerations`, `status`(active/paused/done), `sort_order`, `jira_id`, `created_at`, `updated_at` | `category_id` → `categories` |
-| `labels` | 할일 성격 표시. 한 할일에 여러 개 (github 이슈 라벨과 같은 뜻) | `id`, `name`(UNIQUE), `color`, `sort_order`, `created_at` | — |
-| `todo_labels` | 할일 ↔ 라벨 N:N 연결 | PK = (`todo_id`, `label_id`) | `todo_id` → `todos`, `label_id` → `labels` |
-| `todos` | 할일. 워크스페이스 없이 카테고리 직속도 가능 | `id`, `title`, `note`(컨텍스트 노트), `status`(todo/doing/done), `sort_order`, `completed_at`, `created_at`, `updated_at` | `category_id` → `categories`, `workspace_id` → `workspaces` (nullable) |
-| `sessions` | Claude Code 세션. 훅이 등록·갱신 | `id`, `claude_session_id`(UNIQUE), `cwd`, `git_branch`, `state`(working/idle/ended), `last_prompt`(120자), `started_at`, `last_seen_at`, `ended_at` | `category_id` → `categories` (nullable = 미분류). 워크스페이스 컬럼은 없음 — 아래 참조 |
-| `session_todos` | 세션 ↔ 할일 N:N 연결 | `created_at`, PK = (`session_id`, `todo_id`) | `session_id` → `sessions`, `todo_id` → `todos` |
-| `worktrees` | 워크트리 이력. 병합·삭제로 사라진 것도 이름·상태로 남긴다 (팝업 워크트리 탭) | `path`(PK), `repo`, `branch`, `created_at`, `merged_at`, `merge_hash`, `merge_from`, `deleted_at` | — (경로로 잇는다) |
-| `meta` | 내부 플래그·단일 설정 저장소. `categories_seeded`, `onboarding_declined`, `language` | `key`(PK), `value` | — |
-
-## 규칙 몇 가지
-
-- 우선순위는 워크스페이스 순위 + 할일 순서로만 표현한다. **할일은 중요도가 아니라 착수 가능한 순서로 놓는다.**
-- 카테고리는 그룹핑 분류일 뿐 우선순위 계산에 관여하지 않는다.
-- 카테고리는 소속이라 할일마다 하나, 라벨은 성격이라 여러 개 붙는다. 라벨 삭제는 붙어 있는 할일이 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/labels/<id>?force=1`) 연결만 끊고 지운다.
-- 카테고리 삭제는 워크스페이스·할일이 없을 때만(있으면 먼저 옮긴다). 분류된 세션만 남아 있으면 몇 건인지 알리고 확인을 받은 뒤(`DELETE /api/categories/<id>?force=1`) 그 세션들을 미분류로 내리고 지운다. 붙은 게 아무것도 없으면 되묻지 않는다.
-- 워크스페이스 삭제 시 소속 할일은 미분류로 내려간다. 할일 삭제는 붙어 있던 라벨 연결만 끊는다.
-- 웹과 CLI가 같은 DB를 쓴다. CLI 변경을 웹에서 보려면 새로고침한다. 세션 영역만 2초 폴링한다.
-- 마크다운은 루트 `.markdownlint.json` 을 따른다. 표 구분행은 `| --- | --- |`, 코드펜스에는 언어를 붙인다(`text`, `bash`, `json` 등).
-
-## 디자인 토큰
-
-`static/css/app.css` 의 `:root` 가 유일한 출처다. `usage.css` 는 정의하지 않고 참조만 한다.
-**font-size·padding·margin·gap·border-radius 에 생 px 을 쓰지 않는다** — `tests/test_css_tokens.py` 가 어기면 실패시킨다. width·height·box-shadow 같은 그래픽 치수(점·바 두께)는 격자와 무관하므로 예외.
-
-| 종류 | 토큰 | 값 | 쓰는 곳 |
-| --- | --- | --- | --- |
-| 간격 | `--sp-2` ~ `--sp-48` | 2 / 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 | 4px 격자. `--sp-2` 만 반 칸. 6·9·10·11·14 같은 사이값은 쓰지 않는다 |
-| 간격 별칭 | `--gap`, `--pad-card` | 둘 다 16px | 카드 사이 간격 / 카드 내부 여백. 카드 안 헤더·행은 `--sp-12` |
-| 글자 | `--fs-display` | 32px | 카드 하나를 대표하는 큰 수치 |
-| | `--fs-title` | 20px | 화면 제목 |
-| | `--fs-body` | 13px | 본문. 카드 제목은 같은 크기에 700 |
-| | `--fs-sm` | 11px | 보조 본문·라벨·메타·캡션·표·컨트롤 |
-| | `--fs-micro` | 9px | 배지·칩·차트 눈금 |
-| 행간 | `--lh-tight` / `--lh-heading` / `--lh-body` | 1.1 / 1.3 / 1.55 | 큰 수치 / 제목·배지 / 본문 |
-| 둥글기 | `--r-card` / `--r-ctl` / `--r-pill` | 12 / 8 / 999px | 카드 / 컨트롤·중첩 카드 / 알약·점 |
-| 그 외 | `--icon-box` | 24px | 16px 아이콘을 담는 정사각 면 |
-
-새 요소를 만들 때의 판단 기준:
-
-- 보조 글자를 나눈 기준 — 글로 읽는 것(캡션·메타·표)은 `--fs-sm`, 배지·칩·눈금은 `--fs-micro`
-- 굵기는 400(본문)·500(라벨·보조)·600(강조·세션 이름)·700(카드 제목·큰 수치) 네 단만
-- 라벨은 어디서든 `--fs-sm` + 500 + `--muted`, 카드 제목은 `--fs-body` + 700
-- 초점 링은 app.css 의 전역 `:focus-visible` 하나가 그린다. 요소마다 따로 정의하지 않는다 (입력 필드만 `:focus` 링을 따로 갖는다)
-- 아이콘↔글자 간격은 `--sp-8`, 칩·배지 내부는 `--sp-4`
-- 차트 글자만 예외로 `static/js/chart.js` 의 `AXIS_FONT`(11 = `--fs-micro`), `DONUT_TOTAL_FONT`(20 = `--fs-title`) 가 정한다. SVG 좌표 계산에 쓰이기 때문
-
-## 세션 연동 (②)
-
-코드·훅 등록 모두 적용됨 (2026-07-30 확인). 남은 항목은 `docs/superpowers/specs/2026-07-30-session-mapping-spec.md` 에 결정으로 적혀 있다 (세션 인자 env 폴백, fork 세션 분류 상속).
-
-보드의 세션 줄과 할일 줄은 **같은 팝업**을 연다. 팝업은 탭 세 개다.
-
-| 탭 | 내용 | 기본 활성 |
-| --- | --- | --- |
-| 개요 | 할일 제목, `History`(생성·수정·완료), 착수 조건, note 전문 | 할일에서 열 때 |
-| 세션 | 세션 id·위치·최근 대화 10건, 워크스페이스·카테고리 지정 | 세션에서 열 때 |
-| 워크트리 | 그 할일이 썼던 워크트리 — 이름·상태, `History`(생성·병합/삭제), `Commit`(기준 브랜치와의 커밋 차이 + 작업 커밋) | — |
-
-`History`·`Commit` 은 시각 + 내용 한 줄짜리 같은 목록을 쓴다. 시각은 로그 파일과 같은 표기(`2026-08-05 19:29:08`, 로컬)이고 줄은 최신 먼저다. 커밋 줄은 시각 · sha · 커밋 메시지, 커밋 차이(`↑2 ↓52`)는 `Commit` 라벨 오른쪽에 붙는다.
-
-세션에서 열면 개요 탭에 그 세션이 `link-todo` 로 잡은 할일이 뜨고, 할일에서 열면 세션 탭에 그 할일을 마지막으로 잡은 세션이 뜬다. note 는 세션에 `(컨텍스트 #id)` 표시만 주입되므로 전문을 보는 자리는 이 팝업이다. 최근 대화는 `~/.claude/projects/*/<세션id>.jsonl` 꼬리에서 읽는다.
-
-### 팝업 워크트리 탭
-
-병합·삭제로 끝난 워크트리도 남는다 — git 은 지워진 워크트리를 기억하지 않으므로(`worktree list` 에서도, 브랜치 목록에서도 빠진다) 살아 있는 동안 본 것을 `worktrees` 테이블에 적어 둔다. 어느 워크트리가 이 할일의 것인지는 그 할일을 잡은 세션에서 찾는다 — 세션 `cwd`(워크트리 안에서 시작한 세션)와 transcript 꼬리의 마지막 워크트리 경로(`EnterWorktree` 로 옮겨간 세션) 둘 다 본다. 후자가 기본 흐름이다 — `cwd` 는 SessionStart 훅이 적은 값이라 대개 메인 체크아웃을 가리킨다.
-
-| 상태 | 판정 | 시각 |
-| --- | --- | --- |
-| `create` | 살아 있고 커밋도 변경도 없음 | 생성 |
-| `working` | 살아 있고 기준 브랜치에 없는 커밋 또는 커밋 안 된 변경이 있음 | 생성 |
-| `merged` | 기준 브랜치에 병합됨 (병합 뒤 커밋이 더 쌓이면 다시 `working`) | 생성 · **병합** |
-| `deleted` | 병합 없이 사라짐 | 생성 · **삭제** |
-
-- 끝난 시각은 하나만 붙는다 — 병합됐으면 병합 시각, 병합 없이 지웠으면 삭제 시각. 지우는 순간은 관측할 방법이 없어(`ExitWorktree` 는 대시보드를 거치지 않는다) **사라진 것을 처음 확인한 시각**을 삭제 시각으로 쓴다.
-- 병합 사실은 기준 브랜치 reflog 의 `merge <브랜치>:` 항목에서 되짚는다. 지워진 브랜치의 병합을 알 수 있는 유일한 자국이고, 이 기능을 붙이기 전에 끝난 워크트리도 그래서 상태가 채워진다. reflog 도 지워지므로(기본 90일) 처음 본 때 병합 전후 해시까지 저장해 커밋 목록을 계속 되짚는다.
-- 생성 시각은 워크트리 `.git` 파일의 mtime. 이미 사라진 워크트리면 그 위치에서 가장 먼저 돈 세션의 시작 시각으로 대신한다 (실제 생성보다 늦지만 그 워크트리가 있었던 시점은 된다).
-- 병합 없이 버린 워크트리의 커밋은 브랜치와 함께 사라져 목록이 비어 있다.
-
-### 다른 PC 에 옮길 때
-
-`hooks/dash_hook.py` 의 **절대 경로**가 필요하다. 워크트리에서 쓰고 있다면 워크트리가 지워질 때 훅이 깨지므로 영구 경로에 둔 뒤 등록한다.
-
-`~/.claude/settings.json` 백업 후 네 이벤트에 각각 추가한다(마지막 인자만 이벤트명으로 바꿈).
-
-```json
-{"hooks": [{"type": "command", "command": "python3 <절대경로>/hooks/dash_hook.py SessionStart", "timeout": 2}]}
-```
-
-같은 작업에서 `hooks.SessionStart` 의 `bash ~/.claude/skills/scope-guard/session-inject.sh` 항목을 **제거**한다. 남겨두면 같은 내용이 두 번 주입된다.
-
-### scope-guard 흡수 (적용 완료)
-
-`~/.claude/skills/scope-guard/scope_db.py` 가 `app/services/session_link.py` 의 `scope_guard_block()` 을 쓰는 dash.db 어댑터로 교체돼 있고(`scope_db.py.bak` 보존), `session-inject.sh` 훅은 `settings.json` 에서 제거됐다. 목표·하위단계는 대시보드의 워크스페이스·할일이다. 흡수 범위를 여기서 끝내는 근거는 ② 스펙 D4 참고.
-
-**주의** — `scope_db.py set-steps` 는 워크스페이스의 할일을 전부 지우고 다시 넣는다. 할일에 컨텍스트 노트가 붙은 워크스페이스에서는 실행하지 말 것.
-
-### 롤백
-
-훅 등록 후 문제가 생기면:
-
-```bash
-cp ~/.claude/settings.json.bak ~/.claude/settings.json
-cp ~/.claude/skills/scope-guard/scope_db.py.bak ~/.claude/skills/scope-guard/scope_db.py
-cp ~/.claude/scope-guard/scope.db.bak ~/.claude/scope-guard/scope.db
-```
-
-## 설계 문서
-
-| 단계 | 문서 | 상태 |
-| --- | --- | --- |
-| ① 4계층 + 웹/CLI | `specs/2026-07-29-work-dashboard-design.md`, `plans/2026-07-29-work-dashboard.md` | 구현 완료 |
-| ② 세션 매핑 | `specs/2026-07-29-session-link-design.md` (설계) + `specs/2026-07-30-session-mapping-spec.md` (확정 결정) | 대부분 구현, 잔여 2건 |
-| ③ 결정 대기 큐 | `specs/2026-07-30-decision-queue-spec.md` | 결정 확정, 미구현 |
-| ④ 자율 실행 | `specs/2026-07-30-autorun-spec.md` | 1차 구현 완료 (③ 큐 연동·⑥ `waiting` 제외) |
-| ⑤ 초기 설정(온보딩) | `specs/2026-08-01-onboarding-spec.md` | 구현 완료 |
-
-경로는 모두 `docs/superpowers/` 기준. ②③④ 문서는 각각 (a) 문제 (b) 확정 결정과 근거 (c) 안 하는 것 (d) 파일 경계를 담고 있어 그대로 착수할 수 있다.
-
-## 아직 없는 것
-
-- 결정 대기 큐 (③) — 스펙만 있고 코드 없음. 없으면 막힌 자율 세션이 갈 곳이 없다
-- 선제조건 대기 상태 (⑥ `waiting`) — 없어서 자율 실행이 "조건 있는 할일은 후보 제외" 로 대신하고 있다
-- 자율 실행의 막힘 배지 — 막힌 할일이 목록에서 눈에 띄지 않는다
-- 완료 항목 아카이브, 할일 의존성, 카테고리 우선순위
+The suite covers the repositories, services, CLI and hooks, checks that the four
+language files agree on keys and placeholders, and enforces that CSS spacing and
+type use design tokens rather than raw pixels. UI behaviour checks run under
+`node` and are invoked by the Python test of the same name. The tests that
+exercise `start.sh` and its siblings bring up real servers on ports 9900–9999, a
+band the dashboard never displays.
+
+## Design documents
+
+`docs/superpowers/specs/` holds the design and confirmed decisions for each
+stage; `docs/superpowers/plans/` holds the implementation plans.
