@@ -7,6 +7,17 @@
   <title>Work Dashboard</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/usage.css">
+  <!-- 밝기는 첫 칠 전에 정해야 한다 — 모듈(boot.js)을 기다리면 어두운 화면이 흰색으로
+       번쩍인다. 고른 값이 없으면 기기 설정을 따른다 (static/js/theme.js 와 같은 규칙) -->
+  <script>
+    {
+      const chosen = localStorage.getItem("theme");
+      document.documentElement.dataset.theme =
+        chosen === "light" || chosen === "dark"
+          ? chosen
+          : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+  </script>
 </head>
 <body>
   <div class="app">
@@ -75,6 +86,8 @@
         <p id="error" hidden></p>
         <!-- 상단바 오른쪽 아이콘 묶음. 상단바 gap 이 둘 사이까지 벌리지 않게 감싼다 -->
         <div class="topbar-tools">
+        <!-- 밝기 메뉴. 해/달 아이콘 하나이고 목록은 theme.js 가 채운다 -->
+        <div id="theme-menu" class="ws-menu"></div>
         <!-- 언어 메뉴. 지구본 아이콘 하나이고 목록은 language.js 가 채운다 -->
         <div id="lang-menu" class="ws-menu"></div>
         <!-- 저장소 바로가기. 새 탭에서 연다 -->
