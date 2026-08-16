@@ -70,6 +70,9 @@ globalThis.window = { addEventListener() {}, location: globalThis.location };
 globalThis.history = { pushState() {}, replaceState() {} };
 
 await bootKorean();
+// 화면 모듈은 최상단에서 저장해 둔 값(뷰 모드·열 수)을 읽는다. 브라우저 밖에는 없는 것
+globalThis.localStorage = { getItem: () => null, setItem() {} };
+
 const board = await import("../static/js/board.js");
 await board.renderBoard();
 

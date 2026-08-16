@@ -46,6 +46,8 @@ globalThis.document = {
   body,
   getElementById: element,
   querySelectorAll: () => columnButtons,
+  // 레일 접기는 밖을 누르면 닫히므로 모듈이 최상단에서 문서에 리스너를 건다
+  addEventListener() {},
 };
 
 await bootKorean();
