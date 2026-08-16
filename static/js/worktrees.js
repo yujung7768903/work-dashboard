@@ -32,7 +32,7 @@ let openMenuKey = null;
 
 const rowKey = (repo, branch) => `${repo} ${branch}`;
 
-// 마지막으로 받아 둔 응답. 한 번 부르는 데 git·lsof 로 0.6 초가 걸리므로,
+// 마지막으로 받아 둔 응답. 한 번 부르는 데 git·lsof 로 0.4 초가 걸리므로,
 // 서버 데이터가 그대로인 조작(커밋 토글·라벨 전환)은 이걸로 다시 그린다
 let cached = null;
 
@@ -43,7 +43,7 @@ let groupBy = localStorage.getItem(VIEW_KEY) === GROUP_BY_PROJECT
 
 export async function renderWorktrees() {
   // 들고 있는 게 있으면 먼저 그려 두고, 새로 받아 한 번 더 그린다.
-  // 없으면 빈 칸 대신 도는 원을 세운다 — 한 번 받는 데 0.6 초가 걸린다
+  // 없으면 빈 칸 대신 도는 원을 세운다 — 한 번 받는 데 0.4 초가 걸린다
   if (cached) draw(cached);
   else drawLoading();
   cached = (await api.getWorktrees(groupBy)).groups;
