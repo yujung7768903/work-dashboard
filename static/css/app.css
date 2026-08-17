@@ -657,7 +657,7 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .rs-range-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); }
 .rs-range-label { color: var(--muted); font-size: var(--fs-sm); }
 /* 값 길이에 따라 넓이가 흔들리지 않게 고정폭. yyyy/mm/dd 열 자리가 넉넉히 들어간다 */
-#results-range input { width: 9em; }
+#results-range input { width: 9em; text-align: right; }
 .rs-range-actions { display: flex; justify-content: flex-end; }
 #results-range-apply { padding: var(--sp-4) var(--sp-12); font-size: var(--fs-sm); }
 #results-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap); margin-top: var(--gap); }
