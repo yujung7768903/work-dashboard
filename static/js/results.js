@@ -58,11 +58,13 @@ function syncFilterLabel() {
   const label = document.getElementById("results-filter-label");
   if (mode === MODE_CUSTOM) {
     label.textContent = customFrom || customTo ? `${customFrom || "…"} ~ ${customTo || "…"}` : t("result.filterCustom");
+    label.title = label.textContent; // 폭 고정이라 길면 잘리니 title 로 전체를 볼 수 있게
     return;
   }
   const preset = mode === MODE_ALL ? "" : mode;
   const match = options.find((button) => (button.dataset.preset || "") === preset);
   label.textContent = match ? match.textContent : t("result.filterAll");
+  label.title = "";
 }
 
 function drawPager(payload) {

@@ -630,12 +630,14 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 /* 날짜 필터 드롭박스. 트리거는 오른쪽에 붙여 두고, 패널은 그 오른쪽 끝에 맞춰 왼쪽으로
    펼친다 — 트리거가 화면 오른쪽에 있으니 왼쪽으로 펼쳐도 화면 밖으로 나가지 않는다 */
 #results-filter { position: relative; }
+/* 폭 고정 — "This week"/"Last week" 까지는 그대로, 직접 입력의 긴 날짜 범위만 말줄임 */
 #results-filter-toggle {
-  display: flex; align-items: center; gap: var(--sp-8);
+  display: flex; align-items: center; gap: var(--sp-8); width: 140px;
   border: 1px solid var(--line); background: var(--surface); color: var(--fg);
 }
 #results-filter-toggle svg { flex: none; color: var(--muted); }
-.rs-chevron { color: var(--muted); font-size: var(--fs-sm); }
+#results-filter-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-chevron { color: var(--muted); font-size: var(--fs-sm); flex: none; }
 #results-filter-menu {
   position: absolute; right: 0; top: calc(100% + var(--sp-4)); z-index: 2;
   min-width: 14em; max-width: calc(100vw - var(--sp-24));
