@@ -625,17 +625,33 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 }
 .rs-links a:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
 
-#results-controls { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin: 0 0 var(--gap); }
-/* 필터는 버튼 나열이 아니라 드롭박스 — 워크스페이스 케밥 메뉴(.ws-menu)와 같은 뼈대를 쓴다.
-   .ws-menu > button 은 "⋮" 같은 아이콘 버튼용으로 커서 글자 크기를 키워 두므로 되돌린다 */
-#results-filter-toggle { font-size: var(--fs-body); line-height: normal; }
-#results-filter-menu { min-width: 12em; }
-#results-filter-options button.active { background: var(--softer); color: var(--accent); }
-#results-filter-options button.active::after { content: "✓"; float: right; color: var(--accent); }
-#results-range { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-4); }
+#results-controls { display: flex; align-items: center; justify-content: flex-end; gap: var(--gap); margin: 0 0 var(--gap); }
+
+/* 날짜 필터 드롭박스. 트리거는 오른쪽에 붙여 두고, 패널은 그 오른쪽 끝에 맞춰 왼쪽으로
+   펼친다 — 트리거가 화면 오른쪽에 있으니 왼쪽으로 펼쳐도 화면 밖으로 나가지 않는다 */
+#results-filter { position: relative; }
+#results-filter-toggle {
+  display: flex; align-items: center; gap: var(--sp-8);
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+}
+#results-filter-toggle svg { flex: none; color: var(--muted); }
+.rs-chevron { color: var(--muted); font-size: var(--fs-sm); }
+#results-filter-menu {
+  position: absolute; right: 0; top: calc(100% + var(--sp-4)); z-index: 2;
+  min-width: 14em; max-width: calc(100vw - var(--sp-24));
+  padding: var(--sp-4); background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-ctl); box-shadow: var(--shadow-pop);
+}
+#results-filter-options button {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8);
+  width: 100%; text-align: left; background: none; white-space: nowrap;
+}
+#results-filter-options button.active { color: var(--accent); font-weight: 600; }
+#results-filter-options button.active::after { content: "✓"; }
+#results-range { display: flex; align-items: center; gap: var(--sp-8); flex-wrap: wrap; padding: var(--sp-4); }
+/* display 지정이 기본 [hidden] 규칙을 이겨 hidden=true 여도 그려진다 — .switch[hidden] 과 같은 함정 */
+#results-range[hidden] { display: none; }
 #results-range input { width: auto; }
-/* .ws-menu-items button 은 메뉴 줄처럼 폭 100%·배경 없음으로 깔지만, 적용 버튼은 보통 버튼으로 보여야 한다 */
-#results-range-apply { width: auto; background: color-mix(in srgb, var(--fg) 7%, var(--surface)); text-align: center; }
 #results-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap); margin-top: var(--gap); }
 #results-page-label { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 

@@ -255,11 +255,17 @@
       <section id="tab-results" class="tab" hidden>
         <div id="results-controls">
           <!-- 빈 preset("") 은 필터 없음(전체). custom 은 목록 대신 날짜 범위를 보여준다 -->
-          <div id="results-filter" class="ws-menu">
+          <div id="results-filter">
             <button type="button" id="results-filter-toggle">
-              <span id="results-filter-label" data-i18n="result.filterAll"></span> ▾
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <rect x="2.2" y="3.4" width="11.6" height="10.4" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M2.2 6.6h11.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M5.4 2.2v2.4M10.6 2.2v2.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <span id="results-filter-label" data-i18n="result.filterAll"></span>
+              <span class="rs-chevron" aria-hidden="true">⌄</span>
             </button>
-            <div id="results-filter-menu" class="ws-menu-items" hidden>
+            <div id="results-filter-menu" hidden>
               <div id="results-filter-options">
                 <button type="button" class="active" data-preset="" data-i18n="result.filterAll"></button>
                 <button type="button" data-preset="today" data-i18n="result.filterToday"></button>
