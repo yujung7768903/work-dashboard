@@ -42,7 +42,6 @@ SESSION_WAIT_SEC = 30  # 잡이 state.json 에 sessionId 를 적을 때까지
 SESSION_POLL_SEC = 1
 NAME_RETRY = 5
 NAME_RETRY_SLEEP_SEC = 2
-GIT_TIMEOUT_SEC = 5
 FIVE_HOUR_KEY = "five_hour"
 MS_PER_SECOND = 1000
 WORKSPACE_LABELS = (
@@ -59,7 +58,6 @@ REASON_USAGE = "5시간 창 사용률이 한도에 닿음"
 REASON_NO_USAGE = "사용률 데이터가 아예 없음 — 모르면 안 돈다"
 REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
-REASON_DIRTY = "작업 위치에 커밋 안 된 변경이 있음"
 REASON_READY = "시작 가능"
 
 # 실행 id → 워크트리 경로. 끝난 실행만 담는다(그 뒤로 바뀌지 않는다)
@@ -145,8 +143,6 @@ def judge(con):
     cwd = target_cwd(con, picked["workspace"])
     if not cwd:
         return dict(picked, reason=REASON_NO_CWD, state=state)
-    if dirty(cwd):
-        return dict(picked, reason=REASON_DIRTY, state=state, cwd=cwd)
     return dict(
         picked,
         reason=REASON_READY,
@@ -245,12 +241,6 @@ def target_cwd(con, workspace):
     if not counted:
         return ""
     return max(counted, key=lambda root: counted[root])
-
-
-def dirty(cwd):
-    """사람의 미완성 변경 위에 자율 세션이 겹치면 두 변경을 분리할 수 없다"""
-    result = _git(cwd, "status", "--porcelain")
-    return result is None or bool(result.strip())
 
 
 def build_prompt(todo, workspace, cwd):
@@ -500,17 +490,6 @@ def _name_job(jobs_root, job_id, name):
 def _main_checkout(cwd):
     index = (cwd or "").find(release.WORKTREE_MARK)
     return cwd[:index] if index > 0 else (cwd or "")
-
-
-def _git(cwd, *args):
-    try:
-        result = subprocess.run(
-            ["git", "-C", cwd, *args], capture_output=True, text=True,
-            timeout=GIT_TIMEOUT_SEC,
-        )
-    except Exception:
-        return None
-    return result.stdout if result.returncode == 0 else None
 
 
 def _read_json(path):
