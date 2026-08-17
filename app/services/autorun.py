@@ -386,7 +386,8 @@ def _set_todo_status(con, todo_id, status):
 
 
 def handover_if_human(con, claude_session_id):
-    """UserPromptSubmit 이 부른다. 사람이 끼어들었으면 인계하고 autorun 을 끈다.
+    """UserPromptSubmit 이 부른다. 도는 잡에 사람이 끼어들었으면 인계하고 autorun 을 끈다.
+    끝난 잡에 말을 거는 것은 검토라서 끄지 않는다 — 그 할일은 locked_todo_ids 가 이미 뺀다.
 
     무엇이 '사람' 인가 — 자율 세션의 **첫** 프롬프트는 자율 실행이 스스로 넣은 지시다.
     그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다.
@@ -402,8 +403,9 @@ def handover_if_human(con, claude_session_id):
 
 
 def disable_for_session(con, claude_session_id):
-    """그 세션이 자율 잡이면 autorun 을 끈다. 판정 없이 끄기만 하는 메커니즘"""
-    if not autorun_repo.find_by_session(con, claude_session_id):
+    """그 세션이 아직 도는 자율 잡이면 autorun 을 끈다. 판정 없이 끄기만 하는 메커니즘"""
+    run = autorun_repo.find_by_session(con, claude_session_id)
+    if not run or run["ended_at"]:
         return False
     autorun_repo.set_enabled(con, False)
     return True

@@ -527,6 +527,15 @@ class Handover(AutorunCase):
         self.assertTrue(autorun.handover_if_human(self.con, CHILD))
         self.assertFalse(autorun_repo.state(self.con)["enabled"])
 
+    def test_review_feedback_leaves_autorun_on(self):
+        """검토 대기 잡에 주는 피드백은 인계가 아니다 — 다른 할일까지 멈출 이유가 없다"""
+        autorun.tick(self.con, launcher=Recorder())
+        run = autorun_repo.find_by_session(self.con, CHILD)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        session_repo.set_last_prompt(self.con, CHILD, "이거 브라우저 검증은 한거야?")
+        self.assertFalse(autorun.handover_if_human(self.con, CHILD))
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
     def test_handover_ignores_sessions_without_a_run(self):
         session_repo.register(self.con, "손세션", cwd=self.repo)
         session_repo.set_last_prompt(self.con, "손세션", "사람이 친 지시")
