@@ -638,7 +638,7 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 #results-filter-toggle svg { flex: none; color: var(--muted); }
 #results-filter-label {
   flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; text-align: right;
+  white-space: nowrap; text-align: center;
 }
 .rs-chevron { color: var(--muted); font-size: var(--fs-sm); flex: none; }
 #results-filter-menu {
