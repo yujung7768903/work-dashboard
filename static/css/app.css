@@ -636,7 +636,10 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   border: 1px solid var(--line); background: var(--surface); color: var(--fg);
 }
 #results-filter-toggle svg { flex: none; color: var(--muted); }
-#results-filter-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#results-filter-label {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; text-align: right;
+}
 .rs-chevron { color: var(--muted); font-size: var(--fs-sm); flex: none; }
 #results-filter-menu {
   position: absolute; right: 0; top: calc(100% + var(--sp-4)); z-index: 2;
@@ -657,7 +660,7 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .rs-range-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); }
 .rs-range-label { color: var(--muted); font-size: var(--fs-sm); }
 /* 값 길이에 따라 넓이가 흔들리지 않게 고정폭. yyyy/mm/dd 열 자리가 넉넉히 들어간다 */
-#results-range input { width: 9em; text-align: right; }
+#results-range input { width: 9em; }
 .rs-range-actions { display: flex; justify-content: flex-end; }
 #results-range-apply { padding: var(--sp-4) var(--sp-12); font-size: var(--fs-sm); }
 #results-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap); margin-top: var(--gap); }
