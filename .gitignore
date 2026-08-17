@@ -1,8 +1,6 @@
 __pycache__/
 *.pyc
 
-# 실 DB 는 ~/.claude/work-dashboard/dash.db 다. 저장소 안에 생긴 sqlite 파일은 잔여물이며,
-# 추적되면 dirty 판정이 영구히 서서 자율 실행이 안 돈다
 *.db*
 
 # run.sh 가 쌓는 실행 로그. 7일치만 남기고 저장소에는 넣지 않는다
