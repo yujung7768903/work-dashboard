@@ -65,7 +65,7 @@ globalThis.fetch = (url) =>
 await bootKorean();
 const { openDetail } = await import("../static/js/sessions.js");
 
-// 팝업 본문은 [탭바, 개요, 세션, 워크트리] 네 덩어리. 각 탭의 첫 dlg-title 을 뽑아 비교한다
+// 팝업 본문은 [탭바, 개요, 세션, 워크트리, 결과물] 다섯 덩어리. 각 탭의 첫 dlg-title 을 뽑아 비교한다
 const firstTitle = (pane) => {
   const stack = [...pane.children];
   while (stack.length) {
@@ -81,11 +81,11 @@ async function titles(target) {
   body.children = [];
   openDetail(target);
   // 팝업은 목록 fetch → 상세 fetch 두 단을 거쳐 그린다. 큐가 빌 때까지 기다린다
-  for (let i = 0; body.children.length !== 4 && i < 50; i += 1) {
+  for (let i = 0; body.children.length !== 5 && i < 50; i += 1) {
     await new Promise((done) => setTimeout(done, 0));
   }
   // 렌더가 실패하면 팝업은 본문을 에러 문구로 바꾼다 — 그걸 그대로 띄워 원인을 보인다
-  assert.equal(body.children.length, 4, `팝업이 안 그려졌다: ${body.textContent}`);
+  assert.equal(body.children.length, 5, `팝업이 안 그려졌다: ${body.textContent}`);
   const [, overview, session] = body.children;
   return [firstTitle(overview), firstTitle(session)];
 }

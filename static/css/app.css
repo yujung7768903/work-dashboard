@@ -626,10 +626,16 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .rs-links a:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
 
 #results-controls { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin: 0 0 var(--gap); }
-#results-filter { display: flex; gap: var(--sp-8); flex-wrap: wrap; }
-#results-filter button.active { background: var(--softer); color: var(--accent); }
-#results-range { display: flex; align-items: center; gap: var(--sp-8); }
+/* 필터는 버튼 나열이 아니라 드롭박스 — 워크스페이스 케밥 메뉴(.ws-menu)와 같은 뼈대를 쓴다.
+   .ws-menu > button 은 "⋮" 같은 아이콘 버튼용으로 커서 글자 크기를 키워 두므로 되돌린다 */
+#results-filter-toggle { font-size: var(--fs-body); line-height: normal; }
+#results-filter-menu { min-width: 12em; }
+#results-filter-options button.active { background: var(--softer); color: var(--accent); }
+#results-filter-options button.active::after { content: "✓"; float: right; color: var(--accent); }
+#results-range { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-4); }
 #results-range input { width: auto; }
+/* .ws-menu-items button 은 메뉴 줄처럼 폭 100%·배경 없음으로 깔지만, 적용 버튼은 보통 버튼으로 보여야 한다 */
+#results-range-apply { width: auto; background: color-mix(in srgb, var(--fg) 7%, var(--surface)); text-align: center; }
 #results-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap); margin-top: var(--gap); }
 #results-page-label { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 

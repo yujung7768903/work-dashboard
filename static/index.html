@@ -254,19 +254,26 @@
 
       <section id="tab-results" class="tab" hidden>
         <div id="results-controls">
-          <!-- 빈 preset("") 은 필터 없음(전체). custom 만 아래 직접 입력 범위를 연다 -->
-          <div id="results-filter">
-            <button type="button" class="active" data-preset="" data-i18n="result.filterAll"></button>
-            <button type="button" data-preset="today" data-i18n="result.filterToday"></button>
-            <button type="button" data-preset="this_week" data-i18n="result.filterThisWeek"></button>
-            <button type="button" data-preset="last_week" data-i18n="result.filterLastWeek"></button>
-            <button type="button" data-preset="custom" data-i18n="result.filterCustom"></button>
-          </div>
-          <div id="results-range" hidden>
-            <input type="date" id="results-date-from">
-            <span aria-hidden="true">–</span>
-            <input type="date" id="results-date-to">
-            <button type="button" id="results-range-apply" data-i18n="result.filterApply"></button>
+          <!-- 빈 preset("") 은 필터 없음(전체). custom 은 목록 대신 날짜 범위를 보여준다 -->
+          <div id="results-filter" class="ws-menu">
+            <button type="button" id="results-filter-toggle">
+              <span id="results-filter-label" data-i18n="result.filterAll"></span> ▾
+            </button>
+            <div id="results-filter-menu" class="ws-menu-items" hidden>
+              <div id="results-filter-options">
+                <button type="button" class="active" data-preset="" data-i18n="result.filterAll"></button>
+                <button type="button" data-preset="today" data-i18n="result.filterToday"></button>
+                <button type="button" data-preset="this_week" data-i18n="result.filterThisWeek"></button>
+                <button type="button" data-preset="last_week" data-i18n="result.filterLastWeek"></button>
+                <button type="button" data-preset="custom" data-i18n="result.filterCustom"></button>
+              </div>
+              <div id="results-range" hidden>
+                <input type="date" id="results-date-from">
+                <span aria-hidden="true">–</span>
+                <input type="date" id="results-date-to">
+                <button type="button" id="results-range-apply" data-i18n="result.filterApply"></button>
+              </div>
+            </div>
           </div>
         </div>
         <div id="results-list"></div>

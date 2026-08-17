@@ -140,6 +140,34 @@ assert.ok(
   "빈 링크가 앵커로 만들어지면 안 된다"
 );
 
+// 날짜 필터는 버튼 나열이 아니라 드롭박스 — 토글을 누르면 열리고, 직접 입력을 고르면
+// 옵션 목록 대신 날짜 범위가 나오며(드롭박스는 안 닫힌다), 적용을 누르면 그 범위로
+// 다시 조회하고 드롭박스가 닫힌다. HTML 은 hidden 속성으로 닫힌 채 시작하므로 흉내낸다
+// 토글 핸들러 안에서만 처음 조회되는 요소라 미리 흉내내 둔다(document.getElementById 와 같은 규칙)
+elements["results-filter-menu"] ??= node();
+elements["results-filter-menu"].hidden = true;
+elements["results-filter-options"].hidden = false;
+elements["results-filter-toggle"].listeners.click({ stopPropagation() {} });
+assert.equal(elements["results-filter-menu"].hidden, false, "토글을 누르면 드롭박스가 열려야 한다");
+
+elements["results-filter-options"].listeners.click({
+  target: { closest: () => ({ dataset: { preset: "custom" } }) },
+});
+assert.equal(elements["results-filter-options"].hidden, true, "직접 입력을 고르면 옵션 목록이 숨어야 한다");
+assert.equal(elements["results-range"].hidden, false, "직접 입력을 고르면 날짜 범위가 보여야 한다");
+assert.equal(elements["results-filter-menu"].hidden, false, "직접 입력은 드롭박스를 닫지 않아야 한다");
+
+elements["results-date-from"].value = "2026-08-01";
+elements["results-date-to"].value = "2026-08-10";
+asked.length = 0;
+elements["results-range-apply"].listeners.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.ok(
+  asked.some((call) => call.includes("date_from=2026-08-01") && call.includes("date_to=2026-08-10")),
+  asked.join(", ")
+);
+assert.equal(elements["results-filter-menu"].hidden, true, "적용을 누르면 드롭박스가 닫혀야 한다");
+
 // 연결된 할일 줄을 누르면 그 할일 팝업이 열린다 (워크트리 탭의 연결 줄과 같은 규칙)
 const todoLine = created.find((made) => made.textContent === "#12 | 이력서 Figma");
 assert.ok(todoLine, "연결된 할일 줄이 없다");

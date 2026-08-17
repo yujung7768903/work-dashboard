@@ -37,7 +37,7 @@ function filterQuery() {
 }
 
 function draw(payload) {
-  syncFilterButtons();
+  syncFilterLabel();
   const list = document.getElementById("results-list");
   list.innerHTML = "";
   if (!payload.items.length) {
@@ -48,11 +48,20 @@ function draw(payload) {
   drawPager(payload);
 }
 
-function syncFilterButtons() {
-  document.querySelectorAll("#results-filter button").forEach((button) => {
-    const preset = button.dataset.preset || MODE_ALL;
-    button.classList.toggle("active", preset === mode);
+// 토글 버튼에 지금 고른 필터를 보여준다. 직접 입력은 옵션 버튼 문구 대신 날짜 범위를 보여준다
+function syncFilterLabel() {
+  const options = [...document.querySelectorAll("#results-filter-options button")];
+  options.forEach((button) => {
+    button.classList.toggle("active", (button.dataset.preset || MODE_ALL) === mode);
   });
+  const label = document.getElementById("results-filter-label");
+  if (mode === MODE_CUSTOM) {
+    label.textContent = customFrom || customTo ? `${customFrom || "…"} ~ ${customTo || "…"}` : t("result.filterCustom");
+    return;
+  }
+  const preset = mode === MODE_ALL ? "" : mode;
+  const match = options.find((button) => (button.dataset.preset || "") === preset);
+  label.textContent = match ? match.textContent : t("result.filterAll");
 }
 
 function drawPager(payload) {
@@ -67,15 +76,30 @@ function drawPager(payload) {
   document.getElementById("results-next").disabled = payload.page >= totalPages;
 }
 
-document.getElementById("results-filter").addEventListener("click", (event) => {
+// 드롭박스: 토글로 열고 닫는다. 열 때는 항상 옵션 목록에서 시작한다(직접 입력 중이었어도 다시 고를 수 있게)
+document.getElementById("results-filter-toggle").addEventListener("click", (event) => {
+  event.stopPropagation();
+  const menu = document.getElementById("results-filter-menu");
+  const opening = menu.hidden;
+  menu.hidden = !opening;
+  if (opening) {
+    document.getElementById("results-filter-options").hidden = false;
+    document.getElementById("results-range").hidden = true;
+  }
+});
+
+document.getElementById("results-filter-options").addEventListener("click", (event) => {
   const preset = event.target.closest("button")?.dataset.preset;
   if (preset === undefined) return;
-  document.getElementById("results-range").hidden = preset !== MODE_CUSTOM;
   if (preset === MODE_CUSTOM) {
-    mode = MODE_CUSTOM;
-    syncFilterButtons();
-    return; // 날짜 두 값을 받아야 하므로 적용 버튼을 기다린다
+    // 날짜 두 값을 받아야 하므로 옵션 목록 대신 캘린더 입력을 보여주고 적용 버튼을 기다린다
+    document.getElementById("results-filter-options").hidden = true;
+    document.getElementById("results-range").hidden = false;
+    document.getElementById("results-date-from").value = customFrom;
+    document.getElementById("results-date-to").value = customTo;
+    return;
   }
+  document.getElementById("results-filter-menu").hidden = true;
   mode = preset || MODE_ALL;
   page = 1;
   run(renderResultsTab);
@@ -86,6 +110,7 @@ document.getElementById("results-range-apply").addEventListener("click", () => {
   customTo = document.getElementById("results-date-to").value;
   mode = MODE_CUSTOM;
   page = 1;
+  document.getElementById("results-filter-menu").hidden = true;
   run(renderResultsTab);
 });
 
@@ -207,8 +232,12 @@ function element(tag, className, text) {
   return node;
 }
 
-// 카드 밖을 누르면 열린 케밥 메뉴 닫기
-document.addEventListener("click", () => {
+// 밖을 누르면 열린 필터 드롭박스·케밥 메뉴 닫기
+document.addEventListener("click", (event) => {
+  const filterMenu = document.getElementById("results-filter-menu");
+  if (filterMenu && !filterMenu.hidden && !document.getElementById("results-filter").contains(event.target)) {
+    filterMenu.hidden = true;
+  }
   if (openMenuId === null) return;
   openMenuId = null;
   if (cached) draw(cached);
