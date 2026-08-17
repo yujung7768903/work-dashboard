@@ -274,13 +274,18 @@
                 <button type="button" data-preset="custom" data-i18n="result.filterCustom"></button>
               </div>
               <div id="results-range" hidden>
+                <!-- 네이티브 date input 은 mm/dd/yyyy 여부를 브라우저 로캘이 정해 CSS·속성으로
+                     못 바꾼다(lang 속성도 안 먹힘 — 직접 확인함). yyyy/mm/dd 를 강제하려고
+                     글자 입력 + 패턴 검증으로 대신한다 -->
                 <div class="rs-range-row">
                   <span class="rs-range-label" data-i18n="result.filterStart"></span>
-                  <input type="date" id="results-date-from">
+                  <input type="text" id="results-date-from" inputmode="numeric"
+                         placeholder="yyyy/mm/dd" pattern="\d{4}/\d{2}/\d{2}">
                 </div>
                 <div class="rs-range-row">
                   <span class="rs-range-label" data-i18n="result.filterEnd"></span>
-                  <input type="date" id="results-date-to">
+                  <input type="text" id="results-date-to" inputmode="numeric"
+                         placeholder="yyyy/mm/dd" pattern="\d{4}/\d{2}/\d{2}">
                 </div>
                 <div class="rs-range-actions">
                   <button type="button" id="results-range-apply" data-i18n="result.filterApply"></button>

@@ -81,6 +81,8 @@ const node = () => {
     addEventListener(type, handler) {
       made.listeners[type] = handler;
     },
+    // 직접 입력 필드의 pattern 검사 — 이 체크는 항상 형식이 맞는 값만 넣으므로 통과로 고정
+    reportValidity: () => true,
   };
   return made;
 };
@@ -157,8 +159,9 @@ assert.equal(elements["results-filter-options"].hidden, true, "직접 입력을 
 assert.equal(elements["results-range"].hidden, false, "직접 입력을 고르면 날짜 범위가 보여야 한다");
 assert.equal(elements["results-filter-menu"].hidden, false, "직접 입력은 드롭박스를 닫지 않아야 한다");
 
-elements["results-date-from"].value = "2026-08-01";
-elements["results-date-to"].value = "2026-08-10";
+// 입력창은 yyyy/mm/dd 로 받고, 서버로는 yyyy-mm-dd 로 바꿔 보내야 한다
+elements["results-date-from"].value = "2026/08/01";
+elements["results-date-to"].value = "2026/08/10";
 asked.length = 0;
 elements["results-range-apply"].listeners.click();
 await new Promise((resolve) => setTimeout(resolve, 0));

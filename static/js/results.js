@@ -28,8 +28,9 @@ export async function renderResultsTab() {
 function filterQuery() {
   const query = { page: String(page) };
   if (mode === MODE_CUSTOM) {
-    if (customFrom) query.date_from = customFrom;
-    if (customTo) query.date_to = customTo;
+    // 입력창은 yyyy/mm/dd, 서버는 yyyy-mm-dd — 여기서만 바꾼다
+    if (customFrom) query.date_from = customFrom.replaceAll("/", "-");
+    if (customTo) query.date_to = customTo.replaceAll("/", "-");
   } else if (mode !== MODE_ALL) {
     query.preset = mode;
   }
@@ -106,8 +107,12 @@ document.getElementById("results-filter-options").addEventListener("click", (eve
 });
 
 document.getElementById("results-range-apply").addEventListener("click", () => {
-  customFrom = document.getElementById("results-date-from").value;
-  customTo = document.getElementById("results-date-to").value;
+  const fromInput = document.getElementById("results-date-from");
+  const toInput = document.getElementById("results-date-to");
+  // pattern 은 값이 있을 때만 검사한다 — 둘 다 비워도 되는 필드라 이걸로 충분하다
+  if (!fromInput.reportValidity() || !toInput.reportValidity()) return;
+  customFrom = fromInput.value;
+  customTo = toInput.value;
   mode = MODE_CUSTOM;
   page = 1;
   document.getElementById("results-filter-menu").hidden = true;

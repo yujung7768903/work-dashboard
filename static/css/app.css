@@ -649,15 +649,15 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 #results-filter-options button.active { color: var(--accent); font-weight: 600; }
 #results-filter-options button.active::after { content: "✓"; }
 /* 직접 입력: 시작·종료를 한 줄씩, 적용은 그 아래 오른쪽 */
-#results-range { display: flex; flex-direction: column; gap: var(--sp-8); padding: var(--sp-4); }
+#results-range { display: flex; flex-direction: column; gap: var(--sp-8); padding: var(--sp-12); }
 /* display 지정이 기본 [hidden] 규칙을 이겨 hidden=true 여도 그려진다 — .switch[hidden] 과 같은 함정 */
 #results-range[hidden] { display: none; }
 .rs-range-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); }
 .rs-range-label { color: var(--muted); font-size: var(--fs-sm); }
-#results-range input { width: auto; }
-/* 아이콘을 누르면 여는 방식만 없앤다 — 필드 자체를 눌러 여는 건 그대로 된다(크로미움 기준) */
-#results-range input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
+/* 값 길이에 따라 넓이가 흔들리지 않게 고정폭. yyyy/mm/dd 열 자리가 넉넉히 들어간다 */
+#results-range input { width: 9em; }
 .rs-range-actions { display: flex; justify-content: flex-end; }
+#results-range-apply { padding: var(--sp-4) var(--sp-12); font-size: var(--fs-sm); }
 #results-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap); margin-top: var(--gap); }
 #results-page-label { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 
