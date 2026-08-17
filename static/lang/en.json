@@ -75,6 +75,8 @@
   "result.filterThisWeek": "This week",
   "result.filterLastWeek": "Last week",
   "result.filterCustom": "Custom",
+  "result.filterStart": "Start",
+  "result.filterEnd": "End",
   "result.filterApply": "Apply",
   "result.pagerPrev": "Prev",
   "result.pagerNext": "Next",

@@ -75,6 +75,8 @@
   "result.filterThisWeek": "本周",
   "result.filterLastWeek": "上周",
   "result.filterCustom": "自定义",
+  "result.filterStart": "开始",
+  "result.filterEnd": "结束",
   "result.filterApply": "应用",
   "result.pagerPrev": "上一页",
   "result.pagerNext": "下一页",

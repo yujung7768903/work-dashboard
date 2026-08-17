@@ -75,6 +75,8 @@
   "result.filterThisWeek": "今週",
   "result.filterLastWeek": "先週",
   "result.filterCustom": "期間指定",
+  "result.filterStart": "開始",
+  "result.filterEnd": "終了",
   "result.filterApply": "適用",
   "result.pagerPrev": "前へ",
   "result.pagerNext": "次へ",

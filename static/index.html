@@ -274,10 +274,17 @@
                 <button type="button" data-preset="custom" data-i18n="result.filterCustom"></button>
               </div>
               <div id="results-range" hidden>
-                <input type="date" id="results-date-from">
-                <span aria-hidden="true">–</span>
-                <input type="date" id="results-date-to">
-                <button type="button" id="results-range-apply" data-i18n="result.filterApply"></button>
+                <div class="rs-range-row">
+                  <span class="rs-range-label" data-i18n="result.filterStart"></span>
+                  <input type="date" id="results-date-from">
+                </div>
+                <div class="rs-range-row">
+                  <span class="rs-range-label" data-i18n="result.filterEnd"></span>
+                  <input type="date" id="results-date-to">
+                </div>
+                <div class="rs-range-actions">
+                  <button type="button" id="results-range-apply" data-i18n="result.filterApply"></button>
+                </div>
               </div>
             </div>
           </div>

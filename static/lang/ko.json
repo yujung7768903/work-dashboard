@@ -75,6 +75,8 @@
   "result.filterThisWeek": "이번 주",
   "result.filterLastWeek": "지난 주",
   "result.filterCustom": "직접 입력",
+  "result.filterStart": "시작",
+  "result.filterEnd": "종료",
   "result.filterApply": "적용",
   "result.pagerPrev": "이전",
   "result.pagerNext": "다음",
