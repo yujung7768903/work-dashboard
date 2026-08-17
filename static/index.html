@@ -66,6 +66,14 @@
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+        <button data-tab="results" data-i18n="nav.results" data-i18n-title="nav.results">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <rect x="2.2" y="2.2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="8.8" y="2.2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="2.2" y="8.8" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="8.8" y="8.8" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
         <button data-tab="settings" data-i18n="nav.settings" data-i18n-title="nav.settings">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M8.6 2.2H13a.8.8 0 0 1 .8.8v4.4L7.9 13.3a.8.8 0 0 1-1.2 0L2.7 9.3a.8.8 0 0 1 0-1.2z"
@@ -242,6 +250,31 @@
           <button type="submit" data-i18n="common.add"></button>
         </form>
         <div id="workspace-list"></div>
+      </section>
+
+      <section id="tab-results" class="tab" hidden>
+        <div id="results-controls">
+          <!-- 빈 preset("") 은 필터 없음(전체). custom 만 아래 직접 입력 범위를 연다 -->
+          <div id="results-filter">
+            <button type="button" class="active" data-preset="" data-i18n="result.filterAll"></button>
+            <button type="button" data-preset="today" data-i18n="result.filterToday"></button>
+            <button type="button" data-preset="this_week" data-i18n="result.filterThisWeek"></button>
+            <button type="button" data-preset="last_week" data-i18n="result.filterLastWeek"></button>
+            <button type="button" data-preset="custom" data-i18n="result.filterCustom"></button>
+          </div>
+          <div id="results-range" hidden>
+            <input type="date" id="results-date-from">
+            <span aria-hidden="true">–</span>
+            <input type="date" id="results-date-to">
+            <button type="button" id="results-range-apply" data-i18n="result.filterApply"></button>
+          </div>
+        </div>
+        <div id="results-list"></div>
+        <div id="results-pager" hidden>
+          <button type="button" id="results-prev" data-i18n="result.pagerPrev"></button>
+          <span id="results-page-label"></span>
+          <button type="button" id="results-next" data-i18n="result.pagerNext"></button>
+        </div>
       </section>
 
       <section id="tab-settings" class="tab" hidden>

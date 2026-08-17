@@ -221,3 +221,10 @@ AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
 AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다
 # 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
 MERGE_TEST_TIMEOUT_SEC = 600
+
+# 결과물(Result). 카드 그리드 한 페이지 수 — 2컬럼 기준 화면에서 다섯 줄 남짓
+RESULTS_PAGE_SIZE = 12
+RESULT_PRESET_TODAY = "today"
+RESULT_PRESET_THIS_WEEK = "this_week"
+RESULT_PRESET_LAST_WEEK = "last_week"
+RESULT_DATE_PRESETS = (RESULT_PRESET_TODAY, RESULT_PRESET_THIS_WEEK, RESULT_PRESET_LAST_WEEK)

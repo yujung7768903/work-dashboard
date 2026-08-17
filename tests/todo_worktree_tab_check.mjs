@@ -74,7 +74,7 @@ const DROPPED = {
 const PAYLOAD = {
   "/api/workspaces": [],
   "/api/categories": [],
-  "/api/todos/42": { todo: TODO, sessions: [], worktrees: [MERGED, DROPPED] },
+  "/api/todos/42": { todo: TODO, sessions: [], worktrees: [MERGED, DROPPED], results: [] },
 };
 globalThis.fetch = (url) =>
   Promise.resolve({ ok: true, json: () => Promise.resolve(PAYLOAD[url]) });
@@ -84,15 +84,15 @@ const { openDetail } = await import("../static/js/sessions.js");
 
 body.children = [];
 openDetail({ todo: { id: 42 } });
-for (let i = 0; body.children.length !== 4 && i < 50; i += 1) {
+for (let i = 0; body.children.length !== 5 && i < 50; i += 1) {
   await new Promise((done) => setTimeout(done, 0));
 }
-assert.equal(body.children.length, 4, `팝업이 안 그려졌다: ${body.textContent}`);
+assert.equal(body.children.length, 5, `팝업이 안 그려졌다: ${body.textContent}`);
 
 const [tabs, , , worktreePane] = body.children;
 assert.deepEqual(
   tabs.children.map((button) => button.textContent),
-  ["개요", "세션", "워크트리"]
+  ["개요", "세션", "워크트리", "결과물"]
 );
 
 // 워크트리 하나가 한 덩어리. 병합된 것도 지운 것도 다 남아야 한다

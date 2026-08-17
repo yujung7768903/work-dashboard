@@ -22,6 +22,7 @@ from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
 from app.repositories import labels as label_repo
+from app.repositories import results as result_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import settings as settings_repo
@@ -139,6 +140,14 @@ def _route_get(con, head, item_id, query):
         return usage.snapshot(con)
     if head == "worktrees":
         return worktrees.overview(con, _single(query, "group_by", worktrees.GROUP_BY_WORKSPACE))
+    if head == "results":
+        return result_repo.list_page(
+            con,
+            preset=_single(query, "preset", None),
+            date_from=_single(query, "date_from", None),
+            date_to=_single(query, "date_to", None),
+            page=int(_single(query, "page", 1) or 1),
+        )
     if head == "autorun":
         return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
     if head == "gtasks":
@@ -253,6 +262,7 @@ def _route_delete(con, head, item_id, query):
         "labels": lambda con, item_id: label_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
+        "results": result_repo.delete,
     }
     if head not in deleters:
         raise UnknownEndpoint("알 수 없는 엔드포인트")

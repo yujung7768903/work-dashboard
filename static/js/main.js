@@ -2,6 +2,7 @@
 // (이 모듈은 boot.js 가 언어를 확정한 뒤에 들어온다 — 아래 TITLES 가 그때 번역된다)
 import { renderBoard, renderShared } from "./board.js";
 import { t } from "./i18n.js";
+import { renderResultsTab } from "./results.js";
 import { renderSettings } from "./settings.js";
 import { renderUsage } from "./usage.js";
 import { renderWorkspaceTab } from "./workspace.js";
@@ -31,6 +32,7 @@ export function renderBoardTab() {
 const RENDERERS = {
   board: renderBoardTab,
   workspace: renderWorkspaceTab,
+  results: renderResultsTab,
   settings: renderSettings,
   usage: renderUsage,
 };
@@ -42,6 +44,7 @@ const DEFAULT_TAB = "usage";
 const TITLES = {
   board: t("nav.board"),
   workspace: t("nav.workspace"),
+  results: t("nav.results"),
   settings: t("nav.settings"),
   usage: t("nav.usage"),
 };

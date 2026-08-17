@@ -21,6 +21,7 @@ from app.constants import (
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
+from app.repositories import results as result_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import settings as settings_repo
@@ -211,6 +212,22 @@ def _build_parser():
         " 없으면 ended 로 등록한다. 할일 상태는 바꾸지 않는다",
     )
     link_todo.set_defaults(handler=_cmd_link_todo)
+
+    add_result = sub.add_parser(
+        "add-result", help="결과물 기록 (코드 이외 산출물 — Figma·블로그·Jira 댓글·배포 등)"
+    )
+    add_result.add_argument("todo_id", type=int)
+    add_result.add_argument("kind", help="작업 형태 (Figma, Jira, Velog, Medium, 배포 등)")
+    add_result.add_argument("--summary", default=None, help="내용 요약")
+    add_result.add_argument(
+        "--link",
+        dest="links",
+        action="append",
+        default=[],
+        metavar="LABEL|URL",
+        help="링크. 'label|url' 또는 url 만. 여러 개면 --link 를 반복 (배포처럼 구성마다 하나)",
+    )
+    add_result.set_defaults(handler=_cmd_add_result)
 
     merge_cmd = sub.add_parser(
         "merge", help="워크트리 브랜치를 master 로 병합 (상태 확인·테스트·해제까지 한 번에)"
@@ -693,6 +710,24 @@ def _cmd_link_todo(con, args):
         con, session, args.todo_id, claim=not args.past, status=args.status
     )
     print(f"할일 {args.todo_id} 연결됨" + (f" ({args.status})" if args.status else ""))
+
+
+def _cmd_add_result(con, args):
+    created = result_repo.create(
+        con,
+        args.todo_id,
+        args.kind,
+        summary=args.summary,
+        session_cwd=os.getcwd(),
+        links=[_parse_link(item) for item in args.links],
+    )
+    print(f"{created['id']}. [{created['kind']}] 할일 {created['todo_id']} 에 기록됨")
+
+
+def _parse_link(text):
+    """'label|url' 이면 그대로, 구분자가 없으면 전체를 url 로 본다"""
+    label, sep, url = text.partition("|")
+    return {"label": label, "url": url} if sep else {"label": "", "url": label}
 
 
 def _cmd_scan_history(con, args):

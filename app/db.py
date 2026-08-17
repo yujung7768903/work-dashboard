@@ -137,6 +137,19 @@ CREATE TABLE IF NOT EXISTS gtasks_state(
     last_error TEXT,
     updated_at TEXT NOT NULL
 );
+-- 결과물(Result). 코드 아닌 산출물(Figma·블로그·Jira 댓글·배포 등)의 기록.
+-- 워크트리처럼 git 에서 자동으로 되짚을 수 없어 세션이 dash.py add-result 로 직접 남긴다.
+-- 링크는 여러 개일 수 있어(배포는 구성마다 하나) 조인 테이블 대신 JSON 배열로 둔다
+CREATE TABLE IF NOT EXISTS results(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    todo_id INTEGER NOT NULL REFERENCES todos(id),
+    kind TEXT NOT NULL,
+    summary TEXT,
+    session_cwd TEXT,
+    links_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 SEEDED_FLAG = "categories_seeded"

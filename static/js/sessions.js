@@ -11,10 +11,12 @@ const ROLE_LABELS = { user: t("session.roleUser"), assistant: t("session.roleAss
 const OVERVIEW_TAB = "overview";
 const SESSION_TAB = "session";
 const WORKTREE_TAB = "worktree";
+const RESULT_TAB = "result";
 const TABS = [
   [OVERVIEW_TAB, t("session.tabOverview")],
   [SESSION_TAB, t("session.tabSession")],
   [WORKTREE_TAB, t("common.worktree")],
+  [RESULT_TAB, t("nav.results")],
 ];
 // 워크트리 상태 → (배지 글자, 설명). 병합·삭제된 워크트리도 이름과 상태로 남는다
 const WORKTREE_STATES = {
@@ -133,7 +135,7 @@ async function loadContext(target) {
     // 분류 직후처럼 방금 만들어진 할일을 보여줘야 할 때만 개요로 열린다
     return { ...detail, ...common, tab: target.tab ?? SESSION_TAB };
   }
-  const { todo, sessions, worktrees } = await api.getTodo(target.todo.id);
+  const { todo, sessions, worktrees, results } = await api.getTodo(target.todo.id);
   // 할일에서 열면 세션 탭은 그 할일을 마지막으로 잡은 세션을 보여준다
   const detail = sessions.length ? await api.getSession(sessions[0].id) : null;
   return {
@@ -141,6 +143,7 @@ async function loadContext(target) {
     messages: detail?.messages ?? [],
     todos: [todo],
     worktrees,
+    results,
     ...common,
     tab: OVERVIEW_TAB,
     // 할일에서 열면 세션 탭 머리도 개요와 같은 할일 표기를 쓴다
@@ -153,6 +156,7 @@ function tabbed(context, dialog) {
     [OVERVIEW_TAB]: overviewPane(context.todos),
     [SESSION_TAB]: sessionPane(context, dialog),
     [WORKTREE_TAB]: worktreePane(context.worktrees),
+    [RESULT_TAB]: resultPane(context.results),
   };
   Object.entries(panes).forEach(([key, pane]) => {
     pane.hidden = key !== context.tab;
@@ -333,6 +337,77 @@ function commitSection(row) {
   });
   block.appendChild(list);
   return block;
+}
+
+// 이 할일의 결과물 — 코드 이외 산출물(Figma·블로그·Jira 댓글·배포 등). 여러 개일 수 있어
+// 각각 펼쳤다 접었다 할 수 있는 패널로 둔다. 하나뿐이면 펼쳐서, 둘 이상이면 모두 접어서 보여준다
+function resultPane(results) {
+  const pane = element("div", "dlg-pane");
+  if (!results?.length) {
+    pane.appendChild(element("p", "muted", t("result.none")));
+    return pane;
+  }
+  const openSingle = results.length === 1;
+  results.forEach((result) => pane.appendChild(resultPanel(result, openSingle)));
+  return pane;
+}
+
+function resultPanel(result, open) {
+  const details = document.createElement("details");
+  details.className = "dlg-section rs-panel";
+  details.open = open;
+  const summary = document.createElement("summary");
+  summary.append(
+    element("span", "title", result.kind),
+    element("span", "rs-when", relativeOrDate(result.updated_at))
+  );
+  details.appendChild(summary);
+  details.append(...resultBody(result));
+  return details;
+}
+
+function resultBody(result) {
+  const nodes = [];
+  if (result.session_cwd) nodes.push(element("p", "rs-cwd", result.session_cwd));
+  if (result.summary) nodes.push(element("p", "note-body", result.summary));
+  if (result.links.length) nodes.push(resultLinkList(result.links));
+  return nodes;
+}
+
+function resultLinkList(links) {
+  const list = element("ul", "rs-links");
+  links.forEach((link) => {
+    const item = document.createElement("li");
+    const anchor = document.createElement("a");
+    anchor.href = link.url;
+    anchor.target = "_blank";
+    anchor.rel = "noopener";
+    anchor.textContent = link.label || link.url;
+    item.appendChild(anchor);
+    list.appendChild(item);
+  });
+  return list;
+}
+
+// 오늘(UTC 날짜)이면 상대 시간, 아니면 YYYY-MM-DD. 결과물 메뉴 카드와 같은 규칙
+// (경과 시간 표기는 여러 모듈이 각자 갖는다 — usage.js 의 formatAge 주석 참고)
+function relativeOrDate(iso) {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const at = new Date(ms);
+  const today = new Date();
+  const sameDay =
+    at.getUTCFullYear() === today.getUTCFullYear() &&
+    at.getUTCMonth() === today.getUTCMonth() &&
+    at.getUTCDate() === today.getUTCDate();
+  if (!sameDay) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${at.getUTCFullYear()}-${pad(at.getUTCMonth() + 1)}-${pad(at.getUTCDate())}`;
+  }
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 60) return t("result.justNow");
+  if (sec < 3600) return t("result.minutesAgo", { count: Math.floor(sec / 60) });
+  return t("result.hoursAgo", { count: Math.floor(sec / 3600) });
 }
 
 function sessionPane(context, dialog) {

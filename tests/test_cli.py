@@ -273,6 +273,41 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("연결", out)
 
+    def test_add_result_records_kind_summary_and_links(self):
+        self.run_cli("add-workspace", "개발", "포트폴리오")
+        self.run_cli("add-todo", "이력서 Figma", "--workspace", "1")
+        code, out, _ = self.run_cli(
+            "add-result",
+            "1",
+            "배포",
+            "--summary",
+            "백엔드·프런트 배포",
+            "--link",
+            "Backend - Railway|https://railway.app/x",
+            "--link",
+            "https://vercel.com/y",
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("배포", out)
+        from app.db import connect
+        from app.repositories import results as result_repo
+
+        rows = result_repo.list_by_todo_ids(connect(), [1])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["summary"], "백엔드·프런트 배포")
+        self.assertEqual(
+            rows[0]["links"],
+            [
+                {"label": "Backend - Railway", "url": "https://railway.app/x"},
+                {"label": "", "url": "https://vercel.com/y"},
+            ],
+        )
+
+    def test_add_result_rejects_unknown_todo(self):
+        code, _, err = self.run_cli("add-result", "9999", "Figma")
+        self.assertEqual(code, 1)
+        self.assertIn("찾을 수 없습니다", err)
+
     def test_add_todo_with_session_uses_its_workspace(self):
         from app.db import connect
         from app.repositories import sessions as session_repo

@@ -52,6 +52,7 @@ BROWSER_FACING = (
     "app/ordering.py",
     "app/repositories/categories.py",
     "app/repositories/labels.py",
+    "app/repositories/results.py",
     "app/repositories/settings.py",
     "app/repositories/todos.py",
     "app/repositories/workspaces.py",

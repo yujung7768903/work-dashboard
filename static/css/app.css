@@ -600,6 +600,43 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   display: block; width: 100%; text-align: left; background: none; white-space: nowrap;
 }
 
+/* ── 결과물 ───────────────────────────────────────────────────────────────── */
+/* 카드 그리드. 워크스페이스 카드와 같은 기준으로 1↔2컬럼 */
+#results-list { display: grid; gap: var(--gap); align-items: stretch; }
+.rs-card {
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card); padding: var(--pad-card);
+}
+.rs-head { display: flex; justify-content: space-between; gap: var(--sp-8); align-items: baseline; }
+.rs-head-text { display: flex; gap: var(--sp-8); align-items: baseline; min-width: 0; }
+.rs-kind { font-weight: 700; }
+.rs-when { color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; }
+/* 연결된 할일 — 클릭하면 그 할일 팝업이 열린다. 워크트리 탭의 연결 줄과 같은 규칙 */
+.rs-todo { margin-top: var(--sp-8); color: var(--accent); font-size: var(--fs-sm); cursor: pointer; }
+.rs-cwd {
+  margin-top: var(--sp-4); color: var(--muted); font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rs-links { list-style: none; margin: var(--sp-8) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-4); }
+.rs-links a {
+  display: inline-block; padding: var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent); font-size: var(--fs-sm); font-weight: 600; text-decoration: none;
+}
+.rs-links a:hover { background: color-mix(in srgb, var(--accent) 24%, var(--surface)); }
+
+#results-controls { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin: 0 0 var(--gap); }
+#results-filter { display: flex; gap: var(--sp-8); flex-wrap: wrap; }
+#results-filter button.active { background: var(--softer); color: var(--accent); }
+#results-range { display: flex; align-items: center; gap: var(--sp-8); }
+#results-range input { width: auto; }
+#results-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap); margin-top: var(--gap); }
+#results-page-label { color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+
+/* 팝업 결과물 탭 — 워크트리 탭처럼 details 로 펼치고 접는다. 하나뿐이면 펼쳐서 보여준다 */
+.rs-panel > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); cursor: pointer; }
+.rs-panel > summary .title { font-weight: 600; }
+
 /* ── 설정 (카테고리·라벨) ─────────────────────────────────────────────────── */
 /* 두 목록이 한 화면에 겹치므로 무엇의 목록인지 제목으로 가른다 */
 .set-head { margin: var(--gap) 0 var(--sp-8); font-size: var(--fs-body); font-weight: 700; }
@@ -1008,7 +1045,9 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 /* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음.
    레일이 208px 을 먹으므로 2컬럼 기준을 그만큼 올렸다 */
 @media (min-width: 1240px) {
-  #groups, #done-groups, #workspace-list, #worktree-list { grid-template-columns: 1fr 1fr; }
+  #groups, #done-groups, #workspace-list, #worktree-list, #results-list {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* 어두운 테마. 상단 우측 밝기 메뉴가 고른 값을 <html data-theme> 로 붙이고,
