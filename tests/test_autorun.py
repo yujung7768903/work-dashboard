@@ -49,10 +49,20 @@ class Recorder:
 
 
 def _git_repo():
-    """작업 위치 후보로 쓸 빈 저장소. 깨끗해야 tick 이 시작 판정을 낸다"""
+    """작업 위치 후보로 쓸 빈 저장소"""
     path = tempfile.mkdtemp()
     subprocess.run(["git", "init", "-q", path], check=True, timeout=30)
     return path
+
+
+def _commit(path, *files):
+    """임시 저장소라 전역 git 신원에 기대지 않는다"""
+    subprocess.run(["git", "-C", path, "add", *files], check=True, timeout=30)
+    subprocess.run(
+        ["git", "-C", path, "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-q", "-m", "t"],
+        check=True, timeout=30,
+    )
 
 
 def _limits_file(pct, age_seconds=0, resets_in=3600):
@@ -216,6 +226,18 @@ class Gates(AutorunCase):
         orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=other["id"])
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_CWD)
+
+    def test_uncommitted_changes_do_not_block_start(self):
+        """자율 세션은 워크트리를 새로 파서 일하므로 본 체크아웃의 미커밋 변경과 겹치지 않는다"""
+        tracked = os.path.join(self.repo, "kept.txt")
+        with open(tracked, "w", encoding="utf-8") as handle:
+            handle.write("처음\n")
+        _commit(self.repo, "kept.txt")
+        with open(tracked, "w", encoding="utf-8") as handle:
+            handle.write("고치는 중\n")
+        with open(os.path.join(self.repo, "잔여물.tmp"), "w", encoding="utf-8") as handle:
+            handle.write("")
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_READY)
 
 
 class Prompt(AutorunCase):
