@@ -86,6 +86,13 @@ python3 server.py          # run in the foreground instead
 path. Logs are one file per day (`logs/YYYY-MM-DD.log`); files untouched for more
 than seven days are removed on the next start.
 
+One directory serves one server. If something is already running here, `start.sh`
+refuses, names the port, and exits 1 — use `./restart.sh` to replace it. The
+board's kebab menu and the Stop hook already worked this way; the script did not,
+so a worktree could end up with two servers and no way to tell which one served
+the current code. `--force` overrides it, and the script tests use that to run
+two on purpose.
+
 `stop.sh` and `restart.sh` only act on servers whose working directory is this
 one, so worktree servers and the main checkout never stop each other. Add
 `--port` when a single directory is running more than one.
