@@ -3,10 +3,17 @@
 #   ./start.sh              → 9080, 이 기기에서만
 #   ./start.sh --port 9081  → 워크트리용 다른 포트
 #   ./start.sh --lan        → 같은 와이파이의 다른 기기(폰·아이패드)에서도 열림
+#   ./start.sh --force      → 이미 떠 있어도 하나 더 (아래 참고)
 # 멈추는 것은 ./stop.sh, 같은 인자로 다시 띄우는 것은 ./restart.sh.
 # 로그는 logs/YYYY-MM-DD.log 에 이어 쌓고, 7일 넘게 안 쓴 로그는 지운다.
+#
+# 한 워크트리에는 서버 하나다. 이미 떠 있으면 띄우지 않고 그 포트를 알려준다 —
+# 화면 케밥 메뉴(serve.start)와 Stop 훅(worktree_serve)은 그렇게 하고 있었는데
+# 이 스크립트만 안 봐서, 사람·에이전트가 직접 치면 같은 워크트리에 두 개가 떴다.
+# 그러면 어느 쪽이 최신 코드인지 알 수 없고, 북마크한 주소가 옛 서버를 가리킨다.
 set -euo pipefail
 cd "$(dirname "$0")"
+. ./serving.sh
 
 LOG_KEEP_DAYS=7
 ANY_HOST=0.0.0.0
@@ -39,11 +46,16 @@ python=$(pick_python)
 # 찍어서 `http://0.0.0.0:9080` 이 나오고, 그건 다른 기기에 붙여넣을 수 없다
 lan=""
 open_to_lan=""
+force=""
 args=()
 for arg in "$@"; do
   if [ "$arg" = "--lan" ]; then
     open_to_lan=1
     args+=(--host "$ANY_HOST")
+  elif [ "$arg" = "--force" ]; then
+    # server.py 가 모르는 이름이라 넘기지 않는다. 테스트처럼 일부러 여러 개를
+    # 띄워야 할 때만 쓴다 — 평소에는 restart.sh 가 맞는 답이다
+    force=1
   else
     # 손으로 준 --host 0.0.0.0 도 같게 본다. restart.sh 는 죽는 서버의 인자를 그대로
     # 물려받아 --lan 이 아니라 이 모양으로 오므로, 플래그 이름만 보면 재실행 때 놓친다
@@ -57,6 +69,17 @@ if [ -n "$open_to_lan" ]; then
     lan=$(ipconfig getifaddr "$interface" 2>/dev/null || true)
     if [ -n "$lan" ]; then break; fi
   done
+fi
+
+# 이미 이 디렉토리에서 돌고 있으면 하나 더 띄우지 않는다. 판정은 stop.sh·restart.sh 와
+# 같은 serving_pids — 세 스크립트가 다른 기준으로 세면 하나가 남의 서버를 죽인다
+running=$(serving_pids)
+if [ -n "$running" ] && [ -z "$force" ]; then
+  for pid in $running; do
+    echo "이미 떠 있음: pid $pid$(server_args "$pid")" >&2
+  done
+  echo "다시 띄우려면 ./restart.sh, 정말 하나 더면 --force" >&2
+  exit 1
 fi
 
 mkdir -p logs

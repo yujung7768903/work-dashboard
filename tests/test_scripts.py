@@ -74,6 +74,18 @@ class StartStopTest(unittest.TestCase):
         self.started += [int(pid) for pid in STARTED_PID.findall(result.stdout)]
         return result.stdout
 
+    def _run_failing(self, script, *argv):
+        """실패를 기대하는 실행. 종료코드와 stderr 를 함께 돌려준다"""
+        result = subprocess.run(
+            [os.path.join(ROOT, script), *argv],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            env=self.env,
+        )
+        self.started += [int(pid) for pid in STARTED_PID.findall(result.stdout)]
+        return result.returncode, result.stderr
+
     def _kill_started(self):
         """띄운 pid 를 직접 죽인다"""
         for pid in self.started:
@@ -95,6 +107,20 @@ class StartStopTest(unittest.TestCase):
         self.assertIn("종료", out)
         self.assertFalse(_listening(self.port), "stop.sh 로 멈추지 않음")
 
+    def test_second_start_in_the_same_place_is_refused(self):
+        """한 워크트리 한 서버. 케밥 메뉴·Stop 훅만 지키고 이 스크립트가 안 지켜서
+        같은 워크트리에 두 개가 뜬 적이 있다 — 그때 어느 쪽이 최신 코드인지 알 수 없었다"""
+        self._skip_if_shared()
+        self._run("start.sh", "--port", str(self.port))
+        self.assertTrue(_wait_listening(self.port))
+        code, message = self._run_failing("start.sh", "--port", str(free_test_port()))
+        self.assertEqual(1, code, "두 번째 실행이 그냥 떴다")
+        # 무엇이 떠 있는지와 다음에 뭘 할지가 문구에 있어야 한다
+        self.assertIn("이미 떠 있음", message)
+        self.assertIn(str(self.port), message)
+        self.assertIn("restart.sh", message)
+        self.assertTrue(_listening(self.port), "거절하면서 원래 서버를 건드렸다")
+
     def test_cleanup_kills_the_server_without_the_detector(self):
         """stop.sh 가 서버를 못 찾아도 뒷정리는 끝나야 한다 — 좀비가 쌓이던 자리"""
         self._run("start.sh", "--port", str(self.port))
@@ -110,9 +136,10 @@ class StartStopTest(unittest.TestCase):
     def test_stop_with_port_leaves_other_servers_alone(self):
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
-        # 먼저 띄운 포트는 other 후보에서 빠진다
+        # 먼저 띄운 포트는 other 후보에서 빠진다.
+        # --force 가 필요하다 — 같은 디렉토리 두 번째 서버는 평소에 막혀 있다
         other = free_test_port()
-        self._run("start.sh", "--port", str(other))
+        self._run("start.sh", "--force", "--port", str(other))
         self.assertTrue(_wait_listening(other))
         self._run("stop.sh", "--port", str(self.port))
         self.assertFalse(_listening(self.port), "지정한 포트가 안 멈췄다")
