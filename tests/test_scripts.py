@@ -5,9 +5,11 @@ run.sh 를 start.sh 로 바꿨을 때 restart.sh 의 `exec ./run.sh` 가 남아
 """
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 import urllib.error
@@ -54,7 +56,24 @@ class ScriptReferenceTest(unittest.TestCase):
 
 
 class StartStopTest(unittest.TestCase):
-    """실제로 띄우고 멈춘다. DB 는 임시 파일로 돌려 사용자 DB 를 건드리지 않는다"""
+    """실제로 띄우고 멈춘다. DB 는 임시 파일로 돌려 사용자 DB 를 건드리지 않는다.
+
+    저장소 자리가 아니라 임시 디렉토리에 스크립트를 복사해 거기서 돌린다. 세 스크립트는
+    모두 '이 디렉토리를 cwd 로 도는 서버' 를 대상으로 하므로, 저장소에서 그대로 돌리면
+    사람이 그 체크아웃에 띄워 둔 대시보드를 죽이고(stop.sh) 새 서버 실행도 막는다
+    (start.sh 의 중복 방지). 둘 다 실제로 겪었다
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.mkdtemp(prefix="wd-scripts-")
+        for name in SCRIPTS:
+            shutil.copy2(os.path.join(ROOT, name), os.path.join(cls.dir, name))
+        # 서버가 돌려면 있어야 하는 것들. 복사 대신 링크라 원본을 그대로 검사한다
+        # (server.py 는 자기 위치 기준으로 static 을 찾으므로 그것도 걸어 준다)
+        for name in ("server.py", "app", "static"):
+            os.symlink(os.path.join(ROOT, name), os.path.join(cls.dir, name))
+        cls.addClassCleanup(shutil.rmtree, cls.dir, True)
 
     def setUp(self):
         self.port = free_test_port()
@@ -64,8 +83,8 @@ class StartStopTest(unittest.TestCase):
 
     def _run(self, script, *argv):
         result = subprocess.run(
-            [os.path.join(ROOT, script), *argv],
-            cwd=ROOT,
+            [os.path.join(self.dir, script), *argv],
+            cwd=self.dir,
             capture_output=True,
             text=True,
             env=self.env,
@@ -77,8 +96,8 @@ class StartStopTest(unittest.TestCase):
     def _run_failing(self, script, *argv):
         """실패를 기대하는 실행. 종료코드와 stderr 를 함께 돌려준다"""
         result = subprocess.run(
-            [os.path.join(ROOT, script), *argv],
-            cwd=ROOT,
+            [os.path.join(self.dir, script), *argv],
+            cwd=self.dir,
             capture_output=True,
             text=True,
             env=self.env,
@@ -95,11 +114,6 @@ class StartStopTest(unittest.TestCase):
                 continue
             _wait_gone(pid)
 
-    def _skip_if_shared(self):
-        # 인자 없는 재실행은 이 체크아웃의 서버를 전부 죽인다. 띄우기 전에 부른다
-        if _serving_pids():
-            self.skipTest("이 체크아웃에 다른 서버가 떠 있음")
-
     def test_start_then_stop(self):
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port), "start.sh 로 뜨지 않음")
@@ -110,7 +124,6 @@ class StartStopTest(unittest.TestCase):
     def test_second_start_in_the_same_place_is_refused(self):
         """한 워크트리 한 서버. 케밥 메뉴·Stop 훅만 지키고 이 스크립트가 안 지켜서
         같은 워크트리에 두 개가 뜬 적이 있다 — 그때 어느 쪽이 최신 코드인지 알 수 없었다"""
-        self._skip_if_shared()
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
         code, message = self._run_failing("start.sh", "--port", str(free_test_port()))
@@ -172,7 +185,6 @@ class StartStopTest(unittest.TestCase):
         lan = _lan_address()
         if not lan:
             self.skipTest("LAN 주소 없음")
-        self._skip_if_shared()
         self._run("start.sh", "--lan", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
         out = self._run("restart.sh")
@@ -182,7 +194,6 @@ class StartStopTest(unittest.TestCase):
 
     def test_restart_inherits_port(self):
         """인자를 안 주면 죽는 서버의 포트를 물려받는다"""
-        self._skip_if_shared()
         self._run("start.sh", "--port", str(self.port))
         self.assertTrue(_wait_listening(self.port))
         self.assertIn("종료", self._run("restart.sh"))
@@ -197,17 +208,6 @@ def _wait_gone(pid):
         except OSError:
             return
         time.sleep(EXIT_POLL_SEC)
-
-
-def _serving_pids():
-    """이 체크아웃을 cwd 로 돌고 있는 서버 pid"""
-    found = subprocess.run(
-        ["bash", "-c", ". ./serving.sh; serving_pids"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    return found.stdout.split()
 
 
 def _lan_address():
