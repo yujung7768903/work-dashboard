@@ -15,6 +15,11 @@ const RUN = {
   ports: [9081],
 };
 const REVIEW_RUN = { id: 3, todo_id: 58, todo_title: "확인 대기", outcome: "review" };
+// 끝난 실행. 완료 구획은 접힌 채로 시작하므로 구획 줄만 나오고 그 아래 줄은 안 그려진다
+const DONE_RUN = {
+  id: 4, todo_id: 59, todo_title: "끝난 것", outcome: "done",
+  started_at: "2026-08-18T01:02:00", ended_at: "2026-08-18T02:03:00",
+};
 // 후보는 못 도는 것도 싣는다 — 왜 안 도는지가 이 목록의 존재 이유다
 const CANDIDATES = [
   { todo_id: 57, title: "지금 돌 것", workspace_name: "작업 대시보드", blocker: "ready",
@@ -31,7 +36,7 @@ globalThis.fetch = async (url, options) => {
   const body = {
     "/api/autorun": {
       state: { enabled: 1, last_tick_at: TICK_AT, last_tick_reason: REASON },
-      runs: [RUN, REVIEW_RUN],
+      runs: [RUN, REVIEW_RUN, DONE_RUN],
       candidates: CANDIDATES,
     },
     "/api/workspaces": [],
@@ -109,25 +114,43 @@ assert.equal(cands[1].children[3].textContent, "착수 조건 1/3 · 사람 확�
 // 후보를 누르면 그 할일 상세가 열린다
 assert.equal(typeof cands[0].listeners.click, "function");
 
-// 실행 목록은 상태별로 끊는다. 사람이 손댈 것(확인 필요)이 맨 위 구획이라
-// 그 아래 검토 대기 줄이 오고, 진행 중 구획이 그다음이다
-assert.deepEqual(
-  rows.map((row) => row.className),
-  ["group", undefined, "group", undefined],
-);
+// 맨 위에 칸 이름 한 줄. 구획마다 되풀이하지 않는다
+assert.equal(rows[0].className, "head");
 assert.deepEqual(
   rows[0].children.map((cell) => cell.textContent),
+  ["워크스페이스", "할일", "워크트리", "포트", "상태", "시작", "종료", "경과"],
+);
+
+// 실행 목록은 상태별로 끊는다. 사람이 손댈 것(확인 필요)이 맨 위 구획이라
+// 그 아래 검토 대기 줄이 오고, 진행 중 구획이 그다음이다.
+// 완료 구획은 접힌 채로 시작해 구획 줄만 나온다
+assert.deepEqual(
+  rows.map((row) => row.className),
+  ["head", "group", undefined, "group", undefined, "group collapsed"],
+);
+assert.deepEqual(
+  rows[1].children.map((cell) => cell.textContent),
   ["확인 필요", "1"],
 );
-assert.equal(rows[2].children[0].textContent, "진행 중");
+assert.equal(rows[3].children[0].textContent, "진행 중");
+// 접힌 구획도 몇 건인지는 보인다 — 접혀 있어서 안 보이는 것과 없는 것은 다르다
+assert.deepEqual(
+  rows[5].children.map((cell) => cell.textContent),
+  ["완료", "1"],
+);
+// 구획 줄은 눌러서 접고 편다
+assert.equal(typeof rows[1].listeners.click, "function");
+assert.equal(typeof rows[5].listeners.click, "function");
 
-const runRow = rows[3];
-// 칸 순서 — 워크스페이스 / 할일 / 워크트리 / 포트 / 상태 / 경과
+const runRow = rows[4];
+// 칸 순서 — 워크스페이스 / 할일 / 워크트리 / 포트 / 상태 / 시작 / 종료 / 경과
 assert.deepEqual(
   runRow.children.map((cell) => cell.className),
-  ["scope", "prompt", "wt", "ports", "badge outcome-running", "age"],
+  ["scope", "prompt", "wt", "ports", "badge outcome-running", "when", "when", "age"],
 );
 assert.equal(runRow.children[2].textContent, "고침");
+// 아직 안 끝난 실행은 종료 칸이 비어 있다 — 자리는 남겨야 뒤 칸이 안 당겨진다
+assert.equal(runRow.children[6].textContent, "");
 
 // 포트는 그 서버로 가는 링크다. 눌러도 줄 클릭(팝업)으로 새면 안 된다
 const port = runRow.children[3].children[0];

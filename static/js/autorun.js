@@ -25,6 +25,7 @@ const REVIEW = "review";
 const REQUESTED = "requested";
 const REVIEW_HINT = t("autorun.reviewHint");
 const TOGGLE_HINT = t("autorun.toggleHint");
+const TOGGLE_GROUP_HINT = t("autorun.groupToggle");
 const PRECONDITION = "precondition";
 
 // 후보 한 건이 지금 못 도는 이유. 서버 autorun.BLOCKER_* 와 같은 이름을 쓴다.
@@ -47,12 +48,32 @@ const BLOCKER_HINTS = {
   precondition: t("autorun.blockerHint.precondition"),
 };
 
-// 실행 목록의 구획. 사람이 손댈 것부터 위에 온다
+// 실행 목록의 구획. 사람이 손댈 것부터 위에 온다.
+// 첫 칸은 접힘 여부를 기억할 키다 — 라벨은 언어에 따라 바뀌므로 키로 쓸 수 없다
 const RUN_GROUPS = [
-  [t("autorun.groupAttention"), (run) => run.outcome === REQUESTED || run.outcome === REVIEW],
-  [RUNNING_LABEL, (run) => !run.outcome],
-  [t("autorun.groupFailed"), (run) => run.outcome === "blocked" || run.outcome === "failed"],
-  [t("common.done"), (run) => run.outcome === "done"],
+  ["attention", t("autorun.groupAttention"),
+    (run) => run.outcome === REQUESTED || run.outcome === REVIEW],
+  ["running", RUNNING_LABEL, (run) => !run.outcome],
+  ["failed", t("autorun.groupFailed"),
+    (run) => run.outcome === "blocked" || run.outcome === "failed"],
+  ["done", t("common.done"), (run) => run.outcome === "done"],
+];
+// 접혀서 시작하는 구획. 사람이 손댈 것(확인 필요·진행 중)은 펴 두고, 이미 끝난 것만 접는다.
+// 폴링이 5초마다 다시 그리므로 화면 밖(모듈)에 들고 있어야 접은 것이 도로 펴지지 않는다
+const collapsed = new Set(["failed", "done"]);
+
+// 헤더행의 칸 이름. 데이터 줄과 같은 격자를 쓰므로 순서가 곧 칸 순서다.
+// 데이터 칸의 클래스(.wt·.age…)를 붙이지 않는다 — 그 색·글자 크기까지 따라와
+// 이름 줄이 칸마다 다른 크기로 흩어진다
+const COLUMNS = [
+  t("autorun.colWorkspace"),
+  t("autorun.colTodo"),
+  t("autorun.colWorktree"),
+  t("autorun.colPort"),
+  t("autorun.colStatus"),
+  t("autorun.colStarted"),
+  t("autorun.colEnded"),
+  t("autorun.colAge"),
 ];
 
 let timer = null;
@@ -226,18 +247,45 @@ function paintRuns(runs) {
     list.appendChild(emptyRow(NO_RUN));
     return;
   }
-  RUN_GROUPS.forEach(([label, belongs]) => {
+  list.appendChild(headRow());
+  RUN_GROUPS.forEach(([key, label, belongs]) => {
     const rows = runs.filter(belongs);
     if (!rows.length) return;
-    list.appendChild(groupRow(label, rows.length));
-    rows.forEach((run) => list.appendChild(runRow(run)));
+    const open = !collapsed.has(key);
+    list.appendChild(groupRow(key, label, rows.length, open));
+    // 접힌 구획은 줄을 아예 안 그린다 — 숨겨 두면 목록이 길어질수록 그리는 값만 늘어난다
+    if (open) rows.forEach((run) => list.appendChild(runRow(run)));
   });
 }
 
-function groupRow(label, count) {
+// 칸 이름은 목록 맨 위에 한 번만 둔다 — 구획마다 되풀이하면 네 번 읽히고,
+// 정작 봐야 할 구획 이름(확인 필요·진행 중)이 같은 크기의 글자에 묻힌다
+function headRow() {
   const item = document.createElement("li");
-  item.className = "group";
+  item.className = "head";
+  item.append(...COLUMNS.map((label) => element("span", "", label)));
+  return item;
+}
+
+function groupRow(key, label, count, open) {
+  const item = document.createElement("li");
+  item.className = open ? "group" : "group collapsed";
+  item.setAttribute("role", "button");
+  item.setAttribute("aria-expanded", open ? "true" : "false");
+  item.tabIndex = 0;
+  item.title = TOGGLE_GROUP_HINT;
   item.append(element("span", "text", label), element("span", "count", `${count}`));
+  const toggle = () => {
+    if (collapsed.has(key)) collapsed.delete(key);
+    else collapsed.add(key);
+    renderAutorun().catch(() => {});
+  };
+  item.addEventListener("click", toggle);
+  item.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault(); // 스페이스로 화면이 굴러가면 접은 구획을 놓친다
+    toggle();
+  });
   return item;
 }
 
@@ -257,8 +305,11 @@ function runRow(run) {
   const ports = element("span", "ports");
   ports.append(...(run.ports || []).map(portLink));
   const outcome = outcomeBadge(run);
+  const started = element("span", "when", formatClock(run.started_at));
+  // 안 끝난 실행은 종료가 비어 있다. 자리는 남겨 둔다 — 칸이 없으면 뒤 칸이 당겨 온다
+  const ended = element("span", "when", formatClock(run.ended_at));
   const age = element("span", "age", formatAge(run.started_at));
-  item.append(scope, title, worktree, ports, outcome, age);
+  item.append(scope, title, worktree, ports, outcome, started, ended, age);
   // 세션 줄·보드 카드와 같은 팝업. 실행 단위가 할일이라 할일로 열어 개요 탭부터 보여준다
   item.addEventListener("click", () => openDetail({ todo: { id: run.todo_id } }));
   return item;
@@ -301,6 +352,19 @@ function outcomeBadge(run) {
       });
   });
   return button;
+}
+
+// 시작·종료는 절대 시각으로 적는다 — 둘 다 "몇 분 전"이면 그 사이가 얼마인지 못 읽는다.
+// 오늘 것은 시:분만, 날이 넘어간 것에만 날짜를 붙인다 (경과 칸이 어제인지 알려 준다)
+function formatClock(iso) {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const at = new Date(ms);
+  const pad = (value) => String(value).padStart(2, "0");
+  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  if (at.toDateString() === new Date().toDateString()) return clock;
+  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${clock}`;
 }
 
 function element(tag, className, text) {
