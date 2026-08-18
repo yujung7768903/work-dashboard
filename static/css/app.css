@@ -596,7 +596,9 @@ button:disabled { color: var(--line); cursor: default; }
   transform: translateY(-50%);
   width: 6px; height: var(--sp-12); cursor: grab; opacity: 0;
   background-image: radial-gradient(currentColor 1px, transparent 1px);
-  background-size: 3px 4px; background-position: center; background-repeat: repeat;
+  /* 시작점을 왼쪽 위로 못박는다. center 로 두면 6px 폭에 3px 칸이 가운데 정렬되면서
+     칸 경계가 1.5px 에서 시작해 좌우 끝에 반쪽 점이 생긴다 — 2열이 아니라 3열로 보인다 */
+  background-size: 3px 4px; background-position: 0 0; background-repeat: repeat;
   color: var(--muted); transition: opacity 0.12s;
 }
 .ar-cands li:hover .ar-grip,
