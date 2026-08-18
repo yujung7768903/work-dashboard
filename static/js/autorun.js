@@ -1,6 +1,6 @@
 // 자율 수행 패널. 켜짐 여부와 최근 실행한 할일을 보여준다. 세션 패널과 같은 폴링 방식
 import * as api from "./api.js";
-import { t } from "./i18n.js";
+import { fromKorean, t } from "./i18n.js";
 import { formatAge, openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 5000;
@@ -35,8 +35,11 @@ function paint(state, runs) {
   // 주기만으로는 크론이 실제로 돌고 있는지 알 수 없다. 마지막 tick 이 5분을 한참
   // 넘겼으면 크론이 죽은 것이다 — 목록의 실행 이력과 달리 tick 은 여기서만 보인다
   // 켜져 있는데 아무것도 안 뜨는 이유(후보 없음·사용률·워킹트리 더러움)는 tick 만 안다.
-  // 사유가 없으면 붙이지 않는다 — 이 열을 받기 전 DB 는 NULL 이다
-  const reason = state.last_tick_reason ? ` · ${state.last_tick_reason}` : "";
+  // 사유가 없으면 붙이지 않는다 — 이 열을 받기 전 DB 는 NULL 이다.
+  // 사유는 서버가 한국어로 적어 둔 문장이라 사전에서 되짚어 지금 언어로 옮긴다
+  const reason = state.last_tick_reason
+    ? ` · ${fromKorean(state.last_tick_reason)}`
+    : "";
   document.getElementById("autorun-cycle").textContent = state.last_tick_at
     ? `${TICK_LABEL} | ${t("autorun.lastRun", { age: formatAge(state.last_tick_at) })}${reason}`
     : `${TICK_LABEL} | ${NO_TICK}`;

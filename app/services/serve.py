@@ -1,7 +1,7 @@
 """워크트리 서버 실행·재실행·중지. 보드 워크트리 탭의 케밥 메뉴가 부른다.
 
 실행 방법은 워크트리 루트의 `start.sh`(옛 이름 `run.sh`) 로 본다 — 이 저장소의
-관행이고(README "실행"), 백그라운드 실행·날짜별 로그·기동 대기까지 그 스크립트가 이미
+관행이고(README "Quickstart"), 백그라운드 실행·날짜별 로그·기동 대기까지 그 스크립트가 이미
 한다. 둘 다 없는 저장소는 실행하지 않고 그 사실을 그대로 알린다 — 진입점을 추측해서
 띄우면 엉뚱한 프로세스가 포트를 문다.
 
@@ -17,15 +17,18 @@ import socket
 import subprocess
 import time
 
-from app.constants import DEFAULT_HOST
+from app.constants import DEFAULT_HOST, DEFAULT_PORT
 from app.errors import Conflict, Validation
 from app.services import release
 
 # 두 이름을 다 본다 — 이 저장소는 start.sh 로 바꿨지만, 바꾸기 전 브랜치로 만든
 # 워크트리에는 아직 run.sh 가 있다. 앞의 것부터 찾는다 (없는 이름을 지어내지는 않는다)
 RUN_SCRIPTS = ("start.sh", "run.sh")
-# Stop 훅(hooks/worktree_serve.py) 이 고르는 범위와 같다 — 어느 쪽으로 띄웠든 한 대역에 모인다
-PORT_RANGE = range(9080, 9140)
+# Stop 훅(hooks/worktree_serve.py) 이 고르는 범위와 같다 — 어느 쪽으로 띄웠든 한 대역에 모인다.
+# 9080(DEFAULT_PORT) 은 빠져 있다 — 메인 체크아웃(master) 자리다. 워크트리가 물면
+# master 를 늘 같은 주소로 열 수 없어 북마크가 그때그때 다른 브랜치를 가리킨다.
+# 실제로 못 물게 막는 것은 server.py 쪽이고 여기는 애초에 고르지 않는 쪽
+PORT_RANGE = range(DEFAULT_PORT + 1, 9140)
 # 실행 스크립트는 서버가 첫 줄(URL) 을 찍을 때까지 기다린 뒤 끝난다
 START_TIMEOUT_SEC = 20
 # SIGTERM 뒤 포트가 풀릴 때까지. 안 풀린 포트로 다시 띄우면 bind 가 그대로 실패한다
@@ -51,7 +54,10 @@ def start(path, prefer=0):
         raise Validation(
             f"{'·'.join(RUN_SCRIPTS)} 중 아무것도 없어 실행할 수 없습니다: {path}"
         )
-    port = prefer if prefer and _is_free(prefer) else free_port()
+    # prefer 가 9080 이면 물려받지 않는다 — 예전에 그 포트로 뜬 워크트리가 재실행으로
+    # 계속 master 자리를 차지하는 것을 막는다
+    keep = prefer and prefer != DEFAULT_PORT and _is_free(prefer)
+    port = prefer if keep else free_port()
     if port is None:
         raise Conflict(
             f"비어 있는 포트가 없습니다 ({PORT_RANGE.start}~{PORT_RANGE.stop - 1})"

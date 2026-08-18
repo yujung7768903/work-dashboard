@@ -1,7 +1,7 @@
 """워크트리 서버 실행·재실행·중지.
 
 포트 판정은 실제로 소켓을 잡아 확인하고, 서버 기동은 여기서 하지 않는다 —
-테스트가 공유 대역(9080~9139) 을 물면 다른 워크트리가 못 뜬다.
+테스트가 공유 대역(9081~9139) 을 물면 다른 워크트리가 못 뜬다.
 """
 import os
 import pathlib
@@ -12,8 +12,10 @@ import subprocess
 import tempfile
 import unittest
 
+import server
+from app.constants import DEFAULT_PORT
 from app.errors import Validation
-from app.services import serve, worktrees
+from app.services import release, serve, worktrees
 
 HERE = pathlib.Path(__file__).resolve().parent
 WORKTREES_JS = HERE.parent / "static" / "js" / "worktrees.js"
@@ -33,6 +35,11 @@ class PortTest(unittest.TestCase):
 
     def test_free_port_comes_from_the_shared_range(self):
         self.assertIn(serve.free_port(), serve.PORT_RANGE)
+
+    def test_master_port_is_never_offered_to_a_worktree(self):
+        """9080 은 메인 체크아웃 자리 — 비어 있어도 워크트리에는 주지 않는다"""
+        self.assertNotIn(DEFAULT_PORT, serve.PORT_RANGE)
+        self.assertNotEqual(serve.free_port(), DEFAULT_PORT)
 
     def test_taken_port_is_neither_free_nor_offered(self):
         port = self._held()
@@ -88,6 +95,26 @@ class StartTest(unittest.TestCase):
             result = serve.stop(path)
         self.assertEqual(result["stopped"], [])
         self.assertEqual(result["message"], "종료할 서버가 없었습니다")
+
+
+class MasterPortTest(unittest.TestCase):
+    """9080 은 메인 체크아웃(master) 자리. 고르는 쪽(serve.PORT_RANGE)만 막으면
+    손으로 `--port 9080` 을 준 워크트리가 그대로 물어 버린다"""
+
+    def _in_worktree(self, base):
+        path = os.path.join(base, ".claude", "worktrees", "wt")
+        os.makedirs(path)
+        here = os.getcwd()
+        os.chdir(path)
+        self.addCleanup(os.chdir, here)
+        self.assertIn(release.WORKTREE_MARK, os.getcwd())
+
+    def test_worktree_is_refused_before_it_binds(self):
+        with tempfile.TemporaryDirectory() as base:
+            self._in_worktree(base)
+            with self.assertRaises(SystemExit) as caught:
+                server.main(["--port", str(DEFAULT_PORT)])
+        self.assertIn(str(DEFAULT_PORT), str(caught.exception))
 
 
 class ControlTest(unittest.TestCase):

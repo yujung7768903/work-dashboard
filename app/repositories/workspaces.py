@@ -73,6 +73,18 @@ def update(con, workspace_id, **fields):
     return get(con, workspace_id)
 
 
+def set_google_link(con, workspace_id, task_id):
+    """구글 태스크 링크만 갱신. updated_at 은 일부러 건드리지 않는다
+
+    updated_at 은 양방향 동기화에서 '누가 최신인가'를 가르는 기준이다. 링크를 붙이는
+    것만으로 시각이 올라가면 그 뒤로는 로컬이 늘 이겨 폰의 수정이 영영 안 들어온다
+    """
+    with transaction(con):
+        con.execute(
+            "UPDATE workspaces SET google_task_id=? WHERE id=?", (task_id, workspace_id)
+        )
+
+
 def delete(con, workspace_id):
     """소속 할일은 미분류로 강등하고 워크스페이스만 지움. 데이터 손실 없음"""
     get(con, workspace_id)

@@ -256,12 +256,17 @@ function todoElement(todo) {
     });
   });
 
+  // 상세 팝업·세션 줄과 같은 #id 표기
+  const idNode = document.createElement("span");
+  idNode.className = "todo-id";
+  idNode.textContent = `#${todo.id}`;
+
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = todo.title;
   if (todo.needs_title) title.append(rawTitleMark());
 
-  row.append(statusButton, title, labelStrip(todo), todoMenu(todo));
+  row.append(statusButton, idNode, title, labelStrip(todo), todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;

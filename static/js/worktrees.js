@@ -1,14 +1,20 @@
 // 보드의 워크트리 하위 탭. 워크스페이스마다 저장소 하나, 그 아래 브랜치·워크트리 행
 import * as api from "./api.js";
 import { CHEVRON_SVG, currentCategoryId } from "./board.js";
-import { t } from "./i18n.js";
+import { fromKorean, t } from "./i18n.js";
 import { run } from "./main.js";
 import { openDetail } from "./sessions.js";
 import { menuItem } from "./workspace.js";
 
-const NO_REPO = t(
-  "worktree.noRepo"
-);
+const GROUP_BY_WORKSPACE = "workspace";
+const GROUP_BY_PROJECT = "project";
+// 기기마다 다른 취향이라 서버가 아니라 브라우저에 남긴다 (layout.js 의 1열/2열·레일 접기와 같은 방식)
+const VIEW_KEY = "worktree-view";
+
+const NO_REPO = {
+  [GROUP_BY_WORKSPACE]: t("worktree.noRepo"),
+  [GROUP_BY_PROJECT]: t("worktree.noRepoProject"),
+};
 const NO_MATCH = t("worktree.noMatch");
 // 줄마다 배지를 다는 대신 섹션으로 가른다 — 워크스페이스 카드가 배경·목적·목표를
 // 라벨로 나누는 것과 같은 방식
@@ -26,33 +32,72 @@ let openMenuKey = null;
 
 const rowKey = (repo, branch) => `${repo} ${branch}`;
 
-// 마지막으로 받아 둔 응답. 한 번 부르는 데 git·lsof 로 0.6 초가 걸리므로,
+// 마지막으로 받아 둔 응답. 한 번 부르는 데 git·lsof 로 0.4 초가 걸리므로,
 // 서버 데이터가 그대로인 조작(커밋 토글·라벨 전환)은 이걸로 다시 그린다
 let cached = null;
 
+// 지금 뷰 모드. 저장해 둔 값이 없으면 워크스페이스별(기존 기본)
+let groupBy = localStorage.getItem(VIEW_KEY) === GROUP_BY_PROJECT
+  ? GROUP_BY_PROJECT
+  : GROUP_BY_WORKSPACE;
+
 export async function renderWorktrees() {
-  // 들고 있는 게 있으면 먼저 그려 두고, 새로 받아 한 번 더 그린다
+  // 들고 있는 게 있으면 먼저 그려 두고, 새로 받아 한 번 더 그린다.
+  // 없으면 빈 칸 대신 도는 원을 세운다 — 한 번 받는 데 0.4 초가 걸린다
   if (cached) draw(cached);
-  cached = (await api.getWorktrees()).groups;
+  else drawLoading();
+  cached = (await api.getWorktrees(groupBy)).groups;
   draw(cached);
 }
 
-function draw(groups) {
+function drawLoading() {
+  syncViewButtons();
   const container = document.getElementById("worktree-list");
   container.innerHTML = "";
-  // 카테고리 라벨은 할일 탭과 같은 것을 쓴다 — 고른 라벨의 워크스페이스만 남는다
-  const visible = groups.filter(inActiveCategory);
+  const spinner = document.createElement("div");
+  spinner.className = "wt-loading";
+  spinner.setAttribute("role", "status");
+  spinner.setAttribute("aria-label", t("common.loading"));
+  // 목록 위 패널들의 높이가 그때그때 달라 화면 아래까지 남은 높이는 CSS 가 알 수 없다
+  const room = Math.max(0, innerHeight - container.getBoundingClientRect().top);
+  spinner.style.setProperty("--wt-loading-room", `${room}px`);
+  container.appendChild(spinner);
+}
+
+function draw(groups) {
+  syncViewButtons();
+  const container = document.getElementById("worktree-list");
+  container.innerHTML = "";
+  // 카테고리 라벨은 할일 탭과 같은 것을 쓴다 — 고른 라벨의 워크스페이스만 남는다.
+  // 프로젝트별은 워크스페이스에 안 걸린 저장소까지 보여주는 게 목적이라 이 필터를 안 탄다
+  const visible = groupBy === GROUP_BY_PROJECT ? groups : groups.filter(inActiveCategory);
   if (!visible.length) {
-    container.textContent = groups.length ? NO_MATCH : NO_REPO;
+    container.textContent = groups.length ? NO_MATCH : NO_REPO[groupBy];
     return;
   }
   visible.forEach((group) => container.appendChild(groupElement(group)));
+}
+
+function syncViewButtons() {
+  document.querySelectorAll("#worktree-view button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === groupBy);
+  });
 }
 
 function inActiveCategory(group) {
   const active = currentCategoryId();
   return active === null || group.category_id === active;
 }
+
+document.getElementById("worktree-view").addEventListener("click", (event) => {
+  const view = event.target.closest("button")?.dataset.view;
+  if (!view || view === groupBy) return;
+  groupBy = view;
+  localStorage.setItem(VIEW_KEY, view);
+  // 뷰가 바뀌면 그룹 자체가 달라져 캐시로는 그릴 수 없다
+  cached = null;
+  run(renderWorktrees);
+});
 
 // 보드 카드와 같은 .group 껍데기. 상단 배경도 그 워크스페이스의 카테고리 색
 function groupElement(group) {
@@ -226,8 +271,9 @@ function runRowAction(call, confirmMessage) {
     // 확인을 누른 다음에야 포트 배지가 붙어 한 박자 늦게 보인다.
     // 병합이 끊은 세션, 서버 실행·중지 결과가 다 message 로 온다 —
     // 실행은 몇 초 걸리고 끝나도 배지만 조용히 붙어 완료 여부를 알 수 없다
+    // 서버가 한국어로 적어 준 문장이라 사전에서 되짚어 지금 언어로 옮긴다
     const notice = result?.message;
-    if (notice) alert(notice);
+    if (notice) alert(fromKorean(notice));
   });
 }
 
