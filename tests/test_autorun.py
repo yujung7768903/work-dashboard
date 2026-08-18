@@ -227,6 +227,22 @@ class Gates(AutorunCase):
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_CWD)
 
+    def test_unknown_cwd_candidate_is_skipped_for_the_next_one(self):
+        """위치 없는 워크스페이스가 순위상 앞이어도 위치가 있는 다음 후보가 뜬다 —
+
+        한 워크스페이스가 위치를 못 정했다고 tick 전체가 멈추면 안 된다(할일 #106)
+        """
+        blind = workspace_repo.create(
+            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
+        )
+        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
+        workspace_repo.reorder(self.con, [blind["id"], self.workspace["id"]])
+        decision = autorun.judge(self.con)
+        self.assertEqual(decision["reason"], autorun.REASON_READY)
+        self.assertEqual(decision["todo"]["id"], self.todo["id"])
+        self.assertEqual(decision["cwd"], self.repo)
+
     def test_uncommitted_changes_do_not_block_start(self):
         """자율 세션은 워크트리를 새로 파서 일하므로 본 체크아웃의 미커밋 변경과 겹치지 않는다"""
         tracked = os.path.join(self.repo, "kept.txt")
