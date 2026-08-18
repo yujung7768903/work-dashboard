@@ -594,7 +594,7 @@ button:disabled { color: var(--line); cursor: default; }
 .ar-cands .ar-grip {
   position: absolute; left: calc(-1 * var(--sp-12)); top: 50%;
   transform: translateY(-50%);
-  width: var(--sp-8); height: var(--sp-16); cursor: grab; opacity: 0;
+  width: 6px; height: var(--sp-12); cursor: grab; opacity: 0;
   background-image: radial-gradient(currentColor 1px, transparent 1px);
   background-size: 3px 4px; background-position: center; background-repeat: repeat;
   color: var(--muted); transition: opacity 0.12s;
