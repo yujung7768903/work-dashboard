@@ -113,7 +113,8 @@ started inside a worktree.
 
 | Tab | What it holds |
 | --- | --- |
-| Board | The whole tree, the next todo, running sessions (polled every 2s) and the autonomous-run switch |
+| Board | The whole tree, the next todo and running sessions (polled every 2s) |
+| Autorun | The on/off switch, the candidate queue and the runs, grouped by state |
 | Workspaces | Creating a workspace and editing its background, purpose, goal and considerations |
 | Settings | Categories and labels |
 | Usage | Rate-limit windows and the token and cost trend |
@@ -282,6 +283,21 @@ nothing turns it back on.
 
 A tick that finds no eligible todo does nothing at all, which is why this is a
 cron entry and not a daemon.
+
+The **Autorun** tab holds the switch and two lists. Candidates are the
+`auto`-labelled todos in priority order, each with a chip naming what holds it
+back right now — an eligible-only list is empty most of the time and never
+explains itself. Drag a candidate by its handle to reorder; the order lands in
+`todos.autorun_order` and is the one a tick picks from, so the top of the list
+is never a lie. Runs are grouped by state — needs you, running, blocked or
+failed, done — and the groups that need a human stay open.
+
+A todo with preconditions is eligible only when the code can judge every item
+and every item is met. `#id` lines are resolved against that todo's status; a
+`Check:` command or a free-text sentence is not, and keeps the todo out of the
+queue until a human clears it. The `Check` button in the todo dialog runs the
+stored command — `POST /api/precondition-check` takes `{todo_id, index}` and
+reads the command back from the saved text, never from the request.
 
 ## Google Tasks sync
 

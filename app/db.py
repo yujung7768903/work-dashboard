@@ -180,6 +180,7 @@ def connect(path=None):
     con.commit()
     _add_category_style_columns(con)
     _add_precondition_columns(con)
+    _add_autorun_order_column(con)
     _add_usage_account_column(con)
     _add_requested_note_column(con)
     _add_finished_at_column(con)
@@ -257,6 +258,19 @@ def _add_precondition_columns(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
     if "precondition" not in columns:
         con.execute("ALTER TABLE todos ADD COLUMN precondition TEXT")
+    con.commit()
+
+
+def _add_autorun_order_column(con):
+    """자율 수행 후보 목록에서 사람이 끌어 정한 순서.
+
+    todos.sort_order 로는 담을 수 없다 — 후보는 여러 워크스페이스에 걸쳐 있고
+    보드 순서는 워크스페이스가 먼저이므로, 다른 워크스페이스 할일을 위로 끌어올린
+    결과를 그 열로는 표현할 수 없다. NULL 은 '사람이 안 정함' 이고 기존 순위를 따른다
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    if "autorun_order" not in columns:
+        con.execute("ALTER TABLE todos ADD COLUMN autorun_order INTEGER")
     con.commit()
 
 
