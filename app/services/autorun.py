@@ -34,6 +34,7 @@ from app.db import now, transaction
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
+from app.repositories import workspaces as workspace_repo
 from app.services import planning, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
@@ -135,14 +136,16 @@ def judge(con):
     usage = usage_gate()
     if usage["reason"]:
         return {"reason": usage["reason"], "state": state, "usage": usage}
-    picked = pick(con)
+    keep = eligible(con)
+    picked = planning.next_todo(con, keep=keep)
     if not picked:
         # 끄지 않는다 — 후보가 비는 것은 일시적이다. 다른 세션이 그 할일을 잡고 있기만
-        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다
-        return {"reason": REASON_NO_TODO, "state": state}
-    cwd = target_cwd(con, picked["workspace"])
-    if not cwd:
-        return dict(picked, reason=REASON_NO_CWD, state=state)
+        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다.
+        # 위치 때문에 건너뛴 후보가 있었으면 그게 진짜 사유다 — NO_TODO 로 뭉뚱그리면
+        # 세션 한 번만 열면 풀리는 상태를 사람이 못 본다
+        reason = REASON_NO_CWD if "" in keep.cwd_memo.values() else REASON_NO_TODO
+        return {"reason": reason, "state": state}
+    cwd = keep.cwd_memo[picked["todo"]["workspace_id"]]
     return dict(
         picked,
         reason=REASON_READY,
@@ -158,11 +161,16 @@ def pick(con):
 
 
 def eligible(con):
-    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가 아닐 것
+    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가
+    아니고, 작업 위치를 알 수 있을 것
 
     검토 대기(locked_todo_ids)를 빼는 이유 — 안 빼면 사람이 확인하기 전에 같은
     할일에 잡을 또 띄워 diff 가 두 벌 생긴다. failed 는 안 뺀다 — AUTORUN_FAIL_LIMIT
-    이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다
+    이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다.
+
+    위치는 할일이 아니라 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산해
+    `keep.cwd_memo` 에 담는다 — judge() 가 이 memo 를 재사용해 target_cwd 를 두 번
+    계산하지 않고, 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가 있었는지"도 안다
     """
     labeled = {
         todo_id
@@ -174,12 +182,24 @@ def eligible(con):
         | autorun_repo.requested_todo_ids(con)
         | autorun_repo.locked_todo_ids(con)
     )
+    cwd_memo = {}
+
+    def cwd_of(workspace_id):
+        if workspace_id not in cwd_memo:
+            workspace = (
+                workspace_repo.get(con, workspace_id) if workspace_id is not None else None
+            )
+            cwd_memo[workspace_id] = target_cwd(con, workspace)
+        return cwd_memo[workspace_id]
 
     def keep(todo):
         if todo["id"] not in labeled or todo["id"] in excluded:
             return False
-        return not (todo["precondition"] or "").strip()
+        if (todo["precondition"] or "").strip():
+            return False
+        return bool(cwd_of(todo["workspace_id"]))
 
+    keep.cwd_memo = cwd_memo
     return keep
 
 
