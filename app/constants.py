@@ -221,5 +221,8 @@ AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
 AUTORUN_JOB_TERMINAL = ("done", "failed", "stopped")
 AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
 AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다
+# 검토 대기(review) 중인 할일에 새 잡을 또 띄우면 확인 전에 diff 가 두 벌 생긴다.
+# 할일 상태 수정과 할일 케밥의 "시작" 둘 다 이 문구로 막는다
+REVIEW_LOCKED_MSG = "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요"
 # 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
 MERGE_TEST_TIMEOUT_SEC = 600

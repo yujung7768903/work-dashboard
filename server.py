@@ -29,6 +29,7 @@ from app.repositories import workspaces as workspace_repo
 from app.services import (
     autorun,
     board,
+    browse,
     gtasks,
     gtasks_setup,
     planning,
@@ -146,6 +147,8 @@ def _route_get(con, head, item_id, query):
         return gtasks_setup.panel(con)
     if head == "settings":
         return settings_repo.payload(con)
+    if head == "browse":
+        return browse.list_dir(_single(query, "path", None))
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -168,6 +171,10 @@ def _route_post(con, head, body):
             note=body.get("note"),
             precondition=body.get("precondition"),
         )
+    if head == "todo-start":
+        if not body.get("id"):
+            raise Validation("id 가 필요함")
+        return autorun.start_todo(con, body["id"], cwd=body.get("cwd"))
     if head == "reorder":
         return _reorder(con, body)
     if head == "precondition-check":

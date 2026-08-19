@@ -28,11 +28,13 @@ from app.constants import (
     AUTORUN_MODEL,
     OUTCOME_BLOCKED,
     RATE_LIMITS_PATH,
+    REVIEW_LOCKED_MSG,
     STATUS_DOING,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
 )
 from app.db import now, transaction
+from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
@@ -64,6 +66,11 @@ REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
 REASON_READY = "시작 가능"
 
+# 할일 케밥의 "시작" 이 세션을 띄운 뒤 알려주는 문장
+MSG_SESSION_STARTED = "세션을 시작했습니다"
+# 사람이 직접 고른 작업 위치가 실제 디렉토리가 아닐 때
+MSG_NOT_A_DIRECTORY = "디렉토리가 아님"
+
 # 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다
 BLOCKER_READY = "ready"
 BLOCKER_BLOCKED = "blocked"
@@ -93,6 +100,52 @@ def tick(con, dry_run=False, launcher=None):
         return decision
     decision["run"] = _register_run(con, decision, launched)
     return decision
+
+
+def start_todo(con, todo_id, launcher=None, cwd=None):
+    """할일 케밥의 "시작" — 사람이 고른 할일 하나를 자율 실행과 같은 방식으로 세션에 올린다.
+
+    eligible() 의 자동 후보 판정(라벨·조건 문장·사용량 게이트)은 거치지 않는다 — 사람이
+    이 할일을 직접 고른 것 자체가 그 판단이다. 검토 대기만은 todos.update() 와 같은
+    이유로 막는다 — 안 막으면 확인하기 전에 같은 할일에 잡을 또 띄워 diff 가 두 벌 생긴다
+
+    cwd 를 받으면 target_cwd() 대신 그 경로를 그대로 쓴다 — 그 워크스페이스로 분류된
+    세션이 없어 위치를 못 정했을 때, 화면이 사람에게 물어 받은 값이 이 자리로 온다.
+    한 번 쓰면 launch() 가 그 경로로 세션을 등록하므로 다음부터는 target_cwd() 가
+    알아서 찾는다 — 매번 물을 필요가 없다
+    """
+    todo = todo_repo.get(con, todo_id)
+    if todo["id"] in autorun_repo.locked_todo_ids(con):
+        raise Validation(REVIEW_LOCKED_MSG)
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"])
+        if todo["workspace_id"] is not None
+        else None
+    )
+    if cwd:
+        if not os.path.isdir(cwd):
+            raise Validation(f"{MSG_NOT_A_DIRECTORY}: {cwd}")
+    else:
+        cwd = target_cwd(con, workspace)
+    if not cwd:
+        raise Validation(REASON_NO_CWD)
+    name = _job_name(todo)
+    launched = (launcher or launch)(
+        prompt=build_prompt(todo, workspace, cwd), cwd=cwd, name=name
+    )
+    if not launched.get("job_id"):
+        raise Validation(launched.get("error") or "잡을 띄우지 못함")
+    session_id = launched.get("session_id") or ""
+    if session_id:
+        session_repo.register(con, session_id, cwd=cwd)
+        if workspace:
+            session_repo.classify(con, session_id, workspace_id=workspace["id"])
+        session_repo.link_todo(con, session_id, todo_id)
+    return {
+        "job_id": launched["job_id"],
+        "session_id": session_id,
+        "message": f"{MSG_SESSION_STARTED} — {name}",
+    }
 
 
 def panel_runs(con, limit=10):
@@ -396,19 +449,58 @@ def build_prompt(todo, workspace, cwd):
 
 def _rules(cwd):
     """권한 규칙. --bg 하네스가 넣는 '끝나면 커밋·푸시·draft PR' 중 푸시·PR 만 취소한다 —
-    커밋은 조건부로 그대로 지시한다 — 사용자가 요구한 것을 다 했고 확인할 것도 없을 때만"""
+    커밋은 조건부로 그대로 지시한다 — 사용자가 요구한 것을 다 했고 확인할 것도 없을 때만.
+
+    워크트리·커밋 지시는 cwd 가 git 저장소일 때만 성립한다 — 할일 케밥의 "시작"이 고른
+    폴더는 git 저장소가 아닐 수 있다(자동 실행의 target_cwd() 는 항상 git 저장소만
+    돌려주므로 이 분기를 안 탄다)
+    """
+    is_git = os.path.exists(os.path.join(cwd, ".git"))
+    # 이 파일 자신의 저장소 루트(세 단계 위) — cwd 가 work-dashboard 자기 자신인지 판정.
+    # 다른 프로젝트면 "python3 -m tests" 를 시킬 수 없다. 둘 다 _main_checkout 으로
+    # 워크트리 접미사를 지우고 비교해야, 이 함수가 워크트리 안에서 돌 때도 맞아떨어진다
+    this_repo = _main_checkout(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+    is_this_repo = _main_checkout(cwd).rstrip("/") == this_repo.rstrip("/")
+    test_line = (
+        "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다 (이 저장소는 `python3 -m tests`)."
+        if is_this_repo
+        else "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다 — 그 프로젝트의"
+        " 테스트·린트 실행법을 README·CLAUDE.md 등에서 확인해 실행한다."
+    )
+    if is_git:
+        where = (
+            f"- 작업은 {cwd} 의 워크트리에서 한다. 메인 체크아웃 소스 편집은 훅이 막으므로"
+            " EnterWorktree 로 워크트리를 만들고 그 안에서 고친다."
+        )
+        finish = (
+            "- 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도"
+            " 없다면, 이번 작업에 해당하는 변경만 diff 로 확인해 커밋한 뒤"
+            " `python3 dash.py autorun-finish` 를 부른다 (워크트리에 이전 작업이"
+            " 남긴 미커밋 변경이 있다면 그것까지 같이 커밋하지 않는다). 그렇지"
+            " 않다면(확인이 필요하거나 끝내지 못했다면) 커밋하지 않고"
+            " `autorun-finish` 도 부르지 않는다 — 변경은 워크트리에 남겨 둔 채"
+            " 끝낸다. 사람이 diff 로 검토한다."
+        )
+    else:
+        where = f"- {cwd} 에서 바로 작업한다 — git 저장소가 아니라 워크트리를 따로 만들지 않는다."
+        finish = (
+            "- 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도"
+            " 없다면 `python3 dash.py autorun-finish` 를 부른다. 그렇지 않다면"
+            "(확인이 필요하거나 끝내지 못했다면) `autorun-finish` 를 부르지 않는다"
+            " — 변경은 그대로 남겨 둔다. 사람이 결과물을 직접 검토한다."
+        )
     return "\n".join(
         [
             "# 규칙 (아래가 하네스 기본 지시보다 우선한다)",
-            f"- 작업은 {cwd} 의 워크트리에서 한다. 메인 체크아웃 소스 편집은 훅이 막으므로"
-            " EnterWorktree 로 워크트리를 만들고 그 안에서 고친다.",
+            where,
             "- 푸시·PR 을 하지 않는다.",
             "- 브랜치 삭제, 운영 서버 접속·배포, 새 의존성 설치, `rm`·`mv`,"
             " sqlite 직접 수정을 하지 않는다. 상태 변경은 dash.py 명령으로만 한다.",
             "- 외부로 나가는 발신(Jira 댓글, Confluence, 메일, 슬랙)은 하지 않는다."
             " 단, 할일 note 에 명시적으로 요청된 경우는 예외로 한다.",
-            "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다"
-            " (이 저장소는 `python3 -m tests`).",
+            test_line,
             "- 판단이 필요해 더 못 가면 멈추고 그 사실을 남긴다. 추측으로 진행하지 않는다.",
             "- 기능을 추가·수정할 때 grill me·superpowers 로 검토해(스펙 문서 작성x)"
             " 기획 공백이 나오거나, 구현 방향이 여럿인데 note 에 정해져 있지 않거나,"
@@ -416,13 +508,7 @@ def _rules(cwd):
             ' `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 등록하고 끝낸다'
             " — 이때는 커밋하지 않는다. 할일 상태는 건드리지 않고, 이후 자율 수행"
             " 후보에서 빠진다.",
-            "- 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도"
-            " 없다면, 이번 작업에 해당하는 변경만 diff 로 확인해 커밋한 뒤"
-            " `python3 dash.py autorun-finish` 를 부른다 (워크트리에 이전 작업이"
-            " 남긴 미커밋 변경이 있다면 그것까지 같이 커밋하지 않는다). 그렇지"
-            " 않다면(확인이 필요하거나 끝내지 못했다면) 커밋하지 않고"
-            " `autorun-finish` 도 부르지 않는다 — 변경은 워크트리에 남겨 둔 채"
-            " 끝낸다. 사람이 diff 로 검토한다.",
+            finish,
         ]
     )
 

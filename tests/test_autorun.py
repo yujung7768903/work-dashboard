@@ -351,13 +351,13 @@ class Prompt(AutorunCase):
         workspace_repo.update(self.con, self.workspace["id"], goal="끝까지 돌리기")
         self.workspace = workspace_repo.get(self.con, self.workspace["id"])
 
-    def _text(self, **fields):
+    def _text(self, cwd=None, **fields):
         todo = (
             todo_repo.update(self.con, self.todo["id"], **fields)
             if fields
             else self.todo
         )
-        return autorun.build_prompt(todo, self.workspace, "/repo")
+        return autorun.build_prompt(todo, self.workspace, cwd or _git_repo())
 
     def test_carries_workspace_and_todo(self):
         text = self._text()
@@ -390,6 +390,30 @@ class Prompt(AutorunCase):
         text = self._text(precondition="포트 9080 이 비어 있을 것")
         self.assertIn("포트 9080 이 비어 있을 것", text)
         self.assertIn("코드를 고치기 전에", text)
+
+    def test_non_git_cwd_skips_worktree_and_commit_instructions(self):
+        """할일 케밥의 "시작"이 고른 폴더는 git 저장소가 아닐 수 있다 — 그때는
+        워크트리·커밋을 요구하면 안 끝낼 방법이 없어진다"""
+        plain = tempfile.mkdtemp()
+        text = self._text(cwd=plain)
+        self.assertNotIn("EnterWorktree", text)
+        self.assertNotIn("diff 로 확인해 커밋한 뒤", text)
+        self.assertIn("autorun-finish", text)
+        self.assertIn(plain, text)
+
+    def test_this_repo_gets_the_concrete_test_command(self):
+        """cwd 가 work-dashboard 자기 자신이면 이미 아는 실행법(python3 -m tests)을 그대로 알려준다"""
+        this_repo = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(autorun.__file__)))
+        )
+        text = self._text(cwd=this_repo)
+        self.assertIn("python3 -m tests", text)
+
+    def test_other_project_gets_a_generic_test_instruction(self):
+        """cwd 가 다른 프로젝트면 python3 -m tests 는 틀린 명령이다 — 일반 안내로 대신한다"""
+        text = self._text()  # 기본 cwd 는 _git_repo() — work-dashboard 가 아닌 임시 저장소
+        self.assertNotIn("python3 -m tests", text)
+        self.assertIn("README·CLAUDE.md", text)
 
 
 class Launching(AutorunCase):
@@ -435,6 +459,82 @@ class Launching(AutorunCase):
         )
         self.assertEqual(result["error"], "claude 없음")
         self.assertEqual(autorun_repo.open_runs(self.con), [])
+
+
+class ManualStart(AutorunCase):
+    """할일 케밥의 "시작". 사람이 직접 고른 할일이라 eligible() 의 자동 후보 판정을 거치지 않는다"""
+
+    def test_starts_unlabeled_todo(self):
+        """auto 라벨은 자율 실행의 자동 후보 판정 조건이다 — 사람이 직접 고른 시작에는 안 붙는다"""
+        unlabeled = self._todo("라벨 없는 일")
+        launcher = Recorder()
+        result = autorun.start_todo(self.con, unlabeled["id"], launcher=launcher)
+        self.assertEqual(result["session_id"], CHILD)
+        self.assertEqual(launcher.calls[0]["cwd"], self.repo)
+
+    def test_starts_todo_with_precondition(self):
+        """조건 문장이 있어도 시작은 막지 않는다 — 판단은 프롬프트가 세션에 넘긴다"""
+        todo = self._todo("조건 붙은 일", precondition="다른 게 먼저 끝날 것")
+        launcher = Recorder()
+        autorun.start_todo(self.con, todo["id"], launcher=launcher)
+        self.assertIn("다른 게 먼저 끝날 것", launcher.calls[0]["prompt"])
+
+    def test_job_name_carries_the_todo_id(self):
+        launcher = Recorder()
+        autorun.start_todo(self.con, self.todo["id"], launcher=launcher)
+        self.assertEqual(
+            launcher.calls[0]["name"], f"#{self.todo['id']} | {self.todo['title']}"
+        )
+
+    def test_links_child_session_and_marks_doing(self):
+        autorun.start_todo(self.con, self.todo["id"], launcher=Recorder())
+        self.assertEqual(
+            session_repo.linked_todo_ids(self.con, CHILD), [self.todo["id"]]
+        )
+        self.assertEqual(
+            todo_repo.get(self.con, self.todo["id"])["status"], STATUS_DOING
+        )
+
+    def test_blocks_review_locked_todo(self):
+        """검토 대기 중에 또 띄우면 확인 전에 같은 할일의 diff 가 두 벌 생긴다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, self.todo["id"], launcher=Recorder())
+
+    def test_blocks_when_cwd_is_unknown(self):
+        workspace = workspace_repo.create(
+            self.con, self.workspace["category_id"], "위치 모름"
+        )
+        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, todo["id"], launcher=Recorder())
+
+    def test_explicit_cwd_is_used_when_workspace_has_no_history(self):
+        """위치를 모르는 워크스페이스도, 화면이 물어 받은 경로가 있으면 그걸 쓴다.
+
+        git 저장소로 제한하지 않는다 — 워크트리를 안 만들어도 되는 작업도 있다
+        """
+        workspace = workspace_repo.create(
+            self.con, self.workspace["category_id"], "위치 모름"
+        )
+        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        chosen = tempfile.mkdtemp()
+        launcher = Recorder()
+        autorun.start_todo(self.con, todo["id"], launcher=launcher, cwd=chosen)
+        self.assertEqual(launcher.calls[0]["cwd"], chosen)
+
+    def test_explicit_cwd_must_be_an_existing_directory(self):
+        missing = os.path.join(tempfile.mkdtemp(), "없음")
+        with self.assertRaises(Validation):
+            autorun.start_todo(
+                self.con, self.todo["id"], launcher=Recorder(), cwd=missing
+            )
+
+    def test_launch_failure_raises(self):
+        launcher = Recorder(job_id="", session_id="", error="claude 없음")
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, self.todo["id"], launcher=launcher)
 
 
 class Outcomes(AutorunCase):
