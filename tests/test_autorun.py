@@ -401,6 +401,20 @@ class Prompt(AutorunCase):
         self.assertIn("autorun-finish", text)
         self.assertIn(plain, text)
 
+    def test_this_repo_gets_the_concrete_test_command(self):
+        """cwd 가 work-dashboard 자기 자신이면 이미 아는 실행법(python3 -m tests)을 그대로 알려준다"""
+        this_repo = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(autorun.__file__)))
+        )
+        text = self._text(cwd=this_repo)
+        self.assertIn("python3 -m tests", text)
+
+    def test_other_project_gets_a_generic_test_instruction(self):
+        """cwd 가 다른 프로젝트면 python3 -m tests 는 틀린 명령이다 — 일반 안내로 대신한다"""
+        text = self._text()  # 기본 cwd 는 _git_repo() — work-dashboard 가 아닌 임시 저장소
+        self.assertNotIn("python3 -m tests", text)
+        self.assertIn("README·CLAUDE.md", text)
+
 
 class Launching(AutorunCase):
     def test_links_child_session_to_the_todo(self):

@@ -456,6 +456,19 @@ def _rules(cwd):
     돌려주므로 이 분기를 안 탄다)
     """
     is_git = os.path.exists(os.path.join(cwd, ".git"))
+    # 이 파일 자신의 저장소 루트(세 단계 위) — cwd 가 work-dashboard 자기 자신인지 판정.
+    # 다른 프로젝트면 "python3 -m tests" 를 시킬 수 없다. 둘 다 _main_checkout 으로
+    # 워크트리 접미사를 지우고 비교해야, 이 함수가 워크트리 안에서 돌 때도 맞아떨어진다
+    this_repo = _main_checkout(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+    is_this_repo = _main_checkout(cwd).rstrip("/") == this_repo.rstrip("/")
+    test_line = (
+        "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다 (이 저장소는 `python3 -m tests`)."
+        if is_this_repo
+        else "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다 — 그 프로젝트의"
+        " 테스트·린트 실행법을 README·CLAUDE.md 등에서 확인해 실행한다."
+    )
     if is_git:
         where = (
             f"- 작업은 {cwd} 의 워크트리에서 한다. 메인 체크아웃 소스 편집은 훅이 막으므로"
@@ -486,8 +499,7 @@ def _rules(cwd):
             "- 브랜치 삭제, 운영 서버 접속·배포, 새 의존성 설치, `rm`·`mv`,"
             " sqlite 직접 수정을 하지 않는다. 상태 변경은 dash.py 명령으로만 한다.",
             "- 외부로 나가는 발신(Jira 댓글, Confluence, 메일, 슬랙)을 하지 않는다.",
-            "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다"
-            " (이 저장소는 `python3 -m tests`).",
+            test_line,
             "- 판단이 필요해 더 못 가면 멈추고 그 사실을 남긴다. 추측으로 진행하지 않는다.",
             "- 기능을 추가·수정할 때 grill me·superpowers 로 검토해(스펙 문서 작성x)"
             " 기획 공백이 나오거나, 구현 방향이 여럿인데 note 에 정해져 있지 않거나,"
