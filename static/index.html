@@ -7,6 +7,17 @@
   <title>Work Dashboard</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/usage.css">
+  <!-- 밝기는 첫 칠 전에 정해야 한다 — 모듈(boot.js)을 기다리면 어두운 화면이 흰색으로
+       번쩍인다. 고른 값이 없으면 기기 설정을 따른다 (static/js/theme.js 와 같은 규칙) -->
+  <script>
+    {
+      const chosen = localStorage.getItem("theme");
+      document.documentElement.dataset.theme =
+        chosen === "light" || chosen === "dark"
+          ? chosen
+          : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+  </script>
 </head>
 <body>
   <div class="app">
@@ -21,10 +32,19 @@
           </svg>
         </span>
         <span class="side-name" data-i18n="app.title"></span>
+        <!-- 레일 접기. 문구는 접힘/펼침에 따라 달라지므로 layout.js 가 넣는다 -->
+        <button type="button" id="side-toggle" class="icon-btn">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.6"
+                  fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6.6 3.2v9.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
       </div>
 
+      <!-- 접으면 아이콘만 남으므로 이름을 title 로도 달아 둔다 (문구는 라벨과 같은 키) -->
       <nav id="tabs" class="side-nav">
-        <button data-tab="usage" data-i18n="nav.usage">
+        <button data-tab="usage" data-i18n="nav.usage" data-i18n-title="nav.usage">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.3 11.6a6 6 0 1 1 11.4 0" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linecap="round"/>
@@ -32,28 +52,28 @@
                   stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </button>
-        <button data-tab="board" class="active" data-i18n="nav.board">
+        <button data-tab="board" class="active" data-i18n="nav.board" data-i18n-title="nav.board">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button data-tab="autorun" data-i18n="nav.autorun">
+        <button data-tab="autorun" data-i18n="nav.autorun" data-i18n-title="nav.autorun">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <path d="M6.7 5.9 10.4 8l-3.7 2.1z" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button data-tab="workspace" data-i18n="nav.workspace">
+        <button data-tab="workspace" data-i18n="nav.workspace" data-i18n-title="nav.workspace">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button data-tab="settings" data-i18n="nav.settings">
+        <button data-tab="settings" data-i18n="nav.settings" data-i18n-title="nav.settings">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M8.6 2.2H13a.8.8 0 0 1 .8.8v4.4L7.9 13.3a.8.8 0 0 1-1.2 0L2.7 9.3a.8.8 0 0 1 0-1.2z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
@@ -73,6 +93,8 @@
         <p id="error" hidden></p>
         <!-- 상단바 오른쪽 아이콘 묶음. 상단바 gap 이 둘 사이까지 벌리지 않게 감싼다 -->
         <div class="topbar-tools">
+        <!-- 밝기 메뉴. 해/달 아이콘 하나이고 목록은 theme.js 가 채운다 -->
+        <div id="theme-menu" class="ws-menu"></div>
         <!-- 언어 메뉴. 지구본 아이콘 하나이고 목록은 language.js 가 채운다 -->
         <div id="lang-menu" class="ws-menu"></div>
         <!-- 저장소 바로가기. 새 탭에서 연다 -->
@@ -136,6 +158,29 @@
         <div id="board-todos">
         <div id="board-controls">
           <label data-i18n="board.showDone"><input type="checkbox" id="show-done"></label>
+          <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 화면 폭이 정하던 것을 직접 고른다 -->
+          <div class="view-columns">
+            <button type="button" class="icon-btn" data-columns="1"
+                    data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4" fill="none"
+                      stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" data-columns="2"
+                    data-i18n-title="board.twoColumns" data-i18n-aria-label="board.twoColumns">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <rect x="2.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="8.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="2.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="8.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div id="groups"></div>
         <details id="done-today">
@@ -145,6 +190,39 @@
         </div>
 
         <div id="board-worktrees" hidden>
+          <div id="worktree-controls">
+            <!-- 워크스페이스별(기존)·프로젝트별(저장소 전체) 전환. 프로젝트별은 워크스페이스나
+                 할일에 안 걸린 워크트리까지 보여준다 -->
+            <div id="worktree-view">
+              <button type="button" class="active" data-view="workspace"
+                      data-i18n="worktree.viewWorkspace"></button>
+              <button type="button" data-view="project"
+                      data-i18n="worktree.viewProject"></button>
+            </div>
+            <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 할일 탭의 view-columns 와 같은 취향을 공유한다 -->
+            <div class="view-columns">
+              <button type="button" class="icon-btn" data-columns="1"
+                      data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4" fill="none"
+                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button type="button" class="icon-btn" data-columns="2"
+                      data-i18n-title="board.twoColumns" data-i18n-aria-label="board.twoColumns">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <rect x="2.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <rect x="8.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <rect x="2.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <rect x="8.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                        fill="none" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </button>
+            </div>
+          </div>
           <div id="worktree-list"></div>
         </div>
       </section>
@@ -159,6 +237,19 @@
       </section>
 
       <section id="tab-settings" class="tab" hidden>
+        <!-- 연동이 아래 카테고리 목록의 범위를 정하므로 그보다 먼저 온다.
+             켜기 전에는 관리할 것이 없어 빈 카드 대신 무엇을 할 수 있는지 알린다 -->
+        <h2 class="set-head" id="gtasks-head">
+          <span data-i18n="gtasks.title"></span>
+          <label class="switch" id="gtasks-switch" data-i18n-title="gtasks.toggleHint" hidden>
+            <input type="checkbox" id="gtasks-toggle">
+            <span class="track"></span>
+            <span class="state"></span>
+          </label>
+          <span id="gtasks-warn" hidden>⚠ <span id="gtasks-reason"></span></span>
+        </h2>
+        <div id="gtasks-card" class="set-card"></div>
+
         <!-- 카테고리는 소속(하나), 라벨은 성격(여러 개). 같은 화면에서 색까지 관리한다 -->
         <h2 class="set-head" data-i18n="common.category"></h2>
         <form id="category-add">
@@ -178,7 +269,7 @@
       <!-- 자율 수행. 보드에서 떼어낸 이유 — 후보와 사람이 처리할 실행을 상태별로 봐야 한다 -->
       <section id="tab-autorun" class="tab" hidden>
         <div class="ar-state">
-          <label id="autorun-switch" data-i18n-title="autorun.toggleHint">
+          <label class="switch" id="autorun-switch" data-i18n-title="autorun.toggleHint">
             <input type="checkbox" id="autorun-toggle">
             <span class="track"></span>
             <span class="state"></span>
@@ -193,6 +284,53 @@
         <h2 class="ar-head" data-i18n="autorun.runs"></h2>
         <ul id="autorun-list" class="ar-runs"></ul>
       </section>
+
+      <!-- client_id·secret 은 구글 콘솔에서 직접 받아야 한다. 어디서 어떻게 받는지
+           먼저 알려주고, 받아 온 값을 여기서 입력받아 gtasks.json 에 저장한다 -->
+      <dialog id="gtasks-auth">
+        <div id="gtasks-auth-guide">
+          <h3 data-i18n="gtasks.authTitle"></h3>
+          <ol class="gt-steps">
+            <!-- 줄바꿈을 넣으면 공백이 하나 더 생긴다. 앞뒤 여백은 사전 문구가 갖는다 -->
+            <li><span data-i18n="gtasks.authStep1Before"></span><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" data-i18n="gtasks.authConsole"></a><span data-i18n="gtasks.authStep1After"></span></li>
+            <li data-i18n="gtasks.authStep2"></li>
+            <li data-i18n="gtasks.authStep3"></li>
+            <li data-i18n="gtasks.authStep4"></li>
+            <li data-i18n="gtasks.authStep5"></li>
+          </ol>
+          <div class="gt-actions">
+            <button type="button" id="gtasks-auth-cancel" data-i18n="common.cancel"></button>
+            <button type="button" id="gtasks-auth-next" data-i18n="gtasks.authNext"></button>
+          </div>
+        </div>
+        <form id="gtasks-auth-form" hidden>
+          <h3 data-i18n="gtasks.formTitle"></h3>
+          <label class="gt-field">
+            <span data-i18n="gtasks.clientId"></span>
+            <input id="gtasks-client-id" required autocomplete="off">
+          </label>
+          <label class="gt-field">
+            <span data-i18n="gtasks.clientSecret"></span>
+            <input id="gtasks-client-secret" type="password" required autocomplete="off">
+          </label>
+          <p class="gt-note" data-i18n="gtasks.formNote"></p>
+          <div class="gt-actions">
+            <button type="button" id="gtasks-auth-back" data-i18n="gtasks.authBack"></button>
+            <button type="submit" data-i18n="gtasks.connect"></button>
+          </div>
+        </form>
+      </dialog>
+
+      <!-- 합집합을 보여주고 확인을 받는다. 확인 전에는 양쪽 어디도 건드리지 않는다 -->
+      <dialog id="gtasks-plan">
+        <h3 data-i18n="gtasks.planTitle"></h3>
+        <p class="gt-note" data-i18n="gtasks.planRule"></p>
+        <div id="gtasks-plan-list"></div>
+        <div class="gt-actions">
+          <button type="button" id="gtasks-plan-cancel" data-i18n="common.cancel"></button>
+          <button type="button" id="gtasks-plan-go" data-i18n="gtasks.planGo"></button>
+        </div>
+      </dialog>
 
       <section id="tab-usage" class="tab" hidden>
         <div class="u-shell">
@@ -246,7 +384,7 @@
              (app.constants.PRECONDITION_HINT). tests/test_precondition.py 가 갈라지면 실패한다 -->
         <p class="hint" id="todo-add-precondition-hint" data-i18n="common.preconditionHint"></p>
         <textarea id="todo-add-precondition" aria-describedby="todo-add-precondition-hint"
-                  placeholder="#57 이 done 일 것&#10;확인: git -C ~/work/work-dashboard status --short"></textarea>
+                  data-i18n-placeholder="common.preconditionExample"></textarea>
       </div>
       <div class="field">
         <label for="todo-add-note">note</label>

@@ -44,6 +44,12 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("락 초안", out)
 
+    def test_add_todo_tells_when_not_to_link(self):
+        self.run_cli("add-workspace", "개발", "KT 동시성", "--goal", "락 재설계")
+        _, out, _ = self.run_cli("add-todo", "나중에 할 일", "--workspace", "1")
+        self.assertIn("link-todo 1", out)
+        self.assertIn("연결하지 않는다", out)
+
     def test_add_todo_requires_category_or_workspace(self):
         code, _, err = self.run_cli("add-todo", "제목만")
         self.assertEqual(code, 1)

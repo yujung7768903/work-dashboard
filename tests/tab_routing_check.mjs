@@ -32,6 +32,9 @@ globalThis.document = {
 globalThis.fetch = () => Promise.reject(new Error("no network"));
 
 await bootKorean();
+// 화면 모듈은 최상단에서 저장해 둔 값(뷰 모드·열 수)을 읽는다. 브라우저 밖에는 없는 것
+globalThis.localStorage = { getItem: () => null, setItem() {} };
+
 await import("../static/js/main.js");
 
 // 들어온 주소가 곧 탭이다. / 로 들어오면 기본 탭 경로로 정리된다

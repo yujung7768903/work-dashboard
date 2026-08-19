@@ -13,11 +13,11 @@ async function request(method, path, body) {
   const response = await fetch(`/api${path}`, options);
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    // 서버는 한국어로 내려준다. 사전에 같은 문장이 있으면 옮기고, 건수·이름이 박힌
-    // 문장은 사전에 없으므로 원문 그대로 뜬다 (README '초기 설정 (⑤) > 화면 언어' 참고)
+    // 서버는 한국어로 내려준다. 건수·이름이 박힌 문장까지 사전에서 되짚는다
+    // (README '초기 설정 (⑤) > 화면 언어' 참고)
     const error = new Error(
       payload?.error
-        ? await fromKorean(payload.error)
+        ? fromKorean(payload.error)
         : t("error.requestFailed", { status: response.status })
     );
     // 서버가 확인을 요구한 것과 진짜 실패를 호출부가 구분할 수 있게 넘긴다
@@ -40,7 +40,7 @@ export const getSessions = () => request("GET", "/sessions");
 export const getSession = (id) => request("GET", `/sessions/${id}`);
 export const classifySession = (id, fields) => request("PATCH", `/sessions/${id}`, fields);
 export const getUsage = () => request("GET", "/usage");
-export const getWorktrees = () => request("GET", "/worktrees");
+export const getWorktrees = (groupBy) => request("GET", `/worktrees?group_by=${groupBy}`);
 export const applyWorktree = (repo, branch) =>
   request("POST", "/worktrees", { repo, branch, action: "apply" });
 export const discardWorktree = (repo, branch) =>
@@ -48,6 +48,16 @@ export const discardWorktree = (repo, branch) =>
 // action: start(띄우기) · restart(다시 띄우기) · stop(내리기)
 export const controlWorktree = (repo, branch, action) =>
   request("POST", "/worktrees", { repo, branch, action });
+export const getGtasks = () => request("GET", "/gtasks");
+export const setGtasks = (enabled) => request("PATCH", "/gtasks", { enabled });
+export const setGtasksCategory = (id, enabled) =>
+  request("PATCH", `/gtasks-categories/${id}`, { enabled });
+export const connectGtasks = (credentials) => request("POST", "/gtasks-auth", credentials);
+export const planGtasks = () => request("POST", "/gtasks-plan", {});
+export const setupGtasks = (chosen) => request("POST", "/gtasks-setup", { chosen });
+export const syncGtasks = () => request("POST", "/gtasks-sync", {});
+export const disconnectGtasks = () => request("POST", "/gtasks-disconnect", {});
+
 export const getAutorun = () => request("GET", "/autorun");
 export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });
 export const confirmAutorunRun = (id) => request("PATCH", `/autorun-runs/${id}`);

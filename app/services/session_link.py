@@ -45,6 +45,13 @@ RELEASE_GUIDE = (
     "다만 하나를 버려야 하거나 동작이 달라지는 선택이면 추측하지 않고 사용자에게 확인한다 "
     "(자율 세션이면 dash.py autorun-request 로 남긴다)."
 )
+# 무엇을 연결하는가. 병합은 연결된 할일을 전부 done 으로 닫으므로 착수하지 않은 것이 섞이면 안 된다
+LINK_SCOPE_RULE = (
+    " 연결하는 것은 지금 이 세션이 착수하는 할일 하나뿐이다. "
+    "나중에 할 일로 만들어 두는 후속 할일은 dash.py add-todo 로 만들기만 하고 "
+    "연결하지 않는다 — 연결하면 병합할 때 착수하지도 않은 채 done 으로 닫힌다. "
+    "그 할일은 실제로 착수하는 세션이 연결한다."
+)
 # 해제 뒤 같은 세션이 이어질 때. 끝난 할일에 새 작업을 얹으면 무엇이 끝났는지 알 수 없어진다
 RELEASED_GUIDE = (
     "지침: 이 세션이 잡았던 할일은 모두 끝났다(done). "
@@ -52,6 +59,7 @@ RELEASED_GUIDE = (
     "dash.py add-todo <제목> --session 으로 만들고 "
     "dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 만들지 않는다."
+    + LINK_SCOPE_RULE
 )
 # 연결은 착수 선언이지만 늘 그런 것은 아니다 — 이미 끝난 작업을 뒤늦게 연결하는 일도 있다.
 # 무엇이 끝난 것인지는 작업 내용을 본 쪽만 알므로 코드가 추측하지 않고 여기서 규칙을 알린다
@@ -65,6 +73,7 @@ UNLINKED_GUIDE = (
     "할일을 dash.py link-todo <todo-id> 로 잡는다. 해당하는 것이 없으면 "
     "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다. "
     + LINK_STATUS_RULE
+    + LINK_SCOPE_RULE
 )
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
@@ -82,6 +91,7 @@ UNCLASSIFIED_GUIDE = (
     "코드·문서를 바꾸거나 여러 턴에 걸치거나 산출물이 남는 작업이면 "
     "dash.py add-todo 로 할일을 만들고 dash.py link-todo <todo-id> 로 연결한다. "
     + LINK_STATUS_RULE
+    + LINK_SCOPE_RULE
     + " 단발 조회·설명 질문이면 할일을 만들지 않는다. "
     "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
     "dash.py show-todo --session 으로 할일을 직접 확인하고 "

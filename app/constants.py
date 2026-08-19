@@ -5,6 +5,10 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9080
 BUSY_TIMEOUT_MS = 5000
 
+# start.sh·stop.sh·restart.sh 를 실제로 실행해 검사하는 테스트가 쓰는 대역.
+# 이 대역을 듣는 서버는 화면(워크트리 탭·상태줄·자율 수행 패널)에 그리지 않는다
+TEST_SERVER_PORTS = range(9900, 10000)
+
 DEFAULT_DB_PATH = os.path.expanduser("~/.claude/work-dashboard/dash.db")
 DB_PATH_ENV = "WORK_DASHBOARD_DB"
 
@@ -16,7 +20,7 @@ SEED_CATEGORIES = ("개발", "운영", "장애 대응", "개발환경 개선", "
 # tests/test_language.py 가 잡는다.
 # 기본값·폴백은 영어다 — 이 대시보드를 공개로 열 것이므로, 설정을 못 읽거나 번역이
 # 빠졌을 때 처음 보는 사람이 읽을 수 있는 쪽으로 떨어져야 한다.
-# CLI 출력·훅 주입 블록은 아직 한국어 고정 (README '초기 설정 (⑤) > 화면 언어' 참고)
+# CLI 출력·훅 주입 블록은 아직 한국어 고정 — 읽는 쪽이 Claude 라 옮길 이유가 없다
 LANGUAGES = ("en", "ko", "ja", "zh")
 DEFAULT_LANGUAGE = LANGUAGES[0]
 LANGUAGE_KEY = "language"  # meta 테이블 키
@@ -141,10 +145,54 @@ USAGE_CRITICAL_PCT = 90
 # /usage 가 보여주는 창 중 사이드카에 남는 두 개. 나머지는 MISSING_WINDOW_LABELS 로 알린다
 USAGE_WINDOWS = (("five_hour", "현재 세션 (5시간)"), ("seven_day", "이번 주 (전체 모델)"))
 MISSING_WINDOW_LABELS = ("이번 주 (Sonnet 전용)", "모델별 주간 창")
+# Google Tasks 양방향 동기화. google-api-python-client 를 쓰면 이 프로젝트의 첫 외부
+# 의존성이 되고 전이 패키지가 열 개 넘게 딸려온다. 우리가 쓰는 엔드포인트는 다섯 개뿐이라
+# urllib 로 직접 치는 쪽이 싸다
+GTASKS_CONFIG_PATH = os.path.expanduser("~/.claude/work-dashboard/gtasks.json")
+# 최초 인증 1회에만 쓰는 값. 플래그로 넘기면 셸 히스토리에 secret 이 남아 환경변수를 먼저 본다
+GTASKS_CLIENT_ID_ENV = "GTASKS_CLIENT_ID"
+GTASKS_CLIENT_SECRET_ENV = "GTASKS_CLIENT_SECRET"
+GTASKS_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GTASKS_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GTASKS_API_ROOT = "https://tasks.googleapis.com/tasks/v1"
+GTASKS_SCOPE = "https://www.googleapis.com/auth/tasks"
+GTASKS_TIMEOUT_SEC = 20
+GTASKS_PAGE_MAX = 100  # Tasks API 가 한 번에 주는 최대치. 기본값 20 이라 명시해야 함
+GTASKS_TOKEN_MARGIN_SEC = 60  # 만료 직전에 쓰다 401 나는 걸 피하려고 미리 갱신
+GTASKS_SEEN_KEY = "gtasks_seen_ids"
+GTASKS_STATUS_DONE = "completed"
+GTASKS_STATUS_TODO = "needsAction"
+GTASKS_NOTES_MAX = 8000  # 구글 상한은 8192. 잘라 보내지 않으면 호출 전체가 400 으로 죽는다
+GTASKS_UNTITLED = "(제목 없음)"
+# 로컬 인증 콜백. 데스크톱 OAuth 클라이언트는 127.0.0.1 이면 포트를 안 가린다
+GTASKS_AUTH_HOST = "127.0.0.1"
+GTASKS_AUTH_TIMEOUT_SEC = 300
+# 문제가 생겨도 연동을 끄지 않는다 — 껐다 켜는 건 사람 몫이고, 화면은 사유만 보여준다.
+# 와이파이가 한 번 끊겼다고 설정이 꺼지면 사용자가 그걸 눈치채지 못한 채 며칠을 보낸다
+GTASKS_ERROR_NO_AUTH = "연결 안 됨"
+GTASKS_ERROR_EXPIRED = "로그인 만료"
+# 인증 전에 동기화 쪽을 건드리면 load_config 의 원문(파일 경로 + CLI 명령)이 그대로 뜬다.
+# 화면에는 다음에 누를 것을 알려준다 — 경로를 읽고 터미널을 열라는 뜻이 아니다
+GTASKS_NEED_CONNECT = "아래 '연결하기' 버튼으로 구글 태스크와 연동을 먼저 진행해 주세요"
+# 자동 실행이 걸려 있는지 launchd·crontab 에서 찾을 때 쓰는 표식
+GTASKS_SYNC_CMD = "gtasks-sync"
+SCHEDULE_TIMEOUT_SEC = 2
+SECONDS_PER_MINUTE = 60
+# app/services/usage.py 의 str.removeprefix 가 3.9 에서 들어왔다 — 이 프로젝트의 하한
+PYTHON_MIN = "3.9"
+# 같은 3.9 라도 ssl 없이 빌드되면 urllib 에 https 핸들러가 안 붙어
+# "unknown url type: https" 라는, 원인을 짐작할 수 없는 문구로 끝난다
+GTASKS_NO_SSL = (
+    f"이 Python 은 HTTPS 를 쓸 수 없습니다 (ssl 모듈 없음). Python {PYTHON_MIN} 이상이어도"
+    ' 빌드에 따라 빠질 수 있습니다 — python3 -c "import ssl" 로 확인하고'
+    " 통과하는 Python 으로 서버를 다시 띄우세요"
+)
+GTASKS_NO_BROWSER = "브라우저를 열 수 없습니다. 아래 주소를 직접 열어 승인하세요:"
+
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 COST_FIELD = "estimated_cost_usd"
 MODEL_FAMILIES = (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"), ("fable", "Fable"))
-MODEL_FAMILY_OTHER = "기타"
+MODEL_FAMILY_OTHER = "Other"  # 화면이 이 이름만 사전에서 꺼내 옮긴다 (usage.modelOther)
 
 # ④ 자율 실행. 사람이 자리를 비운 사이 할일 1건씩 `claude --bg` 잡으로 돌린다.
 # 대상은 두 겹으로 좁힌다 — 사람이 붙인 라벨과, 코드가 판정할 수 없는 조건의 부재.

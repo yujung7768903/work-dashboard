@@ -342,6 +342,10 @@ class SessionLinkTest(unittest.TestCase):
         self.assertIn("KT 동시성", text)
         self.assertIn("/home/ujung/work", text)
 
+    def test_context_says_follow_up_todos_are_not_linked(self):
+        session_repo.register(self.con, SID, cwd="/home/ujung/work")
+        self.assertIn("후속 할일", session_link.render_context(self.con, SID))
+
     def test_context_for_missing_session_is_empty(self):
         self.assertEqual(session_link.render_context(self.con, "gone"), "")
 

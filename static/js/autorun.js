@@ -2,7 +2,7 @@
 // 보드에서 떼어낸 이유 — 결과가 한 목록에 섞이면 사람이 처리할 것(요청·검토 대기)을
 // 찾을 수 없고, 후보가 왜 안 도는지도 알 수 없다
 import * as api from "./api.js";
-import { t } from "./i18n.js";
+import { fromKorean, t } from "./i18n.js";
 import { formatAge, openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 5000;
@@ -103,8 +103,11 @@ function paint(state, runs, candidates) {
   // 주기만으로는 크론이 실제로 돌고 있는지 알 수 없다. 마지막 tick 이 5분을 한참
   // 넘겼으면 크론이 죽은 것이다 — 목록의 실행 이력과 달리 tick 은 여기서만 보인다.
   // 후보별 사유와 달리 전역 사유(사용률·워킹트리 더러움)는 이 줄에만 있다.
-  // 사유가 없으면 붙이지 않는다 — 이 열을 받기 전 DB 는 NULL 이다
-  const reason = state.last_tick_reason ? ` · ${state.last_tick_reason}` : "";
+  // 사유가 없으면 붙이지 않는다 — 이 열을 받기 전 DB 는 NULL 이다.
+  // 사유는 서버가 한국어로 적어 둔 문장이라 사전에서 되짚어 지금 언어로 옮긴다
+  const reason = state.last_tick_reason
+    ? ` · ${fromKorean(state.last_tick_reason)}`
+    : "";
   document.getElementById("autorun-cycle").textContent = state.last_tick_at
     ? `${TICK_LABEL} | ${t("autorun.lastRun", { age: formatAge(state.last_tick_at) })}${reason}`
     : `${TICK_LABEL} | ${NO_TICK}`;

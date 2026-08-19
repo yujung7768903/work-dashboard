@@ -88,3 +88,13 @@ class CssTokenTest(unittest.TestCase):
             }
             with self.subTest(name):
                 self.assertEqual(sorted(found - allowed), [])
+
+    def test_dark_tokens_outrank_the_light_ones(self):
+        """어두운 토큰 블록은 위 :root 를 이겨야 한다. :where() 로 감싸면 특이도가 0 이라
+        색은 밝은 채로 남고 button 같은 요소 규칙만 어두워진다"""
+        selector = re.search(r"(\S+)\s*\{[^{}]*--bg:\s*#141621", _body("app.css"))
+        self.assertIsNotNone(selector, "어두운 --bg 를 정의하는 블록이 없다")
+        self.assertTrue(
+            selector.group(1).startswith(':root[data-theme="dark"]'),
+            f"토큰 블록 선택자가 :root 를 못 이긴다: {selector.group(1)}",
+        )

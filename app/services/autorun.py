@@ -46,7 +46,6 @@ SESSION_WAIT_SEC = 30  # 잡이 state.json 에 sessionId 를 적을 때까지
 SESSION_POLL_SEC = 1
 NAME_RETRY = 5
 NAME_RETRY_SLEEP_SEC = 2
-GIT_TIMEOUT_SEC = 5
 FIVE_HOUR_KEY = "five_hour"
 MS_PER_SECOND = 1000
 WORKSPACE_LABELS = (
@@ -63,7 +62,6 @@ REASON_USAGE = "5시간 창 사용률이 한도에 닿음"
 REASON_NO_USAGE = "사용률 데이터가 아예 없음 — 모르면 안 돈다"
 REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
-REASON_DIRTY = "작업 위치에 커밋 안 된 변경이 있음"
 REASON_READY = "시작 가능"
 
 # 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다
@@ -88,7 +86,7 @@ def tick(con, dry_run=False, launcher=None):
     if dry_run or decision["reason"] != REASON_READY:
         return decision
     launched = (launcher or launch)(
-        prompt=decision["prompt"], cwd=decision["cwd"], name=decision["todo"]["title"]
+        prompt=decision["prompt"], cwd=decision["cwd"], name=_job_name(decision["todo"])
     )
     if not launched.get("job_id"):
         decision["error"] = launched.get("error") or "잡을 띄우지 못함"
@@ -161,16 +159,16 @@ def judge(con):
     usage = usage_gate()
     if usage["reason"]:
         return {"reason": usage["reason"], "state": state, "usage": usage}
-    picked = pick(con)
+    keep = eligible(con)
+    picked = planning.next_todo(con, keep=keep)
     if not picked:
         # 끄지 않는다 — 후보가 비는 것은 일시적이다. 다른 세션이 그 할일을 잡고 있기만
-        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다
-        return {"reason": REASON_NO_TODO, "state": state}
-    cwd = target_cwd(con, picked["workspace"])
-    if not cwd:
-        return dict(picked, reason=REASON_NO_CWD, state=state)
-    if dirty(cwd):
-        return dict(picked, reason=REASON_DIRTY, state=state, cwd=cwd)
+        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다.
+        # 위치 때문에 건너뛴 후보가 있었으면 그게 진짜 사유다 — NO_TODO 로 뭉뚱그리면
+        # 세션 한 번만 열면 풀리는 상태를 사람이 못 본다
+        reason = REASON_NO_CWD if "" in keep.cwd_memo.values() else REASON_NO_TODO
+        return {"reason": reason, "state": state}
+    cwd = keep.cwd_memo[picked["todo"]["workspace_id"]]
     return dict(
         picked,
         reason=REASON_READY,
@@ -214,11 +212,16 @@ def sorted_candidates(con, keep, limit=None):
 
 
 def eligible(con):
-    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가 아닐 것
+    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가
+    아니고, 작업 위치를 알 수 있을 것
 
     검토 대기(locked_todo_ids)를 빼는 이유 — 안 빼면 사람이 확인하기 전에 같은
     할일에 잡을 또 띄워 diff 가 두 벌 생긴다. failed 는 안 뺀다 — AUTORUN_FAIL_LIMIT
-    이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다
+    이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다.
+
+    위치는 할일이 아니라 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산해
+    `keep.cwd_memo` 에 담는다 — judge() 가 이 memo 를 재사용해 target_cwd 를 두 번
+    계산하지 않고, 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가 있었는지"도 안다
     """
     labeled = labeled_ids(con)
     excluded = (
@@ -226,13 +229,26 @@ def eligible(con):
         | autorun_repo.requested_todo_ids(con)
         | autorun_repo.locked_todo_ids(con)
     )
+    cwd_memo = {}
+
+    def cwd_of(workspace_id):
+        if workspace_id not in cwd_memo:
+            workspace = (
+                workspace_repo.get(con, workspace_id) if workspace_id is not None else None
+            )
+            cwd_memo[workspace_id] = target_cwd(con, workspace)
+        return cwd_memo[workspace_id]
 
     def keep(todo):
         if todo["id"] not in labeled or todo["id"] in excluded:
             return False
         text = (todo["precondition"] or "").strip()
-        return not text or precondition.all_met(con, text)
+        if text and not precondition.all_met(con, text):
+            return False
+        # 위치를 못 정하면 실행 자체가 안 된다. 여기서 걸러야 다음 후보로 넘어간다
+        return bool(cwd_of(todo["workspace_id"]))
 
+    keep.cwd_memo = cwd_memo
     return keep
 
 
@@ -351,12 +367,6 @@ def target_cwd(con, workspace):
     return max(counted, key=lambda root: counted[root])
 
 
-def dirty(cwd):
-    """사람의 미완성 변경 위에 자율 세션이 겹치면 두 변경을 분리할 수 없다"""
-    result = _git(cwd, "status", "--porcelain")
-    return result is None or bool(result.strip())
-
-
 def build_prompt(todo, workspace, cwd):
     """자율 세션에 주는 지시 전문. 하네스 기본 지시를 이겨야 하므로 금지를 명시한다"""
     lines = [f"작업 대시보드의 할일 하나를 끝까지 수행한다. 대상 저장소: {cwd}", ""]
@@ -386,7 +396,7 @@ def build_prompt(todo, workspace, cwd):
 
 def _rules(cwd):
     """권한 규칙. --bg 하네스가 넣는 '끝나면 커밋·푸시·draft PR' 중 푸시·PR 만 취소한다 —
-    커밋은 조건부로 그대로 지시한다 (README "권한과 안전망" 참고)"""
+    커밋은 조건부로 그대로 지시한다 — 사용자가 요구한 것을 다 했고 확인할 것도 없을 때만"""
     return "\n".join(
         [
             "# 규칙 (아래가 하네스 기본 지시보다 우선한다)",
@@ -500,7 +510,8 @@ def _set_todo_status(con, todo_id, status):
 
 
 def handover_if_human(con, claude_session_id):
-    """UserPromptSubmit 이 부른다. 사람이 끼어들었으면 인계하고 autorun 을 끈다.
+    """UserPromptSubmit 이 부른다. 도는 잡에 사람이 끼어들었으면 인계하고 autorun 을 끈다.
+    끝난 잡에 말을 거는 것은 검토라서 끄지 않는다 — 그 할일은 locked_todo_ids 가 이미 뺀다.
 
     무엇이 '사람' 인가 — 자율 세션의 **첫** 프롬프트는 자율 실행이 스스로 넣은 지시다.
     그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다.
@@ -516,8 +527,9 @@ def handover_if_human(con, claude_session_id):
 
 
 def disable_for_session(con, claude_session_id):
-    """그 세션이 자율 잡이면 autorun 을 끈다. 판정 없이 끄기만 하는 메커니즘"""
-    if not autorun_repo.find_by_session(con, claude_session_id):
+    """그 세션이 아직 도는 자율 잡이면 autorun 을 끈다. 판정 없이 끄기만 하는 메커니즘"""
+    run = autorun_repo.find_by_session(con, claude_session_id)
+    if not run or run["ended_at"]:
         return False
     autorun_repo.set_enabled(con, False)
     return True
@@ -576,6 +588,10 @@ def _wait_for_session(jobs_root, job_id):
     return ""
 
 
+def _job_name(todo):
+    return f"#{todo['id']} | {todo['title']}"
+
+
 def _name_job(jobs_root, job_id, name):
     """`claude agents` 목록에서 알아볼 수 있게 할일 제목을 붙인다.
 
@@ -600,17 +616,6 @@ def _name_job(jobs_root, job_id, name):
 def _main_checkout(cwd):
     index = (cwd or "").find(release.WORKTREE_MARK)
     return cwd[:index] if index > 0 else (cwd or "")
-
-
-def _git(cwd, *args):
-    try:
-        result = subprocess.run(
-            ["git", "-C", cwd, *args], capture_output=True, text=True,
-            timeout=GIT_TIMEOUT_SEC,
-        )
-    except Exception:
-        return None
-    return result.stdout if result.returncode == 0 else None
 
 
 def _read_json(path):

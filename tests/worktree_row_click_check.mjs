@@ -28,13 +28,15 @@ const GROUPS = [
 
 const asked = [];
 globalThis.fetch = async (url, options) => {
-  asked.push(`${options?.method ?? "GET"} ${url}`);
+  // 목록은 뷰 모드를 물음표 뒤에 달고 온다. 어느 모드든 같은 응답이므로 경로만 본다
+  const path = url.split("?")[0];
+  asked.push(`${options?.method ?? "GET"} ${path}`);
   const body = {
     "/api/worktrees": { groups: GROUPS },
     "/api/workspaces": [],
     "/api/categories": [],
     "/api/todos/57": { todo: { id: 57, title: "제목" }, sessions: [] },
-  }[url];
+  }[path];
   return { ok: Boolean(body), status: body ? 200 : 404, json: async () => body ?? {} };
 };
 
@@ -46,6 +48,8 @@ const node = () => {
     textContent: "", title: "", href: "", target: "", rel: "", className: "",
     hidden: false, open: false,
     style: { setProperty() {} },
+    setAttribute() {},
+    getBoundingClientRect: () => ({ top: 0 }),
     // 어떤 클래스가 붙었는지 봐야 한다 — 누를 수 있는 칸에만 linked 가 붙는다
     classes: new Set(),
     classList: {
@@ -72,6 +76,7 @@ const created = [];
 const elements = { "worktree-list": node() };
 // worktrees.js 는 board.js 를 거쳐 main.js 까지 끌고 들어온다(순환 참조) — main.js 가
 // 모듈 최상단에서 라우팅을 한 번 돌리므로 history·location·window 도 흉내내야 한다
+globalThis.innerHeight = 800;
 globalThis.location = { pathname: "/" };
 globalThis.history = { pushState() {}, replaceState() {} };
 globalThis.window = { addEventListener() {} };
@@ -87,6 +92,9 @@ globalThis.document = {
 };
 
 await bootKorean();
+// 화면 모듈은 최상단에서 저장해 둔 값(뷰 모드·열 수)을 읽는다. 브라우저 밖에는 없는 것
+globalThis.localStorage = { getItem: () => null, setItem() {} };
+
 const worktrees = await import("../static/js/worktrees.js");
 await worktrees.renderWorktrees();
 

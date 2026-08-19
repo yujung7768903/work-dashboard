@@ -60,6 +60,7 @@
   --cat-mix: 15%;
 
   --side-w: 208px;
+  --side-w-min: 56px;        /* 접힌 레일. 아이콘 하나 + 좌우 여백 */
   --icon-box: var(--sp-24);  /* 16px 아이콘을 담는 정사각 면 */
 }
 
@@ -112,6 +113,8 @@ body {
   font-size: var(--fs-body); font-weight: 700; letter-spacing: -0.02em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 접기 버튼은 브랜드 줄 오른쪽 끝. 접히면 아래 규칙이 가운데로 옮긴다 */
+#side-toggle { margin-left: auto; }
 
 .side-nav { display: flex; flex-direction: column; gap: var(--sp-2); }
 /* 좌측 3px 강조 바는 선택될 때만 색이 든다. 자리는 항상 잡아둬야 글자가 안 밀림 */
@@ -139,6 +142,23 @@ body {
   font-size: var(--fs-sm); color: var(--muted); font-variant-numeric: tabular-nums;
 }
 #rail-status:empty { display: none; }
+
+/* 접힌 레일: 이름을 걷어내고 아이콘만 남긴다 (static/js/layout.js 가 body 에 클래스를 건다).
+   좁은 화면은 레일이 이미 가로 메뉴라 접을 것이 없으므로 넓은 화면에서만 */
+@media (min-width: 900px) {
+  body.side-collapsed { --side-w: var(--side-w-min); }
+  body.side-collapsed .side-mark,
+  body.side-collapsed .side-name,
+  body.side-collapsed #rail-status { display: none; }
+  body.side-collapsed .side-brand { padding: var(--sp-4) 0 var(--sp-16); }
+  body.side-collapsed #side-toggle { margin: 0 auto; }
+  /* 라벨은 아이콘 옆 텍스트 노드라 감쌀 태그가 없다 — 글자 크기를 0 으로 접는다.
+     읽어 주는 프로그램에는 그대로 남아 아이콘 버튼의 이름이 된다 */
+  body.side-collapsed .side-nav button {
+    justify-content: center; gap: 0; font-size: 0;
+    padding-left: var(--sp-4); padding-right: var(--sp-4);
+  }
+}
 
 .app-main { flex: 1; min-width: 0; padding: 0 var(--sp-16) var(--sp-48); }
 
@@ -182,6 +202,7 @@ h1 {
   .side-nav button { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; }
   .side-nav button.active { border-bottom-color: var(--accent); }
   #rail-status { display: none; }
+  #side-toggle { display: none; }
   .app-main { padding: 0 var(--sp-12) var(--sp-40); }
 }
 
@@ -289,6 +310,9 @@ button:disabled { color: var(--line); cursor: default; }
   flex-wrap: wrap; font-size: var(--fs-sm);
 }
 #board-controls label { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; }
+/* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다. 할일·워크트리 탭이 같이 쓴다 */
+.view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
+.view-columns button.active { background: var(--softer); color: var(--accent); }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
 .group, .ws-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
@@ -324,11 +348,54 @@ button:disabled { color: var(--line); cursor: default; }
 /* 세로 화면은 1컬럼, 넓으면 2컬럼. 간격은 grid gap 이 담당하므로 카드 세로 마진 없음 */
 /* stretch: 같은 행의 두 카드를 더 긴 쪽 높이에 맞춰 아래선을 정렬 */
 #groups, #done-groups { display: grid; gap: var(--gap); align-items: stretch; margin: var(--gap) 0; }
-/* 워크트리 목록도 같은 격자. 세로 마진은 위의 탭 바가 이미 띄워 둔다 */
+/* 고른 열 수는 아래 화면 폭 기준(@media min-width 1240px)을 이긴다 — 화면이 넓어도
+   한 줄로 길게 보고 싶을 때가 있다. 고르는 곳은 보드 위 아이콘 두 개(static/js/layout.js) */
+body[data-board-columns="1"] #groups,
+body[data-board-columns="1"] #done-groups,
+body[data-board-columns="1"] #worktree-list { grid-template-columns: 1fr; }
+body[data-board-columns="2"] #groups,
+body[data-board-columns="2"] #done-groups,
+body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
+/* 워크스페이스별·프로젝트별 전환은 왼쪽, 열 수 아이콘(.view-columns)은 오른쪽 */
+#worktree-controls {
+  display: flex; flex-wrap: wrap; color: var(--muted);
+  font-size: var(--fs-sm); margin: 0 0 var(--gap);
+}
+#worktree-view { display: flex; gap: var(--sp-4); }
+#worktree-view button {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: none; color: var(--muted); font-weight: 600; cursor: pointer;
+}
+#worktree-view button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+#worktree-view button.active { background: var(--softer); color: var(--accent); }
+
+/* 워크트리 목록도 같은 격자. 세로 마진은 위의 전환 줄이 띄워 둔다 */
 #worktree-list { display: grid; gap: var(--gap); align-items: stretch; }
 /* 워크트리 줄은 줄바꿈을 하지 않아 격자 칸의 기본 min-width:auto 가 카드를 내용만큼
    넓혀 버린다. 0 으로 풀어야 1fr 을 지키고 안쪽이 말줄임으로 접힌다 */
 #worktree-list > .group { min-width: 0; }
+/* 목록을 받아 오는 동안, 스크롤이 생기지 않는 선까지 남은 화면을 채우고 그 한가운데에
+   도는 원 하나. 화면 아래까지의 높이는 worktrees.js 가 재서 --wt-loading-room 으로 준다
+   (--sp-48 은 본문 아래 여백. 그만큼 빼야 화면이 딱 맞고 스크롤이 안 생긴다) */
+.wt-loading {
+  grid-column: 1 / -1; display: grid; place-items: center;
+  min-height: max(160px, calc(var(--wt-loading-room, 50vh) - var(--sp-48)));
+  /* 칸이 그 여백만큼 짧으니 위를 같은 만큼 띄워야 눈에 보이는 빈 자리의 한가운데다 */
+  padding-top: var(--sp-48);
+}
+.wt-loading::after {
+  content: ""; width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  border-top-color: var(--accent);
+  animation: wt-spin 0.7s linear infinite;
+}
+@keyframes wt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .wt-loading::after { animation-duration: 2.4s; }
+}
 
 /* overflow 를 걸지 않음: 마지막 항목의 케밥 메뉴가 카드 밖으로 펼쳐져야 함 */
 .group {
@@ -365,13 +432,21 @@ button:disabled { color: var(--line); cursor: default; }
 .todo { cursor: pointer; }
 .todo.done .title { color: var(--muted); text-decoration: line-through; }
 /* 상태(todo·doing·done)는 모서리만 살짝 둥근 네모. 옆의 라벨은 양끝이 둥근 알약이라
-   모양만으로 '단계' 와 '성격' 이 구분된다 */
+   모양만으로 '단계' 와 '성격' 이 구분된다.
+   폭은 라벨 길이와 무관하게 고정 — 76px 은 네 사전에서 가장 긴 'Needs review' 기준 */
 .todo > button:first-child {
-  min-width: 4.6em; font-size: var(--fs-micro); font-weight: 600;
+  flex: none; width: 76px;
+  font-size: var(--fs-micro); font-weight: 600;
   padding: var(--sp-4) var(--sp-8);
   border-radius: var(--r-ctl); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .todo.doing > button:first-child { background: var(--softer); color: var(--accent); }
+/* 상태와 제목 사이 칸. 폭이 고정이라 자릿수가 달라도 제목 시작점이 같다 */
+.todo-id {
+  flex: none; width: 32px; text-align: right;
+  color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+}
 
 /* 제목과 케밥 사이 세 번째 칸. 넘치면 잘라내지 않고 아래로 접는다.
    flex: none 이라 라벨이 없으면 폭 0 — 제목 칸을 뺏지 않는다 */
@@ -513,6 +588,15 @@ button:disabled { color: var(--line); cursor: default; }
 .ws-row .value.empty { color: var(--muted); }
 .ws-row input, .ws-row select, .ws-row textarea { width: 100%; }
 .ws-actions { display: flex; gap: var(--sp-8); margin-top: var(--gap); }
+/* 케밥(⋮)은 아이콘이 아니라 글자다. 글리프가 폰트 baseline 에 매달려 상자 중심보다
+   1.25px 아래에 찍히는데, hover 면은 상자 기준 정사각 원이라 원이 위로 치우쳐 보인다
+   (측정: 점 세 개가 원 중심보다 아래, 위 여백 > 아래 여백).
+   box-sizing 이 border-box 라 아래 여백을 줘도 원은 24x24 그대로고 글자만 1px 올라간다.
+   SVG 로 바꾸지 않는 이유 — 케밥은 두 화면이 textContent 로 만들고 테스트도 그 값을 본다 */
+/* 위쪽 `.ws-menu > button { padding: 0 }` 이 특이도(0-1-1)로 더 세므로 같은 급으로 올린다 */
+/* --sp-4 는 글자를 2px 올린다 (아래 여백이 늘면 20px 라인박스가 그만큼 위로 간다).
+   측정: 보정 전 잉크 위 5.5 / 아래 1.5 → 보정 후 3.5 / 3.5 */
+.ws-menu > button.kebab { padding-bottom: var(--sp-4); }
 .ws-menu { position: relative; flex: none; }
 /* 크기·면·정렬은 위 아이콘 버튼 공통 규칙이 잡는다. 여기서는 기호 크기만 */
 .ws-menu > button { font-size: var(--fs-title); line-height: 1; }
@@ -536,6 +620,84 @@ button:disabled { color: var(--line); cursor: default; }
   background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
 }
 .set-list li > input:not([type="color"]) { flex: 1 1 8em; }
+/* 구글 태스크 연동 ─────────────────────────────────────────────── */
+/* 제목 줄에 스위치와 경고가 함께 선다. 경고는 오른쪽 끝으로 밀어 제목과 안 붙게 한다 */
+#gtasks-head { display: flex; align-items: center; gap: var(--sp-8); }
+#gtasks-warn {
+  margin-left: auto; font-size: var(--fs-sm); font-weight: 600; color: var(--warn);
+}
+.set-card {
+  padding: var(--sp-12); background: var(--surface);
+  border-radius: var(--r-card); box-shadow: var(--shadow-card);
+}
+/* 연동 전 안내. 카드를 비워 두면 고장인지 아직 안 켠 것인지 구분이 안 된다 */
+.gt-empty { color: var(--muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-12); }
+.gt-row {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-8) 0; border-bottom: 1px solid var(--line);
+}
+.gt-row:last-of-type { border-bottom: none; }
+.gt-row .name { flex: 1; min-width: 0; }
+/* 꺼져 있으면 값은 그대로 두고 회색으로만 눌러 둔다 — 무엇이 켜져 있었는지 계속 보인다 */
+.set-card.off .gt-row .name { color: var(--muted); }
+.gt-foot {
+  display: flex; align-items: center; gap: var(--sp-8);
+  margin-top: var(--sp-12); font-size: var(--fs-sm); color: var(--muted);
+}
+/* 첫 버튼만 밀어야 뒤따르는 버튼이 그 옆에 붙는다. 전부에 걸면 저마다 남은 공간을
+   나눠 먹어 버튼들이 줄 전체에 흩어진다 */
+.gt-foot button:first-of-type { margin-left: auto; }
+/* 카테고리를 맞추는 동안 도는 표시. 몇 초 걸리는지 알 수 없어 진행률이 아니라 원형이다 */
+/* span 이라 inline-block 을 안 주면 width·height 가 무시돼 테두리만 남은 막대가 된다 */
+.gt-spin {
+  display: inline-block; width: var(--sp-16); height: var(--sp-16); flex: none;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  border-radius: var(--r-pill); animation: gt-turn 0.7s linear infinite;
+}
+/* 도는 동안에도 무엇을 누른 것인지 읽혀야 한다 — disabled 기본색은 면과 거의 같아
+   글자가 통째로 사라진다. :disabled 를 함께 걸어 그 규칙보다 구체적으로 만든다 */
+button.busy:disabled {
+  display: inline-flex; align-items: center; gap: var(--sp-8); color: var(--muted);
+}
+@keyframes gt-turn { to { transform: rotate(360deg); } }
+/* 팝업 둘. 위 팝업들과 같은 외양을 쓴다 — 팝업이 여러 종류로 보일 이유가 없다.
+   [open] 없이 쓰면 display 가 dialog:not([open]) 의 display:none 을 이겨서
+   닫힌 팝업이 문서 맨 아래에 빈 상자로 남는다 */
+#gtasks-auth[open], #gtasks-plan[open] {
+  position: fixed; inset: 0; margin: auto; display: block;
+  width: min(520px, calc(100vw - var(--sp-24))); max-height: 80vh; overflow: auto;
+  padding: var(--sp-20); border: none; border-radius: var(--r-card);
+  background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
+}
+#gtasks-auth::backdrop, #gtasks-plan::backdrop { background: rgba(0, 23, 51, 0.45); }
+html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
+/* 전역 form 은 한 줄 flex 라 [hidden] 을 이긴다 — 단계를 숨겨도 그대로 보인다.
+   .switch[hidden] 과 같은 함정이다 */
+#gtasks-auth form, #gtasks-plan form { display: block; margin: 0; }
+#gtasks-auth form[hidden] { display: none; }
+#gtasks-auth h3, #gtasks-plan h3 { margin: 0 0 var(--sp-12); font-size: var(--fs-body); }
+/* 자격증명은 구글 콘솔을 거쳐야 나온다. 순서를 번호로 보여줘야 어디까지 했는지 안다 */
+.gt-steps { margin: 0 0 var(--sp-12); padding-left: var(--sp-20); line-height: 1.7; }
+.gt-steps li { margin-bottom: var(--sp-4); }
+/* 전역 a 규칙이 없어 두면 브라우저 기본 파랑(#0000ee)이 뜬다 — 팔레트와 어긋나고
+   어두운 테마에서는 배경에 묻힌다 */
+.gt-steps a { color: var(--accent); }
+.gt-field { display: block; margin-bottom: var(--sp-12); }
+.gt-field span { display: block; margin-bottom: var(--sp-4); font-size: var(--fs-sm); }
+.gt-field input { width: 100%; }
+#gtasks-plan-list h4 {
+  margin: var(--sp-16) 0 var(--sp-4); font-size: var(--fs-sm); color: var(--muted);
+}
+#gtasks-plan-list h4:first-child { margin-top: 0; }
+.gt-pick {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-4) 0; cursor: pointer;
+}
+/* 건수가 오른쪽에 줄맞춰 서야 대시보드와 구글의 크기 차이가 한눈에 보인다 */
+.gt-count { margin-left: auto; font-size: var(--fs-sm); color: var(--muted); }
+.gt-line { margin: 0 0 var(--sp-8); }
+.gt-note { margin: 0 0 var(--sp-8); font-size: var(--fs-sm); color: var(--muted); }
+.gt-actions { display: flex; justify-content: flex-end; gap: var(--sp-8); }
 /* 색 견본은 둥근 사각형으로. 브라우저 기본 여백을 없앤다 */
 .set-list input[type="color"] {
   width: var(--sp-32); height: var(--sp-32); padding: 0;
@@ -627,28 +789,36 @@ button:disabled { color: var(--line); cursor: default; }
   font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
 }
 /* 활성 여부 표시 겸 조작. 켜짐이 곧 스위치라 상태와 스위치를 따로 두지 않는다.
-   체크박스는 숨기고 접근성만 남긴다 — 키보드·스크린리더는 그대로 동작한다 */
-#autorun-switch {
+   체크박스는 숨기고 접근성만 남긴다 — 키보드·스크린리더는 그대로 동작한다.
+   자율 실행과 구글 연동이 같이 쓰므로 id 가 아니라 클래스로 건다 */
+.switch {
   display: inline-flex; align-items: center; gap: var(--sp-4);
   flex: none; cursor: pointer;
 }
-#autorun-toggle { position: absolute; width: 1px; height: 1px; opacity: 0; }
-#autorun-switch .track {
+/* display 를 지정하면 브라우저 기본 [hidden] 규칙을 덮어써서 hidden=true 여도 그려진다.
+   연동 전에 스위치가 보이면 누를 수 없는 것을 누르게 된다 */
+.switch[hidden] { display: none; }
+.switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.switch .track {
   position: relative; width: 26px; height: 14px; flex: none;
   border-radius: var(--r-pill); background: var(--muted); transition: background 0.12s;
 }
-#autorun-switch .track::after {
+.switch .track::after {
   content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px;
   border-radius: var(--r-pill); background: var(--surface); transition: transform 0.12s;
 }
-#autorun-toggle:checked + .track { background: var(--accent); }
-#autorun-toggle:checked + .track::after { transform: translateX(12px); }
-#autorun-toggle:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(12px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 끈 동안에도 값은 그대로 두고 조작만 막는다. 회색이 '지금은 못 누른다'는 유일한 신호다 */
+.switch input:disabled + .track { background: var(--line); }
+.switch input:disabled ~ .state { color: var(--line); }
+.switch:has(input:disabled) { cursor: default; }
 /* 글자는 상태에서 파생시킨다 — JS 가 따로 갱신하지 않아 어긋날 자리가 없다 */
-#autorun-switch .state { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
-#autorun-switch .state::after { content: "OFF"; }
-#autorun-toggle:checked ~ .state { color: var(--accent); }
-#autorun-toggle:checked ~ .state::after { content: "ON"; }
+.switch .state { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.switch .state::after { content: "OFF"; }
+.switch input:checked ~ .state { color: var(--accent); }
+.switch input:checked ~ .state::after { content: "ON"; }
 /* 상태마다 판 하나. 판을 펼치면 그 안에 칸 이름 줄과 실행 줄이 들어간다 */
 #autorun-list li.ar-group {
   background: var(--surface); border-radius: var(--r-card);
@@ -985,31 +1155,33 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   #groups, #done-groups, #workspace-list, #worktree-list { grid-template-columns: 1fr 1fr; }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
-    --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
-    /* 어두운 테마에서는 판을 더 누를 수 없다 — 배경보다 밝게, 카드보다는 어둡게 */
-    --rail: #191c28;
-    --danger: #e46b6b; --good: #3cbe86; --warn: #e5a838;
-    /* 어두운 면에서는 그림자가 안 보이므로 옅은 링으로 카드 경계를 만든다 */
-    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
-    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
-    --shadow-press: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --cat-mix: 28%;
-  }
-  .cat-pill { --cat: #8b95a1; --on-cat: #14181d; }
-  .group, .ws-card { --cat: #444a5c; }
-  button { background-color: #2a2e3f; }
-  button:hover:not(:disabled) { background-color: #343950; }
-  #repo-link:hover { background-color: #343950; }
-  button:disabled { color: #4a4b55; }
-  .side-nav button, .ws-menu > button, .ws-menu-items button, .modal-close {
-    background-color: transparent;
-  }
-  .side-nav button.active { background-color: var(--softer); }
-  #quick-submit { color: #14161f; }
-  select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  }
+/* 어두운 테마. 상단 우측 밝기 메뉴가 고른 값을 <html data-theme> 로 붙이고,
+   기기 설정을 따를 때는 index.html 첫 스크립트가 그 자리에 밝기를 대신 넣는다.
+   토큰은 위 :root 블록을 이겨야 하므로 :root 를 그대로 달고, 아래 요소 규칙만
+   :where() 로 감싸 특이도를 미디어 쿼리 때와 같게 둔다 */
+:root[data-theme="dark"] {
+  --bg: #141621; --surface: #1c1f2c; --fg: #eef0f7; --muted: #9095ab;
+  --line: #2a2e3f; --accent: #7c8af2; --soft: #5a64a5; --softer: #262b45;
+  /* 어두운 테마에서는 판을 더 누를 수 없다 — 배경보다 밝게, 카드보다는 어둡게 */
+  --rail: #191c28;
+  --danger: #e46b6b; --good: #3cbe86; --warn: #e5a838;
+  /* 어두운 면에서는 그림자가 안 보이므로 옅은 링으로 카드 경계를 만든다 */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --shadow-press: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --cat-mix: 28%;
+}
+:where([data-theme="dark"]) .cat-pill { --cat: #8b95a1; --on-cat: #14181d; }
+:where([data-theme="dark"]) :is(.group, .ws-card) { --cat: #444a5c; }
+:where([data-theme="dark"]) button { background-color: #2a2e3f; }
+:where([data-theme="dark"]) button:hover:not(:disabled) { background-color: #343950; }
+:where([data-theme="dark"]) #repo-link:hover { background-color: #343950; }
+:where([data-theme="dark"]) button:disabled { color: #4a4b55; }
+:where([data-theme="dark"]) :is(.side-nav button, .ws-menu > button, .ws-menu-items button, .modal-close) {
+  background-color: transparent;
+}
+:where([data-theme="dark"]) .side-nav button.active { background-color: var(--softer); }
+:where([data-theme="dark"]) #quick-submit { color: #14161f; }
+:where([data-theme="dark"]) select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
