@@ -642,13 +642,6 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .dir-browse-name {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* git 저장소만 붙는 칩. 초록은 이 화면에서 딱 여기 하나 — "고를 수 있다" 는 신호다 */
-.dir-browse-badge {
-  flex: none; padding: 0 var(--sp-8); border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--good) 15%, var(--surface));
-  color: var(--good); font-size: var(--fs-micro); font-weight: 700;
-  letter-spacing: 0.02em; text-transform: uppercase; line-height: var(--lh-heading);
-}
 .dir-browse-empty {
   margin: 0; padding: var(--sp-16); color: var(--muted); font-size: var(--fs-sm);
   text-align: center;

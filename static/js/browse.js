@@ -77,12 +77,6 @@ function entryRow(entry) {
   name.className = "dir-browse-name";
   name.textContent = entry.name;
   row.append(icon, name);
-  if (entry.is_git_repo) {
-    const badge = document.createElement("span");
-    badge.className = "dir-browse-badge";
-    badge.textContent = "git";
-    row.appendChild(badge);
-  }
   row.addEventListener("click", () => load(entry.path));
   return row;
 }

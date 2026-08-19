@@ -159,7 +159,6 @@ const rowNamed = (name) =>
     .filter((made) => made.className === "dir-browse-entry")
     .filter((made) => made.children.some((kid) => kid.textContent === name))
     .pop();
-const hasGitBadge = (row) => row.children.some((kid) => kid.textContent === "git");
 const select = () => elements["dir-browse-select"];
 
 assert.equal(toggles().length, 2, "할일 줄마다 케밥 메뉴가 하나씩 있어야 한다");
@@ -202,8 +201,6 @@ rowNamed("work").listeners.click();
 await settle();
 assert.equal(buttonNamed("work").disabled, true, "이제 work 가 빵부스러기 마지막");
 assert.equal(select().disabled, true);
-// git 저장소인 행에만 배지가 붙는다 — 일반 폴더(work)와 구분하는 유일한 표시
-assert.ok(hasGitBadge(rowNamed("hk-herb-server")), "git 저장소 행에는 배지가 붙어야 한다");
 
 // hk-herb-server 로 내려간다 — git 저장소라 선택 버튼이 켜진다
 rowNamed("hk-herb-server").listeners.click();
