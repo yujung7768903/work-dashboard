@@ -193,27 +193,27 @@ await settle();
 
 assert.equal(elements["dir-browse-modal"].open, true, "위치를 모르면 폴더 선택기를 열어야 한다");
 // 빵부스러기의 마지막 칸은 "지금 여기" 표시라 눌러도 아무 데도 못 가게 disabled 다
-assert.equal(buttonNamed("user").disabled, true, "지금 폴더(ROOT)가 빵부스러기 마지막이어야 한다");
+assert.equal(buttonNamed("/user").disabled, true, "지금 폴더(ROOT)가 빵부스러기 마지막이어야 한다");
 assert.equal(select().disabled, true, "지금 폴더는 git 저장소가 아니다");
 
 // work 폴더로 내려간다 — 아직 git 저장소가 아니라 선택 버튼은 계속 비활성
 rowNamed("work").listeners.click();
 await settle();
-assert.equal(buttonNamed("work").disabled, true, "이제 work 가 빵부스러기 마지막");
+assert.equal(buttonNamed("/work").disabled, true, "이제 work 가 빵부스러기 마지막");
 assert.equal(select().disabled, true);
 
 // hk-herb-server 로 내려간다 — git 저장소라 선택 버튼이 켜진다
 rowNamed("hk-herb-server").listeners.click();
 await settle();
-assert.equal(buttonNamed("hk-herb-server").disabled, true);
+assert.equal(buttonNamed("/hk-herb-server").disabled, true);
 assert.equal(select().disabled, false);
 
 // 빵부스러기로 두 단 위(work 도 아니라 그 위 ROOT)를 한 번에 건너뛴다 —
 // "위로" 버튼이었다면 두 번 눌러야 했을 이동이 여기선 한 번이다
-buttonNamed("user").listeners.click();
+buttonNamed("/user").listeners.click();
 await settle();
 assert.equal(select().disabled, true, "ROOT 로 돌아왔으니 다시 비활성");
-assert.equal(buttonNamed("user").disabled, true);
+assert.equal(buttonNamed("/user").disabled, true);
 
 // 다시 내려가 최종 선택
 rowNamed("work").listeners.click();

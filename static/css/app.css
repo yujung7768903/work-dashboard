@@ -625,9 +625,6 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   flex: none; padding: var(--sp-2) var(--sp-4); background: none;
   color: var(--muted); font-size: var(--fs-sm); white-space: nowrap;
 }
-.dir-browse-crumbs button:not(:first-child)::before {
-  content: "/"; margin-right: var(--sp-4); color: var(--line);
-}
 .dir-browse-crumbs button:hover:not(:disabled) { background: var(--bg); color: var(--fg); }
 /* 지금 폴더는 눌러도 아무 데도 못 가므로 disabled 지만, 회색 눈금이 아니라
    "여기 있음" 으로 읽혀야 한다 — 전역 button:disabled 보다 특이도를 올려 이긴다 */

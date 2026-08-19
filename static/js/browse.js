@@ -34,8 +34,10 @@ async function load(path) {
   select.onclick = () => dialog().close(data.path);
 }
 
-// "/home/user/work" → [home, user, work] 빵부스러기. 마지막(지금 폴더)은 누를 수
-// 없게 막아 "여기가 지금 있는 곳" 을 보여준다 — 나머지는 눌러 그 조상으로 곧장 간다
+// "/home/user/work" → [/home, /user, /work] 빵부스러기. 마지막(지금 폴더)은 누를
+// 수 없게 막아 "여기가 지금 있는 곳" 을 보여준다 — 나머지는 눌러 그 조상으로 곧장 간다.
+// 슬래시는 각 칸의 글자에 직접 붙인다 — 별도 "/" 칸을 앞에 두면 그 다음 칸과
+// 겹쳐 "//" 로 보인다(실제로 그렇게 보였다)
 function renderCrumbs(path) {
   const parts = path.split("/").filter(Boolean);
   const crumb = (label, target, disabled) => {
@@ -46,12 +48,16 @@ function renderCrumbs(path) {
     if (!disabled) button.addEventListener("click", () => load(target));
     return button;
   };
-  const rows = parts.map((part, index) =>
-    crumb(part, "/" + parts.slice(0, index + 1).join("/"), index === parts.length - 1)
-  );
-  document
-    .getElementById("dir-browse-crumbs")
-    .replaceChildren(crumb("/", "/", path === "/"), ...rows);
+  const rows = parts.length
+    ? parts.map((part, index) =>
+        crumb(
+          "/" + part,
+          "/" + parts.slice(0, index + 1).join("/"),
+          index === parts.length - 1
+        )
+      )
+    : [crumb("/", "/", true)]; // 루트 자체를 보고 있을 때 — 세그먼트가 없다
+  document.getElementById("dir-browse-crumbs").replaceChildren(...rows);
 }
 
 function renderList(data) {
