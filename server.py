@@ -171,7 +171,7 @@ def _route_post(con, head, body):
     if head == "todo-start":
         if not body.get("id"):
             raise Validation("id 가 필요함")
-        return autorun.start_todo(con, body["id"])
+        return autorun.start_todo(con, body["id"], cwd=body.get("cwd"))
     if head == "reorder":
         return _reorder(con, body)
     if head == "precondition-check":

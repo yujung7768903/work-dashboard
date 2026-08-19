@@ -68,6 +68,8 @@ REASON_READY = "시작 가능"
 
 # 할일 케밥의 "시작" 이 세션을 띄운 뒤 알려주는 문장
 MSG_SESSION_STARTED = "세션을 시작했습니다"
+# 사람이 직접 고른 작업 위치가 git 저장소가 아닐 때
+MSG_NOT_A_GIT_REPO = "git 저장소가 아님"
 
 # 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다
 BLOCKER_READY = "ready"
@@ -100,12 +102,17 @@ def tick(con, dry_run=False, launcher=None):
     return decision
 
 
-def start_todo(con, todo_id, launcher=None):
+def start_todo(con, todo_id, launcher=None, cwd=None):
     """할일 케밥의 "시작" — 사람이 고른 할일 하나를 자율 실행과 같은 방식으로 세션에 올린다.
 
     eligible() 의 자동 후보 판정(라벨·조건 문장·사용량 게이트)은 거치지 않는다 — 사람이
     이 할일을 직접 고른 것 자체가 그 판단이다. 검토 대기만은 todos.update() 와 같은
     이유로 막는다 — 안 막으면 확인하기 전에 같은 할일에 잡을 또 띄워 diff 가 두 벌 생긴다
+
+    cwd 를 받으면 target_cwd() 대신 그 경로를 그대로 쓴다 — 그 워크스페이스로 분류된
+    세션이 없어 위치를 못 정했을 때, 화면이 사람에게 물어 받은 값이 이 자리로 온다.
+    한 번 쓰면 launch() 가 그 경로로 세션을 등록하므로 다음부터는 target_cwd() 가
+    알아서 찾는다 — 매번 물을 필요가 없다
     """
     todo = todo_repo.get(con, todo_id)
     if todo["id"] in autorun_repo.locked_todo_ids(con):
@@ -115,7 +122,11 @@ def start_todo(con, todo_id, launcher=None):
         if todo["workspace_id"] is not None
         else None
     )
-    cwd = target_cwd(con, workspace)
+    if cwd:
+        if not os.path.exists(os.path.join(cwd, ".git")):
+            raise Validation(f"{MSG_NOT_A_GIT_REPO}: {cwd}")
+    else:
+        cwd = target_cwd(con, workspace)
     if not cwd:
         raise Validation(REASON_NO_CWD)
     name = _job_name(todo)

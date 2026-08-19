@@ -298,6 +298,27 @@ const PLUS_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="t
         stroke-width="1.5" stroke-linecap="round"/>
 </svg>`;
 
+// 위치를 모르는 워크스페이스는 서버가 reason.noCwd 로 막는다. 그때만 작업 디렉토리를
+// 물어 다시 시도한다 — 한 번 성공하면 그 세션이 위치를 기록해 다음부터는 안 물어도 된다
+async function startTodoFlow(todo) {
+  try {
+    return await api.startTodo(todo.id);
+  } catch (error) {
+    if (error.message !== t("reason.noCwd")) {
+      alert(error.message);
+      return null;
+    }
+  }
+  const cwd = prompt(t("board.startTodoCwdPrompt"));
+  if (!cwd) return null;
+  try {
+    return await api.startTodo(todo.id, cwd);
+  } catch (error) {
+    alert(error.message);
+    return null;
+  }
+}
+
 // 라벨 수정·삭제는 오른쪽 케밥 메뉴 안으로. 워크스페이스 카드와 같은 ws-menu 스타일 재사용
 function todoMenu(todo) {
   const wrapper = document.createElement("div");
@@ -335,7 +356,7 @@ function todoMenuItems(todo) {
     menuItem(t("board.startTodo"), () =>
       run(async () => {
         openMenuTodoId = null;
-        const result = await api.startTodo(todo.id);
+        const result = await startTodoFlow(todo);
         await renderBoard();
         if (result?.message) alert(fromKorean(result.message));
       })

@@ -486,6 +486,24 @@ class ManualStart(AutorunCase):
         with self.assertRaises(Validation):
             autorun.start_todo(self.con, todo["id"], launcher=Recorder())
 
+    def test_explicit_cwd_is_used_when_workspace_has_no_history(self):
+        """위치를 모르는 워크스페이스도, 화면이 물어 받은 경로가 있으면 그걸 쓴다"""
+        workspace = workspace_repo.create(
+            self.con, self.workspace["category_id"], "위치 모름"
+        )
+        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        chosen = _git_repo()
+        launcher = Recorder()
+        autorun.start_todo(self.con, todo["id"], launcher=launcher, cwd=chosen)
+        self.assertEqual(launcher.calls[0]["cwd"], chosen)
+
+    def test_explicit_cwd_must_be_a_git_repo(self):
+        not_a_repo = tempfile.mkdtemp()
+        with self.assertRaises(Validation):
+            autorun.start_todo(
+                self.con, self.todo["id"], launcher=Recorder(), cwd=not_a_repo
+            )
+
     def test_launch_failure_raises(self):
         launcher = Recorder(job_id="", session_id="", error="claude 없음")
         with self.assertRaises(Validation):
