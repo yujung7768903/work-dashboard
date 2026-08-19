@@ -348,6 +348,61 @@ class Launching(AutorunCase):
         self.assertEqual(autorun_repo.open_runs(self.con), [])
 
 
+class ManualStart(AutorunCase):
+    """할일 케밥의 "시작". 사람이 직접 고른 할일이라 eligible() 의 자동 후보 판정을 거치지 않는다"""
+
+    def test_starts_unlabeled_todo(self):
+        """auto 라벨은 자율 실행의 자동 후보 판정 조건이다 — 사람이 직접 고른 시작에는 안 붙는다"""
+        unlabeled = self._todo("라벨 없는 일")
+        launcher = Recorder()
+        result = autorun.start_todo(self.con, unlabeled["id"], launcher=launcher)
+        self.assertEqual(result["session_id"], CHILD)
+        self.assertEqual(launcher.calls[0]["cwd"], self.repo)
+
+    def test_starts_todo_with_precondition(self):
+        """조건 문장이 있어도 시작은 막지 않는다 — 판단은 프롬프트가 세션에 넘긴다"""
+        todo = self._todo("조건 붙은 일", precondition="다른 게 먼저 끝날 것")
+        launcher = Recorder()
+        autorun.start_todo(self.con, todo["id"], launcher=launcher)
+        self.assertIn("다른 게 먼저 끝날 것", launcher.calls[0]["prompt"])
+
+    def test_job_name_carries_the_todo_id(self):
+        launcher = Recorder()
+        autorun.start_todo(self.con, self.todo["id"], launcher=launcher)
+        self.assertEqual(
+            launcher.calls[0]["name"], f"#{self.todo['id']} | {self.todo['title']}"
+        )
+
+    def test_links_child_session_and_marks_doing(self):
+        autorun.start_todo(self.con, self.todo["id"], launcher=Recorder())
+        self.assertEqual(
+            session_repo.linked_todo_ids(self.con, CHILD), [self.todo["id"]]
+        )
+        self.assertEqual(
+            todo_repo.get(self.con, self.todo["id"])["status"], STATUS_DOING
+        )
+
+    def test_blocks_review_locked_todo(self):
+        """검토 대기 중에 또 띄우면 확인 전에 같은 할일의 diff 가 두 벌 생긴다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, self.todo["id"], launcher=Recorder())
+
+    def test_blocks_when_cwd_is_unknown(self):
+        workspace = workspace_repo.create(
+            self.con, self.workspace["category_id"], "위치 모름"
+        )
+        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, todo["id"], launcher=Recorder())
+
+    def test_launch_failure_raises(self):
+        launcher = Recorder(job_id="", session_id="", error="claude 없음")
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, self.todo["id"], launcher=launcher)
+
+
 class Outcomes(AutorunCase):
     """잡이 끝났을 때 실행 기록을 어떻게 닫는가. 잡 상태 파일은 임시 디렉토리에 만든다"""
 

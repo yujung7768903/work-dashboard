@@ -1,7 +1,7 @@
 // 보드 탭 렌더. 카테고리 라벨 필터, 빠른 추가, 상태 토글, 완료 워크스페이스 이동
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
-import { t } from "./i18n.js";
+import { fromKorean, t } from "./i18n.js";
 import { renderBoardTab, run } from "./main.js";
 import { startAutorunPolling } from "./autorun.js";
 import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
@@ -334,6 +334,14 @@ function todoMenuItems(todo) {
     return items;
   }
   items.append(
+    menuItem(t("board.startTodo"), () =>
+      run(async () => {
+        openMenuTodoId = null;
+        const result = await api.startTodo(todo.id);
+        await renderBoard();
+        if (result?.message) alert(fromKorean(result.message));
+      })
+    ),
     menuItem(t("board.labelEdit"), () => {
       labelMenuTodoId = todo.id;
       run(renderBoard);

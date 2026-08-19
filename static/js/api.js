@@ -82,6 +82,7 @@ export const getTodo = (id) => request("GET", `/todos/${id}`);
 export const createTodo = (fields) => request("POST", "/todos", fields);
 export const updateTodo = (id, fields) => request("PATCH", `/todos/${id}`, fields);
 export const deleteTodo = (id) => request("DELETE", `/todos/${id}`);
+export const startTodo = (id) => request("POST", "/todo-start", { id });
 
 export const getSettings = () => request("GET", "/settings");
 export const updateSettings = (fields) => request("PATCH", "/settings", fields);

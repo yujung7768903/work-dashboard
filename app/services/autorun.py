@@ -26,14 +26,17 @@ from app.constants import (
     AUTORUN_MODEL,
     OUTCOME_BLOCKED,
     RATE_LIMITS_PATH,
+    REVIEW_LOCKED_MSG,
     STATUS_DOING,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
 )
 from app.db import now, transaction
+from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
+from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import planning, release, worktrees
 
@@ -61,6 +64,9 @@ REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
 REASON_READY = "시작 가능"
 
+# 할일 케밥의 "시작" 이 세션을 띄운 뒤 알려주는 문장
+MSG_SESSION_STARTED = "세션을 시작했습니다"
+
 # 실행 id → 워크트리 경로. 끝난 실행만 담는다(그 뒤로 바뀌지 않는다)
 _WORKTREE_CACHE = {}
 
@@ -82,6 +88,43 @@ def tick(con, dry_run=False, launcher=None):
         return decision
     decision["run"] = _register_run(con, decision, launched)
     return decision
+
+
+def start_todo(con, todo_id, launcher=None):
+    """할일 케밥의 "시작" — 사람이 고른 할일 하나를 자율 실행과 같은 방식으로 세션에 올린다.
+
+    eligible() 의 자동 후보 판정(라벨·조건 문장·사용량 게이트)은 거치지 않는다 — 사람이
+    이 할일을 직접 고른 것 자체가 그 판단이다. 검토 대기만은 todos.update() 와 같은
+    이유로 막는다 — 안 막으면 확인하기 전에 같은 할일에 잡을 또 띄워 diff 가 두 벌 생긴다
+    """
+    todo = todo_repo.get(con, todo_id)
+    if todo["id"] in autorun_repo.locked_todo_ids(con):
+        raise Validation(REVIEW_LOCKED_MSG)
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"])
+        if todo["workspace_id"] is not None
+        else None
+    )
+    cwd = target_cwd(con, workspace)
+    if not cwd:
+        raise Validation(REASON_NO_CWD)
+    name = _job_name(todo)
+    launched = (launcher or launch)(
+        prompt=build_prompt(todo, workspace, cwd), cwd=cwd, name=name
+    )
+    if not launched.get("job_id"):
+        raise Validation(launched.get("error") or "잡을 띄우지 못함")
+    session_id = launched.get("session_id") or ""
+    if session_id:
+        session_repo.register(con, session_id, cwd=cwd)
+        if workspace:
+            session_repo.classify(con, session_id, workspace_id=workspace["id"])
+        session_repo.link_todo(con, session_id, todo_id)
+    return {
+        "job_id": launched["job_id"],
+        "session_id": session_id,
+        "message": f"{MSG_SESSION_STARTED} — {name}",
+    }
 
 
 def panel_runs(con, limit=10):

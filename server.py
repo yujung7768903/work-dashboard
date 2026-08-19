@@ -167,6 +167,10 @@ def _route_post(con, head, body):
             note=body.get("note"),
             precondition=body.get("precondition"),
         )
+    if head == "todo-start":
+        if not body.get("id"):
+            raise Validation("id 가 필요함")
+        return autorun.start_todo(con, body["id"])
     if head == "reorder":
         return _reorder(con, body)
     if head == "worktrees":

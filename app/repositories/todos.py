@@ -2,6 +2,7 @@
 from app import ordering
 from app.constants import (
     AUTO_TODO_NOTE_RAW_TITLE,
+    REVIEW_LOCKED_MSG,
     SCOPE_REQUIRED_MSG,
     STATE_IDLE,
     STATE_WORKING,
@@ -187,9 +188,7 @@ def _validated_assignments(con, current, fields):
         assignments["title"] = _clean_title(assignments["title"])
     if "status" in assignments:
         if current["id"] in autorun_repo.locked_todo_ids(con):
-            raise Validation(
-                "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요"
-            )
+            raise Validation(REVIEW_LOCKED_MSG)
         _validate_status(assignments["status"])
         assignments["completed_at"] = (
             now() if assignments["status"] == STATUS_DONE else None
