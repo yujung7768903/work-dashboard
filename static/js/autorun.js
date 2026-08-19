@@ -80,12 +80,22 @@ let timer = null;
 let bound = false;
 // 끌고 있는 줄. 폴링이 그 사이 목록을 새로 그리면 끌던 노드가 사라진다
 let dragging = null;
+// 마지막으로 받은 응답. 접기·펴기가 서버를 다시 부르지 않고 이걸로 다시 그린다
+let last = null;
 
 export async function renderAutorun() {
-  const { state, runs, candidates } = await api.getAutorun();
+  const payload = await api.getAutorun();
   // 끌고 있는 동안 다시 그리면 잡고 있던 줄이 사라져 드롭이 취소된다
   if (dragging) return;
-  paint(state, runs, candidates ?? []);
+  last = payload;
+  paint(payload.state, payload.runs, payload.candidates ?? []);
+}
+
+// 접기·펴기처럼 화면 상태만 바뀌는 것은 받아 둔 응답으로 다시 그린다.
+// 서버를 다시 부르면 왕복(100ms 안팎)만큼 손이 멈춘 것처럼 느려진다
+function repaint() {
+  if (!last) return;
+  paint(last.state, last.runs, last.candidates ?? []);
 }
 
 function paint(state, runs, candidates) {
@@ -292,7 +302,7 @@ function groupHead(key, label, count, open) {
   const toggle = () => {
     if (collapsed.has(key)) collapsed.delete(key);
     else collapsed.add(key);
-    renderAutorun().catch(() => {});
+    repaint();
   };
   head.addEventListener("click", toggle);
   head.addEventListener("keydown", (event) => {
