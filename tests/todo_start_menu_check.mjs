@@ -1,7 +1,8 @@
 // 할일 케밥 메뉴의 "시작" 항목 검증
 //   1. 위치를 아는 할일 — 누르면 그 id 로 POST 되고, 목록을 다시 받은 뒤 서버 문장을 알린다
-//   2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 폴더 선택기를 열어, 하위 폴더를
-//      골라 내려가다 git 저장소를 고르면 그 경로로 재시도한다
+//   2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 폴더 선택기를 연다. 하위 폴더로
+//      내려가다 git 저장소를 고르면 그 경로로 재시도하고, 빵부스러기로 여러 단 위를
+//      한 번에 건너뛸 수도 있다
 // 브라우저 없이 돌려야 하므로 board.js·browse.js 가 만지는 DOM 만 흉내낸다.
 // 실행: node tests/todo_start_menu_check.mjs (tests/test_todo_start_menu.py 가 부른다)
 import assert from "node:assert/strict";
@@ -22,7 +23,7 @@ const STARTED_MESSAGE = `세션을 시작했습니다 — #${TODO_ID} | ${TODO_T
 const NO_CWD_MESSAGE = "그 워크스페이스에서 작업하던 위치를 알 수 없음";
 const NO_CWD_STARTED_MESSAGE = `세션을 시작했습니다 — #${NO_CWD_ID} | ${NO_CWD_TITLE}`;
 
-// 폴더 선택기가 훑는 가짜 트리: /home/user → work(일반 폴더) → hk-herb-server(git 저장소)
+// 폴더 선택기가 훑는 가짜 트리: /home/user(=ROOT) → work → hk-herb-server(git 저장소)
 const ROOT = "/home/user";
 const SUBDIR = "/home/user/work";
 const CHOSEN_CWD = "/home/user/work/hk-herb-server";
@@ -149,7 +150,17 @@ await board.renderBoard();
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const toggles = () => created.filter((made) => made.textContent === "⋮");
+// 빵부스러기는 button.textContent 를 그대로 쓰지만(단일 문자열), 폴더 목록 행은
+// 아이콘·이름·배지 세 span 을 자식으로 붙여서 만든다(browse.js) — 그래서 행은
+// textContent 가 아니라 자식(이름 span)으로 찾아야 한다
 const buttonNamed = (label) => created.filter((made) => made.textContent === label).pop();
+const rowNamed = (name) =>
+  created
+    .filter((made) => made.className === "dir-browse-entry")
+    .filter((made) => made.children.some((kid) => kid.textContent === name))
+    .pop();
+const hasGitBadge = (row) => row.children.some((kid) => kid.textContent === "git");
+const select = () => elements["dir-browse-select"];
 
 assert.equal(toggles().length, 2, "할일 줄마다 케밥 메뉴가 하나씩 있어야 한다");
 
@@ -182,23 +193,40 @@ buttonNamed("시작").listeners.click({ stopPropagation() {} });
 await settle();
 
 assert.equal(elements["dir-browse-modal"].open, true, "위치를 모르면 폴더 선택기를 열어야 한다");
-assert.equal(elements["dir-browse-path"].textContent, ROOT);
-assert.equal(elements["dir-browse-select"].disabled, true, "지금 폴더는 git 저장소가 아니다");
+// 빵부스러기의 마지막 칸은 "지금 여기" 표시라 눌러도 아무 데도 못 가게 disabled 다
+assert.equal(buttonNamed("user").disabled, true, "지금 폴더(ROOT)가 빵부스러기 마지막이어야 한다");
+assert.equal(select().disabled, true, "지금 폴더는 git 저장소가 아니다");
 
 // work 폴더로 내려간다 — 아직 git 저장소가 아니라 선택 버튼은 계속 비활성
-buttonNamed("work").listeners.click();
+rowNamed("work").listeners.click();
 await settle();
-assert.equal(elements["dir-browse-path"].textContent, SUBDIR);
-assert.equal(elements["dir-browse-select"].disabled, true);
+assert.equal(buttonNamed("work").disabled, true, "이제 work 가 빵부스러기 마지막");
+assert.equal(select().disabled, true);
+// git 저장소인 행에만 배지가 붙는다 — 일반 폴더(work)와 구분하는 유일한 표시
+assert.ok(hasGitBadge(rowNamed("hk-herb-server")), "git 저장소 행에는 배지가 붙어야 한다");
 
 // hk-herb-server 로 내려간다 — git 저장소라 선택 버튼이 켜진다
-buttonNamed("hk-herb-server (git)").listeners.click();
+rowNamed("hk-herb-server").listeners.click();
 await settle();
-assert.equal(elements["dir-browse-path"].textContent, CHOSEN_CWD);
-assert.equal(elements["dir-browse-select"].disabled, false);
+assert.equal(buttonNamed("hk-herb-server").disabled, true);
+assert.equal(select().disabled, false);
+
+// 빵부스러기로 두 단 위(work 도 아니라 그 위 ROOT)를 한 번에 건너뛴다 —
+// "위로" 버튼이었다면 두 번 눌러야 했을 이동이 여기선 한 번이다
+buttonNamed("user").listeners.click();
+await settle();
+assert.equal(select().disabled, true, "ROOT 로 돌아왔으니 다시 비활성");
+assert.equal(buttonNamed("user").disabled, true);
+
+// 다시 내려가 최종 선택
+rowNamed("work").listeners.click();
+await settle();
+rowNamed("hk-herb-server").listeners.click();
+await settle();
+assert.equal(select().disabled, false);
 
 // "이 폴더 선택" — 다이얼로그가 그 경로로 닫히고, 그 경로로 재시도한다
-elements["dir-browse-select"].onclick();
+select().onclick();
 await settle();
 
 assert.equal(elements["dir-browse-modal"].open, false);

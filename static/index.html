@@ -398,11 +398,11 @@
   <dialog id="dir-browse-modal">
     <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
     <div class="dlg-head"><p class="dlg-title" data-i18n="board.startTodoCwdPrompt"></p></div>
-    <p class="hint" id="dir-browse-path"></p>
+    <div class="dir-browse-crumbs" id="dir-browse-crumbs"></div>
     <div class="dir-browse-list" id="dir-browse-list"></div>
     <div class="dlg-actions">
-      <button type="button" id="dir-browse-up" data-i18n="board.dirBrowseUp"></button>
-      <button type="button" id="dir-browse-select" data-i18n="board.dirBrowseSelect"></button>
+      <button type="button" class="dir-browse-primary" id="dir-browse-select"
+              data-i18n="board.dirBrowseSelect"></button>
     </div>
   </dialog>
 
