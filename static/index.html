@@ -397,12 +397,14 @@
   <!-- 할일 케밥의 "시작" 이 작업 위치를 못 정했을 때만 연다 (static/js/browse.js) -->
   <dialog id="dir-browse-modal">
     <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
-    <div class="dlg-head"><p class="dlg-title" data-i18n="board.startTodoCwdPrompt"></p></div>
-    <div class="dir-browse-crumbs" id="dir-browse-crumbs"></div>
-    <div class="dir-browse-list" id="dir-browse-list"></div>
-    <div class="dlg-actions">
-      <button type="button" class="dir-browse-primary" id="dir-browse-select"
-              data-i18n="board.dirBrowseSelect"></button>
+    <div id="dir-browse-body">
+      <div class="dlg-head"><p class="dlg-title" data-i18n="board.startTodoCwdPrompt"></p></div>
+      <div class="dir-browse-crumbs" id="dir-browse-crumbs"></div>
+      <div class="dir-browse-list" id="dir-browse-list"></div>
+      <div class="dlg-actions">
+        <button type="button" class="dir-browse-primary" id="dir-browse-select"
+                data-i18n="board.dirBrowseSelect"></button>
+      </div>
     </div>
   </dialog>
 
