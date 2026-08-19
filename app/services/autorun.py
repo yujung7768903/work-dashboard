@@ -68,8 +68,8 @@ REASON_READY = "시작 가능"
 
 # 할일 케밥의 "시작" 이 세션을 띄운 뒤 알려주는 문장
 MSG_SESSION_STARTED = "세션을 시작했습니다"
-# 사람이 직접 고른 작업 위치가 git 저장소가 아닐 때
-MSG_NOT_A_GIT_REPO = "git 저장소가 아님"
+# 사람이 직접 고른 작업 위치가 실제 디렉토리가 아닐 때
+MSG_NOT_A_DIRECTORY = "디렉토리가 아님"
 
 # 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다
 BLOCKER_READY = "ready"
@@ -123,8 +123,8 @@ def start_todo(con, todo_id, launcher=None, cwd=None):
         else None
     )
     if cwd:
-        if not os.path.exists(os.path.join(cwd, ".git")):
-            raise Validation(f"{MSG_NOT_A_GIT_REPO}: {cwd}")
+        if not os.path.isdir(cwd):
+            raise Validation(f"{MSG_NOT_A_DIRECTORY}: {cwd}")
     else:
         cwd = target_cwd(con, workspace)
     if not cwd:

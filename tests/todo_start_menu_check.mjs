@@ -1,8 +1,7 @@
 // 할일 케밥 메뉴의 "시작" 항목 검증
 //   1. 위치를 아는 할일 — 누르면 그 id 로 POST 되고, 목록을 다시 받은 뒤 서버 문장을 알린다
-//   2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 폴더 선택기를 연다. 하위 폴더로
-//      내려가다 git 저장소를 고르면 그 경로로 재시도하고, 빵부스러기로 여러 단 위를
-//      한 번에 건너뛸 수도 있다
+//   2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 폴더 선택기를 연다. git
+//      저장소가 아니어도 고를 수 있고, 빵부스러기로 여러 단 위를 한 번에 건너뛸 수도 있다
 // 브라우저 없이 돌려야 하므로 board.js·browse.js 가 만지는 DOM 만 흉내낸다.
 // 실행: node tests/todo_start_menu_check.mjs (tests/test_todo_start_menu.py 가 부른다)
 import assert from "node:assert/strict";
@@ -194,25 +193,23 @@ await settle();
 assert.equal(elements["dir-browse-modal"].open, true, "위치를 모르면 폴더 선택기를 열어야 한다");
 // 빵부스러기의 마지막 칸은 "지금 여기" 표시라 눌러도 아무 데도 못 가게 disabled 다
 assert.equal(buttonNamed("/user").disabled, true, "지금 폴더(ROOT)가 빵부스러기 마지막이어야 한다");
-assert.equal(select().disabled, true, "지금 폴더는 git 저장소가 아니다");
+// git 저장소가 아니어도 고를 수 있다 — 워크트리를 안 만들어도 되는 작업도 있다
+assert.equal(select().disabled, false, "git 저장소가 아니어도 선택 버튼은 항상 켜져 있어야 한다");
 
-// work 폴더로 내려간다 — 아직 git 저장소가 아니라 선택 버튼은 계속 비활성
+// work 폴더로 내려간다
 rowNamed("work").listeners.click();
 await settle();
 assert.equal(buttonNamed("/work").disabled, true, "이제 work 가 빵부스러기 마지막");
-assert.equal(select().disabled, true);
 
-// hk-herb-server 로 내려간다 — git 저장소라 선택 버튼이 켜진다
+// hk-herb-server 로 내려간다
 rowNamed("hk-herb-server").listeners.click();
 await settle();
 assert.equal(buttonNamed("/hk-herb-server").disabled, true);
-assert.equal(select().disabled, false);
 
 // 빵부스러기로 두 단 위(work 도 아니라 그 위 ROOT)를 한 번에 건너뛴다 —
 // "위로" 버튼이었다면 두 번 눌러야 했을 이동이 여기선 한 번이다
 buttonNamed("/user").listeners.click();
 await settle();
-assert.equal(select().disabled, true, "ROOT 로 돌아왔으니 다시 비활성");
 assert.equal(buttonNamed("/user").disabled, true);
 
 // 다시 내려가 최종 선택
@@ -220,7 +217,6 @@ rowNamed("work").listeners.click();
 await settle();
 rowNamed("hk-herb-server").listeners.click();
 await settle();
-assert.equal(select().disabled, false);
 
 // "이 폴더 선택" — 다이얼로그가 그 경로로 닫히고, 그 경로로 재시도한다
 select().onclick();

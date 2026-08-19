@@ -647,14 +647,10 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   margin: 0; padding: var(--sp-16); color: var(--muted); font-size: var(--fs-sm);
   text-align: center;
 }
-/* 선택 버튼은 지금 폴더가 git 저장소일 때만 켜진다 — 그때만 액센트로 눈에 띄게 */
-.dir-browse-primary:not(:disabled) { background: var(--accent); color: #fff; }
-.dir-browse-primary:not(:disabled):hover {
-  background: color-mix(in srgb, var(--accent) 85%, black);
-}
-/* 전역 button:disabled 는 글자를 --line 으로 뺀다 — 바탕(옅은 회색)과 거의 안 갈려
-   보인다. 여기는 "지금은 못 고른다" 를 읽혀야 하는 자리라 --muted 로 대비를 살린다 */
-.dir-browse-primary:disabled { color: var(--muted); }
+/* 폴더면 어디든 고를 수 있다 — git 저장소로 제한하지 않는다. 그래서 액센트는
+   항상 켜져 있다 */
+.dir-browse-primary { background: var(--accent); color: #fff; }
+.dir-browse-primary:hover { background: color-mix(in srgb, var(--accent) 85%, black); }
 
 /* ── 설정 (카테고리·라벨) ─────────────────────────────────────────────────── */
 /* 두 목록이 한 화면에 겹치므로 무엇의 목록인지 제목으로 가른다 */

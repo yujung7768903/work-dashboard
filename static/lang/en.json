@@ -294,7 +294,7 @@
   "error.unknownReorderKind": "Unknown reorder kind: {kind}",
   "error.groupByInvalid": "group_by must be one of {choices}",
   "error.branchNotFound": "Branch {branch} was not found",
-  "error.notAGitRepo": "Not a git repository: {path}",
+  "error.notADirectory": "Not a directory: {path}",
   "error.worktreeNotFound": "No worktree was found for branch {branch}",
   "error.baseBranchNotTarget": "The base branch is not a target for {action}",
   "error.mainCheckout": "Main checkout",

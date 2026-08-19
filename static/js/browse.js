@@ -29,9 +29,7 @@ async function load(path) {
   const data = await api.browseDir(path);
   renderCrumbs(data.path);
   renderList(data);
-  const select = document.getElementById("dir-browse-select");
-  select.disabled = !data.is_git_repo;
-  select.onclick = () => dialog().close(data.path);
+  document.getElementById("dir-browse-select").onclick = () => dialog().close(data.path);
 }
 
 // "/home/user/work" → [/home, /user, /work] 빵부스러기. 마지막(지금 폴더)은 누를
