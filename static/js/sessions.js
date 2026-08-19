@@ -31,6 +31,8 @@ const TIME_FIELDS = [
 ];
 // 워크트리 History 의 이벤트. 끝난 시각은 하나만 채워진다 —
 // 병합됐으면 merged_at, 병합 없이 지웠으면 deleted_at
+// 착수 조건 항목 표시. 판정 못 하는 항목(자유 문장·확인 명령)은 물음표로 남는다
+const CONDITION_MARKS = { met: "✓", unmet: "✗", unknown: "?" };
 const WORKTREE_TIME_FIELDS = [
   ["created_at", t("history.created")],
   ["merged_at", t("history.merged")],
@@ -203,10 +205,68 @@ function todoBlock(todo) {
   const title = element("p", "dlg-title", `#${todo.id} | ${todo.title}`);
   if (todo.needs_title) title.append(rawTitleMark());
   block.append(title, historySection(events(todo, TIME_FIELDS)));
-  block.append(...textField(t("common.precondition"), todo.precondition));
+  block.append(conditionSection(todo));
   // 하위 할일은 보드 카드에서 펼쳐 보므로 여기서는 안 그린다
   block.append(...textField("note", todo.note));
   return block;
+}
+
+// 착수 조건은 원문 한 덩어리가 아니라 항목별 충족 여부로 본다 — 무엇이 안 풀려서
+// 자율 수행이 이 할일을 안 잡는지는 항목 단위로만 알 수 있다.
+// #id 는 서버가 할일 상태로 판정하고, '확인: <명령>' 은 버튼을 눌러야 돈다
+function conditionSection(todo) {
+  const block = element("div", "dlg-log");
+  block.appendChild(element("p", "label", t("common.precondition")));
+  const items = todo.precondition_items ?? [];
+  if (!items.length) {
+    block.appendChild(element("p", "muted", t("common.empty")));
+    return block;
+  }
+  const list = element("ul", "cond-list");
+  items.forEach((item, index) => list.appendChild(conditionRow(todo, item, index)));
+  block.appendChild(list);
+  return block;
+}
+
+function conditionRow(todo, item, index) {
+  const row = document.createElement("li");
+  row.className = `cond ${item.kind}`;
+  row.append(
+    element("span", `cond-mark ${metClass(item)}`, CONDITION_MARKS[metClass(item)]),
+    element("span", "text", item.text)
+  );
+  if (item.command) row.append(checkButton(todo, item, index));
+  return row;
+}
+
+function metClass(item) {
+  if (item.met === true) return "met";
+  if (item.met === false) return "unmet";
+  return "unknown";
+}
+
+// 명령은 눌렀을 때만 돈다. 결과는 그 줄에 남겨 둔다 — 다시 누르면 덮어쓴다
+function checkButton(todo, item, index) {
+  const wrap = element("span", "cond-check");
+  const button = element("button", "cond-run", t("autorun.conditionCheck"));
+  button.type = "button";
+  button.title = item.command;
+  const output = element("span", "cond-out");
+  button.addEventListener("click", () => {
+    output.textContent = t("autorun.conditionChecking");
+    api
+      .checkPrecondition(todo.id, index)
+      .then((result) => {
+        wrap.className = `cond-check ${result.exit_code === 0 ? "met" : "unmet"}`;
+        output.textContent = `exit ${result.exit_code ?? "-"} ${result.output}`.trim();
+        output.title = result.output;
+      })
+      .catch((error) => {
+        output.textContent = error.message;
+      });
+  });
+  wrap.append(button, output);
+  return wrap;
 }
 
 // note·착수 조건 둘 다 여러 줄이 오는 글이라 같은 라벨+본문 짝을 쓴다

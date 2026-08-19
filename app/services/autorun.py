@@ -6,8 +6,9 @@ planning.next_todo 를 그대로 쓴다 — 자율 실행이 다른 기준으로
 
 대상은 두 겹으로 좁힌다.
   1. `auto` 라벨 — 자율 실행 허가는 사람이 라벨로 준다
-  2. 조건 문장이 없을 것 — 선제조건은 자연어라 코드가 충족 여부를 판정할 수 없다.
-     조건이 붙은 할일은 사람이 판단해야 하므로 후보에서 뺀다
+  2. 착수 조건이 없거나, 있어도 전부 코드가 판정할 수 있고 전부 충족일 것
+     (precondition.all_met). 자유 문장이나 확인 명령이 섞이면 사람이 판단해야 하므로
+     종전대로 후보에서 뺀다
 """
 import json
 import os
@@ -17,6 +18,7 @@ import time
 
 from app.constants import (
     AUTORUN_BLOCKED_STREAK_LIMIT,
+    AUTORUN_CANDIDATE_LIMIT,
     AUTORUN_CLAUDE_BIN,
     AUTORUN_JOB_TERMINAL,
     AUTORUN_JOBS_ROOT,
@@ -34,8 +36,9 @@ from app.db import now, transaction
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
+from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import planning, release, worktrees
+from app.services import planning, precondition, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
 JOB_ID_PATTERN = re.compile(r"backgrounded[^\n]*?([0-9a-f]{8})")
@@ -60,6 +63,14 @@ REASON_NO_USAGE = "사용률 데이터가 아예 없음 — 모르면 안 돈다
 REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
 REASON_READY = "시작 가능"
+
+# 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다
+BLOCKER_READY = "ready"
+BLOCKER_BLOCKED = "blocked"
+BLOCKER_REQUESTED = "requested"
+BLOCKER_REVIEW = "review"
+BLOCKER_CLAIMED = "claimed"
+BLOCKER_PRECONDITION = "precondition"
 
 # 실행 id → 워크트리 경로. 끝난 실행만 담는다(그 뒤로 바뀌지 않는다)
 _WORKTREE_CACHE = {}
@@ -90,7 +101,7 @@ def panel_runs(con, limit=10):
     어느 워크트리에서 돌았는지와 거기서 열려 있는 포트를 붙인다 — 결과만 보고는 그
     변경을 어디서 봐야 하는지, 띄워 둔 서버가 몇 번인지 알 수 없다
     """
-    runs = autorun_repo.recent_with_todos(con, limit)
+    runs = _merged_runs(con, limit)
     for run in runs:
         path = _run_worktree(run)
         run["worktree_path"] = path
@@ -102,6 +113,18 @@ def panel_runs(con, limit=10):
         found = processes.get(os.path.realpath(run["worktree_path"] or "/")) or []
         run["ports"] = sorted({port for entry in found for port in entry["ports"]})
     return runs
+
+
+def _merged_runs(con, limit):
+    """사람이 손댈 실행은 오래됐어도 전부, 나머지는 최근 limit 건. id 순으로 되돌린다"""
+    runs = autorun_repo.attention_with_todos(con)
+    seen = {run["id"] for run in runs}
+    runs += [
+        run
+        for run in autorun_repo.recent_with_todos(con, limit)
+        if run["id"] not in seen
+    ]
+    return sorted(runs, key=lambda run: run["id"], reverse=True)
 
 
 def _run_worktree(run):
@@ -156,8 +179,36 @@ def judge(con):
 
 
 def pick(con):
-    """자율 실행 후보 1건. 순위는 planning 이 정하고 여기서는 거르기만 한다"""
-    return planning.next_todo(con, keep=eligible(con))
+    """자율 실행 후보 1건. 화면의 후보 목록 맨 위와 같은 것이어야 한다 —
+    사람이 목록을 끌어 순서를 바꿨는데 다른 것이 돌면 그 조작이 거짓말이 된다.
+
+    남이 잡고 있는 할일은 여기서 뺀다. 목록은 그것도 '다른 세션이 잡음' 으로 보여주므로
+    거르는 자리가 다르다
+    """
+    keep = eligible(con)
+    claimed = todo_repo.ids_claimed_by_others(con)
+    rows = sorted_candidates(
+        con, lambda todo: keep(todo) and todo["id"] not in claimed
+    )
+    if not rows:
+        return None
+    todo = rows[0]
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
+    )
+    return {"todo": todo, "workspace": workspace}
+
+
+def sorted_candidates(con, keep, limit=None):
+    """후보 순서. 사람이 끌어 정한 순서(autorun_order)가 먼저고, 안 정한 것은 그 뒤에
+    planning 순위 그대로 붙는다. 정렬이 안정적이라 그 뒤끼리는 원래 순서를 지킨다
+    """
+    rows = planning.ranked(con, keep=keep)
+    ordered = sorted(
+        rows,
+        key=lambda todo: (todo["autorun_order"] is None, todo["autorun_order"] or 0),
+    )
+    return ordered[:limit] if limit else ordered
 
 
 def eligible(con):
@@ -172,11 +223,7 @@ def eligible(con):
     `keep.cwd_memo` 에 담는다 — judge() 가 이 memo 를 재사용해 target_cwd 를 두 번
     계산하지 않고, 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가 있었는지"도 안다
     """
-    labeled = {
-        todo_id
-        for todo_id, labels in label_repo.map_by_todo(con).items()
-        if any(label["name"] == AUTORUN_LABEL for label in labels)
-    }
+    labeled = labeled_ids(con)
     excluded = (
         autorun_repo.blocked_todo_ids(con)
         | autorun_repo.requested_todo_ids(con)
@@ -195,12 +242,69 @@ def eligible(con):
     def keep(todo):
         if todo["id"] not in labeled or todo["id"] in excluded:
             return False
-        if (todo["precondition"] or "").strip():
+        text = (todo["precondition"] or "").strip()
+        if text and not precondition.all_met(con, text):
             return False
+        # 위치를 못 정하면 실행 자체가 안 된다. 여기서 걸러야 다음 후보로 넘어간다
         return bool(cwd_of(todo["workspace_id"]))
 
     keep.cwd_memo = cwd_memo
     return keep
+
+
+def labeled_ids(con):
+    """`auto` 라벨이 붙은 할일 id. 후보 판정과 후보 목록이 같은 집합을 본다"""
+    return {
+        todo_id
+        for todo_id, labels in label_repo.map_by_todo(con).items()
+        if any(label["name"] == AUTORUN_LABEL for label in labels)
+    }
+
+
+def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
+    """자율 수행 화면의 후보 목록. 순위대로 상위 N 건과 각각이 지금 못 도는 이유.
+
+    eligible() 이 거른 결과만 보여주면 목록이 늘 비어 '왜 안 도는지' 를 여전히 알 수
+    없다. 그래서 라벨이 붙은 할일은 못 도는 것도 싣고, 무엇에 막혔는지를 같이 준다
+    """
+    labeled = labeled_ids(con)
+    claimed = todo_repo.ids_claimed_by_others(con, None)
+    blocked = autorun_repo.blocked_todo_ids(con)
+    requested = autorun_repo.requested_todo_ids(con)
+    review = autorun_repo.locked_todo_ids(con)
+    rows = sorted_candidates(con, lambda todo: todo["id"] in labeled, limit=limit)
+    return [
+        {
+            "todo_id": todo["id"],
+            "title": todo["title"],
+            "status": todo["status"],
+            "workspace_name": todo["workspace_name"],
+            "blocker": _blocker(con, todo, blocked, requested, review, claimed),
+            "precondition": precondition.summary(con, todo["precondition"]),
+        }
+        for todo in rows
+    ]
+
+
+def _blocker(con, todo, blocked, requested, review, claimed):
+    """무엇 하나만 고르면 되는 값이다 — 사람이 먼저 손댈 것부터 본다.
+
+    막힘·요청·검토 대기는 사람이 처리해야 풀리고, 점유는 기다리면 풀리고,
+    조건 미충족은 조건 쪽을 봐야 한다
+    """
+    todo_id = todo["id"]
+    if todo_id in blocked:
+        return BLOCKER_BLOCKED
+    if todo_id in requested:
+        return BLOCKER_REQUESTED
+    if todo_id in review:
+        return BLOCKER_REVIEW
+    if todo_id in claimed:
+        return BLOCKER_CLAIMED
+    text = (todo["precondition"] or "").strip()
+    if text and not precondition.all_met(con, text):
+        return BLOCKER_PRECONDITION
+    return BLOCKER_READY
 
 
 def usage_gate(limits_path=RATE_LIMITS_PATH):
