@@ -351,13 +351,13 @@ class Prompt(AutorunCase):
         workspace_repo.update(self.con, self.workspace["id"], goal="끝까지 돌리기")
         self.workspace = workspace_repo.get(self.con, self.workspace["id"])
 
-    def _text(self, **fields):
+    def _text(self, cwd=None, **fields):
         todo = (
             todo_repo.update(self.con, self.todo["id"], **fields)
             if fields
             else self.todo
         )
-        return autorun.build_prompt(todo, self.workspace, "/repo")
+        return autorun.build_prompt(todo, self.workspace, cwd or _git_repo())
 
     def test_carries_workspace_and_todo(self):
         text = self._text()
@@ -390,6 +390,16 @@ class Prompt(AutorunCase):
         text = self._text(precondition="포트 9080 이 비어 있을 것")
         self.assertIn("포트 9080 이 비어 있을 것", text)
         self.assertIn("코드를 고치기 전에", text)
+
+    def test_non_git_cwd_skips_worktree_and_commit_instructions(self):
+        """할일 케밥의 "시작"이 고른 폴더는 git 저장소가 아닐 수 있다 — 그때는
+        워크트리·커밋을 요구하면 안 끝낼 방법이 없어진다"""
+        plain = tempfile.mkdtemp()
+        text = self._text(cwd=plain)
+        self.assertNotIn("EnterWorktree", text)
+        self.assertNotIn("diff 로 확인해 커밋한 뒤", text)
+        self.assertIn("autorun-finish", text)
+        self.assertIn(plain, text)
 
 
 class Launching(AutorunCase):
