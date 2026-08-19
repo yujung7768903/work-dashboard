@@ -88,6 +88,8 @@ export const updateTodo = (id, fields) => request("PATCH", `/todos/${id}`, field
 export const deleteTodo = (id) => request("DELETE", `/todos/${id}`);
 export const startTodo = (id, cwd) =>
   request("POST", "/todo-start", cwd ? { id, cwd } : { id }, { silent: true });
+export const browseDir = (path) =>
+  request("GET", `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`);
 
 export const getSettings = () => request("GET", "/settings");
 export const updateSettings = (fields) => request("PATCH", "/settings", fields);

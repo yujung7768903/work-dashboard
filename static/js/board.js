@@ -1,6 +1,7 @@
 // 보드 탭 렌더. 카테고리 라벨 필터, 빠른 추가, 상태 토글, 완료 워크스페이스 이동
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
+import { pickDirectory } from "./browse.js";
 import { fromKorean, t } from "./i18n.js";
 import { renderBoardTab, run } from "./main.js";
 import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
@@ -309,7 +310,7 @@ async function startTodoFlow(todo) {
       return null;
     }
   }
-  const cwd = prompt(t("board.startTodoCwdPrompt"));
+  const cwd = await pickDirectory();
   if (!cwd) return null;
   try {
     return await api.startTodo(todo.id, cwd);

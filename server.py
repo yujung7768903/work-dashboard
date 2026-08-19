@@ -29,6 +29,7 @@ from app.repositories import workspaces as workspace_repo
 from app.services import (
     autorun,
     board,
+    browse,
     gtasks,
     gtasks_setup,
     planning,
@@ -146,6 +147,8 @@ def _route_get(con, head, item_id, query):
         return gtasks_setup.panel(con)
     if head == "settings":
         return settings_repo.payload(con)
+    if head == "browse":
+        return browse.list_dir(_single(query, "path", None))
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 

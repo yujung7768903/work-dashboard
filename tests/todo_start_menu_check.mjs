@@ -1,7 +1,8 @@
 // 할일 케밥 메뉴의 "시작" 항목 검증
 //   1. 위치를 아는 할일 — 누르면 그 id 로 POST 되고, 목록을 다시 받은 뒤 서버 문장을 알린다
-//   2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 경로를 물어 그 값으로 재시도한다
-// 브라우저 없이 돌려야 하므로 board.js 가 만지는 DOM 만 흉내낸다.
+//   2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 폴더 선택기를 열어, 하위 폴더를
+//      골라 내려가다 git 저장소를 고르면 그 경로로 재시도한다
+// 브라우저 없이 돌려야 하므로 board.js·browse.js 가 만지는 DOM 만 흉내낸다.
 // 실행: node tests/todo_start_menu_check.mjs (tests/test_todo_start_menu.py 가 부른다)
 import assert from "node:assert/strict";
 import { bootKorean } from "./i18n_boot.mjs";
@@ -10,7 +11,6 @@ const TODO_ID = 108;
 const TODO_TITLE = "할일 케밥 메뉴에 시작 기능 추가";
 const NO_CWD_ID = 105;
 const NO_CWD_TITLE = "인물사전 문의 대응";
-const CHOSEN_CWD = "/home/user/work/hk-herb-server";
 const GROUP = {
   id: 7, kind: "workspace", name: "작업 대시보드", total_count: 2, done_count: 0,
   todos: [
@@ -22,6 +22,22 @@ const STARTED_MESSAGE = `세션을 시작했습니다 — #${TODO_ID} | ${TODO_T
 const NO_CWD_MESSAGE = "그 워크스페이스에서 작업하던 위치를 알 수 없음";
 const NO_CWD_STARTED_MESSAGE = `세션을 시작했습니다 — #${NO_CWD_ID} | ${NO_CWD_TITLE}`;
 
+// 폴더 선택기가 훑는 가짜 트리: /home/user → work(일반 폴더) → hk-herb-server(git 저장소)
+const ROOT = "/home/user";
+const SUBDIR = "/home/user/work";
+const CHOSEN_CWD = "/home/user/work/hk-herb-server";
+const BROWSE = {
+  [ROOT]: {
+    path: ROOT, parent: "/home", is_git_repo: false,
+    entries: [{ name: "work", path: SUBDIR, is_git_repo: false }],
+  },
+  [SUBDIR]: {
+    path: SUBDIR, parent: ROOT, is_git_repo: false,
+    entries: [{ name: "hk-herb-server", path: CHOSEN_CWD, is_git_repo: true }],
+  },
+  [CHOSEN_CWD]: { path: CHOSEN_CWD, parent: SUBDIR, is_git_repo: true, entries: [] },
+};
+
 const asked = [];
 // 알림과 목록 갱신의 순서를 봐야 한다 — alert 가 먼저면 확인을 누를 때까지 화면이 안 바뀐다
 const order = [];
@@ -30,6 +46,10 @@ globalThis.fetch = async (url, options) => {
   const body = options?.body ? JSON.parse(options.body) : undefined;
   asked.push({ method, url, body });
   order.push(`${method} ${url}`);
+  if (method === "GET" && url.startsWith("/api/browse")) {
+    const path = new URL(url, "http://x").searchParams.get("path");
+    return { ok: true, status: 200, json: async () => BROWSE[path ?? ROOT] };
+  }
   if (method === "POST" && url === "/api/todo-start") {
     if (body.id === TODO_ID) {
       return { ok: true, status: 200, json: async () => ({ message: STARTED_MESSAGE }) };
@@ -61,13 +81,6 @@ globalThis.alert = (message) => {
   order.push("alert");
 };
 
-const prompts = [];
-let promptAnswer = null;
-globalThis.prompt = (message) => {
-  prompts.push(message);
-  return promptAnswer;
-};
-
 const node = (tag) => ({
   tag,
   value: "",
@@ -81,6 +94,7 @@ const node = (tag) => ({
   title: "",
   disabled: false,
   draggable: false,
+  returnValue: "",
   style: { setProperty() {} },
   classList: { toggle() {}, remove() {}, add() {} },
   children: [],
@@ -97,6 +111,15 @@ const node = (tag) => ({
   focus() {},
   addEventListener(type, handler) {
     this.listeners[type] = handler;
+  },
+  // <dialog> 만 쓰는 두 메서드. jsdom 없이 board.js·browse.js 를 그대로 돌리려고 흉내낸다
+  showModal() {
+    this.open = true;
+  },
+  close(returnValue) {
+    if (returnValue !== undefined) this.returnValue = returnValue;
+    this.open = false;
+    this.listeners.close?.();
   },
 });
 
@@ -140,7 +163,7 @@ let posted = asked.filter((call) => call.method === "POST");
 assert.equal(posted.length, 1, JSON.stringify(asked));
 assert.deepEqual(posted[0].body, { id: TODO_ID });
 assert.deepEqual(alerts, [STARTED_MESSAGE], alerts.join(" / "));
-assert.equal(prompts.length, 0, "위치를 아는 할일은 경로를 안 물어야 한다");
+assert.equal(elements["dir-browse-modal"].open, false, "위치를 아는 할일은 폴더 선택기를 안 열어야 한다");
 // 목록을 다시 받은 **뒤에** 알린다 — 순서가 뒤집히면 갱신되기 전 화면에 알림이 뜬다.
 // 보드는 tree 외에도 여러 GET 을 한꺼번에 쏘므로, 알림이 맨 끝이고 그 사이에
 // 갱신(tree 재조회)이 있었는지만 본다 — 몇 번째 GET 인지까지는 안 본다
@@ -152,25 +175,44 @@ assert.equal(
   order.join(" → ")
 );
 
-// 2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 경로를 물어 그 값으로 재시도한다
-promptAnswer = CHOSEN_CWD;
+// 2. 위치를 모르는 할일 — 서버가 reason.noCwd 로 막으면 폴더 선택기가 열린다
 toggles()[1].listeners.click({ stopPropagation() {} });
 await settle();
 buttonNamed("시작").listeners.click({ stopPropagation() {} });
 await settle();
 
+assert.equal(elements["dir-browse-modal"].open, true, "위치를 모르면 폴더 선택기를 열어야 한다");
+assert.equal(elements["dir-browse-path"].textContent, ROOT);
+assert.equal(elements["dir-browse-select"].disabled, true, "지금 폴더는 git 저장소가 아니다");
+
+// work 폴더로 내려간다 — 아직 git 저장소가 아니라 선택 버튼은 계속 비활성
+buttonNamed("work").listeners.click();
+await settle();
+assert.equal(elements["dir-browse-path"].textContent, SUBDIR);
+assert.equal(elements["dir-browse-select"].disabled, true);
+
+// hk-herb-server 로 내려간다 — git 저장소라 선택 버튼이 켜진다
+buttonNamed("hk-herb-server (git)").listeners.click();
+await settle();
+assert.equal(elements["dir-browse-path"].textContent, CHOSEN_CWD);
+assert.equal(elements["dir-browse-select"].disabled, false);
+
+// "이 폴더 선택" — 다이얼로그가 그 경로로 닫히고, 그 경로로 재시도한다
+elements["dir-browse-select"].onclick();
+await settle();
+
+assert.equal(elements["dir-browse-modal"].open, false);
 posted = asked.filter((call) => call.method === "POST");
 assert.equal(posted.length, 3, JSON.stringify(asked));
 assert.deepEqual(posted[1].body, { id: NO_CWD_ID }, "첫 시도는 경로 없이");
 assert.deepEqual(
   posted[2].body,
   { id: NO_CWD_ID, cwd: CHOSEN_CWD },
-  "물어 받은 경로로 재시도"
+  "고른 경로로 재시도"
 );
-assert.equal(prompts.length, 1, "위치를 모르면 한 번만 물어야 한다");
 assert.deepEqual(alerts, [STARTED_MESSAGE, NO_CWD_STARTED_MESSAGE], alerts.join(" / "));
-// 실패한 첫 시도는 조용히 삼키고(자동 alert 없이) 경로를 물어야 한다 —
-// alert 가 먼저 뜨면 그 창을 닫기 전에는 프롬프트가 안 보인다
+// 실패한 첫 시도는 조용히 삼키고(자동 alert 없이) 선택기를 열어야 한다 —
+// alert 가 먼저 뜨면 그 창을 닫기 전에는 선택기가 안 보인다
 assert.equal(
   order.filter((entry) => entry === "alert").length,
   2,

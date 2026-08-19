@@ -609,6 +609,21 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   display: block; width: 100%; text-align: left; background: none; white-space: nowrap;
 }
 
+/* ── 폴더 선택기 (할일 케밥 "시작" 이 위치를 못 정했을 때) ────────────────────── */
+#dir-browse-path {
+  margin: 0 0 var(--sp-8); color: var(--muted); font-size: var(--fs-micro);
+  word-break: break-all;
+}
+.dir-browse-list {
+  max-height: 16em; overflow-y: auto; border: 1px solid var(--line);
+  border-radius: var(--r-ctl); margin-bottom: var(--sp-12);
+}
+.dir-browse-list button {
+  display: block; width: 100%; text-align: left; background: none;
+  padding: var(--sp-8) var(--sp-12); border-radius: 0;
+}
+.dir-browse-list button:hover { background: var(--bg); }
+
 /* ── 설정 (카테고리·라벨) ─────────────────────────────────────────────────── */
 /* 두 목록이 한 화면에 겹치므로 무엇의 목록인지 제목으로 가른다 */
 .set-head { margin: var(--gap) 0 var(--sp-8); font-size: var(--fs-body); font-weight: 700; }
