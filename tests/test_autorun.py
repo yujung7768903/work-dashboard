@@ -9,6 +9,7 @@ import unittest
 import server
 from app.constants import (
     AUTORUN_BLOCKED_STREAK_LIMIT,
+    AUTORUN_CANDIDATE_LIMIT,
     AUTORUN_LABEL,
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
@@ -122,11 +123,27 @@ class Candidates(AutorunCase):
         self._todo("라벨 없는 일")
         self.assertIsNone(autorun.pick(self.con))
 
-    def test_skips_todo_with_precondition(self):
-        """조건은 자연어라 코드가 충족을 판정할 수 없다 — 사람이 풀어야 후보가 된다"""
+    def test_skips_todo_with_a_condition_code_cannot_judge(self):
+        """자유 문장은 코드가 충족을 판정할 수 없다 — 사람이 풀어야 후보가 된다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
         self._todo("조건 붙은 일", labeled=True, precondition="다른 게 먼저 끝날 것")
         self.assertIsNone(autorun.pick(self.con))
+
+    def test_skips_todo_whose_referenced_todo_is_open(self):
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blocker = self._todo("먼저 할 일")
+        self._todo("뒤에 할 일", labeled=True, precondition=f"#{blocker['id']} 이 done 일 것")
+        self.assertIsNone(autorun.pick(self.con))
+
+    def test_takes_todo_once_every_referenced_todo_is_done(self):
+        """#id 조건은 코드가 판정할 수 있다 — 그 할일이 끝나면 저절로 후보가 된다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blocker = self._todo("먼저 할 일")
+        waiting = self._todo(
+            "뒤에 할 일", labeled=True, precondition=f"#{blocker['id']} 이 done 일 것"
+        )
+        todo_repo.update(self.con, blocker["id"], status=STATUS_DONE)
+        self.assertEqual(autorun.pick(self.con)["todo"]["id"], waiting["id"])
 
     def test_skips_blocked_todo(self):
         run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
@@ -148,6 +165,78 @@ class Candidates(AutorunCase):
     def test_skips_done_todo(self):
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         self.assertIsNone(autorun.pick(self.con))
+
+
+class CandidatePanel(AutorunCase):
+    """자율 수행 화면의 후보 목록. 못 도는 것도 싣고 왜 못 도는지를 같이 준다"""
+
+    def test_lists_labeled_todo_as_ready(self):
+        rows = autorun.candidates(self.con)
+        self.assertEqual([row["todo_id"] for row in rows], [self.todo["id"]])
+        self.assertEqual(rows[0]["blocker"], autorun.BLOCKER_READY)
+        self.assertEqual(rows[0]["workspace_name"], self.workspace["name"])
+
+    def test_leaves_out_unlabeled_todo(self):
+        self._todo("라벨 없는 일")
+        self.assertEqual(len(autorun.candidates(self.con)), 1)
+
+    def test_marks_blocked_and_review_and_requested(self):
+        for outcome, expected in (
+            (OUTCOME_BLOCKED, autorun.BLOCKER_BLOCKED),
+            (OUTCOME_REQUESTED, autorun.BLOCKER_REQUESTED),
+            (OUTCOME_REVIEW, autorun.BLOCKER_REVIEW),
+        ):
+            run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+            autorun_repo.close_run(self.con, run["id"], outcome)
+            self.assertEqual(autorun.candidates(self.con)[0]["blocker"], expected)
+            self.con.execute("DELETE FROM autorun_runs")
+
+    def test_counts_unmet_conditions(self):
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blocker = self._todo("먼저 할 일")
+        self._todo(
+            "조건 걸린 일",
+            labeled=True,
+            precondition=f"#{blocker['id']} 이 done 일 것\n기획 확정",
+        )
+        row = autorun.candidates(self.con)[0]
+        self.assertEqual(row["blocker"], autorun.BLOCKER_PRECONDITION)
+        self.assertEqual(row["precondition"], {"total": 2, "met": 0, "manual": 1})
+
+    def test_drag_order_wins_over_board_order(self):
+        """사람이 끌어 정한 순서가 먼저다. 안 정한 것은 그 뒤에 원래 순위대로 남는다"""
+        second = self._todo("둘째", labeled=True)
+        third = self._todo("셋째", labeled=True)
+        todo_repo.set_autorun_order(self.con, [third["id"], self.todo["id"]])
+        self.assertEqual(
+            [row["todo_id"] for row in autorun.candidates(self.con)],
+            [third["id"], self.todo["id"], second["id"]],
+        )
+
+    def test_pick_follows_the_dragged_order(self):
+        """목록 맨 위와 실제로 돌 할일이 다르면 그 조작이 거짓말이 된다"""
+        later = self._todo("나중 것", labeled=True)
+        todo_repo.set_autorun_order(self.con, [later["id"], self.todo["id"]])
+        self.assertEqual(autorun.pick(self.con)["todo"]["id"], later["id"])
+
+    def test_reorder_route_saves_candidate_order(self):
+        second = self._todo("둘째", labeled=True)
+        server.route(
+            self.con,
+            "POST",
+            "/api/reorder",
+            {},
+            {"kind": "autorun", "ids": [second["id"], self.todo["id"]]},
+        )
+        self.assertEqual(
+            [row["todo_id"] for row in autorun.candidates(self.con)],
+            [second["id"], self.todo["id"]],
+        )
+
+    def test_caps_the_list(self):
+        for index in range(AUTORUN_CANDIDATE_LIMIT + 2):
+            self._todo(f"자동 {index}", labeled=True)
+        self.assertEqual(len(autorun.candidates(self.con)), AUTORUN_CANDIDATE_LIMIT)
 
 
 class Gates(AutorunCase):
@@ -226,6 +315,22 @@ class Gates(AutorunCase):
         orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=other["id"])
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_CWD)
+
+    def test_unknown_cwd_candidate_is_skipped_for_the_next_one(self):
+        """위치 없는 워크스페이스가 순위상 앞이어도 위치가 있는 다음 후보가 뜬다 —
+
+        한 워크스페이스가 위치를 못 정했다고 tick 전체가 멈추면 안 된다
+        """
+        blind = workspace_repo.create(
+            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
+        )
+        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
+        workspace_repo.reorder(self.con, [blind["id"], self.workspace["id"]])
+        decision = autorun.judge(self.con)
+        self.assertEqual(decision["reason"], autorun.REASON_READY)
+        self.assertEqual(decision["todo"]["id"], self.todo["id"])
+        self.assertEqual(decision["cwd"], self.repo)
 
     def test_uncommitted_changes_do_not_block_start(self):
         """자율 세션은 워크트리를 새로 파서 일하므로 본 체크아웃의 미커밋 변경과 겹치지 않는다"""
