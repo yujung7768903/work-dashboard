@@ -247,19 +247,29 @@ function paintRuns(runs) {
     list.appendChild(emptyRow(NO_RUN));
     return;
   }
-  list.appendChild(headRow());
   RUN_GROUPS.forEach(([key, label, belongs]) => {
     const rows = runs.filter(belongs);
-    if (!rows.length) return;
-    const open = !collapsed.has(key);
-    list.appendChild(groupRow(key, label, rows.length, open));
-    // 접힌 구획은 줄을 아예 안 그린다 — 숨겨 두면 목록이 길어질수록 그리는 값만 늘어난다
-    if (open) rows.forEach((run) => list.appendChild(runRow(run)));
+    if (rows.length) list.appendChild(groupPanel(key, label, rows));
   });
 }
 
-// 칸 이름은 목록 맨 위에 한 번만 둔다 — 구획마다 되풀이하면 네 번 읽히고,
-// 정작 봐야 할 구획 이름(확인 필요·진행 중)이 같은 크기의 글자에 묻힌다
+// 상태마다 판 하나. 판을 펼치면 그 안에 칸 이름 줄과 실행 줄이 들어간다 —
+// 목록 맨 위에 칸 이름을 한 번만 두면 접힌 구획을 지나 멀리 떨어져 짝이 안 보인다
+function groupPanel(key, label, rows) {
+  const panel = document.createElement("li");
+  const open = !collapsed.has(key);
+  panel.className = open ? "ar-group" : "ar-group collapsed";
+  panel.append(groupHead(key, label, rows.length, open));
+  // 접힌 판은 줄을 아예 안 그린다 — 숨겨 두면 목록이 길어질수록 그리는 값만 늘어난다
+  if (open) {
+    const body = element("ul", "ar-group-rows");
+    body.appendChild(headRow());
+    rows.forEach((run) => body.appendChild(runRow(run)));
+    panel.appendChild(body);
+  }
+  return panel;
+}
+
 function headRow() {
   const item = document.createElement("li");
   item.className = "head";
@@ -267,26 +277,30 @@ function headRow() {
   return item;
 }
 
-function groupRow(key, label, count, open) {
-  const item = document.createElement("li");
-  item.className = open ? "group" : "group collapsed";
-  item.setAttribute("role", "button");
-  item.setAttribute("aria-expanded", open ? "true" : "false");
-  item.tabIndex = 0;
-  item.title = TOGGLE_GROUP_HINT;
-  item.append(element("span", "text", label), element("span", "count", `${count}`));
+function groupHead(key, label, count, open) {
+  const head = element("div", "ar-group-head");
+  head.setAttribute("role", "button");
+  head.setAttribute("aria-expanded", open ? "true" : "false");
+  head.tabIndex = 0;
+  head.title = TOGGLE_GROUP_HINT;
+  // 꺾쇠는 CSS 가 그린다 (세션 패널과 같은 방식) — 글꼴마다 모양이 다른 ▾ 문자를 쓰지 않는다
+  head.append(
+    element("span", "mark"),
+    element("span", "text", label),
+    element("span", "count", `${count}`),
+  );
   const toggle = () => {
     if (collapsed.has(key)) collapsed.delete(key);
     else collapsed.add(key);
     renderAutorun().catch(() => {});
   };
-  item.addEventListener("click", toggle);
-  item.addEventListener("keydown", (event) => {
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault(); // 스페이스로 화면이 굴러가면 접은 구획을 놓친다
+    event.preventDefault(); // 스페이스로 화면이 굴러가면 접은 판을 놓친다
     toggle();
   });
-  return item;
+  return head;
 }
 
 function emptyRow(text) {

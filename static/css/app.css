@@ -566,15 +566,20 @@ button:disabled { color: var(--line); cursor: default; }
    줄마다 카드를 주면 같은 화면에서 카드 둥글기가 두 종류로 갈라진다 */
 /* 위아래 여백은 줄이 가진 것(--sp-8)으로 충분하다. 판에 또 얹으면 위아래가 어긋난다
    — 옛 패널이 details summary 아래 붙어 있던 시절의 4/12 를 그대로 물려받아 그랬다 */
-.ar-cands, #autorun-list {
+.ar-cands {
   list-style: none; margin: 0;
   padding: 0 var(--pad-card);
   background: var(--surface); border-radius: var(--r-card);
   box-shadow: var(--shadow-card);
 }
+/* 실행 쪽은 판이 상태마다 하나씩이라 바깥은 판이 아니라 그 판들을 세로로 세우는 통이다 */
+#autorun-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: var(--sp-8);
+}
 /* 줄 안의 세로 정렬도 두 목록이 같다. baseline 을 쓰면 글자가 없는 손잡이는 위로,
    작은 글자(사유 칩·경과)는 아래로 어긋나 가로 한 줄로 안 읽힌다 */
-.ar-cands li, #autorun-list li { align-items: center; }
+.ar-cands li, #autorun-list .ar-group-rows li { align-items: center; }
 
 /* 후보 줄. 워크스페이스 / 할일(남는 폭) / 사유 칩.
    손잡이는 칸을 차지하지 않는다 — 칸으로 두면 그만큼 들여써져 실행 목록과 글자
@@ -644,41 +649,47 @@ button:disabled { color: var(--line); cursor: default; }
 #autorun-switch .state::after { content: "OFF"; }
 #autorun-toggle:checked ~ .state { color: var(--accent); }
 #autorun-toggle:checked ~ .state::after { content: "ON"; }
-/* 칸 이름. 목록 맨 위에 한 번만 있고 데이터 줄과 같은 격자를 쓴다 — 칸 시작 x 가
-   줄마다 같아야 표로 읽힌다 */
+/* 상태마다 판 하나. 판을 펼치면 그 안에 칸 이름 줄과 실행 줄이 들어간다 */
+#autorun-list li.ar-group {
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+  padding: 0 var(--pad-card);
+}
+/* 판 머리. 눌러서 접고 편다 — 끝난 것(막힘·실패·완료)은 접힌 채로 시작한다 */
+.ar-group-head {
+  display: flex; align-items: center; gap: var(--sp-8); cursor: pointer;
+  font-weight: 700; padding: var(--sp-12) 0;
+}
+.ar-group:not(.collapsed) .ar-group-head { border-bottom: 1px solid var(--line); }
+/* 꺾쇠는 세션 패널과 같은 방식으로 CSS 가 그린다 — ▾ 문자는 글꼴마다 크기·기울기가
+   달라 같은 화면 안에서 다른 아이콘처럼 보인다 */
+.ar-group-head .mark {
+  flex: none; width: 6px; height: 6px; margin-left: var(--sp-2);
+  border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
+  transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.12s;
+}
+.ar-group.collapsed .ar-group-head .mark {
+  transform: rotate(-45deg) translate(-1px, 1px);
+}
+.ar-group-head:hover { color: var(--accent); }
+.ar-group-head:hover .mark { border-color: var(--accent); }
+.ar-group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ar-group-head .count {
+  color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums;
+}
+/* 아래 4 는 판 위쪽 머리 여백(12)과 맞추기 위한 것이다 — 줄이 이미 8 을 갖고 있다 */
+.ar-group-rows { list-style: none; margin: 0; padding: 0 0 var(--sp-4); }
+/* 칸 이름. 판마다 리스트 바로 위에 있고 데이터 줄과 같은 격자를 쓴다 */
 #autorun-list li.head {
   cursor: default; color: var(--muted); font-weight: 600;
-  padding: var(--sp-8) 0 var(--sp-4); border-bottom: 1px solid var(--line);
 }
 /* 글자 크기는 줄이 아니라 칸에 준다. 줄에 주면 격자 폭의 em 이 그 크기로 바뀌어
    헤더 칸이 데이터 줄보다 좁아지고, 칸 시작 x 가 줄마다 어긋난다 */
 #autorun-list li.head > * { font-size: var(--fs-sm); }
-/* 헤더 바로 아래 첫 구획은 위에 헤더 말고는 아무것도 없다. 구획 사이를 벌리는 12 를
-   그대로 쓰면 맨 위만 넓어져 마지막 줄 아래와 안 맞는다 */
-#autorun-list li.head + li.group { padding-top: var(--sp-8); }
-/* 상태 구획 머리. 사람이 손댈 것(확인 필요)이 맨 위에 오도록 JS 가 순서를 정한다.
-   눌러서 접고 편다 — 끝난 것(막힘·실패·완료)은 접힌 채로 시작한다 */
-#autorun-list li.group {
-  display: flex; align-items: center; gap: var(--sp-8); cursor: pointer;
-  font-weight: 700; font-size: var(--fs-sm);
-  padding: var(--sp-12) 0 var(--sp-4); border-bottom: 1px solid var(--line);
-}
-/* 삼각형은 글자로 찍는다 — 아이콘 파일도 svg 노드도 늘리지 않는다.
-   ::before 라 줄의 칸 배열(테스트가 보는 children)은 그대로다 */
-#autorun-list li.group::before {
-  content: "\25BE"; color: var(--muted); font-weight: 400;
-  width: 1em; text-align: center; flex: none;
-}
-#autorun-list li.group.collapsed::before { content: "\25B8"; }
-#autorun-list li.group:hover { color: var(--accent); }
-#autorun-list li.group:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: -2px;
-}
-#autorun-list li.group .count {
-  color: var(--muted); font-variant-numeric: tabular-nums;
-}
 #autorun-list li.empty {
-  display: block; color: var(--muted); cursor: default; padding: var(--sp-8) 0;
+  display: block; color: var(--muted); cursor: default;
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card); padding: var(--sp-12) var(--pad-card);
 }
 /* 어느 줄이든 눌러서 상세 팝업을 연다 — 세션 목록과 같은 규칙 */
 /* 표처럼 칸 시작 위치가 줄마다 같아야 한다. flex 로는 안 된다 — 워크스페이스 이름이
@@ -688,14 +699,16 @@ button:disabled { color: var(--line); cursor: default; }
    그만큼 할일 제목이 잘리는데, 제목이 잘리는 쪽이 나쁘다 — 넘친 브랜치 이름은
    마우스오버로 뜨는 전체 경로 안에 그대로 들어 있다.
    시각은 'MM-DD HH:MM' 11 글자가 최대라 5em 이면 남는다 */
-#autorun-list li {
+#autorun-list .ar-group-rows li {
   display: grid;
   grid-template-columns: 12em minmax(0, 1fr) 12em 6em 7em 5em 5em 4em;
   gap: var(--sp-8); padding: var(--sp-8) 0;
   cursor: pointer;
 }
 /* 칸을 넘치는 글자는 줄바꿈 없이 잘라낸다 — 한 줄 높이가 줄마다 달라지면 표가 아니다 */
-#autorun-list li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#autorun-list .ar-group-rows li > * {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 #autorun-list .scope { font-weight: 600; }
 #autorun-list .prompt { color: var(--muted); }
 #autorun-list .wt { color: var(--muted); font-size: var(--fs-sm); }

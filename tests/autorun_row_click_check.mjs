@@ -65,7 +65,12 @@ const node = () => ({
   append(...items) {
     this.children.push(...items);
   },
-  appendChild() {},
+  // 판 안에 리스트가 들어가므로 이쪽도 실제로 담아야 한다 — 빈 스텁이면
+  // 판이 비어 보여 "접힌 판에 줄이 없다" 가 늘 참이 된다
+  appendChild(item) {
+    this.children.push(item);
+    return item;
+  },
   replaceChildren() {},
   showModal() {
     this.open = true;
@@ -114,35 +119,42 @@ assert.equal(cands[1].children[3].textContent, "착수 조건 1/3 · 사람 확�
 // 후보를 누르면 그 할일 상세가 열린다
 assert.equal(typeof cands[0].listeners.click, "function");
 
-// 맨 위에 칸 이름 한 줄. 구획마다 되풀이하지 않는다
-assert.equal(rows[0].className, "head");
+// 상태마다 판 하나. 사람이 손댈 것(확인 필요)이 맨 위 판이고 진행 중이 그다음,
+// 완료 판은 접힌 채로 시작해 머리만 나온다
 assert.deepEqual(
-  rows[0].children.map((cell) => cell.textContent),
+  rows.map((row) => row.className),
+  ["ar-group", "ar-group", "ar-group collapsed"],
+);
+
+// 펼친 판은 머리 + (칸 이름 줄 + 실행 줄들). 접힌 판은 머리만
+const [head, body] = rows[0].children;
+assert.equal(head.className, "ar-group-head");
+assert.equal(body.className, "ar-group-rows");
+assert.equal(rows[2].children.length, 1, "접힌 판에 줄이 그려졌다");
+
+// 판 머리 — 꺾쇠 자리 / 이름 / 건수. 꺾쇠는 CSS 가 그리므로 칸은 비어 있다
+assert.deepEqual(
+  head.children.map((cell) => `${cell.className}:${cell.textContent}`),
+  ["mark:", "text:확인 필요", "count:1"],
+);
+assert.equal(rows[1].children[0].children[1].textContent, "진행 중");
+// 접힌 판도 몇 건인지는 보인다 — 접혀 있어서 안 보이는 것과 없는 것은 다르다
+assert.deepEqual(
+  rows[2].children[0].children.map((cell) => cell.textContent),
+  ["", "완료", "1"],
+);
+// 판 머리는 눌러서 접고 편다
+assert.equal(typeof head.listeners.click, "function");
+assert.equal(typeof rows[2].children[0].listeners.click, "function");
+
+// 칸 이름 줄은 판 안, 리스트 맨 위에 있다
+assert.equal(body.children[0].className, "head");
+assert.deepEqual(
+  body.children[0].children.map((cell) => cell.textContent),
   ["워크스페이스", "할일", "워크트리", "포트", "상태", "시작", "종료", "경과"],
 );
 
-// 실행 목록은 상태별로 끊는다. 사람이 손댈 것(확인 필요)이 맨 위 구획이라
-// 그 아래 검토 대기 줄이 오고, 진행 중 구획이 그다음이다.
-// 완료 구획은 접힌 채로 시작해 구획 줄만 나온다
-assert.deepEqual(
-  rows.map((row) => row.className),
-  ["head", "group", undefined, "group", undefined, "group collapsed"],
-);
-assert.deepEqual(
-  rows[1].children.map((cell) => cell.textContent),
-  ["확인 필요", "1"],
-);
-assert.equal(rows[3].children[0].textContent, "진행 중");
-// 접힌 구획도 몇 건인지는 보인다 — 접혀 있어서 안 보이는 것과 없는 것은 다르다
-assert.deepEqual(
-  rows[5].children.map((cell) => cell.textContent),
-  ["완료", "1"],
-);
-// 구획 줄은 눌러서 접고 편다
-assert.equal(typeof rows[1].listeners.click, "function");
-assert.equal(typeof rows[5].listeners.click, "function");
-
-const runRow = rows[4];
+const runRow = rows[1].children[1].children[1];
 // 칸 순서 — 워크스페이스 / 할일 / 워크트리 / 포트 / 상태 / 시작 / 종료 / 경과
 assert.deepEqual(
   runRow.children.map((cell) => cell.className),
