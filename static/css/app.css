@@ -622,7 +622,7 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   border-bottom: 1px solid var(--line);
 }
 .dir-browse-crumbs button {
-  flex: none; padding: var(--sp-2) var(--sp-4); background: none;
+  flex: none; padding: var(--sp-2); background: none;
   color: var(--muted); font-size: var(--fs-sm); white-space: nowrap;
 }
 .dir-browse-crumbs button:hover:not(:disabled) { background: var(--bg); color: var(--fg); }
