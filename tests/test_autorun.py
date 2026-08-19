@@ -230,7 +230,7 @@ class Gates(AutorunCase):
     def test_unknown_cwd_candidate_is_skipped_for_the_next_one(self):
         """위치 없는 워크스페이스가 순위상 앞이어도 위치가 있는 다음 후보가 뜬다 —
 
-        한 워크스페이스가 위치를 못 정했다고 tick 전체가 멈추면 안 된다(할일 #106)
+        한 워크스페이스가 위치를 못 정했다고 tick 전체가 멈추면 안 된다
         """
         blind = workspace_repo.create(
             self.con, self.workspace["category_id"], "아무도 안 가본 곳"
