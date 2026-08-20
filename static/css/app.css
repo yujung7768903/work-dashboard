@@ -1065,7 +1065,8 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#dir-b
 /* textarea 는 .field 공통 규칙이 이미 100%. 한 줄 입력·선택도 같은 폭이어야 줄이 맞는다 */
 #todo-add-form .field input, #todo-add-form .field select { width: 100%; }
 /* 확인 버튼은 오른쪽 끝. 팝업의 마지막 동작 위치를 세션 팝업과 같게 둔다 */
-.dlg-actions { display: flex; justify-content: flex-end; margin-top: var(--sp-20); }
+/* 버튼이 둘 이상이면 붙어 보인다 — 저장·취소가 한 덩어리로 읽히면 잘못 누른다 */
+.dlg-actions { display: flex; justify-content: flex-end; gap: var(--sp-8); margin-top: var(--sp-20); }
 .modal-close {
   position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
   background: none; color: var(--muted);
