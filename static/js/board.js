@@ -4,7 +4,12 @@ import { attachDragHandlers } from "./dnd.js";
 import { pickDirectory } from "./browse.js";
 import { fromKorean, t } from "./i18n.js";
 import { renderBoardTab, run } from "./main.js";
-import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
+import {
+  openDetail,
+  rawTitleMark,
+  setBoardRefresh,
+  startSessionPolling,
+} from "./sessions.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
@@ -15,6 +20,9 @@ const UNASSIGNED_LABEL = t("common.unassigned");
 const DONE = "done";
 const ALL_CATEGORIES = { id: null, name: t("board.allCategories") };
 const NO_COMPLETED = t("board.noCompleted");
+
+// 상세 팝업에서 할일을 고치면 이 목록도 다시 그려야 한다 (static/js/sessions.js)
+setBoardRefresh(() => renderBoard());
 
 // null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
 let activeCategoryId = null;

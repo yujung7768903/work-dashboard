@@ -47,6 +47,7 @@ JOB_ID_PATTERN = re.compile(r"backgrounded[^\n]*?([0-9a-f]{8})")
 SESSION_WAIT_SEC = 30  # 잡이 state.json 에 sessionId 를 적을 때까지
 SESSION_POLL_SEC = 1
 NAME_RETRY = 5
+JOB_ID_LENGTH = 8  # 잡 디렉터리 이름은 세션 id 앞 8자
 NAME_RETRY_SLEEP_SEC = 2
 FIVE_HOUR_KEY = "five_hour"
 MS_PER_SECOND = 1000
@@ -679,6 +680,29 @@ def _job_name(todo):
     return f"#{todo['id']} | {todo['title']}"
 
 
+def rename_todo_sessions(con, todo, jobs_root=AUTORUN_JOBS_ROOT):
+    """할일 제목이 바뀌면 그 할일을 잡았던 잡 이름도 따라간다.
+
+    이름을 안 고치면 `claude agents` 목록과 대시보드가 서로 다른 제목을 보여줘
+    어느 세션이 이 할일인지 알 수 없어진다. 잡 디렉터리 이름은 세션 id 앞 8자지만
+    그 규칙에 기대지 않고 state.json 의 sessionId 로 확인한 것만 고친다
+    """
+    name = _job_name(todo)
+    renamed = []
+    for session in session_repo.list_by_todo(con, todo["id"]):
+        session_id = session["claude_session_id"] or ""
+        job_id = session_id[:JOB_ID_LENGTH]
+        if not job_id:
+            continue
+        state = _read_json(os.path.join(jobs_root, job_id, "state.json"))
+        # 잡으로 띄우지 않은 세션(사람이 직접 연 터미널)은 고칠 파일이 없다
+        if not state or state.get("sessionId") != session_id:
+            continue
+        if _name_job(jobs_root, job_id, name):
+            renamed.append(job_id)
+    return renamed
+
+
 def _name_job(jobs_root, job_id, name):
     """`claude agents` 목록에서 알아볼 수 있게 할일 제목을 붙인다.
 
@@ -689,6 +713,10 @@ def _name_job(jobs_root, job_id, name):
         state = _read_json(path)
         if state is not None:
             state["name"], state["nameSource"] = name, "user"
+            # 리밋으로 다시 띄울 때 쓰는 플래그에도 이름이 박혀 있다 — 안 고치면 되돌아간다
+            flags = state.get("respawnFlags")
+            if isinstance(flags, list) and "--name" in flags:
+                flags[flags.index("--name") + 1] = name
             try:
                 with open(path, "w", encoding="utf-8") as handle:
                     json.dump(state, handle, ensure_ascii=False)

@@ -1147,6 +1147,14 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#dir-b
 #session-modal button.copy {
   padding: var(--sp-2) var(--sp-8); font-size: var(--fs-sm); color: var(--muted);
 }
+/* 개요의 수정 버튼과 그 입력칸. 세션 id 복사 버튼과 같은 크기 — 둘 다 제목 줄의 곁가지다 */
+#session-modal button.dlg-edit {
+  margin-left: var(--sp-8); padding: var(--sp-2) var(--sp-8);
+  font-size: var(--fs-sm); font-weight: 400; color: var(--muted);
+}
+#session-modal .field input { width: 100%; }
+/* 기존 note 는 여러 줄이 쌓여 있다 — 공용 60px 상자로는 고칠 때 두세 줄만 보인다 */
+#session-modal .field textarea { min-height: 120px; }
 
 /* 팝업 워크트리 탭 — 이름 / 상태 / 커밋 차이 한 줄, 아래에 시각과 커밋 목록.
    보드 워크트리 탭의 격자를 쓰지 않는다: 여기는 한 워크트리를 펼쳐 보는 자리다 */

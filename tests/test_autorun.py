@@ -853,5 +853,67 @@ class WebToggle(AutorunCase):
         self.assertEqual(payload["runs"][0]["todo_title"], self.todo["title"])
 
 
+class TitleRename(AutorunCase):
+    """제목을 고치면 그 할일을 잡았던 잡 이름도 따라가야 한다.
+
+    안 따라가면 `claude agents` 목록과 대시보드가 서로 다른 제목을 보여준다
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.jobs = tempfile.mkdtemp()
+
+    def _job(self, job_id, session_id, name, flags=None):
+        directory = os.path.join(self.jobs, job_id)
+        os.makedirs(directory, exist_ok=True)
+        state = {"sessionId": session_id, "name": name, "nameSource": "user"}
+        if flags is not None:
+            state["respawnFlags"] = flags
+        with open(self._path(job_id), "w", encoding="utf-8") as handle:
+            json.dump(state, handle)
+
+    def _path(self, job_id):
+        return os.path.join(self.jobs, job_id, "state.json")
+
+    def _state(self, job_id):
+        with open(self._path(job_id), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def _rename(self, title):
+        updated = todo_repo.update(self.con, self.todo["id"], title=title)
+        return autorun.rename_todo_sessions(self.con, updated, jobs_root=self.jobs)
+
+    def test_renames_job_of_the_linked_session(self):
+        old = f"#{self.todo['id']} | {self.todo['title']}"
+        self._job(SID[:8], SID, old, ["--name", old])
+        self.assertEqual(self._rename("고친 제목"), [SID[:8]])
+        state = self._state(SID[:8])
+        new = f"#{self.todo['id']} | 고친 제목"
+        self.assertEqual(state["name"], new)
+        # 리밋 재개가 예전 이름으로 되돌리지 않아야 한다
+        self.assertEqual(state["respawnFlags"], ["--name", new])
+
+    def test_skips_job_of_another_session(self):
+        """잡 디렉터리 이름이 겹쳐도 sessionId 가 다르면 남의 잡이다"""
+        self._job(SID[:8], "다른-세션", "남의 잡")
+        self.assertEqual(self._rename("고친 제목"), [])
+        self.assertEqual(self._state(SID[:8])["name"], "남의 잡")
+
+    def test_no_job_file_is_not_an_error(self):
+        """사람이 터미널에서 직접 연 세션은 고칠 파일이 없다"""
+        self.assertEqual(self._rename("고친 제목"), [])
+
+    def test_patch_renames_only_when_title_changes(self):
+        calls = []
+        original = autorun.rename_todo_sessions
+        autorun.rename_todo_sessions = lambda con, todo: calls.append(todo["title"])
+        self.addCleanup(setattr, autorun, "rename_todo_sessions", original)
+        path = f"/api/todos/{self.todo['id']}"
+        server.route(self.con, "PATCH", path, {}, {"note": "메모만"})
+        self.assertEqual(calls, [])
+        server.route(self.con, "PATCH", path, {}, {"title": "고친 제목"})
+        self.assertEqual(calls, ["고친 제목"])
+
+
 if __name__ == "__main__":
     unittest.main()

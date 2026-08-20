@@ -230,7 +230,11 @@ def _route_patch(con, head, item_id, body):
     if head == "workspaces":
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
-        return todo_repo.update(con, item_id, **body)
+        updated = todo_repo.update(con, item_id, **body)
+        # 제목이 바뀌면 그 할일을 잡은 세션의 잡 이름도 같이 맞춘다
+        if "title" in body:
+            autorun.rename_todo_sessions(con, updated)
+        return updated
     if head == "autorun-runs":
         # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
         return autorun.confirm_run(con, item_id)
