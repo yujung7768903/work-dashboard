@@ -144,6 +144,16 @@
                     stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
+          <button data-subtab="kanban" data-i18n="common.kanban">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <rect x="2.2" y="2.6" width="3.4" height="10.8" rx="1.1"
+                    fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="6.9" y="2.6" width="3.4" height="7.4" rx="1.1"
+                    fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <rect x="11.6" y="2.6" width="3.4" height="4" rx="1.1"
+                    fill="none" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </button>
           <button data-subtab="worktrees" data-i18n="common.worktree">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <circle cx="4.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -187,6 +197,12 @@
           <summary data-i18n="common.done"></summary>
           <div id="done-groups"></div>
         </details>
+        </div>
+
+        <!-- 상태별 컬럼 → 워크스페이스 카드 → 그 상태의 할일. 컬럼 수가 셋으로 고정이라
+             할일 탭의 열 수 아이콘(.view-columns)은 두지 않는다 -->
+        <div id="board-kanban" hidden>
+          <div id="kanban"></div>
         </div>
 
         <div id="board-worktrees" hidden>

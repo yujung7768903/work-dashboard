@@ -119,12 +119,15 @@ started inside a worktree.
 | Settings | Categories and labels |
 | Usage | Rate-limit windows and the token and cost trend |
 
-The board has two sub-tabs: **Todos** and **Worktrees**. On the worktree
-sub-tab, the kebab menu (⋮) on each row applies (merges) or deletes the
-worktree, and starts, restarts or stops its server. That sub-tab groups
-worktrees by workspace or by project; the project view also lists worktrees no
-workspace claims. Both sub-tabs lay their cards out in one or two columns, and
-the left rail collapses to icons.
+The board has three sub-tabs: **Todos**, **Kanban** and **Worktrees**. The
+kanban sub-tab stands the same todos up in status columns (todo, in progress,
+done); each column holds workspace cards, and a card holds only that
+workspace's todos in that status. On the worktree sub-tab, the kebab menu (⋮)
+on each row applies (merges) or deletes the worktree, and starts, restarts or
+stops its server. That sub-tab groups worktrees by workspace or by project;
+the project view also lists worktrees no workspace claims. The todo and
+worktree sub-tabs lay their cards out in one or two columns (the kanban is
+always three), and the left rail collapses to icons.
 
 Clicking a todo row or a session row opens the same dialog with three tabs:
 

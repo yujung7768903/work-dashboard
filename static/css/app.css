@@ -315,9 +315,9 @@ button:disabled { color: var(--line); cursor: default; }
 .view-columns button.active { background: var(--softer); color: var(--accent); }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
-.group, .ws-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
+.group, .ws-card, .kanban-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
 .cat-pill { --cat: #4e5468; }               /* 전체 라벨 = 중립 회색 */
-.group, .ws-card, .cat-pill, .session-cat {
+.group, .ws-card, .kanban-card, .cat-pill, .session-cat {
   --cat-bg: color-mix(in srgb, var(--cat) var(--cat-mix), var(--surface));
   --cat-ink: color-mix(in srgb, var(--cat) 72%, var(--fg));
 }
@@ -461,6 +461,51 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   color: color-mix(in srgb, var(--cat) 72%, var(--fg));
   font-size: var(--fs-micro); font-weight: 600; white-space: nowrap;
 }
+/* ── 칸반 ─────────────────────────────────────────────────────────────────── */
+/* 상태 세 칸 고정. minmax(0,1fr) 이라 화면이 좁아지면 컬럼이 같이 좁아진다 —
+   가로 스크롤을 걸면 마지막 카드의 케밥 메뉴가 잘린다 */
+#kanban {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap); align-items: start; margin: var(--gap) 0;
+}
+/* 컬럼은 각자 위에서부터 쌓인다 — 옆 컬럼 카드 높이에 맞춰 늘어나지 않는다 */
+.kanban-col { display: flex; flex-direction: column; gap: var(--sp-12); }
+.kanban-head {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: 0 var(--sp-4); font-weight: 700;
+}
+/* 진행중은 액센트로, 완료는 회색으로. 지금 손에 쥔 칸이 눈에 먼저 들어와야 한다 */
+.kanban-col[data-status="doing"] .kanban-col-name { color: var(--accent); }
+.kanban-col[data-status="done"] .kanban-col-name { color: var(--muted); }
+/* 컬럼에 든 할일 수. 목록 뷰 .group-meta 와 같은 회색 숫자 */
+.kanban-count {
+  color: var(--muted); font-size: var(--fs-sm); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* 빈 컬럼도 자리를 지킨다 — 카드가 없으면 컬럼이 사라져 상태 구분이 흐려진다 */
+.kanban-empty {
+  padding: var(--sp-12) var(--pad-card); margin: 0;
+  border-radius: var(--r-card); box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted); font-size: var(--fs-sm);
+}
+/* 목록 뷰 카드(.group)와 같은 판·머리 배경. 늘 펼쳐져 있어 details 가 아니다 */
+.kanban-card {
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+.kanban-card > header {
+  display: flex; justify-content: space-between; gap: var(--sp-8);
+  padding: var(--sp-12) var(--pad-card);
+  background: var(--cat-bg); font-weight: 700;
+  border-radius: var(--r-card) var(--r-card) 0 0;
+}
+.kanban-card.unassigned > header { color: var(--muted); }
+/* 컬럼이 좁아 #id 칸까지 두면 제목에 남는 폭이 없다. #id 는 상세 팝업에서 본다 */
+.kanban-card .todo-id { display: none; }
+/* 제목이 여러 줄로 접히므로 상태 버튼을 줄 맨 위에 맞춘다 */
+.kanban-card .todo { align-items: flex-start; }
+.kanban-card .todo .title { overflow-wrap: anywhere; }
+
 /* 펼침 아이콘. 폭 1.2em 은 뒤따르는 목록 들여쓰기와 같은 값이고, 높이도 같은 값으로
    맞춰 hover 면이 원이 된다 (다른 아이콘 버튼은 --icon-box 정사각) */
 .row-toggle {
@@ -1229,7 +1274,7 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#dir-b
   --cat-mix: 28%;
 }
 :where([data-theme="dark"]) .cat-pill { --cat: #8b95a1; --on-cat: #14181d; }
-:where([data-theme="dark"]) :is(.group, .ws-card) { --cat: #444a5c; }
+:where([data-theme="dark"]) :is(.group, .ws-card, .kanban-card) { --cat: #444a5c; }
 :where([data-theme="dark"]) button { background-color: #2a2e3f; }
 :where([data-theme="dark"]) button:hover:not(:disabled) { background-color: #343950; }
 :where([data-theme="dark"]) #repo-link:hover { background-color: #343950; }

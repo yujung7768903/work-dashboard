@@ -21,8 +21,16 @@ const DONE = "done";
 const ALL_CATEGORIES = { id: null, name: t("board.allCategories") };
 const NO_COMPLETED = t("board.noCompleted");
 
+// 할일 줄(상태 버튼·케밥)이 고친 것을 반영하려면 지금 보고 있는 뷰를 다시 그려야 한다.
+// 목록 뷰와 칸반 뷰가 같은 줄을 쓰므로 마지막으로 그린 쪽이 주인이 된다 (static/js/kanban.js)
+let refresh = renderBoard;
+
+export function setTodoRefresh(render) {
+  refresh = render;
+}
+
 // 상세 팝업에서 할일을 고치면 이 목록도 다시 그려야 한다 (static/js/sessions.js)
-setBoardRefresh(() => renderBoard());
+setBoardRefresh(() => refresh());
 
 // null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
 let activeCategoryId = null;
@@ -60,6 +68,7 @@ export function currentCategoryId() {
 }
 
 export async function renderBoard() {
+  refresh = renderBoard;
   const [tree] = await Promise.all([api.getTree(GROUP_BY_WORKSPACE), renderShared()]);
   const visible = tree.groups.filter(inActiveCategory);
   renderGroups(visible.filter((group) => !isComplete(group)));
@@ -236,7 +245,8 @@ function addDialogFields() {
   );
 }
 
-function todoElement(todo) {
+// 칸반 뷰도 이 줄을 그대로 쓴다 (static/js/kanban.js)
+export function todoElement(todo) {
   const row = document.createElement("div");
   row.className = `todo ${todo.status}`;
   row.dataset.todoId = todo.id;
@@ -259,7 +269,7 @@ function todoElement(todo) {
     if (todo.autorun_locked) return;
     run(async () => {
       await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
-      await renderBoard();
+      await refresh();
     });
   });
 
@@ -341,7 +351,7 @@ function todoMenu(todo) {
     event.stopPropagation();
     openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
     labelMenuTodoId = null;
-    run(renderBoard);
+    run(refresh);
   });
   wrapper.appendChild(toggle);
   if (openMenuTodoId === todo.id) wrapper.appendChild(todoMenuItems(todo));
@@ -355,7 +365,7 @@ function todoMenuItems(todo) {
     items.append(
       menuItem(t("board.labelBack"), () => {
         labelMenuTodoId = null;
-        run(renderBoard);
+        run(refresh);
       }),
       ...labelToggles(todo)
     );
@@ -366,13 +376,13 @@ function todoMenuItems(todo) {
       run(async () => {
         openMenuTodoId = null;
         const result = await startTodoFlow(todo);
-        await renderBoard();
+        await refresh();
         if (result?.message) alert(fromKorean(result.message));
       })
     ),
     menuItem(t("board.labelEdit"), () => {
       labelMenuTodoId = todo.id;
-      run(renderBoard);
+      run(refresh);
     }),
     menuItem(t("common.delete"), () =>
       run(async () => {
@@ -380,7 +390,7 @@ function todoMenuItems(todo) {
         if (confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
           await api.deleteTodo(todo.id);
         }
-        await renderBoard();
+        await refresh();
       })
     )
   );
@@ -401,7 +411,7 @@ function labelToggles(todo) {
           ? [...attached].filter((id) => id !== label.id)
           : [...attached, label.id];
         await api.updateTodo(todo.id, { label_ids: next });
-        await renderBoard();
+        await refresh();
       })
     )
   );
@@ -425,7 +435,7 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
       category_id: categoryId,
     });
     name.value = "";
-    await renderBoard();
+    await refresh();
   });
 });
 
@@ -445,16 +455,16 @@ document.getElementById("todo-add-form").addEventListener("submit", (event) => {
       note: note.value || null,
     });
     document.getElementById("todo-add-modal").close();
-    await renderBoard();
+    await refresh();
   });
 });
 
-document.getElementById("board-controls").addEventListener("change", () => run(renderBoard));
+document.getElementById("board-controls").addEventListener("change", () => run(refresh));
 
 // 항목 밖을 누르면 열린 케밥 메뉴 닫기
 document.addEventListener("click", () => {
   if (openMenuTodoId === null) return;
   openMenuTodoId = null;
   labelMenuTodoId = null;
-  run(renderBoard);
+  run(refresh);
 });
