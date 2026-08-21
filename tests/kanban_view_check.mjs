@@ -138,10 +138,21 @@ assert.equal(cards.length, 2, "대기 컬럼에는 대기 할일 두 건이 각�
 // 세션이 돈 할일이 위로. 워크스페이스 순서(작업 대시보드가 먼저)를 뒤집는다
 const [workspace, row] = cards[0].children;
 assert.equal(workspace.className, "kanban-ws", "카드 첫 줄은 워크스페이스 이름");
-assert.equal(workspace.textContent, "KT 동시성", "세션이 최근에 돈 할일이 맨 위");
+// 카드 첫 줄은 할일 번호 + 워크스페이스 이름 순. 이름이 말줄임으로 끊겨도 번호는 남는다
+assert.deepEqual(
+  workspace.children.map((cell) => [cell.className, cell.textContent]),
+  [
+    ["kanban-id", "#21"],
+    ["kanban-ws-name", "KT 동시성"],
+  ],
+  "세션이 최근에 돈 할일이 맨 위"
+);
 assert.equal(row.children[1].textContent, "락 재설계");
-assert.equal(cards[1].children[0].textContent, "작업 대시보드");
-assert.equal(cards[1].children[1].children[1].textContent, "결정 대기 큐");
+// 카드 = [첫 줄(#id · 워크스페이스), 할일 줄]
+const workspaceOf = (card) => card.children[0].children[1].textContent;
+const titleOf = (card) => card.children[1].children[1].textContent;
+assert.equal(workspaceOf(cards[1]), "작업 대시보드");
+assert.equal(titleOf(cards[1]), "결정 대기 큐");
 // 컬럼이 이미 상태를 말하므로 줄 안에 상태 칩을 두지 않는다 — #id·제목부터 시작한다
 assert.deepEqual(
   row.children.map((cell) => cell.className),
@@ -152,12 +163,12 @@ assert.deepEqual(
 // 진행중 할일이 없는 워크스페이스는 그 컬럼에 아무것도 남기지 않는다
 const doing = columns[1].children.slice(1);
 assert.equal(doing.length, 1);
-assert.equal(doing[0].children[0].textContent, "작업 대시보드");
+assert.equal(workspaceOf(doing[0]), "작업 대시보드");
 
 // 검토 대기는 status 가 done 이어도 완료 칸에 섞이지 않는다
 const review = columns[2].children.slice(1);
 assert.equal(review.length, 1, "검토 대기 칸에 그 할일이 있어야 한다");
-assert.equal(review[0].children[1].children[1].textContent, "확인 대기 중인 것");
+assert.equal(titleOf(review[0]), "확인 대기 중인 것");
 assert.equal(columns[3].children.slice(1).length, 1, "완료 칸에는 나머지 하나만");
 
 // 케밥은 카드에 남은 조작 손잡이다. 누르면 목록이 아니라 이 화면이 다시 그려져야 한다 —

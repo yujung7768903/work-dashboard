@@ -83,8 +83,15 @@ function cardElement({ group, todo }) {
 
   const workspace = document.createElement("span");
   workspace.className = "kanban-ws";
-  workspace.textContent =
+  // #id 를 워크스페이스 이름 앞에. 이름이 길어 말줄임으로 끊겨도 번호는 남는다
+  const id = document.createElement("span");
+  id.className = "kanban-id";
+  id.textContent = `#${todo.id}`;
+  const name = document.createElement("span");
+  name.className = "kanban-ws-name";
+  name.textContent =
     group.kind === UNASSIGNED_KIND ? t("common.unassigned") : group.name;
+  workspace.append(id, name);
   // 라벨·케밥·상세 팝업까지 워크스페이스별 뷰와 같은 줄을 쓴다. 상태 칩만 뺀다 —
   // 컬럼이 이미 그 상태를 말하므로 카드마다 되풀이할 값이 없다 (static/js/board.js)
   card.append(workspace, todoElement(todo, { withStatus: false }));

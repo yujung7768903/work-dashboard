@@ -529,6 +529,12 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .kanban-card.unassigned .kanban-ws { color: var(--muted); }
+/* 할일 번호. 목록 뷰 .todo-id 와 같은 회색 숫자지만 여기서는 칸을 잡지 않는다 —
+   카드마다 이름 길이가 달라 자릿수를 맞출 세로줄이 없다 */
+.kanban-id {
+  margin-right: var(--sp-4);
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
 /* 카드가 이미 여백과 경계를 갖는다 — 줄이 자기 여백·윗선을 또 두면 카드가 커진다 */
 .kanban-card .todo { padding: 0; border-top: none; align-items: flex-start; }
 /* 컬럼이 좁아 #id 칸까지 두면 제목에 남는 폭이 없다. #id 는 상세 팝업에서 본다 */
