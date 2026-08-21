@@ -45,6 +45,31 @@ def next_todo(con, workspace_id=None, claude_session_id=None, keep=None):
     return None
 
 
+def ranked(con, keep=None, limit=None):
+    """next_todo 와 같은 순위로 미완료 할일을 여러 건 모은다. 워크스페이스 이름을 붙인다.
+
+    '남이 잡은 것 제외' 는 여기서 하지 않는다 — 자율 수행 후보 목록은 잡혀 있는
+    할일도 왜 못 도는지와 함께 보여줘야 한다. 거르는 쪽은 next_todo 의 규칙이다
+    """
+    rows = []
+    for workspace in workspace_repo.list_all(con, status=WORKSPACE_ACTIVE):
+        rows += _open_sorted(con, workspace["id"], workspace["name"], keep)
+    rows += _open_sorted(con, None, UNASSIGNED_LABEL, keep)
+    return rows[:limit] if limit else rows
+
+
+def _open_sorted(con, workspace_id, workspace_name, keep):
+    todos = [
+        todo
+        for todo in todo_repo.list_by_workspace(con, workspace_id)
+        if todo["status"] != STATUS_DONE and (keep is None or keep(todo))
+    ]
+    return [
+        {**todo, "workspace_id": workspace_id, "workspace_name": workspace_name}
+        for todo in sorted(todos, key=_priority_key)
+    ]
+
+
 def stale_doing(con):
     """24시간 넘게 doing 인 할일. 대시보드 경고용 판정만 하고 UI 연결은 아직 없음"""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=STALE_DOING_HOURS)

@@ -15,6 +15,18 @@ const RUN = {
   ports: [9081],
 };
 const REVIEW_RUN = { id: 3, todo_id: 58, todo_title: "확인 대기", outcome: "review" };
+// 끝난 실행. 완료 구획은 접힌 채로 시작하므로 구획 줄만 나오고 그 아래 줄은 안 그려진다
+const DONE_RUN = {
+  id: 4, todo_id: 59, todo_title: "끝난 것", outcome: "done",
+  started_at: "2026-08-18T01:02:00", ended_at: "2026-08-18T02:03:00",
+};
+// 후보는 못 도는 것도 싣는다 — 왜 안 도는지가 이 목록의 존재 이유다
+const CANDIDATES = [
+  { todo_id: 57, title: "지금 돌 것", workspace_name: "작업 대시보드", blocker: "ready",
+    precondition: null },
+  { todo_id: 60, title: "조건 걸림", workspace_name: "작업 대시보드",
+    blocker: "precondition", precondition: { total: 3, met: 1, manual: 1 } },
+];
 const TICK_AT = new Date(Date.now() - 3 * 60 * 1000).toISOString(); // 3분 전 tick
 const REASON = "돌릴 수 있는 할일이 없음"; // 켜져 있는데 안 도는 이유. 주기 옆에 같이 보인다
 
@@ -24,7 +36,8 @@ globalThis.fetch = async (url, options) => {
   const body = {
     "/api/autorun": {
       state: { enabled: 1, last_tick_at: TICK_AT, last_tick_reason: REASON },
-      runs: [RUN, REVIEW_RUN],
+      runs: [RUN, REVIEW_RUN, DONE_RUN],
+      candidates: CANDIDATES,
     },
     "/api/workspaces": [],
     "/api/categories": [],
@@ -38,6 +51,12 @@ const node = () => ({
   textContent: "",
   hidden: false,
   open: false,
+  // 후보 목록은 끌어서 순서를 바꾼다 — 그 코드가 만지는 자리만 흉내낸다
+  // (드래그 동작 자체는 tests/autorun_drag_check.mjs 가 본다)
+  dataset: {},
+  draggable: false,
+  querySelectorAll: () => [],
+  setAttribute() {},
   style: { setProperty() {} },
   classList: { toggle() {}, remove() {}, add() {} },
   children: [],
@@ -46,7 +65,12 @@ const node = () => ({
   append(...items) {
     this.children.push(...items);
   },
-  appendChild() {},
+  // 판 안에 리스트가 들어가므로 이쪽도 실제로 담아야 한다 — 빈 스텁이면
+  // 판이 비어 보여 "접힌 판에 줄이 없다" 가 늘 참이 된다
+  appendChild(item) {
+    this.children.push(item);
+    return item;
+  },
   replaceChildren() {},
   showModal() {
     this.open = true;
@@ -59,7 +83,9 @@ const node = () => ({
 const rows = [];
 const created = [];
 const list = { ...node(), appendChild: (item) => rows.push(item) };
-const elements = { "autorun-list": list };
+const cands = [];
+const candList = { ...node(), appendChild: (item) => cands.push(item) };
+const elements = { "autorun-list": list, "autorun-candidates": candList };
 globalThis.document = {
   getElementById: (id) => (elements[id] ??= node()),
   createElement: () => {
@@ -80,15 +106,66 @@ assert.equal(
   `5분마다 | 마지막 수행 3m 전 · ${REASON}`,
 );
 
-// 칸 순서 — 워크스페이스 / 할일 / 워크트리 / 포트 / 상태 / 경과
+// 후보 줄 — 손잡이 / 워크스페이스 / 할일 / 사유 칩.
+// 순위 숫자는 없다 — 순서는 목록에 보이는 차례가 곧 순위이고, 손잡이로 바꾼다
 assert.deepEqual(
-  rows[0].children.map((cell) => cell.className),
-  ["scope", "prompt", "wt", "ports", "badge outcome-running", "age"],
+  cands[0].children.map((cell) => cell.className),
+  ["ar-grip", "scope", "prompt", "badge blocker-ready"],
 );
-assert.equal(rows[0].children[2].textContent, "고침");
+assert.equal(cands[0].children[3].textContent, "시작 가능");
+// 조건에 막힌 줄은 몇 개 중 몇 개인지까지 적는다 — 무엇을 풀어야 도는지가 그 숫자다
+assert.equal(cands[1].children[3].textContent, "착수 조건 1/3 · 사람 확인 1");
+
+// 후보를 누르면 그 할일 상세가 열린다
+assert.equal(typeof cands[0].listeners.click, "function");
+
+// 상태마다 판 하나. 사람이 손댈 것(확인 필요)이 맨 위 판이고 진행 중이 그다음,
+// 완료 판은 접힌 채로 시작해 머리만 나온다
+assert.deepEqual(
+  rows.map((row) => row.className),
+  ["ar-group", "ar-group", "ar-group collapsed"],
+);
+
+// 펼친 판은 머리 + (칸 이름 줄 + 실행 줄들). 접힌 판은 머리만
+const [head, body] = rows[0].children;
+assert.equal(head.className, "ar-group-head");
+assert.equal(body.className, "ar-group-rows");
+assert.equal(rows[2].children.length, 1, "접힌 판에 줄이 그려졌다");
+
+// 판 머리 — 꺾쇠 자리 / 이름 / 건수. 꺾쇠는 CSS 가 그리므로 칸은 비어 있다
+assert.deepEqual(
+  head.children.map((cell) => `${cell.className}:${cell.textContent}`),
+  ["mark:", "text:확인 필요", "count:1"],
+);
+assert.equal(rows[1].children[0].children[1].textContent, "진행 중");
+// 접힌 판도 몇 건인지는 보인다 — 접혀 있어서 안 보이는 것과 없는 것은 다르다
+assert.deepEqual(
+  rows[2].children[0].children.map((cell) => cell.textContent),
+  ["", "완료", "1"],
+);
+// 판 머리는 눌러서 접고 편다
+assert.equal(typeof head.listeners.click, "function");
+assert.equal(typeof rows[2].children[0].listeners.click, "function");
+
+// 칸 이름 줄은 판 안, 리스트 맨 위에 있다
+assert.equal(body.children[0].className, "head");
+assert.deepEqual(
+  body.children[0].children.map((cell) => cell.textContent),
+  ["워크스페이스", "할일", "워크트리", "포트", "상태", "시작", "종료", "경과"],
+);
+
+const runRow = rows[1].children[1].children[1];
+// 칸 순서 — 워크스페이스 / 할일 / 워크트리 / 포트 / 상태 / 시작 / 종료 / 경과
+assert.deepEqual(
+  runRow.children.map((cell) => cell.className),
+  ["scope", "prompt", "wt", "ports", "badge outcome-running", "when", "when", "age"],
+);
+assert.equal(runRow.children[2].textContent, "고침");
+// 아직 안 끝난 실행은 종료 칸이 비어 있다 — 자리는 남겨야 뒤 칸이 안 당겨진다
+assert.equal(runRow.children[6].textContent, "");
 
 // 포트는 그 서버로 가는 링크다. 눌러도 줄 클릭(팝업)으로 새면 안 된다
-const port = rows[0].children[3].children[0];
+const port = runRow.children[3].children[0];
 assert.equal(port.textContent, ":9081");
 assert.equal(port.href, "http://localhost:9081");
 let portStopped = false;
@@ -96,10 +173,9 @@ port.listeners.click({ stopPropagation: () => (portStopped = true) });
 assert.equal(portStopped, true);
 
 // 줄마다 클릭 핸들러가 붙어 있어야 한다 — 안 붙으면 눌러도 아무 일도 없다
-assert.equal(rows.length, 2);
-assert.equal(typeof rows[0].listeners.click, "function");
+assert.equal(typeof runRow.listeners.click, "function");
 
-rows[0].listeners.click();
+runRow.listeners.click();
 // 팝업이 읽는 것은 세션이 아니라 그 실행의 할일이다 (todo_id 57)
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(asked.includes("GET /api/todos/57"), asked.join(", "));
