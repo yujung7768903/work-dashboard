@@ -89,8 +89,7 @@ function syncViewControls() {
   document.getElementById("kanban").hidden = !status;
   document.getElementById("groups").hidden = status;
   document.getElementById("done-today").hidden = status;
-  document.getElementById("show-done").hidden = status;
-  document.getElementById("todo-columns").hidden = status;
+  document.getElementById("todo-tools").hidden = status;
 }
 
 // 할일이 하나라도 있고 전부 done 이면 카드째 완료 영역으로 내려감

@@ -107,8 +107,7 @@ await board.renderBoard();
 assert.equal(elements.kanban.hidden, false);
 assert.equal(elements.groups.hidden, true);
 assert.equal(elements["done-today"].hidden, true);
-assert.equal(elements["show-done"].hidden, true);
-assert.equal(elements["todo-columns"].hidden, true);
+assert.equal(elements["todo-tools"].hidden, true);
 
 const columns = elements.kanban.children;
 assert.equal(columns.length, 4, "컬럼은 대기·진행중·검토 대기·완료 넷이어야 한다");

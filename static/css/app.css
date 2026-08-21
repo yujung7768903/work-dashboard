@@ -312,8 +312,10 @@ button:disabled { color: var(--line); cursor: default; }
 /* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다. 할일·워크트리 탭이 같이 쓴다 */
 .view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
 .view-columns button.active { background: var(--softer); color: var(--accent); }
-/* 할일 탭에서는 뷰 전환 옆에 붙는다 — 고를 것들이 한쪽에 모여 있어야 옮겨 다니지 않는다 */
-#board-controls .view-columns { margin-left: 0; }
+/* 할일 탭의 아이콘 묶음. 줄 오른쪽 끝에 완료 표시·1열·2열이 한 덩어리로 붙는다 —
+   아이콘끼리는 뷰 전환과의 사이보다 좁아야 한 묶음으로 읽힌다 */
+#todo-tools { display: flex; gap: var(--sp-4); margin-left: auto; }
+#todo-tools .view-columns { margin-left: 0; }
 /* 눌려 있는 동안 액센트 면이 남는다. 열 수 아이콘의 .active 와 같은 표시 */
 #show-done[aria-pressed="true"] { background: var(--softer); color: var(--accent); }
 /* 워크스페이스별·상태별 전환. 워크트리 탭의 #worktree-view 와 같은 알약 버튼 */
@@ -365,7 +367,7 @@ button:disabled { color: var(--line); cursor: default; }
 /* 뷰를 바꾸면 board.js 가 안 쓰는 쪽에 hidden 을 건다. [hidden] 의 display:none 은
    UA 스타일이라 위·아래의 display 선언에 밀리므로 여기서 다시 적어 둔다 */
 #groups[hidden], #done-today[hidden], #kanban[hidden],
-#todo-columns[hidden], #show-done[hidden] { display: none; }
+#todo-tools[hidden] { display: none; }
 /* 고른 열 수는 아래 화면 폭 기준(@media min-width 1240px)을 이긴다 — 화면이 넓어도
    한 줄로 길게 보고 싶을 때가 있다. 고르는 곳은 보드 위 아이콘 두 개(static/js/layout.js) */
 body[data-board-columns="1"] #groups,
