@@ -144,6 +144,13 @@ def _build_parser():
     move_todo.add_argument("--workspace", required=True, help="워크스페이스 id 또는 none")
     move_todo.set_defaults(handler=_cmd_move_todo)
 
+    edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건 수정")
+    edit_todo.add_argument("todo_id", type=int)
+    edit_todo.add_argument("--title", default=None)
+    edit_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
+    edit_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
+    edit_todo.set_defaults(handler=_cmd_edit_todo)
+
     set_status = sub.add_parser("set-status")
     set_status.add_argument("target", choices=STATUS_TARGETS)
     set_status.add_argument("item_id", type=int)
@@ -449,6 +456,22 @@ def _cmd_move_todo(con, args):
         else UNASSIGNED_LABEL
     )
     print(f"{moved['title']} → {scope}")
+
+
+def _cmd_edit_todo(con, args):
+    fields = {
+        key: value
+        for key, value in (
+            ("title", args.title),
+            ("note", args.note),
+            ("precondition", args.precondition),
+        )
+        if value is not None
+    }
+    if not fields:
+        raise Validation("--title/--note/--precondition 중 하나는 있어야 함")
+    updated = todo_repo.update(con, args.todo_id, **fields)
+    print(f"{updated['id']}. {updated['title']}")
 
 
 def _cmd_set_status(con, args):
