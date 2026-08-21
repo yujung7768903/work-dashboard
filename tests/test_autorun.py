@@ -9,6 +9,7 @@ import unittest
 import server
 from app.constants import (
     AUTORUN_BLOCKED_STREAK_LIMIT,
+    AUTORUN_CANDIDATE_LIMIT,
     AUTORUN_LABEL,
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
@@ -122,11 +123,27 @@ class Candidates(AutorunCase):
         self._todo("라벨 없는 일")
         self.assertIsNone(autorun.pick(self.con))
 
-    def test_skips_todo_with_precondition(self):
-        """조건은 자연어라 코드가 충족을 판정할 수 없다 — 사람이 풀어야 후보가 된다"""
+    def test_skips_todo_with_a_condition_code_cannot_judge(self):
+        """자유 문장은 코드가 충족을 판정할 수 없다 — 사람이 풀어야 후보가 된다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
         self._todo("조건 붙은 일", labeled=True, precondition="다른 게 먼저 끝날 것")
         self.assertIsNone(autorun.pick(self.con))
+
+    def test_skips_todo_whose_referenced_todo_is_open(self):
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blocker = self._todo("먼저 할 일")
+        self._todo("뒤에 할 일", labeled=True, precondition=f"#{blocker['id']} 이 done 일 것")
+        self.assertIsNone(autorun.pick(self.con))
+
+    def test_takes_todo_once_every_referenced_todo_is_done(self):
+        """#id 조건은 코드가 판정할 수 있다 — 그 할일이 끝나면 저절로 후보가 된다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blocker = self._todo("먼저 할 일")
+        waiting = self._todo(
+            "뒤에 할 일", labeled=True, precondition=f"#{blocker['id']} 이 done 일 것"
+        )
+        todo_repo.update(self.con, blocker["id"], status=STATUS_DONE)
+        self.assertEqual(autorun.pick(self.con)["todo"]["id"], waiting["id"])
 
     def test_skips_blocked_todo(self):
         run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
@@ -148,6 +165,78 @@ class Candidates(AutorunCase):
     def test_skips_done_todo(self):
         todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
         self.assertIsNone(autorun.pick(self.con))
+
+
+class CandidatePanel(AutorunCase):
+    """자율 수행 화면의 후보 목록. 못 도는 것도 싣고 왜 못 도는지를 같이 준다"""
+
+    def test_lists_labeled_todo_as_ready(self):
+        rows = autorun.candidates(self.con)
+        self.assertEqual([row["todo_id"] for row in rows], [self.todo["id"]])
+        self.assertEqual(rows[0]["blocker"], autorun.BLOCKER_READY)
+        self.assertEqual(rows[0]["workspace_name"], self.workspace["name"])
+
+    def test_leaves_out_unlabeled_todo(self):
+        self._todo("라벨 없는 일")
+        self.assertEqual(len(autorun.candidates(self.con)), 1)
+
+    def test_marks_blocked_and_review_and_requested(self):
+        for outcome, expected in (
+            (OUTCOME_BLOCKED, autorun.BLOCKER_BLOCKED),
+            (OUTCOME_REQUESTED, autorun.BLOCKER_REQUESTED),
+            (OUTCOME_REVIEW, autorun.BLOCKER_REVIEW),
+        ):
+            run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+            autorun_repo.close_run(self.con, run["id"], outcome)
+            self.assertEqual(autorun.candidates(self.con)[0]["blocker"], expected)
+            self.con.execute("DELETE FROM autorun_runs")
+
+    def test_counts_unmet_conditions(self):
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blocker = self._todo("먼저 할 일")
+        self._todo(
+            "조건 걸린 일",
+            labeled=True,
+            precondition=f"#{blocker['id']} 이 done 일 것\n기획 확정",
+        )
+        row = autorun.candidates(self.con)[0]
+        self.assertEqual(row["blocker"], autorun.BLOCKER_PRECONDITION)
+        self.assertEqual(row["precondition"], {"total": 2, "met": 0, "manual": 1})
+
+    def test_drag_order_wins_over_board_order(self):
+        """사람이 끌어 정한 순서가 먼저다. 안 정한 것은 그 뒤에 원래 순위대로 남는다"""
+        second = self._todo("둘째", labeled=True)
+        third = self._todo("셋째", labeled=True)
+        todo_repo.set_autorun_order(self.con, [third["id"], self.todo["id"]])
+        self.assertEqual(
+            [row["todo_id"] for row in autorun.candidates(self.con)],
+            [third["id"], self.todo["id"], second["id"]],
+        )
+
+    def test_pick_follows_the_dragged_order(self):
+        """목록 맨 위와 실제로 돌 할일이 다르면 그 조작이 거짓말이 된다"""
+        later = self._todo("나중 것", labeled=True)
+        todo_repo.set_autorun_order(self.con, [later["id"], self.todo["id"]])
+        self.assertEqual(autorun.pick(self.con)["todo"]["id"], later["id"])
+
+    def test_reorder_route_saves_candidate_order(self):
+        second = self._todo("둘째", labeled=True)
+        server.route(
+            self.con,
+            "POST",
+            "/api/reorder",
+            {},
+            {"kind": "autorun", "ids": [second["id"], self.todo["id"]]},
+        )
+        self.assertEqual(
+            [row["todo_id"] for row in autorun.candidates(self.con)],
+            [second["id"], self.todo["id"]],
+        )
+
+    def test_caps_the_list(self):
+        for index in range(AUTORUN_CANDIDATE_LIMIT + 2):
+            self._todo(f"자동 {index}", labeled=True)
+        self.assertEqual(len(autorun.candidates(self.con)), AUTORUN_CANDIDATE_LIMIT)
 
 
 class Gates(AutorunCase):
@@ -227,6 +316,22 @@ class Gates(AutorunCase):
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_CWD)
 
+    def test_unknown_cwd_candidate_is_skipped_for_the_next_one(self):
+        """위치 없는 워크스페이스가 순위상 앞이어도 위치가 있는 다음 후보가 뜬다 —
+
+        한 워크스페이스가 위치를 못 정했다고 tick 전체가 멈추면 안 된다
+        """
+        blind = workspace_repo.create(
+            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
+        )
+        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
+        workspace_repo.reorder(self.con, [blind["id"], self.workspace["id"]])
+        decision = autorun.judge(self.con)
+        self.assertEqual(decision["reason"], autorun.REASON_READY)
+        self.assertEqual(decision["todo"]["id"], self.todo["id"])
+        self.assertEqual(decision["cwd"], self.repo)
+
     def test_uncommitted_changes_do_not_block_start(self):
         """자율 세션은 워크트리를 새로 파서 일하므로 본 체크아웃의 미커밋 변경과 겹치지 않는다"""
         tracked = os.path.join(self.repo, "kept.txt")
@@ -246,13 +351,13 @@ class Prompt(AutorunCase):
         workspace_repo.update(self.con, self.workspace["id"], goal="끝까지 돌리기")
         self.workspace = workspace_repo.get(self.con, self.workspace["id"])
 
-    def _text(self, **fields):
+    def _text(self, cwd=None, **fields):
         todo = (
             todo_repo.update(self.con, self.todo["id"], **fields)
             if fields
             else self.todo
         )
-        return autorun.build_prompt(todo, self.workspace, "/repo")
+        return autorun.build_prompt(todo, self.workspace, cwd or _git_repo())
 
     def test_carries_workspace_and_todo(self):
         text = self._text()
@@ -285,6 +390,30 @@ class Prompt(AutorunCase):
         text = self._text(precondition="포트 9080 이 비어 있을 것")
         self.assertIn("포트 9080 이 비어 있을 것", text)
         self.assertIn("코드를 고치기 전에", text)
+
+    def test_non_git_cwd_skips_worktree_and_commit_instructions(self):
+        """할일 케밥의 "시작"이 고른 폴더는 git 저장소가 아닐 수 있다 — 그때는
+        워크트리·커밋을 요구하면 안 끝낼 방법이 없어진다"""
+        plain = tempfile.mkdtemp()
+        text = self._text(cwd=plain)
+        self.assertNotIn("EnterWorktree", text)
+        self.assertNotIn("diff 로 확인해 커밋한 뒤", text)
+        self.assertIn("autorun-finish", text)
+        self.assertIn(plain, text)
+
+    def test_this_repo_gets_the_concrete_test_command(self):
+        """cwd 가 work-dashboard 자기 자신이면 이미 아는 실행법(python3 -m tests)을 그대로 알려준다"""
+        this_repo = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(autorun.__file__)))
+        )
+        text = self._text(cwd=this_repo)
+        self.assertIn("python3 -m tests", text)
+
+    def test_other_project_gets_a_generic_test_instruction(self):
+        """cwd 가 다른 프로젝트면 python3 -m tests 는 틀린 명령이다 — 일반 안내로 대신한다"""
+        text = self._text()  # 기본 cwd 는 _git_repo() — work-dashboard 가 아닌 임시 저장소
+        self.assertNotIn("python3 -m tests", text)
+        self.assertIn("README·CLAUDE.md", text)
 
 
 class Launching(AutorunCase):
@@ -330,6 +459,82 @@ class Launching(AutorunCase):
         )
         self.assertEqual(result["error"], "claude 없음")
         self.assertEqual(autorun_repo.open_runs(self.con), [])
+
+
+class ManualStart(AutorunCase):
+    """할일 케밥의 "시작". 사람이 직접 고른 할일이라 eligible() 의 자동 후보 판정을 거치지 않는다"""
+
+    def test_starts_unlabeled_todo(self):
+        """auto 라벨은 자율 실행의 자동 후보 판정 조건이다 — 사람이 직접 고른 시작에는 안 붙는다"""
+        unlabeled = self._todo("라벨 없는 일")
+        launcher = Recorder()
+        result = autorun.start_todo(self.con, unlabeled["id"], launcher=launcher)
+        self.assertEqual(result["session_id"], CHILD)
+        self.assertEqual(launcher.calls[0]["cwd"], self.repo)
+
+    def test_starts_todo_with_precondition(self):
+        """조건 문장이 있어도 시작은 막지 않는다 — 판단은 프롬프트가 세션에 넘긴다"""
+        todo = self._todo("조건 붙은 일", precondition="다른 게 먼저 끝날 것")
+        launcher = Recorder()
+        autorun.start_todo(self.con, todo["id"], launcher=launcher)
+        self.assertIn("다른 게 먼저 끝날 것", launcher.calls[0]["prompt"])
+
+    def test_job_name_carries_the_todo_id(self):
+        launcher = Recorder()
+        autorun.start_todo(self.con, self.todo["id"], launcher=launcher)
+        self.assertEqual(
+            launcher.calls[0]["name"], f"#{self.todo['id']} | {self.todo['title']}"
+        )
+
+    def test_links_child_session_and_marks_doing(self):
+        autorun.start_todo(self.con, self.todo["id"], launcher=Recorder())
+        self.assertEqual(
+            session_repo.linked_todo_ids(self.con, CHILD), [self.todo["id"]]
+        )
+        self.assertEqual(
+            todo_repo.get(self.con, self.todo["id"])["status"], STATUS_DOING
+        )
+
+    def test_blocks_review_locked_todo(self):
+        """검토 대기 중에 또 띄우면 확인 전에 같은 할일의 diff 가 두 벌 생긴다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, self.todo["id"], launcher=Recorder())
+
+    def test_blocks_when_cwd_is_unknown(self):
+        workspace = workspace_repo.create(
+            self.con, self.workspace["category_id"], "위치 모름"
+        )
+        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, todo["id"], launcher=Recorder())
+
+    def test_explicit_cwd_is_used_when_workspace_has_no_history(self):
+        """위치를 모르는 워크스페이스도, 화면이 물어 받은 경로가 있으면 그걸 쓴다.
+
+        git 저장소로 제한하지 않는다 — 워크트리를 안 만들어도 되는 작업도 있다
+        """
+        workspace = workspace_repo.create(
+            self.con, self.workspace["category_id"], "위치 모름"
+        )
+        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        chosen = tempfile.mkdtemp()
+        launcher = Recorder()
+        autorun.start_todo(self.con, todo["id"], launcher=launcher, cwd=chosen)
+        self.assertEqual(launcher.calls[0]["cwd"], chosen)
+
+    def test_explicit_cwd_must_be_an_existing_directory(self):
+        missing = os.path.join(tempfile.mkdtemp(), "없음")
+        with self.assertRaises(Validation):
+            autorun.start_todo(
+                self.con, self.todo["id"], launcher=Recorder(), cwd=missing
+            )
+
+    def test_launch_failure_raises(self):
+        launcher = Recorder(job_id="", session_id="", error="claude 없음")
+        with self.assertRaises(Validation):
+            autorun.start_todo(self.con, self.todo["id"], launcher=launcher)
 
 
 class Outcomes(AutorunCase):
@@ -646,6 +851,68 @@ class WebToggle(AutorunCase):
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         payload = server.route(self.con, "PATCH", "/api/autorun", {}, {"enabled": True})
         self.assertEqual(payload["runs"][0]["todo_title"], self.todo["title"])
+
+
+class TitleRename(AutorunCase):
+    """제목을 고치면 그 할일을 잡았던 잡 이름도 따라가야 한다.
+
+    안 따라가면 `claude agents` 목록과 대시보드가 서로 다른 제목을 보여준다
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.jobs = tempfile.mkdtemp()
+
+    def _job(self, job_id, session_id, name, flags=None):
+        directory = os.path.join(self.jobs, job_id)
+        os.makedirs(directory, exist_ok=True)
+        state = {"sessionId": session_id, "name": name, "nameSource": "user"}
+        if flags is not None:
+            state["respawnFlags"] = flags
+        with open(self._path(job_id), "w", encoding="utf-8") as handle:
+            json.dump(state, handle)
+
+    def _path(self, job_id):
+        return os.path.join(self.jobs, job_id, "state.json")
+
+    def _state(self, job_id):
+        with open(self._path(job_id), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def _rename(self, title):
+        updated = todo_repo.update(self.con, self.todo["id"], title=title)
+        return autorun.rename_todo_sessions(self.con, updated, jobs_root=self.jobs)
+
+    def test_renames_job_of_the_linked_session(self):
+        old = f"#{self.todo['id']} | {self.todo['title']}"
+        self._job(SID[:8], SID, old, ["--name", old])
+        self.assertEqual(self._rename("고친 제목"), [SID[:8]])
+        state = self._state(SID[:8])
+        new = f"#{self.todo['id']} | 고친 제목"
+        self.assertEqual(state["name"], new)
+        # 리밋 재개가 예전 이름으로 되돌리지 않아야 한다
+        self.assertEqual(state["respawnFlags"], ["--name", new])
+
+    def test_skips_job_of_another_session(self):
+        """잡 디렉터리 이름이 겹쳐도 sessionId 가 다르면 남의 잡이다"""
+        self._job(SID[:8], "다른-세션", "남의 잡")
+        self.assertEqual(self._rename("고친 제목"), [])
+        self.assertEqual(self._state(SID[:8])["name"], "남의 잡")
+
+    def test_no_job_file_is_not_an_error(self):
+        """사람이 터미널에서 직접 연 세션은 고칠 파일이 없다"""
+        self.assertEqual(self._rename("고친 제목"), [])
+
+    def test_patch_renames_only_when_title_changes(self):
+        calls = []
+        original = autorun.rename_todo_sessions
+        autorun.rename_todo_sessions = lambda con, todo: calls.append(todo["title"])
+        self.addCleanup(setattr, autorun, "rename_todo_sessions", original)
+        path = f"/api/todos/{self.todo['id']}"
+        server.route(self.con, "PATCH", path, {}, {"note": "메모만"})
+        self.assertEqual(calls, [])
+        server.route(self.con, "PATCH", path, {}, {"title": "고친 제목"})
+        self.assertEqual(calls, ["고친 제목"])
 
 
 if __name__ == "__main__":

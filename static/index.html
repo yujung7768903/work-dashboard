@@ -59,6 +59,13 @@
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+        <button data-tab="autorun" data-i18n="nav.autorun" data-i18n-title="nav.autorun">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6.7 5.9 10.4 8l-3.7 2.1z" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button data-tab="workspace" data-i18n="nav.workspace" data-i18n-title="nav.workspace">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
@@ -106,21 +113,6 @@
         <p id="next-line"><span data-i18n="board.nextLine"></span>
           <span id="next-text" data-i18n="common.loading"></span>
         </p>
-        <!-- 기본 접힘. 펼치면 자율 실행으로 돌린 할일 목록 -->
-        <details id="autorun-panel">
-          <summary>
-            <span id="autorun-head">
-              <span data-i18n="autorun.title"></span>
-              <label class="switch" id="autorun-switch" data-i18n-title="autorun.toggleHint">
-                <input type="checkbox" id="autorun-toggle">
-                <span class="track"></span>
-                <span class="state"></span>
-              </label>
-              <span id="autorun-cycle"></span>
-            </span>
-          </summary>
-          <ul id="autorun-list"></ul>
-        </details>
         <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
         <details id="session-panel">
           <summary>
@@ -274,6 +266,25 @@
         <ul id="label-list" class="set-list"></ul>
       </section>
 
+      <!-- 자율 수행. 보드에서 떼어낸 이유 — 후보와 사람이 처리할 실행을 상태별로 봐야 한다 -->
+      <section id="tab-autorun" class="tab" hidden>
+        <div class="ar-state">
+          <label class="switch" id="autorun-switch" data-i18n-title="autorun.toggleHint">
+            <input type="checkbox" id="autorun-toggle">
+            <span class="track"></span>
+            <span class="state"></span>
+          </label>
+          <span id="autorun-cycle"></span>
+        </div>
+
+        <h2 class="ar-head" data-i18n="autorun.candidates"></h2>
+        <p class="ar-hint" data-i18n="autorun.candidatesHint"></p>
+        <ul id="autorun-candidates" class="ar-cands"></ul>
+
+        <h2 class="ar-head" data-i18n="autorun.runs"></h2>
+        <ul id="autorun-list" class="ar-runs"></ul>
+      </section>
+
       <!-- client_id·secret 은 구글 콘솔에서 직접 받아야 한다. 어디서 어떻게 받는지
            먼저 알려주고, 받아 온 값을 여기서 입력받아 gtasks.json 에 저장한다 -->
       <dialog id="gtasks-auth">
@@ -381,6 +392,20 @@
       </div>
       <div class="dlg-actions"><button type="submit" data-i18n="common.add"></button></div>
     </form>
+  </dialog>
+
+  <!-- 할일 케밥의 "시작" 이 작업 위치를 못 정했을 때만 연다 (static/js/browse.js) -->
+  <dialog id="dir-browse-modal">
+    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
+    <div id="dir-browse-body">
+      <div class="dlg-head"><p class="dlg-title" data-i18n="board.startTodoCwdPrompt"></p></div>
+      <div class="dir-browse-crumbs" id="dir-browse-crumbs"></div>
+      <div class="dir-browse-list" id="dir-browse-list"></div>
+      <div class="dlg-actions">
+        <button type="button" class="dir-browse-primary" id="dir-browse-select"
+                data-i18n="board.dirBrowseSelect"></button>
+      </div>
+    </div>
   </dialog>
 
   <script type="module" src="/js/boot.js"></script>

@@ -29,9 +29,11 @@ from app.repositories import workspaces as workspace_repo
 from app.services import (
     autorun,
     board,
+    browse,
     gtasks,
     gtasks_setup,
     planning,
+    precondition,
     release,
     session_link,
     session_todo,
@@ -140,11 +142,13 @@ def _route_get(con, head, item_id, query):
     if head == "worktrees":
         return worktrees.overview(con, _single(query, "group_by", worktrees.GROUP_BY_WORKSPACE))
     if head == "autorun":
-        return {"state": autorun_repo.state(con), "runs": autorun.panel_runs(con)}
+        return _autorun_payload(con)
     if head == "gtasks":
         return gtasks_setup.panel(con)
     if head == "settings":
         return settings_repo.payload(con)
+    if head == "browse":
+        return browse.list_dir(_single(query, "path", None))
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -167,8 +171,15 @@ def _route_post(con, head, body):
             note=body.get("note"),
             precondition=body.get("precondition"),
         )
+    if head == "todo-start":
+        if not body.get("id"):
+            raise Validation("id 가 필요함")
+        return autorun.start_todo(con, body["id"], cwd=body.get("cwd"))
     if head == "reorder":
         return _reorder(con, body)
+    if head == "precondition-check":
+        # 돌릴 명령은 저장된 조건 문장에서 서버가 읽는다 — 화면은 몇 번째 항목인지만 보낸다
+        return precondition.check(con, body.get("todo_id"), body.get("index"))
     if head == "worktrees":
         repo, branch, action = body.get("repo"), body.get("branch"), body.get("action")
         # 서버 조작(띄우기·다시 띄우기·내리기)은 할일·세션을 건드리지 않아 con 을 받지 않는다
@@ -200,8 +211,8 @@ def _route_post(con, head, body):
 def _route_patch(con, head, item_id, body):
     if head == "autorun":
         # 단일 행이라 id 가 없다. GET 과 같은 모양으로 돌려줘 화면이 바로 다시 그린다
-        state = autorun_repo.set_enabled(con, bool(body.get("enabled")))
-        return {"state": state, "runs": autorun.panel_runs(con)}
+        autorun_repo.set_enabled(con, bool(body.get("enabled")))
+        return _autorun_payload(con)
     if head == "gtasks":
         # 끄는 길. 켜는 것은 카테고리 확인을 거쳐야 하므로 gtasks-setup 이 맡는다
         gtasks_state.set_enabled(con, bool(body.get("enabled")))
@@ -219,7 +230,11 @@ def _route_patch(con, head, item_id, body):
     if head == "workspaces":
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
-        return todo_repo.update(con, item_id, **body)
+        updated = todo_repo.update(con, item_id, **body)
+        # 제목이 바뀌면 그 할일을 잡은 세션의 잡 이름도 같이 맞춘다
+        if "title" in body:
+            autorun.rename_todo_sessions(con, updated)
+        return updated
     if head == "autorun-runs":
         # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
         return autorun.confirm_run(con, item_id)
@@ -260,6 +275,15 @@ def _route_delete(con, head, item_id, query):
     return {"deleted": item_id}
 
 
+def _autorun_payload(con):
+    """자율 수행 화면이 한 번에 받는 것 — 설정·후보·실행. GET 과 스위치 응답이 같은 모양"""
+    return {
+        "state": autorun_repo.state(con),
+        "candidates": autorun.candidates(con),
+        "runs": autorun.panel_runs(con),
+    }
+
+
 def _reorder(con, body):
     kind, ids = body.get("kind"), body.get("ids") or []
     scope = body.get("scope_id")
@@ -271,6 +295,9 @@ def _reorder(con, body):
         workspace_repo.reorder(con, ids)
     elif kind == "todos":
         todo_repo.reorder(con, ids, None if scope in (None, NONE_LITERAL) else scope)
+    elif kind == "autorun":
+        # 자율 수행 후보 순서. 보드 순서(todos)와 다른 열이라 종류를 나눈다
+        todo_repo.set_autorun_order(con, ids)
     else:
         raise Validation(f"알 수 없는 reorder 종류: {kind}")
     return {"reordered": len(ids)}

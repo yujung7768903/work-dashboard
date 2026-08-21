@@ -2,6 +2,7 @@
 from app import ordering
 from app.constants import (
     AUTO_TODO_NOTE_RAW_TITLE,
+    REVIEW_LOCKED_MSG,
     SCOPE_REQUIRED_MSG,
     STATE_IDLE,
     STATE_WORKING,
@@ -118,6 +119,22 @@ def reorder(con, ids, workspace_id):
     ordering.reorder(con, TABLE, ids, *_group_scope(workspace_id))
 
 
+def set_autorun_order(con, ids):
+    """자율 수행 후보 목록에서 사람이 끌어 정한 순서를 그대로 저장한다.
+
+    ordering.reorder 를 쓰지 않는 이유 — 그쪽은 한 묶음(워크스페이스) 안의 전원이
+    목록에 있다고 보고 검증한다. 후보 목록은 여러 워크스페이스에서 상위 몇 건만
+    뽑아 온 것이라 그 검증에 걸린다. 목록에 없는 할일은 건드리지 않고 NULL 로 둔다
+    """
+    stamp = now()
+    with transaction(con):
+        for index, todo_id in enumerate(ids):
+            con.execute(
+                "UPDATE todos SET autorun_order=?, updated_at=? WHERE id=?",
+                (index, stamp, todo_id),
+            )
+
+
 def demote_by_workspace(con, workspace_id):
     """워크스페이스 삭제 시 소속 할일을 미분류로 내림. 카테고리는 유지"""
     members = list_by_workspace(con, workspace_id)
@@ -187,9 +204,7 @@ def _validated_assignments(con, current, fields):
         assignments["title"] = _clean_title(assignments["title"])
     if "status" in assignments:
         if current["id"] in autorun_repo.locked_todo_ids(con):
-            raise Validation(
-                "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요"
-            )
+            raise Validation(REVIEW_LOCKED_MSG)
         _validate_status(assignments["status"])
         assignments["completed_at"] = (
             now() if assignments["status"] == STATUS_DONE else None

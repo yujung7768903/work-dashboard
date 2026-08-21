@@ -180,11 +180,13 @@ def connect(path=None):
     con.commit()
     _add_category_style_columns(con)
     _add_precondition_columns(con)
+    _add_autorun_order_column(con)
     _add_usage_account_column(con)
     _add_requested_note_column(con)
     _add_finished_at_column(con)
     _add_tick_reason_column(con)
     _add_gtasks_columns(con)
+    _rename_paused_status(con)
     _drop_session_workspace_column(con)
     _drop_subtasks_table(con)
     _seed_categories(con)
@@ -232,6 +234,16 @@ def _seed_categories(con):
     meta_set(con, SEEDED_FLAG, stamp)
 
 
+def _rename_paused_status(con):
+    """워크스페이스의 보류 상태를 paused 에서 inactive 로 바꾼 자국.
+
+    화면이 상태 값을 그대로 찍으므로 값 자체가 사용자에게 보이는 문구다.
+    active 의 반대말이라는 것이 paused 로는 읽히지 않았다
+    """
+    con.execute("UPDATE workspaces SET status='inactive' WHERE status='paused'")
+    con.commit()
+
+
 def _drop_session_workspace_column(con):
     """세션의 워크스페이스 소속을 없애고 할일 연결에서 파생하도록 바꾼 자국.
 
@@ -257,6 +269,19 @@ def _add_precondition_columns(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
     if "precondition" not in columns:
         con.execute("ALTER TABLE todos ADD COLUMN precondition TEXT")
+    con.commit()
+
+
+def _add_autorun_order_column(con):
+    """자율 수행 후보 목록에서 사람이 끌어 정한 순서.
+
+    todos.sort_order 로는 담을 수 없다 — 후보는 여러 워크스페이스에 걸쳐 있고
+    보드 순서는 워크스페이스가 먼저이므로, 다른 워크스페이스 할일을 위로 끌어올린
+    결과를 그 열로는 표현할 수 없다. NULL 은 '사람이 안 정함' 이고 기존 순위를 따른다
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    if "autorun_order" not in columns:
+        con.execute("ALTER TABLE todos ADD COLUMN autorun_order INTEGER")
     con.commit()
 
 
