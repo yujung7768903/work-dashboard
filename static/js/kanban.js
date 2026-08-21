@@ -1,5 +1,7 @@
-// 칸반 뷰. 상태를 컬럼으로 세우고, 컬럼 안에 워크스페이스 카드를, 카드 안에 그 상태의
-// 할일만 담는다. 목록 뷰와 같은 /api/tree 를 쓰므로 서버에 새 엔드포인트를 두지 않는다
+// 칸반 뷰. 상태를 컬럼으로 세우고, 컬럼 안에는 할일 하나가 카드 하나다. 어느
+// 워크스페이스의 할일인지는 카드 위 작은 줄로 얹는다 — 워크스페이스를 카드로 감싸면
+// 이름줄이 자리를 먹고 카드가 커져 목록을 훑기 어렵다.
+// 목록 뷰와 같은 /api/tree 를 쓰므로 서버에 새 엔드포인트를 두지 않는다
 import * as api from "./api.js";
 import { currentCategoryId, setTodoRefresh, todoElement } from "./board.js";
 import { t } from "./i18n.js";
@@ -30,25 +32,19 @@ function inActiveCategory(group) {
 }
 
 function columnElement(column, groups) {
-  // 그 상태의 할일이 없는 워크스페이스는 카드째 빠진다 — 컬럼마다 빈 카드가 늘어서면
-  // 정작 할 일이 있는 카드가 아래로 밀린다
-  const cards = groups
-    .map((group) => ({ group, todos: group.todos.filter(isIn(column)) }))
-    .filter((card) => card.todos.length);
-  const total = cards.reduce((sum, card) => sum + card.todos.length, 0);
+  // 워크스페이스 순서를 그대로 따라 펼친다 — 같은 워크스페이스 할일이 붙어 있게 된다
+  const cards = groups.flatMap((group) =>
+    group.todos.filter((todo) => todo.status === column.status).map((todo) => ({ group, todo }))
+  );
 
   const element = document.createElement("section");
   element.className = "kanban-col";
   // 상태를 클래스로 붙이면 할일 줄 스타일(.todo·.done)이 컬럼에 걸린다 — 속성으로 둔다
   element.dataset.status = column.status;
-  element.appendChild(columnHead(column, total));
+  element.appendChild(columnHead(column, cards.length));
   if (!cards.length) element.appendChild(emptyNote());
   cards.forEach((card) => element.appendChild(cardElement(card)));
   return element;
-}
-
-function isIn(column) {
-  return (todo) => todo.status === column.status;
 }
 
 function columnHead(column, total) {
@@ -71,25 +67,17 @@ function emptyNote() {
   return note;
 }
 
-function cardElement({ group, todos }) {
+function cardElement({ group, todo }) {
   const card = document.createElement("article");
   card.className = `kanban-card ${group.kind}`;
-  // 카드 머리 배경은 목록 뷰 카드와 같은 카테고리 색. 미분류는 CSS 기본값(옅은 회색)
+  // 카드 왼쪽 색띠와 워크스페이스 이름 색이 그 카테고리 색. 미분류는 CSS 기본값(회색)
   if (group.category_color) card.style.setProperty("--cat", group.category_color);
 
-  const head = document.createElement("header");
-  const name = document.createElement("span");
-  name.className = "group-name";
-  name.textContent =
+  const workspace = document.createElement("span");
+  workspace.className = "kanban-ws";
+  workspace.textContent =
     group.kind === UNASSIGNED_KIND ? t("common.unassigned") : group.name;
-  const meta = document.createElement("span");
-  meta.className = "group-meta";
-  // 컬럼이 이미 상태를 말하므로 목록 뷰의 done/total 대신 이 컬럼에 든 건수만
-  meta.textContent = String(todos.length);
-  head.append(name, meta);
-  card.appendChild(head);
-
   // 상태 버튼·라벨·상세 팝업까지 목록 뷰와 같은 줄을 쓴다 (static/js/board.js)
-  todos.forEach((todo) => card.appendChild(todoElement(todo)));
+  card.append(workspace, todoElement(todo));
   return card;
 }

@@ -469,7 +469,7 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   gap: var(--gap); align-items: start; margin: var(--gap) 0;
 }
 /* 컬럼은 각자 위에서부터 쌓인다 — 옆 컬럼 카드 높이에 맞춰 늘어나지 않는다 */
-.kanban-col { display: flex; flex-direction: column; gap: var(--sp-12); }
+.kanban-col { display: flex; flex-direction: column; gap: var(--sp-8); }
 .kanban-head {
   display: flex; align-items: center; gap: var(--sp-8);
   padding: 0 var(--sp-4); font-weight: 700;
@@ -488,22 +488,28 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   border-radius: var(--r-card); box-shadow: inset 0 0 0 1px var(--line);
   color: var(--muted); font-size: var(--fs-sm);
 }
-/* 목록 뷰 카드(.group)와 같은 판·머리 배경. 늘 펼쳐져 있어 details 가 아니다 */
+/* 할일 하나가 카드 하나. 카드 안은 두 줄뿐이라(워크스페이스 이름 · 할일) 여백을
+   목록 뷰 카드보다 좁게 잡는다 — 컬럼을 훑는 화면이라 카드 높이가 곧 훑는 거리다.
+   왼쪽 색띠는 카테고리 색. 이름줄까지 색을 얹으면 두 줄짜리 카드가 알록달록해진다 */
 .kanban-card {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-8) var(--sp-12);
   background: var(--surface); border-radius: var(--r-card);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card); border-left: 3px solid var(--cat);
 }
-.kanban-card > header {
-  display: flex; justify-content: space-between; gap: var(--sp-8);
-  padding: var(--sp-12) var(--pad-card);
-  background: var(--cat-bg); font-weight: 700;
-  border-radius: var(--r-card) var(--r-card) 0 0;
+/* 어느 워크스페이스의 할일인지. 제목보다 작고 옅어 제목이 먼저 읽힌다 */
+.kanban-ws {
+  color: var(--cat-ink); font-size: var(--fs-micro); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.kanban-card.unassigned > header { color: var(--muted); }
+.kanban-card.unassigned .kanban-ws { color: var(--muted); }
+/* 카드가 이미 여백과 경계를 갖는다 — 줄이 자기 여백·윗선을 또 두면 카드가 커진다 */
+.kanban-card .todo { padding: 0; border-top: none; align-items: flex-start; }
 /* 컬럼이 좁아 #id 칸까지 두면 제목에 남는 폭이 없다. #id 는 상세 팝업에서 본다 */
 .kanban-card .todo-id { display: none; }
-/* 제목이 여러 줄로 접히므로 상태 버튼을 줄 맨 위에 맞춘다 */
-.kanban-card .todo { align-items: flex-start; }
+/* 상태 칩 폭 76px 은 네 언어 라벨 기준으로 잡은 값이라 좁은 컬럼에서는 과하다.
+   컬럼이 이미 상태를 말하므로 글자 폭만 차지하게 둔다 */
+.kanban-card .todo > button:first-child { width: auto; }
 .kanban-card .todo .title { overflow-wrap: anywhere; }
 
 /* 펼침 아이콘. 폭 1.2em 은 뒤따르는 목록 들여쓰기와 같은 값이고, 높이도 같은 값으로

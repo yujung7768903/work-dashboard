@@ -121,8 +121,8 @@ started inside a worktree.
 
 The board has three sub-tabs: **Todos**, **Kanban** and **Worktrees**. The
 kanban sub-tab stands the same todos up in status columns (todo, in progress,
-done); each column holds workspace cards, and a card holds only that
-workspace's todos in that status. On the worktree sub-tab, the kebab menu (⋮)
+done); one todo is one card, and the workspace it belongs to sits above the
+title as a small line. On the worktree sub-tab, the kebab menu (⋮)
 on each row applies (merges) or deletes the worktree, and starts, restarts or
 stops its server. That sub-tab groups worktrees by workspace or by project;
 the project view also lists worktrees no workspace claims. The todo and

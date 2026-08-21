@@ -107,23 +107,26 @@ const [head, ...cards] = columns[0].children;
 assert.equal(head.className, "kanban-head", "컬럼 첫 줄은 머리글이어야 한다");
 assert.equal(head.children[0].textContent, "대기");
 assert.equal(head.children[1].textContent, "2", "머리글 숫자는 그 컬럼의 할일 수");
-assert.equal(cards.length, 2, "대기 컬럼에는 두 워크스페이스 카드가 들어간다");
+// 할일 하나가 카드 하나. 워크스페이스를 카드로 감싸지 않는다
+assert.equal(cards.length, 2, "대기 컬럼에는 대기 할일 두 건이 각자 카드로 들어간다");
 
-const [cardHead, ...rows] = cards[0].children;
-assert.equal(cardHead.tag, "header", "카드 첫 줄은 워크스페이스 머리글");
-assert.equal(cardHead.children[0].textContent, "작업 대시보드");
-assert.equal(rows.length, 1, "카드 안에는 그 상태의 할일만 들어간다");
-assert.equal(rows[0].children[2].textContent, "결정 대기 큐");
+const [workspace, row] = cards[0].children;
+assert.equal(workspace.className, "kanban-ws", "카드 첫 줄은 워크스페이스 이름");
+assert.equal(workspace.textContent, "작업 대시보드");
+assert.equal(row.children[2].textContent, "결정 대기 큐");
+// 같은 워크스페이스 할일이 붙어 있도록 워크스페이스 순서를 따른다
+assert.equal(cards[1].children[0].textContent, "KT 동시성");
+assert.equal(cards[1].children[1].children[2].textContent, "락 재설계");
 
-// 진행중이 없는 워크스페이스는 그 컬럼에서 카드째 빠진다
+// 진행중 할일이 없는 워크스페이스는 그 컬럼에 아무것도 남기지 않는다
 const doing = columns[1].children.slice(1);
 assert.equal(doing.length, 1);
-assert.equal(doing[0].children[0].children[0].textContent, "작업 대시보드");
+assert.equal(doing[0].children[0].textContent, "작업 대시보드");
 
 // 상태 버튼은 다음 상태로 옮기는 유일한 손잡이다. 누르면 목록이 아니라 이 화면이
 // 다시 그려져야 한다 — 안 그러면 옮긴 할일이 그 자리에 남아 있는 것처럼 보인다
 calls.length = 0;
-rows[0].children[0].listeners.click({ stopPropagation() {} });
+row.children[0].listeners.click({ stopPropagation() {} });
 // 버튼 핸들러는 안쪽 비동기를 기다리지 않는다 — 요청·재렌더가 끝날 틈을 준다
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert.equal(elements.error.textContent, "", "상태 변경이 오류로 끝났다");
