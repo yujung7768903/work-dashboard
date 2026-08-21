@@ -186,6 +186,7 @@ def connect(path=None):
     _add_finished_at_column(con)
     _add_tick_reason_column(con)
     _add_gtasks_columns(con)
+    _rename_paused_status(con)
     _drop_session_workspace_column(con)
     _drop_subtasks_table(con)
     _seed_categories(con)
@@ -231,6 +232,16 @@ def _seed_categories(con):
             (name, order, palette_color(order), stamp),
         )
     meta_set(con, SEEDED_FLAG, stamp)
+
+
+def _rename_paused_status(con):
+    """워크스페이스의 보류 상태를 paused 에서 inactive 로 바꾼 자국.
+
+    화면이 상태 값을 그대로 찍으므로 값 자체가 사용자에게 보이는 문구다.
+    active 의 반대말이라는 것이 paused 로는 읽히지 않았다
+    """
+    con.execute("UPDATE workspaces SET status='inactive' WHERE status='paused'")
+    con.commit()
 
 
 def _drop_session_workspace_column(con):
