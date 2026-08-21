@@ -245,33 +245,13 @@ function addDialogFields() {
   );
 }
 
-// 칸반 뷰도 이 줄을 그대로 쓴다 (static/js/kanban.js)
-export function todoElement(todo) {
+// 칸반 뷰도 이 줄을 그대로 쓴다. 거기서는 컬럼이 이미 상태를 말하므로 상태 칩을 뺀다
+// (static/js/kanban.js)
+export function todoElement(todo, { withStatus = true } = {}) {
   const row = document.createElement("div");
   row.className = `todo ${todo.status}`;
   row.dataset.todoId = todo.id;
   row.draggable = true;
-
-  const statusButton = document.createElement("button");
-  if (todo.autorun_locked) {
-    // 원본 상태(done)는 그대로 두고 화면에는 남은 동작(검토 대기)을 보여준다 —
-    // 안 그러면 자율 수행이 끝난 할일이 그냥 '완료'로 보여 아직 검토 전인 걸 놓친다
-    statusButton.textContent = t("common.review");
-    statusButton.disabled = true;
-    statusButton.title = t("board.reviewLockedHint");
-  } else {
-    statusButton.textContent = todo.status;
-    statusButton.title = t("board.statusCycle");
-  }
-  statusButton.addEventListener("click", (event) => {
-    // 행 전체가 팝업을 여는 클릭이라 버튼은 거기까지 올라가지 않게 막는다
-    event.stopPropagation();
-    if (todo.autorun_locked) return;
-    run(async () => {
-      await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
-      await refresh();
-    });
-  });
 
   // 상세 팝업·세션 줄과 같은 #id 표기
   const idNode = document.createElement("span");
@@ -283,10 +263,36 @@ export function todoElement(todo) {
   title.textContent = todo.title;
   if (todo.needs_title) title.append(rawTitleMark());
 
-  row.append(statusButton, idNode, title, labelStrip(todo), todoMenu(todo));
+  if (withStatus) row.appendChild(statusButton(todo));
+  row.append(idNode, title, labelStrip(todo), todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
+}
+
+// 상태 칩. 누르면 다음 상태로 넘어가는 손잡이라 표시와 조작을 겸한다
+function statusButton(todo) {
+  const button = document.createElement("button");
+  if (todo.autorun_locked) {
+    // 원본 상태(done)는 그대로 두고 화면에는 남은 동작(검토 대기)을 보여준다 —
+    // 안 그러면 자율 수행이 끝난 할일이 그냥 '완료'로 보여 아직 검토 전인 걸 놓친다
+    button.textContent = t("common.review");
+    button.disabled = true;
+    button.title = t("board.reviewLockedHint");
+  } else {
+    button.textContent = todo.status;
+    button.title = t("board.statusCycle");
+  }
+  button.addEventListener("click", (event) => {
+    // 행 전체가 팝업을 여는 클릭이라 버튼은 거기까지 올라가지 않게 막는다
+    event.stopPropagation();
+    if (todo.autorun_locked) return;
+    run(async () => {
+      await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
+      await refresh();
+    });
+  });
+  return button;
 }
 
 // 제목과 케밥 사이 세 번째 칸. 붙은 라벨이 없으면 빈 칸으로 남아 제목이 그만큼 넓게 쓴다

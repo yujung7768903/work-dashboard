@@ -10,6 +10,11 @@ const DASHBOARD = {
     { id: 11, title: "칸반 뷰", status: "doing", labels: [] },
     { id: 12, title: "결정 대기 큐", status: "todo", labels: [] },
     { id: 13, title: "라벨 필터", status: "done", labels: [] },
+    // 자율 수행이 done 으로 닫았지만 사람이 아직 확인하지 않은 것
+    {
+      id: 14, title: "확인 대기 중인 것", status: "done",
+      labels: [], autorun_locked: true,
+    },
   ],
 };
 // 진행중이 없는 워크스페이스. 그 컬럼에서는 카드째 빠져야 한다
@@ -91,16 +96,16 @@ const kanban = await import("../static/js/kanban.js");
 await kanban.renderKanban();
 
 const columns = elements.kanban.children;
-assert.equal(columns.length, 3, "컬럼은 대기·진행중·완료 셋이어야 한다");
+assert.equal(columns.length, 4, "컬럼은 대기·진행중·검토 대기·완료 넷이어야 한다");
 assert.deepEqual(
   columns.map((column) => column.dataset.status),
-  ["todo", "doing", "done"],
-  "컬럼 순서는 대기 → 진행중 → 완료"
+  ["todo", "doing", "review", "done"],
+  "컬럼은 할일 줄과 같은 상태 표기 넷"
 );
 // 상태는 클래스로 붙이지 않는다 — .todo·.done 은 할일 줄 스타일이라 컬럼에 걸린다
 assert.deepEqual(
   columns.map((column) => column.className),
-  ["kanban-col", "kanban-col", "kanban-col"]
+  ["kanban-col", "kanban-col", "kanban-col", "kanban-col"]
 );
 
 const [head, ...cards] = columns[0].children;
@@ -113,33 +118,40 @@ assert.equal(cards.length, 2, "대기 컬럼에는 대기 할일 두 건이 각�
 const [workspace, row] = cards[0].children;
 assert.equal(workspace.className, "kanban-ws", "카드 첫 줄은 워크스페이스 이름");
 assert.equal(workspace.textContent, "작업 대시보드");
-assert.equal(row.children[2].textContent, "결정 대기 큐");
+// 컬럼이 이미 상태를 말하므로 줄 안에 상태 칩을 두지 않는다 — #id·제목부터 시작한다
+assert.deepEqual(
+  row.children.map((cell) => cell.className),
+  ["todo-id", "title", "todo-labels", "ws-menu"]
+);
+assert.equal(row.children[1].textContent, "결정 대기 큐");
 // 같은 워크스페이스 할일이 붙어 있도록 워크스페이스 순서를 따른다
 assert.equal(cards[1].children[0].textContent, "KT 동시성");
-assert.equal(cards[1].children[1].children[2].textContent, "락 재설계");
+assert.equal(cards[1].children[1].children[1].textContent, "락 재설계");
 
 // 진행중 할일이 없는 워크스페이스는 그 컬럼에 아무것도 남기지 않는다
 const doing = columns[1].children.slice(1);
 assert.equal(doing.length, 1);
 assert.equal(doing[0].children[0].textContent, "작업 대시보드");
 
-// 상태 버튼은 다음 상태로 옮기는 유일한 손잡이다. 누르면 목록이 아니라 이 화면이
-// 다시 그려져야 한다 — 안 그러면 옮긴 할일이 그 자리에 남아 있는 것처럼 보인다
+// 검토 대기는 status 가 done 이어도 완료 칸에 섞이지 않는다
+const review = columns[2].children.slice(1);
+assert.equal(review.length, 1, "검토 대기 칸에 그 할일이 있어야 한다");
+assert.equal(review[0].children[1].children[1].textContent, "확인 대기 중인 것");
+assert.equal(columns[3].children.slice(1).length, 1, "완료 칸에는 나머지 하나만");
+
+// 케밥은 카드에 남은 조작 손잡이다. 누르면 목록이 아니라 이 화면이 다시 그려져야 한다 —
+// 안 그러면 메뉴가 숨어 있는 목록 쪽에만 열려 카드에서는 아무 일도 안 일어난 것처럼 보인다
 calls.length = 0;
-row.children[0].listeners.click({ stopPropagation() {} });
-// 버튼 핸들러는 안쪽 비동기를 기다리지 않는다 — 요청·재렌더가 끝날 틈을 준다
+row.children[3].children[0].listeners.click({ stopPropagation() {} });
+// 핸들러는 안쪽 비동기를 기다리지 않는다 — 재렌더가 끝날 틈을 준다
 await new Promise((resolve) => setTimeout(resolve, 50));
-assert.equal(elements.error.textContent, "", "상태 변경이 오류로 끝났다");
-assert.ok(
-  calls.includes("PATCH /api/todos/12"),
-  `상태 변경 요청이 안 나갔다: ${calls}`
-);
+assert.equal(elements.error.textContent, "", "케밥 열기가 오류로 끝났다");
 assert.equal(
   calls.filter((call) => call === "GET /api/tree?group_by=workspace").length,
   1,
   "칸반이 다시 그려져야 한다"
 );
-assert.equal(elements.kanban.children.length, 3, "컬럼이 새로 세 개만 남아야 한다");
+assert.equal(elements.kanban.children.length, 4, "컬럼이 새로 네 개만 남아야 한다");
 
 console.log("ok");
 // 세션·자율 수행 폴링 타이머가 켜져 있으면 node 가 끝나지 않는다

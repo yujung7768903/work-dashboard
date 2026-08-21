@@ -462,10 +462,11 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   font-size: var(--fs-micro); font-weight: 600; white-space: nowrap;
 }
 /* ── 칸반 ─────────────────────────────────────────────────────────────────── */
-/* 상태 세 칸 고정. minmax(0,1fr) 이라 화면이 좁아지면 컬럼이 같이 좁아진다 —
-   가로 스크롤을 걸면 마지막 카드의 케밥 메뉴가 잘린다 */
+/* 할일 줄이 쓰는 상태 표기와 같은 네 칸(대기·진행중·검토 대기·완료) 고정.
+   minmax(0,1fr) 이라 화면이 좁아지면 컬럼이 같이 좁아진다 — 가로 스크롤을 걸면
+   마지막 카드의 케밥 메뉴가 잘린다 */
 #kanban {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--gap); align-items: start; margin: var(--gap) 0;
 }
 /* 컬럼은 각자 위에서부터 쌓인다 — 옆 컬럼 카드 높이에 맞춰 늘어나지 않는다 */
@@ -497,6 +498,11 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   background: var(--surface); border-radius: var(--r-card);
   box-shadow: var(--shadow-card); border-left: 3px solid var(--cat);
 }
+/* 검토 대기 칸의 할일은 status 가 done 이지만 아직 끝난 것이 아니다 — 목록 뷰의
+   완료 취소선이 그대로 걸리면 확인이 남은 건이 끝난 것처럼 보인다 */
+.kanban-col[data-status="review"] .todo.done .title {
+  color: var(--fg); text-decoration: none;
+}
 /* 어느 워크스페이스의 할일인지. 제목보다 작고 옅어 제목이 먼저 읽힌다 */
 .kanban-ws {
   color: var(--cat-ink); font-size: var(--fs-micro); font-weight: 600;
@@ -507,10 +513,13 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .kanban-card .todo { padding: 0; border-top: none; align-items: flex-start; }
 /* 컬럼이 좁아 #id 칸까지 두면 제목에 남는 폭이 없다. #id 는 상세 팝업에서 본다 */
 .kanban-card .todo-id { display: none; }
-/* 상태 칩 폭 76px 은 네 언어 라벨 기준으로 잡은 값이라 좁은 컬럼에서는 과하다.
-   컬럼이 이미 상태를 말하므로 글자 폭만 차지하게 둔다 */
-.kanban-card .todo > button:first-child { width: auto; }
-.kanban-card .todo .title { overflow-wrap: anywhere; }
+/* 제목 자리를 두 줄로 고정한다 — 한 줄짜리도 두 줄을 잡아 카드 높이가 균일해지고,
+   넘치는 제목은 말줄임으로 끊는다. 세 줄짜리 하나가 컬럼의 리듬을 깨지 않아야 한다 */
+.kanban-card .todo .title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+  height: calc(var(--fs-body) * var(--lh-body) * 2);
+}
 
 /* 펼침 아이콘. 폭 1.2em 은 뒤따르는 목록 들여쓰기와 같은 값이고, 높이도 같은 값으로
    맞춰 hover 면이 원이 된다 (다른 아이콘 버튼은 --icon-box 정사각) */

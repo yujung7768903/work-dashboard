@@ -8,12 +8,20 @@ import { t } from "./i18n.js";
 
 const GROUP_BY_WORKSPACE = "workspace";
 const UNASSIGNED_KIND = "unassigned";
-// 컬럼 순서가 곧 상태 진행 순서. 할일 줄의 상태 버튼이 이 순서로 다음 칸으로 옮긴다
+const REVIEW = "review";
+// 컬럼은 할일 줄이 쓰는 상태 표기와 같은 넷 — 검토 대기까지 한 칸으로 둔다
 const COLUMNS = [
-  { status: "todo", label: t("usage.statusTodo") },
-  { status: "doing", label: t("usage.statusDoing") },
-  { status: "done", label: t("common.done") },
+  { key: "todo", label: t("usage.statusTodo") },
+  { key: "doing", label: t("usage.statusDoing") },
+  { key: REVIEW, label: t("common.review") },
+  { key: "done", label: t("common.done") },
 ];
+
+// 검토 대기는 status 가 아니라 자율 수행 기록이 남긴 것이고, 그 할일의 status 는 done 이다.
+// 상태보다 이쪽이 먼저다 — 확인 전에 완료로 섞이면 검토를 놓친다 (static/js/board.js)
+function columnOf(todo) {
+  return todo.autorun_locked ? REVIEW : todo.status;
+}
 
 export async function renderKanban() {
   // 할일 줄의 상태 버튼·케밥이 목록 대신 이 화면을 다시 그리게 한다 (static/js/board.js)
@@ -34,13 +42,15 @@ function inActiveCategory(group) {
 function columnElement(column, groups) {
   // 워크스페이스 순서를 그대로 따라 펼친다 — 같은 워크스페이스 할일이 붙어 있게 된다
   const cards = groups.flatMap((group) =>
-    group.todos.filter((todo) => todo.status === column.status).map((todo) => ({ group, todo }))
+    group.todos
+      .filter((todo) => columnOf(todo) === column.key)
+      .map((todo) => ({ group, todo }))
   );
 
   const element = document.createElement("section");
   element.className = "kanban-col";
   // 상태를 클래스로 붙이면 할일 줄 스타일(.todo·.done)이 컬럼에 걸린다 — 속성으로 둔다
-  element.dataset.status = column.status;
+  element.dataset.status = column.key;
   element.appendChild(columnHead(column, cards.length));
   if (!cards.length) element.appendChild(emptyNote());
   cards.forEach((card) => element.appendChild(cardElement(card)));
@@ -77,7 +87,8 @@ function cardElement({ group, todo }) {
   workspace.className = "kanban-ws";
   workspace.textContent =
     group.kind === UNASSIGNED_KIND ? t("common.unassigned") : group.name;
-  // 상태 버튼·라벨·상세 팝업까지 목록 뷰와 같은 줄을 쓴다 (static/js/board.js)
-  card.append(workspace, todoElement(todo));
+  // 라벨·케밥·상세 팝업까지 목록 뷰와 같은 줄을 쓴다. 상태 칩만 뺀다 —
+  // 컬럼이 이미 그 상태를 말하므로 카드마다 되풀이할 값이 없다 (static/js/board.js)
+  card.append(workspace, todoElement(todo, { withStatus: false }));
   return card;
 }
