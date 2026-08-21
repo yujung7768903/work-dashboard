@@ -125,6 +125,8 @@ status, which stands the same todos up in the columns the todo rows use: todo,
 in progress, needs review and done. In the status view one todo is one card,
 the workspace it belongs to sits above the title as a small line, every card
 is the same height and a title longer than two lines is cut with an ellipsis.
+Cards stand in the order their sessions last ran, newest first; todos no
+session has ever claimed gather at the bottom.
 On the worktree sub-tab, the kebab menu (⋮)
 on each row applies (merges) or deletes the worktree, and starts, restarts or
 stops its server. That sub-tab groups worktrees by workspace or by project;

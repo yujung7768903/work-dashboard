@@ -28,12 +28,13 @@ function columnOf(todo) {
 }
 
 function columnElement(column, groups) {
-  // 워크스페이스 순서를 그대로 따라 펼친다 — 같은 워크스페이스 할일이 붙어 있게 된다
-  const cards = groups.flatMap((group) =>
-    group.todos
-      .filter((todo) => columnOf(todo) === column.key)
-      .map((todo) => ({ group, todo }))
-  );
+  const cards = groups
+    .flatMap((group) =>
+      group.todos
+        .filter((todo) => columnOf(todo) === column.key)
+        .map((todo) => ({ group, todo }))
+    )
+    .sort(bySessionRecency);
 
   const element = document.createElement("section");
   element.className = "kanban-col";
@@ -43,6 +44,15 @@ function columnElement(column, groups) {
   if (!cards.length) element.appendChild(emptyNote());
   cards.forEach((card) => element.appendChild(cardElement(card)));
   return element;
+}
+
+// 방금 손댄 것이 위로. 세션이 한 번도 안 잡은 할일은 비교할 값이 없어 아래로 모인다
+// (서버가 last_session_at 을 실어 준다 — app/services/board.py)
+function bySessionRecency(left, right) {
+  const a = left.todo.last_session_at ?? "";
+  const b = right.todo.last_session_at ?? "";
+  if (a === b) return 0;
+  return a < b ? 1 : -1;
 }
 
 function columnHead(column, total) {

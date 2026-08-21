@@ -8,6 +8,7 @@ const DASHBOARD = {
   category_color: "#4a5ae8", total_count: 3, done_count: 1,
   todos: [
     { id: 11, title: "칸반 뷰", status: "doing", labels: [] },
+    // 세션이 한 번도 안 잡은 할일. 세션이 돈 것보다 아래로 내려가야 한다
     { id: 12, title: "결정 대기 큐", status: "todo", labels: [] },
     { id: 13, title: "라벨 필터", status: "done", labels: [] },
     // 자율 수행이 done 으로 닫았지만 사람이 아직 확인하지 않은 것
@@ -21,7 +22,12 @@ const DASHBOARD = {
 const CONCURRENCY = {
   id: 2, kind: "workspace", name: "KT 동시성", category_id: 1,
   category_color: "#4a5ae8", total_count: 1, done_count: 0,
-  todos: [{ id: 21, title: "락 재설계", status: "todo", labels: [] }],
+  todos: [
+    {
+      id: 21, title: "락 재설계", status: "todo",
+      labels: [], last_session_at: "2026-08-21T09:00:00Z",
+    },
+  ],
 };
 
 const calls = [];
@@ -129,18 +135,19 @@ assert.equal(head.children[1].textContent, "2", "머리글 숫자는 그 컬럼�
 // 할일 하나가 카드 하나. 워크스페이스를 카드로 감싸지 않는다
 assert.equal(cards.length, 2, "대기 컬럼에는 대기 할일 두 건이 각자 카드로 들어간다");
 
+// 세션이 돈 할일이 위로. 워크스페이스 순서(작업 대시보드가 먼저)를 뒤집는다
 const [workspace, row] = cards[0].children;
 assert.equal(workspace.className, "kanban-ws", "카드 첫 줄은 워크스페이스 이름");
-assert.equal(workspace.textContent, "작업 대시보드");
+assert.equal(workspace.textContent, "KT 동시성", "세션이 최근에 돈 할일이 맨 위");
+assert.equal(row.children[1].textContent, "락 재설계");
+assert.equal(cards[1].children[0].textContent, "작업 대시보드");
+assert.equal(cards[1].children[1].children[1].textContent, "결정 대기 큐");
 // 컬럼이 이미 상태를 말하므로 줄 안에 상태 칩을 두지 않는다 — #id·제목부터 시작한다
 assert.deepEqual(
   row.children.map((cell) => cell.className),
   ["todo-id", "title", "todo-labels", "ws-menu"]
 );
-assert.equal(row.children[1].textContent, "결정 대기 큐");
-// 같은 워크스페이스 할일이 붙어 있도록 워크스페이스 순서를 따른다
-assert.equal(cards[1].children[0].textContent, "KT 동시성");
-assert.equal(cards[1].children[1].children[1].textContent, "락 재설계");
+
 
 // 진행중 할일이 없는 워크스페이스는 그 컬럼에 아무것도 남기지 않는다
 const doing = columns[1].children.slice(1);
