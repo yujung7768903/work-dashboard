@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
 import { pickDirectory } from "./browse.js";
 import { fromKorean, t } from "./i18n.js";
+import { drawKanban } from "./kanban.js";
 import { renderBoardTab, run } from "./main.js";
 import {
   openDetail,
@@ -21,16 +22,14 @@ const DONE = "done";
 const ALL_CATEGORIES = { id: null, name: t("board.allCategories") };
 const NO_COMPLETED = t("board.noCompleted");
 
-// 할일 줄(상태 버튼·케밥)이 고친 것을 반영하려면 지금 보고 있는 뷰를 다시 그려야 한다.
-// 목록 뷰와 칸반 뷰가 같은 줄을 쓰므로 마지막으로 그린 쪽이 주인이 된다 (static/js/kanban.js)
-let refresh = renderBoard;
-
-export function setTodoRefresh(render) {
-  refresh = render;
-}
-
 // 상세 팝업에서 할일을 고치면 이 목록도 다시 그려야 한다 (static/js/sessions.js)
-setBoardRefresh(() => refresh());
+setBoardRefresh(() => renderBoard());
+
+// 워크스페이스별(카드 목록)·상태별(컬럼) 전환. 기기마다 다른 취향이라 서버가 아니라
+// 브라우저에 남긴다 (워크트리 탭의 뷰 전환·layout.js 의 열 수와 같은 방식)
+const VIEW_KEY = "todo-view";
+const VIEW_STATUS = "status";
+let view = localStorage.getItem(VIEW_KEY) === VIEW_STATUS ? VIEW_STATUS : GROUP_BY_WORKSPACE;
 
 // null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
 let activeCategoryId = null;
@@ -42,7 +41,7 @@ let labelMenuTodoId = null;
 let allLabels = [];
 
 function showDone() {
-  return document.getElementById("show-done").checked;
+  return document.getElementById("show-done").getAttribute("aria-pressed") === "true";
 }
 
 // 두 하위 탭이 함께 쓰는 위쪽 — 다음에 할 일·세션 패널·빠른 추가·카테고리 라벨.
@@ -68,12 +67,30 @@ export function currentCategoryId() {
 }
 
 export async function renderBoard() {
-  refresh = renderBoard;
   const [tree] = await Promise.all([api.getTree(GROUP_BY_WORKSPACE), renderShared()]);
   const visible = tree.groups.filter(inActiveCategory);
+  syncViewControls();
+  if (view === VIEW_STATUS) {
+    drawKanban(visible);
+    return;
+  }
   renderGroups(visible.filter((group) => !isComplete(group)));
   renderCompleted(visible.filter(isComplete));
   attachDragHandlers(renderBoard);
+}
+
+// 두 뷰가 같은 자리에 그린다. 상태별에서는 완료가 제 컬럼을 갖고 컬럼 수도 넷으로
+// 고정이라, 목록 뷰의 완료 토글·열 수 아이콘은 고를 것이 없어 감춘다
+function syncViewControls() {
+  const status = view === VIEW_STATUS;
+  document.querySelectorAll("#todo-view button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === view);
+  });
+  document.getElementById("kanban").hidden = !status;
+  document.getElementById("groups").hidden = status;
+  document.getElementById("done-today").hidden = status;
+  document.getElementById("show-done").hidden = status;
+  document.getElementById("todo-columns").hidden = status;
 }
 
 // 할일이 하나라도 있고 전부 done 이면 카드째 완료 영역으로 내려감
@@ -289,7 +306,7 @@ function statusButton(todo) {
     if (todo.autorun_locked) return;
     run(async () => {
       await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
-      await refresh();
+      await renderBoard();
     });
   });
   return button;
@@ -357,7 +374,7 @@ function todoMenu(todo) {
     event.stopPropagation();
     openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
     labelMenuTodoId = null;
-    run(refresh);
+    run(renderBoard);
   });
   wrapper.appendChild(toggle);
   if (openMenuTodoId === todo.id) wrapper.appendChild(todoMenuItems(todo));
@@ -371,7 +388,7 @@ function todoMenuItems(todo) {
     items.append(
       menuItem(t("board.labelBack"), () => {
         labelMenuTodoId = null;
-        run(refresh);
+        run(renderBoard);
       }),
       ...labelToggles(todo)
     );
@@ -382,13 +399,13 @@ function todoMenuItems(todo) {
       run(async () => {
         openMenuTodoId = null;
         const result = await startTodoFlow(todo);
-        await refresh();
+        await renderBoard();
         if (result?.message) alert(fromKorean(result.message));
       })
     ),
     menuItem(t("board.labelEdit"), () => {
       labelMenuTodoId = todo.id;
-      run(refresh);
+      run(renderBoard);
     }),
     menuItem(t("common.delete"), () =>
       run(async () => {
@@ -396,7 +413,7 @@ function todoMenuItems(todo) {
         if (confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
           await api.deleteTodo(todo.id);
         }
-        await refresh();
+        await renderBoard();
       })
     )
   );
@@ -417,7 +434,7 @@ function labelToggles(todo) {
           ? [...attached].filter((id) => id !== label.id)
           : [...attached, label.id];
         await api.updateTodo(todo.id, { label_ids: next });
-        await refresh();
+        await renderBoard();
       })
     )
   );
@@ -441,7 +458,7 @@ document.getElementById("quick-add").addEventListener("submit", (event) => {
       category_id: categoryId,
     });
     name.value = "";
-    await refresh();
+    await renderBoard();
   });
 });
 
@@ -461,16 +478,30 @@ document.getElementById("todo-add-form").addEventListener("submit", (event) => {
       note: note.value || null,
     });
     document.getElementById("todo-add-modal").close();
-    await refresh();
+    await renderBoard();
   });
 });
 
-document.getElementById("board-controls").addEventListener("change", () => run(refresh));
+// 완료 항목 표시. 체크박스 대신 눌린 상태가 남는 아이콘이라 aria-pressed 가 값이다
+document.getElementById("show-done").addEventListener("click", (event) => {
+  const button = event.currentTarget;
+  button.setAttribute("aria-pressed", String(!showDone()));
+  run(renderBoard);
+});
+
+document.getElementById("todo-view").addEventListener("click", (event) => {
+  // 버튼 안에 아이콘 svg 가 있어 event.target 이 버튼이 아닐 수 있다
+  const chosen = event.target.closest("button")?.dataset.view;
+  if (!chosen || chosen === view) return;
+  view = chosen;
+  localStorage.setItem(VIEW_KEY, chosen);
+  run(renderBoard);
+});
 
 // 항목 밖을 누르면 열린 케밥 메뉴 닫기
 document.addEventListener("click", () => {
   if (openMenuTodoId === null) return;
   openMenuTodoId = null;
   labelMenuTodoId = null;
-  run(refresh);
+  run(renderBoard);
 });

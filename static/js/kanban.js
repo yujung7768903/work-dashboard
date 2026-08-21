@@ -1,12 +1,10 @@
-// 칸반 뷰. 상태를 컬럼으로 세우고, 컬럼 안에는 할일 하나가 카드 하나다. 어느
-// 워크스페이스의 할일인지는 카드 위 작은 줄로 얹는다 — 워크스페이스를 카드로 감싸면
+// 할일 탭의 상태별 뷰. 상태를 컬럼으로 세우고, 컬럼 안에는 할일 하나가 카드 하나다.
+// 어느 워크스페이스의 할일인지는 카드 위 작은 줄로 얹는다 — 워크스페이스를 카드로 감싸면
 // 이름줄이 자리를 먹고 카드가 커져 목록을 훑기 어렵다.
-// 목록 뷰와 같은 /api/tree 를 쓰므로 서버에 새 엔드포인트를 두지 않는다
-import * as api from "./api.js";
-import { currentCategoryId, setTodoRefresh, todoElement } from "./board.js";
+// 데이터·카테고리 필터·다시 그리기는 board.js 가 맡고, 이 모듈은 그리기만 한다
+import { todoElement } from "./board.js";
 import { t } from "./i18n.js";
 
-const GROUP_BY_WORKSPACE = "workspace";
 const UNASSIGNED_KIND = "unassigned";
 const REVIEW = "review";
 // 컬럼은 할일 줄이 쓰는 상태 표기와 같은 넷 — 검토 대기까지 한 칸으로 둔다
@@ -17,26 +15,16 @@ const COLUMNS = [
   { key: "done", label: t("common.done") },
 ];
 
-// 검토 대기는 status 가 아니라 자율 수행 기록이 남긴 것이고, 그 할일의 status 는 done 이다.
-// 상태보다 이쪽이 먼저다 — 확인 전에 완료로 섞이면 검토를 놓친다 (static/js/board.js)
-function columnOf(todo) {
-  return todo.autorun_locked ? REVIEW : todo.status;
-}
-
-export async function renderKanban() {
-  // 할일 줄의 상태 버튼·케밥이 목록 대신 이 화면을 다시 그리게 한다 (static/js/board.js)
-  setTodoRefresh(renderKanban);
-  const tree = await api.getTree(GROUP_BY_WORKSPACE);
-  const groups = tree.groups.filter(inActiveCategory);
+export function drawKanban(groups) {
   const board = document.getElementById("kanban");
   board.innerHTML = "";
   COLUMNS.forEach((column) => board.appendChild(columnElement(column, groups)));
 }
 
-// 카테고리 라벨은 목록 뷰와 공유한다 — 라벨을 걸어 둔 채 뷰를 바꿔도 그대로 걸려 있다
-function inActiveCategory(group) {
-  const active = currentCategoryId();
-  return active === null || group.category_id === active;
+// 검토 대기는 status 가 아니라 자율 수행 기록이 남긴 것이고, 그 할일의 status 는 done 이다.
+// 상태보다 이쪽이 먼저다 — 확인 전에 완료로 섞이면 검토를 놓친다 (static/js/board.js)
+function columnOf(todo) {
+  return todo.autorun_locked ? REVIEW : todo.status;
 }
 
 function columnElement(column, groups) {
@@ -87,7 +75,7 @@ function cardElement({ group, todo }) {
   workspace.className = "kanban-ws";
   workspace.textContent =
     group.kind === UNASSIGNED_KIND ? t("common.unassigned") : group.name;
-  // 라벨·케밥·상세 팝업까지 목록 뷰와 같은 줄을 쓴다. 상태 칩만 뺀다 —
+  // 라벨·케밥·상세 팝업까지 워크스페이스별 뷰와 같은 줄을 쓴다. 상태 칩만 뺀다 —
   // 컬럼이 이미 그 상태를 말하므로 카드마다 되풀이할 값이 없다 (static/js/board.js)
   card.append(workspace, todoElement(todo, { withStatus: false }));
   return card;

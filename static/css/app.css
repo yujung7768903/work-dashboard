@@ -309,10 +309,24 @@ button:disabled { color: var(--line); cursor: default; }
   display: flex; gap: var(--gap); color: var(--muted);
   flex-wrap: wrap; font-size: var(--fs-sm);
 }
-#board-controls label { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; }
 /* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다. 할일·워크트리 탭이 같이 쓴다 */
 .view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
 .view-columns button.active { background: var(--softer); color: var(--accent); }
+/* 할일 탭에서는 뷰 전환 옆에 붙는다 — 고를 것들이 한쪽에 모여 있어야 옮겨 다니지 않는다 */
+#board-controls .view-columns { margin-left: 0; }
+/* 눌려 있는 동안 액센트 면이 남는다. 열 수 아이콘의 .active 와 같은 표시 */
+#show-done[aria-pressed="true"] { background: var(--softer); color: var(--accent); }
+/* 워크스페이스별·상태별 전환. 워크트리 탭의 #worktree-view 와 같은 알약 버튼 */
+#todo-view { display: flex; gap: var(--sp-4); }
+#todo-view button {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: none; color: var(--muted); font-weight: 600; cursor: pointer;
+}
+#todo-view button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+#todo-view button.active { background: var(--softer); color: var(--accent); }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
 .group, .ws-card, .kanban-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
@@ -348,6 +362,10 @@ button:disabled { color: var(--line); cursor: default; }
 /* 세로 화면은 1컬럼, 넓으면 2컬럼. 간격은 grid gap 이 담당하므로 카드 세로 마진 없음 */
 /* stretch: 같은 행의 두 카드를 더 긴 쪽 높이에 맞춰 아래선을 정렬 */
 #groups, #done-groups { display: grid; gap: var(--gap); align-items: stretch; margin: var(--gap) 0; }
+/* 뷰를 바꾸면 board.js 가 안 쓰는 쪽에 hidden 을 건다. [hidden] 의 display:none 은
+   UA 스타일이라 위·아래의 display 선언에 밀리므로 여기서 다시 적어 둔다 */
+#groups[hidden], #done-today[hidden], #kanban[hidden],
+#todo-columns[hidden], #show-done[hidden] { display: none; }
 /* 고른 열 수는 아래 화면 폭 기준(@media min-width 1240px)을 이긴다 — 화면이 넓어도
    한 줄로 길게 보고 싶을 때가 있다. 고르는 곳은 보드 위 아이콘 두 개(static/js/layout.js) */
 body[data-board-columns="1"] #groups,

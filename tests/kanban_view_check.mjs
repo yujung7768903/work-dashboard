@@ -71,6 +71,9 @@ const node = (tag) => ({
   },
   replaceChildren() {},
   querySelectorAll: () => [],
+  // 완료 항목 표시는 체크박스가 아니라 눌린 상태가 남는 아이콘이다 (board.js showDone)
+  getAttribute: () => null,
+  setAttribute() {},
   focus() {},
   addEventListener(type, handler) {
     this.listeners[type] = handler;
@@ -90,10 +93,22 @@ globalThis.window = { addEventListener() {}, location: globalThis.location };
 globalThis.history = { pushState() {}, replaceState() {} };
 
 await bootKorean();
-globalThis.localStorage = { getItem: () => null, setItem() {} };
+// 상태별 뷰는 브라우저에 남긴 취향으로 고른다 — board.js 가 모듈을 들일 때 이걸 읽는다
+globalThis.localStorage = {
+  getItem: (key) => (key === "todo-view" ? "status" : null),
+  setItem() {},
+};
 
-const kanban = await import("../static/js/kanban.js");
-await kanban.renderKanban();
+const board = await import("../static/js/board.js");
+await board.renderBoard();
+
+// 두 뷰가 같은 자리에 그린다 — 상태별을 고르면 워크스페이스별 목록과 그 목록에만
+// 쓰이는 손잡이(완료 표시·열 수)가 함께 사라져야 한다
+assert.equal(elements.kanban.hidden, false);
+assert.equal(elements.groups.hidden, true);
+assert.equal(elements["done-today"].hidden, true);
+assert.equal(elements["show-done"].hidden, true);
+assert.equal(elements["todo-columns"].hidden, true);
 
 const columns = elements.kanban.children;
 assert.equal(columns.length, 4, "컬럼은 대기·진행중·검토 대기·완료 넷이어야 한다");

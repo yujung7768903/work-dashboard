@@ -46,6 +46,9 @@ const node = (tag) => ({
   },
   replaceChildren() {},
   querySelectorAll: () => [],
+  // 완료 항목 표시는 체크박스가 아니라 눌린 상태가 남는 아이콘이다 (board.js showDone)
+  getAttribute: () => null,
+  setAttribute() {},
   focus() {},
   addEventListener(type, handler) {
     this.listeners[type] = handler;
