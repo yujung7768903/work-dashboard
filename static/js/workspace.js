@@ -9,7 +9,7 @@ const CONTEXT_FIELDS = [
   ["goal", t("workspace.goal")],
   ["considerations", t("workspace.considerations")],
 ];
-const WORKSPACE_STATUSES = ["active", "paused", "done"];
+const WORKSPACE_STATUSES = ["active", "inactive", "done"];
 const EMPTY_LABEL = t("workspace.emptyField");
 const GROUP_BY_WORKSPACE = "workspace";
 

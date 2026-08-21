@@ -34,7 +34,7 @@ CATEGORY_PALETTE = (
 COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
 
 TODO_STATUSES = ("todo", "doing", "done")
-WORKSPACE_STATUSES = ("active", "paused", "done")
+WORKSPACE_STATUSES = ("active", "inactive", "done")
 STATUS_TODO, STATUS_DOING, STATUS_DONE = TODO_STATUSES
 WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 

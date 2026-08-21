@@ -424,7 +424,7 @@ that it runs "every 10 minutes" would be a lie.
   run awaiting review, say) is **skipped and reported**. Local rules win.
 - The phone has no `todo`/`doing` distinction. Un-completing there comes back as
   `todo` even if it was `doing`; a workspace likewise comes back `active` rather
-  than `paused`.
+  than `inactive`.
 - A category switched off is skipped whole. Its list link stays, so switching it
   back on does not create a second list.
 

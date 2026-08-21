@@ -17,7 +17,7 @@ from app.repositories import workspaces as workspace_repo
 from app.services import board, planning
 from tests.support import temp_db
 
-PAUSED = "paused"
+INACTIVE = "inactive"
 MINE = "sess-mine"
 OTHER = "sess-other"
 
@@ -126,9 +126,9 @@ class PlanningTest(unittest.TestCase):
         todo_repo.create(self.con, "남은 것", workspace_id=self.first["id"])
         self.assertEqual(planning.next_todo(self.con)["todo"]["title"], "남은 것")
 
-    def test_skips_paused_workspace(self):
+    def test_skips_inactive_workspace(self):
         todo_repo.create(self.con, "보류된 일", workspace_id=self.first["id"])
-        workspace_repo.update(self.con, self.first["id"], status=PAUSED)
+        workspace_repo.update(self.con, self.first["id"], status=INACTIVE)
         todo_repo.create(self.con, "진행할 일", workspace_id=self.second["id"])
         self.assertEqual(planning.next_todo(self.con)["todo"]["title"], "진행할 일")
 
@@ -149,9 +149,9 @@ class PlanningTest(unittest.TestCase):
         todo_repo.create(self.con, "락 재설계", workspace_id=self.first["id"])
         self.assertIsNone(planning.next_todo(self.con, self.second["id"]))
 
-    def test_workspace_scope_ignores_paused_status(self):
+    def test_workspace_scope_ignores_inactive_status(self):
         todo_repo.create(self.con, "보류된 일", workspace_id=self.first["id"])
-        workspace_repo.update(self.con, self.first["id"], status=PAUSED)
+        workspace_repo.update(self.con, self.first["id"], status=INACTIVE)
         picked = planning.next_todo(self.con, self.first["id"])
         self.assertEqual(picked["todo"]["title"], "보류된 일")
 
