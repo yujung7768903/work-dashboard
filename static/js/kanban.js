@@ -2,7 +2,7 @@
 // 어느 워크스페이스의 할일인지는 카드 위 작은 줄로 얹는다 — 워크스페이스를 카드로 감싸면
 // 이름줄이 자리를 먹고 카드가 커져 목록을 훑기 어렵다.
 // 데이터·카테고리 필터·다시 그리기는 board.js 가 맡고, 이 모듈은 그리기만 한다
-import { todoElement } from "./board.js";
+import { labelStrip, todoElement } from "./board.js";
 import { t } from "./i18n.js";
 
 const UNASSIGNED_KIND = "unassigned";
@@ -75,6 +75,15 @@ function emptyNote() {
   return note;
 }
 
+// 카드 아래 칸. 라벨이 없어도 그린다 — 있는 카드만 길어지면 컬럼을 훑을 때 카드 높이가
+// 두 종류로 갈린다
+function labelFoot(todo) {
+  const foot = document.createElement("div");
+  foot.className = "kanban-foot";
+  foot.appendChild(labelStrip(todo));
+  return foot;
+}
+
 function cardElement({ group, todo }) {
   const card = document.createElement("article");
   card.className = `kanban-card ${group.kind}`;
@@ -92,8 +101,12 @@ function cardElement({ group, todo }) {
   name.textContent =
     group.kind === UNASSIGNED_KIND ? t("common.unassigned") : group.name;
   workspace.append(id, name);
-  // 라벨·케밥·상세 팝업까지 워크스페이스별 뷰와 같은 줄을 쓴다. 상태 칩만 뺀다 —
-  // 컬럼이 이미 그 상태를 말하므로 카드마다 되풀이할 값이 없다 (static/js/board.js)
-  card.append(workspace, todoElement(todo, { withStatus: false }));
+  // 케밥·상세 팝업까지 워크스페이스별 뷰와 같은 줄을 쓴다. 상태 칩은 컬럼이 이미
+  // 말하므로 빼고, 라벨은 아래 칸으로 내린다 (static/js/board.js)
+  card.append(
+    workspace,
+    todoElement(todo, { withStatus: false, withLabels: false }),
+    labelFoot(todo)
+  );
   return card;
 }

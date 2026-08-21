@@ -7,7 +7,10 @@ const DASHBOARD = {
   id: 3, kind: "workspace", name: "작업 대시보드", category_id: 1,
   category_color: "#4a5ae8", total_count: 3, done_count: 1,
   todos: [
-    { id: 11, title: "칸반 뷰", status: "doing", labels: [] },
+    {
+      id: 11, title: "칸반 뷰", status: "doing",
+      labels: [{ id: 5, name: "auto", color: "#4a5ae8" }],
+    },
     // 세션이 한 번도 안 잡은 할일. 세션이 돈 것보다 아래로 내려가야 한다
     { id: 12, title: "결정 대기 큐", status: "todo", labels: [] },
     { id: 13, title: "라벨 필터", status: "done", labels: [] },
@@ -153,17 +156,27 @@ const workspaceOf = (card) => card.children[0].children[1].textContent;
 const titleOf = (card) => card.children[1].children[1].textContent;
 assert.equal(workspaceOf(cards[1]), "작업 대시보드");
 assert.equal(titleOf(cards[1]), "결정 대기 큐");
-// 컬럼이 이미 상태를 말하므로 줄 안에 상태 칩을 두지 않는다 — #id·제목부터 시작한다
+// 컬럼이 이미 상태를 말하므로 줄 안에 상태 칩을 두지 않는다. 라벨도 줄에서 빠져
+// 카드 아래 칸으로 내려간다 — 좁은 컬럼에서 제목과 한 줄을 나눠 쓰면 둘 다 좁아진다
 assert.deepEqual(
   row.children.map((cell) => cell.className),
-  ["todo-id", "title", "todo-labels", "ws-menu"]
+  ["todo-id", "title", "ws-menu"]
 );
+// 라벨 칸은 라벨이 없어도 그린다 — 있는 카드만 길어지면 카드 높이가 갈린다
+const foot = (card) => card.children[2];
+assert.equal(foot(cards[0]).className, "kanban-foot");
+assert.equal(foot(cards[0]).children[0].children.length, 0, "라벨 없는 카드는 빈 칸");
 
 
 // 진행중 할일이 없는 워크스페이스는 그 컬럼에 아무것도 남기지 않는다
 const doing = columns[1].children.slice(1);
 assert.equal(doing.length, 1);
 assert.equal(workspaceOf(doing[0]), "작업 대시보드");
+// 붙은 라벨은 그 아래 칸에 알약으로 선다
+assert.deepEqual(
+  foot(doing[0]).children[0].children.map((pill) => [pill.className, pill.textContent]),
+  [["todo-label", "auto"]]
+);
 
 // 검토 대기는 status 가 done 이어도 완료 칸에 섞이지 않는다
 const review = columns[2].children.slice(1);
@@ -174,7 +187,7 @@ assert.equal(columns[3].children.slice(1).length, 1, "완료 칸에는 나머지
 // 케밥은 카드에 남은 조작 손잡이다. 누르면 목록이 아니라 이 화면이 다시 그려져야 한다 —
 // 안 그러면 메뉴가 숨어 있는 목록 쪽에만 열려 카드에서는 아무 일도 안 일어난 것처럼 보인다
 calls.length = 0;
-row.children[3].children[0].listeners.click({ stopPropagation() {} });
+row.children[2].children[0].listeners.click({ stopPropagation() {} });
 // 핸들러는 안쪽 비동기를 기다리지 않는다 — 재렌더가 끝날 틈을 준다
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert.equal(elements.error.textContent, "", "케밥 열기가 오류로 끝났다");

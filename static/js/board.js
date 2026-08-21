@@ -263,7 +263,7 @@ function addDialogFields() {
 
 // 칸반 뷰도 이 줄을 그대로 쓴다. 거기서는 컬럼이 이미 상태를 말하므로 상태 칩을 뺀다
 // (static/js/kanban.js)
-export function todoElement(todo, { withStatus = true } = {}) {
+export function todoElement(todo, { withStatus = true, withLabels = true } = {}) {
   const row = document.createElement("div");
   row.className = `todo ${todo.status}`;
   row.dataset.todoId = todo.id;
@@ -280,7 +280,11 @@ export function todoElement(todo, { withStatus = true } = {}) {
   if (todo.needs_title) title.append(rawTitleMark());
 
   if (withStatus) row.appendChild(statusButton(todo));
-  row.append(idNode, title, labelStrip(todo), todoMenu(todo));
+  row.append(idNode, title);
+  // 칸반 카드는 라벨을 줄이 아니라 카드 아래 칸에 둔다 — 좁은 컬럼에서 제목과 한 줄을
+  // 나눠 쓰면 둘 다 좁아진다 (static/js/kanban.js)
+  if (withLabels) row.appendChild(labelStrip(todo));
+  row.appendChild(todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
@@ -312,7 +316,7 @@ function statusButton(todo) {
 }
 
 // 제목과 케밥 사이 세 번째 칸. 붙은 라벨이 없으면 빈 칸으로 남아 제목이 그만큼 넓게 쓴다
-function labelStrip(todo) {
+export function labelStrip(todo) {
   const strip = document.createElement("span");
   strip.className = "todo-labels";
   (todo.labels || []).forEach((label) => {

@@ -535,8 +535,19 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .kanban-id { margin-right: var(--sp-4); }
 /* 카드가 이미 여백과 경계를 갖는다 — 줄이 자기 여백·윗선을 또 두면 카드가 커진다 */
 .kanban-card .todo { padding: 0; border-top: none; align-items: flex-start; }
-/* 컬럼이 좁아 #id 칸까지 두면 제목에 남는 폭이 없다. #id 는 상세 팝업에서 본다 */
+/* 컬럼이 좁아 #id 칸까지 두면 제목에 남는 폭이 없다. #id 는 카드 첫 줄에 있다 */
 .kanban-card .todo-id { display: none; }
+/* 라벨 칸. 카드 좌우 여백만큼 밖으로 빼서 구분선이 카드 폭을 가로지른다 —
+   선이 여백 안에서 끊기면 카드가 두 장처럼 보인다.
+   라벨이 없는 카드는 이 칸이 빈 채로 남아 높이를 지킨다 */
+.kanban-foot {
+  margin: var(--sp-4) calc(var(--sp-12) * -1) 0;
+  padding: var(--sp-8) var(--sp-12) 0;
+  border-top: 1px solid var(--line);
+  min-height: 25px;
+}
+/* 줄 안에서는 오른쪽으로 밀려 있었지만(제목이 남는 폭을 쓴다) 여기서는 제 칸이라 왼쪽부터 */
+.kanban-foot .todo-labels { justify-content: flex-start; }
 /* 제목 자리를 두 줄로 고정한다 — 한 줄짜리도 두 줄을 잡아 카드 높이가 균일해지고,
    넘치는 제목은 말줄임으로 끊는다. 세 줄짜리 하나가 컬럼의 리듬을 깨지 않아야 한다 */
 .kanban-card .todo .title {
