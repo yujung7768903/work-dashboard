@@ -52,6 +52,13 @@ LINK_SCOPE_RULE = (
     "연결하지 않는다 — 연결하면 병합할 때 착수하지도 않은 채 done 으로 닫힌다. "
     "그 할일은 실제로 착수하는 세션이 연결한다."
 )
+# 할일 등록과 연결은 사용자의 작업 목록을 바꾼다. 무엇이 자기 일인지는 사용자가 정한다
+LINK_CONSENT_RULE = (
+    " 할일을 만들거나 세션에 연결하기 전에 사용자에게 먼저 확인받는다 — "
+    "제목 한 줄로 제안하고 승낙을 받은 뒤 실행한다. "
+    "거절하면 만들지 않고 그대로 작업한다. "
+    "자율 세션이면 확인 없이 등록하고 무엇을 등록했는지 보고에 남긴다."
+)
 # 해제 뒤 같은 세션이 이어질 때. 끝난 할일에 새 작업을 얹으면 무엇이 끝났는지 알 수 없어진다
 RELEASED_GUIDE = (
     "지침: 이 세션이 잡았던 할일은 모두 끝났다(done). "
@@ -60,6 +67,7 @@ RELEASED_GUIDE = (
     "dash.py link-todo <todo-id> 로 연결한다. "
     "단발 조회·설명 질문이면 만들지 않는다."
     + LINK_SCOPE_RULE
+    + LINK_CONSENT_RULE
 )
 # 연결은 착수 선언이지만 늘 그런 것은 아니다 — 이미 끝난 작업을 뒤늦게 연결하는 일도 있다.
 # 무엇이 끝난 것인지는 작업 내용을 본 쪽만 알므로 코드가 추측하지 않고 여기서 규칙을 알린다
@@ -74,6 +82,7 @@ UNLINKED_GUIDE = (
     "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다. "
     + LINK_STATUS_RULE
     + LINK_SCOPE_RULE
+    + LINK_CONSENT_RULE
 )
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
@@ -92,6 +101,7 @@ UNCLASSIFIED_GUIDE = (
     "dash.py add-todo 로 할일을 만들고 dash.py link-todo <todo-id> 로 연결한다. "
     + LINK_STATUS_RULE
     + LINK_SCOPE_RULE
+    + LINK_CONSENT_RULE
     + " 단발 조회·설명 질문이면 할일을 만들지 않는다. "
     "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
     "dash.py show-todo --session 으로 할일을 직접 확인하고 "
