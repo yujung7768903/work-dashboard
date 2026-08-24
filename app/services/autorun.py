@@ -78,6 +78,7 @@ BLOCKER_BLOCKED = "blocked"
 BLOCKER_REQUESTED = "requested"
 BLOCKER_REVIEW = "review"
 BLOCKER_CLAIMED = "claimed"
+BLOCKER_CWD = "cwd"
 BLOCKER_PRECONDITION = "precondition"
 
 # 실행 id → 워크트리 경로. 끝난 실행만 담는다(그 뒤로 바뀌지 않는다)
@@ -265,6 +266,28 @@ def sorted_candidates(con, keep, limit=None):
     return ordered[:limit] if limit else ordered
 
 
+def cwd_resolver(con):
+    """워크스페이스 id → 작업 위치. 판정과 후보 목록이 같은 답을 쓰게 하나로 모았다.
+
+    위치는 할일이 아니라 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산한다 —
+    후보 수만큼 target_cwd 를 다시 돌리면 매번 세션 이력을 훑는다
+    """
+    memo = {}
+
+    def resolve(workspace_id):
+        if workspace_id not in memo:
+            workspace = (
+                workspace_repo.get(con, workspace_id)
+                if workspace_id is not None
+                else None
+            )
+            memo[workspace_id] = target_cwd(con, workspace)
+        return memo[workspace_id]
+
+    resolve.memo = memo
+    return resolve
+
+
 def eligible(con):
     """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가
     아니고, 작업 위치를 알 수 있을 것
@@ -273,9 +296,9 @@ def eligible(con):
     할일에 잡을 또 띄워 diff 가 두 벌 생긴다. failed 는 안 뺀다 — AUTORUN_FAIL_LIMIT
     이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다.
 
-    위치는 할일이 아니라 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산해
-    `keep.cwd_memo` 에 담는다 — judge() 가 이 memo 를 재사용해 target_cwd 를 두 번
-    계산하지 않고, 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가 있었는지"도 안다
+    위치는 cwd_resolver 가 워크스페이스당 한 번만 계산하고, 그 결과를 `keep.cwd_memo`
+    로 내보낸다 — judge() 가 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가
+    있었는지"를 안다
     """
     labeled = labeled_ids(con)
     excluded = (
@@ -283,15 +306,7 @@ def eligible(con):
         | autorun_repo.requested_todo_ids(con)
         | autorun_repo.locked_todo_ids(con)
     )
-    cwd_memo = {}
-
-    def cwd_of(workspace_id):
-        if workspace_id not in cwd_memo:
-            workspace = (
-                workspace_repo.get(con, workspace_id) if workspace_id is not None else None
-            )
-            cwd_memo[workspace_id] = target_cwd(con, workspace)
-        return cwd_memo[workspace_id]
+    cwd_of = cwd_resolver(con)
 
     def keep(todo):
         if todo["id"] not in labeled or todo["id"] in excluded:
@@ -302,7 +317,7 @@ def eligible(con):
         # 위치를 못 정하면 실행 자체가 안 된다. 여기서 걸러야 다음 후보로 넘어간다
         return bool(cwd_of(todo["workspace_id"]))
 
-    keep.cwd_memo = cwd_memo
+    keep.cwd_memo = cwd_of.memo
     return keep
 
 
@@ -326,25 +341,33 @@ def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
     blocked = autorun_repo.blocked_todo_ids(con)
     requested = autorun_repo.requested_todo_ids(con)
     review = autorun_repo.locked_todo_ids(con)
+    cwd_of = cwd_resolver(con)
     rows = sorted_candidates(con, lambda todo: todo["id"] in labeled, limit=limit)
     return [
         {
             "todo_id": todo["id"],
             "title": todo["title"],
             "status": todo["status"],
+            # 위치를 지정하는 팝업이 어느 워크스페이스에 저장할지 알아야 한다
+            "workspace_id": todo["workspace_id"],
             "workspace_name": todo["workspace_name"],
-            "blocker": _blocker(con, todo, blocked, requested, review, claimed),
+            "blocker": _blocker(con, todo, blocked, requested, review, claimed, cwd_of),
             "precondition": precondition.summary(con, todo["precondition"]),
         }
         for todo in rows
     ]
 
 
-def _blocker(con, todo, blocked, requested, review, claimed):
+def _blocker(con, todo, blocked, requested, review, claimed, cwd_of):
     """무엇 하나만 고르면 되는 값이다 — 사람이 먼저 손댈 것부터 본다.
 
     막힘·요청·검토 대기는 사람이 처리해야 풀리고, 점유는 기다리면 풀리고,
-    조건 미충족은 조건 쪽을 봐야 한다
+    조건 미충족은 조건 쪽을 봐야 한다.
+
+    위치 미정을 조건 미충족보다 먼저 보는 이유 — 한 번 지정하면 그 워크스페이스의
+    후보가 다 풀리고, 조건은 할일마다 따로 풀어야 한다. 그리고 eligible() 이 위치
+    없는 후보를 건너뛰므로, 여기서 안 알려주면 화면은 "시작 가능"이라 적어 놓고
+    tick 은 조용히 지나간다 — 사람이 왜 안 도는지 알 방법이 없다
     """
     todo_id = todo["id"]
     if todo_id in blocked:
@@ -355,6 +378,8 @@ def _blocker(con, todo, blocked, requested, review, claimed):
         return BLOCKER_REVIEW
     if todo_id in claimed:
         return BLOCKER_CLAIMED
+    if not cwd_of(todo["workspace_id"]):
+        return BLOCKER_CWD
     text = (todo["precondition"] or "").strip()
     if text and not precondition.all_met(con, text):
         return BLOCKER_PRECONDITION
@@ -407,10 +432,18 @@ def target_cwd(con, workspace):
 
     '가장 최근' 이 아니라 '가장 많이' 인 이유 — 다른 저장소에서 이 워크스페이스의
     할일을 하나 잡기만 해도 최근 1위가 그쪽으로 넘어간다(실제로 그랬다). 저장소가
-    아닌 위치(홈·scratch)는 .git 이 없어 여기서 걸러진다
+    아닌 위치(홈·scratch)는 .git 이 없어 여기서 걸러진다.
+
+    사람이 지정한 위치(workspaces.cwd)가 있으면 그것이 먼저다 — 추론은 그 워크스페이스에서
+    저장소에 들어가 일해 본 적이 있어야 답이 나오고, 없으면 영영 안 나온다. 지정 위치에는
+    .git 을 요구하지 않는다: 저장소가 아닌 곳에서 하는 일(자료·문서)도 있고, 추론과 달리
+    엉뚱한 데를 짚을 위험이 없다. 없어진 경로면 무시하고 추론으로 내려간다
     """
     if not workspace:
         return ""
+    chosen = (workspace.get("cwd") or "").strip()
+    if chosen and os.path.isdir(chosen):
+        return chosen
     counted = {}
     for cwd, sessions in session_repo.cwd_counts_by_workspace(con, workspace["id"]):
         root = _main_checkout(cwd)

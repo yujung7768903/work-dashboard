@@ -8,7 +8,8 @@ from app.repositories import categories as category_repo
 TABLE = "workspaces"
 ALL_SCOPE = ("1=1", ())
 CONTEXT_FIELDS = ("background", "purpose", "goal", "considerations")
-OPTIONAL_FIELDS = CONTEXT_FIELDS + ("jira_id",)
+# cwd = 사람이 지정한 작업 위치. 세션 이력으로 추론이 안 될 때 자율 실행이 쓴다
+OPTIONAL_FIELDS = CONTEXT_FIELDS + ("jira_id", "cwd")
 EDITABLE_FIELDS = ("name", "status", "category_id") + OPTIONAL_FIELDS
 
 

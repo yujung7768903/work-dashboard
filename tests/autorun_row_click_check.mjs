@@ -1,5 +1,6 @@
 // 자율 수행 줄을 누르면 그 실행의 할일로 상세 팝업이 열리는지, '검토 대기' 배지를 누르면
-// 팝업 대신 확인 요청이 나가는지 본다. 브라우저 없이 돌려야 하므로 autorun.js 가 만지는
+// 팝업 대신 확인 요청이 나가는지, '작업 위치 미정' 칩을 누르면 폴더 선택기가 열려
+// 고른 경로가 워크스페이스에 저장되는지 본다. 브라우저 없이 돌려야 하므로 autorun.js 가 만지는
 // DOM 만 흉내낸다. 실행: node tests/autorun_row_click_check.mjs
 // (tests/test_autorun_row_click.py 가 이걸 부른다)
 import assert from "node:assert/strict";
@@ -26,7 +27,11 @@ const CANDIDATES = [
     precondition: null },
   { todo_id: 60, title: "조건 걸림", workspace_name: "작업 대시보드",
     blocker: "precondition", precondition: { total: 3, met: 1, manual: 1 } },
+  { todo_id: 61, title: "위치 모름", workspace_id: 3, workspace_name: "스터디",
+    blocker: "cwd", precondition: null },
 ];
+// 폴더 선택기가 처음 보여주는 곳. "이 폴더 선택" 을 누르면 이 경로가 그대로 답이 된다
+const BROWSE_AT = "/home/u/study";
 const TICK_AT = new Date(Date.now() - 3 * 60 * 1000).toISOString(); // 3분 전 tick
 const REASON = "돌릴 수 있는 할일이 없음"; // 켜져 있는데 안 도는 이유. 주기 옆에 같이 보인다
 
@@ -40,6 +45,8 @@ globalThis.fetch = async (url, options) => {
       candidates: CANDIDATES,
     },
     "/api/workspaces": [],
+    "/api/browse": { path: BROWSE_AT, entries: [{ name: "자료", path: `${BROWSE_AT}/자료` }] },
+    "/api/workspaces/3": { id: 3, cwd: BROWSE_AT },
     "/api/categories": [],
     "/api/todos/57": { todo: { id: 57, title: "제목" }, sessions: [] },
     "/api/autorun-runs/3": { id: 3, outcome: "done" },
@@ -74,6 +81,12 @@ const node = () => ({
   replaceChildren() {},
   showModal() {
     this.open = true;
+  },
+  // 브라우저는 close(value) 를 returnValue 에 담고 close 이벤트를 쏜다 (browse.js 가 그걸 읽는다)
+  close(value) {
+    this.returnValue = value ?? "";
+    this.open = false;
+    this.listeners.close?.();
   },
   addEventListener(type, handler) {
     this.listeners[type] = handler;
@@ -190,5 +203,22 @@ badge.listeners.click({ stopPropagation: () => (stopped = true) });
 assert.equal(stopped, true);
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(asked.includes("PATCH /api/autorun-runs/3"), asked.join(", "));
+
+// 작업 위치 미정 칩도 눌리는 버튼이다 — 이 자리에서 풀 수 있는 사유는 이것뿐이다
+const cwdChip = cands[2].children[3];
+assert.equal(cwdChip.className, "badge blocker-cwd");
+assert.equal(cwdChip.textContent, "작업 위치 미정");
+assert.equal(typeof cwdChip.listeners.click, "function");
+let cwdStopped = false;
+cwdChip.listeners.click({ stopPropagation: () => (cwdStopped = true) });
+assert.equal(cwdStopped, true);
+// 보드 케밥의 "시작" 과 같은 폴더 선택기가 열린다
+assert.equal(elements["dir-browse-modal"].open, true);
+await new Promise((resolve) => setTimeout(resolve, 0));
+// "이 폴더 선택" 을 누르면 그 경로가 이 워크스페이스의 작업 위치로 저장된다 —
+// 세션을 여기서 띄우지 않는다. 다음 tick 이 제 순서대로 시작한다
+elements["dir-browse-select"].onclick();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.ok(asked.includes("PATCH /api/workspaces/3"), asked.join(", "));
 
 console.log("ok");

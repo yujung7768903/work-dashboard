@@ -922,7 +922,15 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .ar-cands .blocker-claimed { color: var(--muted); }
 .ar-cands .blocker-review { color: var(--soft); }
 .ar-cands .blocker-blocked,
+.ar-cands .blocker-cwd,
 .ar-cands .blocker-requested { color: var(--warn); }
+/* 위치 미정 칩만 버튼이다 — 눌러 경로를 고르면 그 자리에서 풀린다. 실행 목록의 검토
+   대기 버튼과 같은 방식으로 기본 외양을 걷어내되, 이 칸은 오른쪽 정렬이라 그것만 다르다 */
+.ar-cands button.badge {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 600;
+  font-size: var(--fs-sm); cursor: pointer; text-decoration: underline dotted;
+  text-align: right;
+}
 #autorun-cycle {
   font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
 }

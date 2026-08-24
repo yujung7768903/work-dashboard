@@ -301,6 +301,14 @@ explains itself. Drag a candidate by its handle to reorder; the order lands in
 is never a lie. Runs are grouped by state — needs you, running, blocked or
 failed, done — and the groups that need a human stay open.
 
+The one chip you can act on is **work path unset**. A run needs a directory, and
+that is normally inferred from where sessions of that workspace have worked; a
+workspace that has never been worked in a repository yields nothing, so the tick
+skips it silently. The chip says so and opens the same folder picker the board's
+todo **Start** uses. What you pick is stored on the workspace (`workspaces.cwd`)
+and beats inference from then on, so the next tick starts the todo on its own —
+picking a path is a decision, not a launch button.
+
 A todo with preconditions is eligible only when the code can judge every item
 and every item is met. `#id` lines are resolved against that todo's status; a
 `Check:` command or a free-text sentence is not, and keeps the todo out of the

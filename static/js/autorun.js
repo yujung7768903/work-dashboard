@@ -2,6 +2,7 @@
 // 보드에서 떼어낸 이유 — 결과가 한 목록에 섞이면 사람이 처리할 것(요청·검토 대기)을
 // 찾을 수 없고, 후보가 왜 안 도는지도 알 수 없다
 import * as api from "./api.js";
+import { pickDirectory } from "./browse.js";
 import { fromKorean, t } from "./i18n.js";
 import { formatAge, openDetail } from "./sessions.js";
 
@@ -27,6 +28,8 @@ const REVIEW_HINT = t("autorun.reviewHint");
 const TOGGLE_HINT = t("autorun.toggleHint");
 const TOGGLE_GROUP_HINT = t("autorun.groupToggle");
 const PRECONDITION = "precondition";
+// 작업 위치를 모르는 후보. 이 칩만 눌러서 그 자리에서 풀 수 있다
+const CWD = "cwd";
 
 // 후보 한 건이 지금 못 도는 이유. 서버 autorun.BLOCKER_* 와 같은 이름을 쓴다.
 // 칩에는 짧은 쪽(…Chip)을 적고 왜 그런지는 툴팁(…Hint)으로 — 목록이 문장으로 넘치면 못 읽는다
@@ -37,6 +40,7 @@ const BLOCKER_CHIPS = {
   requested: t("autorun.blocker.requested"),
   review: t("autorun.blocker.review"),
   claimed: t("autorun.blocker.claimed"),
+  cwd: t("autorun.blocker.cwd"),
   precondition: t("autorun.blocker.precondition"),
 };
 const BLOCKER_HINTS = {
@@ -45,6 +49,7 @@ const BLOCKER_HINTS = {
   requested: t("autorun.blockerHint.requested"),
   review: t("autorun.blockerHint.review"),
   claimed: t("autorun.blockerHint.claimed"),
+  cwd: t("autorun.blockerHint.cwd"),
   precondition: t("autorun.blockerHint.precondition"),
 };
 
@@ -216,10 +221,33 @@ function clearDropLines(list) {
     .forEach((row) => row.classList.remove("drop-before", "drop-after"));
 }
 
+// 위치 미정만 누를 수 있는 칩이다 — 나머지 사유는 이 자리에서 풀 것이 없다.
+// 워크스페이스가 없는 할일은 위치를 적어 둘 곳이 없어 글자로만 남긴다
 function blockerChip(candidate) {
-  const chip = element("span", `badge blocker-${candidate.blocker}`, chipText(candidate));
+  const pickable = candidate.blocker === CWD && Boolean(candidate.workspace_id);
+  const chip = element(
+    pickable ? "button" : "span",
+    `badge blocker-${candidate.blocker}`,
+    chipText(candidate)
+  );
   chip.title = BLOCKER_HINTS[candidate.blocker] ?? candidate.blocker;
+  if (pickable) bindCwdPick(chip, candidate);
   return chip;
+}
+
+// 보드 케밥의 "시작" 이 쓰는 폴더 선택기를 그대로 연다 — 묻는 것이 같으면 묻는 화면도 같아야 한다.
+// 여기서 세션을 띄우지 않는 이유 — 고른 경로는 워크스페이스에 남으므로 다음 tick 이
+// 제 순서대로 시작한다. 지금 띄우면 자율 실행 기록 밖에서 도는 세션이 하나 더 생긴다
+function bindCwdPick(chip, candidate) {
+  chip.type = "button";
+  chip.addEventListener("click", async (event) => {
+    // 줄 클릭은 상세 팝업이라 여기서 멈춘다 — 경로를 고르려고 눌렀는데 팝업이 뜨면 안 된다
+    event.stopPropagation();
+    const cwd = await pickDirectory();
+    if (!cwd) return;
+    // 실패하면 api.js 가 이미 알렸다. 목록은 그대로 두고 되돌린다
+    await api.updateWorkspace(candidate.workspace_id, { cwd }).then(renderAutorun, () => {});
+  });
 }
 
 // 조건 미충족이면 몇 개 중 몇 개인지까지 적는다 — 무엇을 풀어야 도는지가 그 숫자다

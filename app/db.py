@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS workspaces(
     status TEXT NOT NULL DEFAULT 'active',
     sort_order INTEGER NOT NULL,
     jira_id TEXT,
+    cwd TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -185,6 +186,7 @@ def connect(path=None):
     _add_requested_note_column(con)
     _add_finished_at_column(con)
     _add_tick_reason_column(con)
+    _add_workspace_cwd_column(con)
     _add_gtasks_columns(con)
     _rename_paused_status(con)
     _drop_session_workspace_column(con)
@@ -351,6 +353,19 @@ def _add_tick_reason_column(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(autorun_state)")}
     if "last_tick_reason" not in columns:
         con.execute("ALTER TABLE autorun_state ADD COLUMN last_tick_reason TEXT")
+    con.commit()
+
+
+def _add_workspace_cwd_column(con):
+    """사람이 지정한 작업 위치 컬럼을 뒤늦게 붙임.
+
+    세션 이력으로 추론하는 것(autorun.target_cwd)만으로는 그 워크스페이스에서 아직
+    저장소에서 일해 본 적이 없으면 위치가 영영 안 잡힌다 — 사람이 한 번 지정하면
+    그 뒤로는 물어볼 필요가 없게 여기 남긴다
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(workspaces)")}
+    if "cwd" not in columns:
+        con.execute("ALTER TABLE workspaces ADD COLUMN cwd TEXT")
     con.commit()
 
 

@@ -191,6 +191,30 @@ class CandidatePanel(AutorunCase):
             self.assertEqual(autorun.candidates(self.con)[0]["blocker"], expected)
             self.con.execute("DELETE FROM autorun_runs")
 
+    def test_marks_unknown_cwd(self):
+        """위치를 못 정하면 tick 이 건너뛴다 — 목록이 "시작 가능" 이라 적으면 거짓말이 된다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blind = workspace_repo.create(
+            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
+        )
+        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
+        row = autorun.candidates(self.con)[0]
+        self.assertEqual(row["blocker"], autorun.BLOCKER_CWD)
+        # 화면이 위치를 지정할 워크스페이스를 알아야 그 자리에서 풀 수 있다
+        self.assertEqual(row["workspace_id"], blind["id"])
+
+    def test_designated_cwd_clears_the_blocker(self):
+        """사람이 위치를 지정하면 그 워크스페이스의 후보가 바로 돌 수 있게 된다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        blind = workspace_repo.create(
+            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
+        )
+        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
+        workspace_repo.update(self.con, blind["id"], cwd=tempfile.mkdtemp())
+        self.assertEqual(autorun.candidates(self.con)[0]["blocker"], autorun.BLOCKER_READY)
+
     def test_counts_unmet_conditions(self):
         label_repo.set_for_todo(self.con, self.todo["id"], [])
         blocker = self._todo("먼저 할 일")
@@ -305,6 +329,24 @@ class Gates(AutorunCase):
         session_repo.link_todo(self.con, "sess-stranger", self.todo["id"])
         session_repo.set_state(self.con, "sess-stranger", STATE_ENDED)
         self.assertEqual(autorun.target_cwd(self.con, self.workspace), self.repo)
+
+    def test_designated_cwd_wins_over_session_history(self):
+        """사람이 지정한 위치가 있으면 세션 이력을 추론하지 않는다 — 지정이 곧 답이다.
+
+        저장소가 아닌 곳도 받는다: 자료·문서만 다루는 워크스페이스는 .git 이 없다
+        """
+        chosen = tempfile.mkdtemp()
+        workspace_repo.update(self.con, self.workspace["id"], cwd=chosen)
+        workspace = workspace_repo.get(self.con, self.workspace["id"])
+        self.assertEqual(autorun.target_cwd(self.con, workspace), chosen)
+
+    def test_designated_cwd_that_is_gone_falls_back_to_history(self):
+        """지운 경로를 물고 멈추면 안 된다 — 추론으로 내려가고, 그것도 없으면 위치 미정"""
+        missing = tempfile.mkdtemp()
+        os.rmdir(missing)
+        workspace_repo.update(self.con, self.workspace["id"], cwd=missing)
+        workspace = workspace_repo.get(self.con, self.workspace["id"])
+        self.assertEqual(autorun.target_cwd(self.con, workspace), self.repo)
 
     def test_unknown_cwd_blocks_start(self):
         """그 워크스페이스에서 돈 세션이 없으면 어디서 작업할지 알 수 없다"""
