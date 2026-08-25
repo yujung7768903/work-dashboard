@@ -32,23 +32,17 @@ const PRECONDITION = "precondition";
 const CWD = "cwd";
 
 // 후보 한 건이 지금 못 도는 이유. 서버 autorun.BLOCKER_* 와 같은 이름을 쓴다.
+// 이미 돈 것(검토 대기·판단 보류·막힘)과 남이 잡은 것은 서버가 후보에서 빼므로 여기 없다 —
+// 그 넷은 아래 실행 목록과 세션 목록이 제 구획으로 보여준다.
 // 칩에는 짧은 쪽(…Chip)을 적고 왜 그런지는 툴팁(…Hint)으로 — 목록이 문장으로 넘치면 못 읽는다
 // 키를 조립하지 않고 하나씩 적는다 — tests/test_language.py 가 코드에 적힌 키만 찾는다
 const BLOCKER_CHIPS = {
   ready: t("autorun.blocker.ready"),
-  blocked: t("autorun.blocker.blocked"),
-  requested: t("autorun.blocker.requested"),
-  review: t("autorun.blocker.review"),
-  claimed: t("autorun.blocker.claimed"),
   cwd: t("autorun.blocker.cwd"),
   precondition: t("autorun.blocker.precondition"),
 };
 const BLOCKER_HINTS = {
   ready: t("autorun.blockerHint.ready"),
-  blocked: t("autorun.blockerHint.blocked"),
-  requested: t("autorun.blockerHint.requested"),
-  review: t("autorun.blockerHint.review"),
-  claimed: t("autorun.blockerHint.claimed"),
   cwd: t("autorun.blockerHint.cwd"),
   precondition: t("autorun.blockerHint.precondition"),
 };

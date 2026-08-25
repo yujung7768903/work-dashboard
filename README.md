@@ -294,10 +294,14 @@ A tick that finds no eligible todo does nothing at all, which is why this is a
 cron entry and not a daemon.
 
 The **Autorun** tab holds the switch and two lists. Candidates are the
-`auto`-labelled todos in priority order, each with a chip naming what holds it
-back right now — an eligible-only list is empty most of the time and never
-explains itself. Drag a candidate by its handle to reorder; the order lands in
-`todos.autorun_order` and is the one a tick picks from, so the top of the list
+`auto`-labelled todos that have not run yet, in priority order, each with a chip
+naming what holds it back right now — an eligible-only list is empty most of the
+time and never explains itself. Ones that already ran (awaiting review, awaiting
+your call, blocked) and ones another session holds are left out: there is nothing
+to resolve from this list, they already have their own group in the run and
+session lists, and keeping them here fills the rows so the todo that actually
+runs next falls off screen. Drag a candidate by its handle to reorder; the order
+lands in `todos.autorun_order` and is the one a tick picks from, so the top of the list
 is never a lie. Runs are grouped by state — needs you, running, blocked or
 failed, done — and the groups that need a human stay open.
 
