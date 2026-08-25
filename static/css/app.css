@@ -919,11 +919,7 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 지금 돌 수 있는 것만 강조하고, 막힌 것은 왜 막혔는지 색으로 갈라 준다 */
 .ar-cands .blocker-ready { color: var(--good); }
 .ar-cands .blocker-precondition { color: var(--soft); }
-.ar-cands .blocker-claimed { color: var(--muted); }
-.ar-cands .blocker-review { color: var(--soft); }
-.ar-cands .blocker-blocked,
-.ar-cands .blocker-cwd,
-.ar-cands .blocker-requested { color: var(--warn); }
+.ar-cands .blocker-cwd { color: var(--warn); }
 /* 위치 미정 칩만 버튼이다 — 눌러 경로를 고르면 그 자리에서 풀린다. 실행 목록의 검토
    대기 버튼과 같은 방식으로 기본 외양을 걷어내되, 이 칸은 오른쪽 정렬이라 그것만 다르다 */
 .ar-cands button.badge {

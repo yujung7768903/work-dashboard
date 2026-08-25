@@ -72,12 +72,9 @@ MSG_SESSION_STARTED = "세션을 시작했습니다"
 # 사람이 직접 고른 작업 위치가 실제 디렉토리가 아닐 때
 MSG_NOT_A_DIRECTORY = "디렉토리가 아님"
 
-# 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다
+# 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다.
+# 사람이 이 자리에서 풀 수 있는 것만 남는다 — 이미 돈 것은 후보 목록에 아예 안 실린다
 BLOCKER_READY = "ready"
-BLOCKER_BLOCKED = "blocked"
-BLOCKER_REQUESTED = "requested"
-BLOCKER_REVIEW = "review"
-BLOCKER_CLAIMED = "claimed"
 BLOCKER_CWD = "cwd"
 BLOCKER_PRECONDITION = "precondition"
 
@@ -334,15 +331,26 @@ def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
     """자율 수행 화면의 후보 목록. 순위대로 상위 N 건과 각각이 지금 못 도는 이유.
 
     eligible() 이 거른 결과만 보여주면 목록이 늘 비어 '왜 안 도는지' 를 여전히 알 수
-    없다. 그래서 라벨이 붙은 할일은 못 도는 것도 싣고, 무엇에 막혔는지를 같이 준다
+    없다. 그래서 라벨이 붙은 할일은 못 도는 것도 싣고, 무엇에 막혔는지를 같이 준다.
+
+    다만 이미 한 번 돈 것(검토 대기·판단 보류·막힘)과 다른 세션이 잡은 것은 뺀다 —
+    그 넷은 사람이 후보 목록에서 풀 수 있는 게 없고, 아래 실행 목록과 세션 목록에
+    이미 제 구획으로 서 있다. 여기 남겨 두면 limit 줄을 다 차지해서 정작 다음에 돌
+    할일이 화면 밖으로 밀린다
     """
     labeled = labeled_ids(con)
-    claimed = todo_repo.ids_claimed_by_others(con, None)
-    blocked = autorun_repo.blocked_todo_ids(con)
-    requested = autorun_repo.requested_todo_ids(con)
-    review = autorun_repo.locked_todo_ids(con)
+    ran = (
+        autorun_repo.blocked_todo_ids(con)
+        | autorun_repo.requested_todo_ids(con)
+        | autorun_repo.locked_todo_ids(con)
+        | todo_repo.ids_claimed_by_others(con, None)
+    )
     cwd_of = cwd_resolver(con)
-    rows = sorted_candidates(con, lambda todo: todo["id"] in labeled, limit=limit)
+    rows = sorted_candidates(
+        con,
+        lambda todo: todo["id"] in labeled and todo["id"] not in ran,
+        limit=limit,
+    )
     return [
         {
             "todo_id": todo["id"],
@@ -351,33 +359,21 @@ def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
             # 위치를 지정하는 팝업이 어느 워크스페이스에 저장할지 알아야 한다
             "workspace_id": todo["workspace_id"],
             "workspace_name": todo["workspace_name"],
-            "blocker": _blocker(con, todo, blocked, requested, review, claimed, cwd_of),
+            "blocker": _blocker(con, todo, cwd_of),
             "precondition": precondition.summary(con, todo["precondition"]),
         }
         for todo in rows
     ]
 
 
-def _blocker(con, todo, blocked, requested, review, claimed, cwd_of):
+def _blocker(con, todo, cwd_of):
     """무엇 하나만 고르면 되는 값이다 — 사람이 먼저 손댈 것부터 본다.
-
-    막힘·요청·검토 대기는 사람이 처리해야 풀리고, 점유는 기다리면 풀리고,
-    조건 미충족은 조건 쪽을 봐야 한다.
 
     위치 미정을 조건 미충족보다 먼저 보는 이유 — 한 번 지정하면 그 워크스페이스의
     후보가 다 풀리고, 조건은 할일마다 따로 풀어야 한다. 그리고 eligible() 이 위치
     없는 후보를 건너뛰므로, 여기서 안 알려주면 화면은 "시작 가능"이라 적어 놓고
     tick 은 조용히 지나간다 — 사람이 왜 안 도는지 알 방법이 없다
     """
-    todo_id = todo["id"]
-    if todo_id in blocked:
-        return BLOCKER_BLOCKED
-    if todo_id in requested:
-        return BLOCKER_REQUESTED
-    if todo_id in review:
-        return BLOCKER_REVIEW
-    if todo_id in claimed:
-        return BLOCKER_CLAIMED
     if not cwd_of(todo["workspace_id"]):
         return BLOCKER_CWD
     text = (todo["precondition"] or "").strip()

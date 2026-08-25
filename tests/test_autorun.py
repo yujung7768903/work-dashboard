@@ -180,16 +180,20 @@ class CandidatePanel(AutorunCase):
         self._todo("라벨 없는 일")
         self.assertEqual(len(autorun.candidates(self.con)), 1)
 
-    def test_marks_blocked_and_review_and_requested(self):
-        for outcome, expected in (
-            (OUTCOME_BLOCKED, autorun.BLOCKER_BLOCKED),
-            (OUTCOME_REQUESTED, autorun.BLOCKER_REQUESTED),
-            (OUTCOME_REVIEW, autorun.BLOCKER_REVIEW),
-        ):
+    def test_leaves_out_what_already_ran(self):
+        """한 번 돈 것은 아래 실행 목록이 제 구획으로 보여준다 — 후보에 또 실으면
+        limit 줄을 다 차지해서 정작 다음에 돌 할일이 화면 밖으로 밀린다"""
+        for outcome in (OUTCOME_BLOCKED, OUTCOME_REQUESTED, OUTCOME_REVIEW):
             run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
             autorun_repo.close_run(self.con, run["id"], outcome)
-            self.assertEqual(autorun.candidates(self.con)[0]["blocker"], expected)
+            self.assertEqual(autorun.candidates(self.con), [], outcome)
             self.con.execute("DELETE FROM autorun_runs")
+
+    def test_leaves_out_todo_another_session_holds(self):
+        """남이 잡고 있는 동안은 자율 수행이 건드릴 것이 아니다 — 그 세션 목록에 이미 있다"""
+        session_repo.register(self.con, "다른-세션")
+        session_repo.link_todo(self.con, "다른-세션", self.todo["id"])
+        self.assertEqual(autorun.candidates(self.con), [])
 
     def test_marks_unknown_cwd(self):
         """위치를 못 정하면 tick 이 건너뛴다 — 목록이 "시작 가능" 이라 적으면 거짓말이 된다"""
