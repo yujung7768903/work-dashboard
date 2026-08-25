@@ -4,6 +4,7 @@ import { CHEVRON_SVG, currentCategoryId } from "./board.js";
 import { fromKorean, t } from "./i18n.js";
 import { run } from "./main.js";
 import { openDetail } from "./sessions.js";
+import { loadingSpinner } from "./spinner.js";
 import { menuItem } from "./workspace.js";
 
 const GROUP_BY_WORKSPACE = "workspace";
@@ -54,14 +55,7 @@ function drawLoading() {
   syncViewButtons();
   const container = document.getElementById("worktree-list");
   container.innerHTML = "";
-  const spinner = document.createElement("div");
-  spinner.className = "wt-loading";
-  spinner.setAttribute("role", "status");
-  spinner.setAttribute("aria-label", t("common.loading"));
-  // 목록 위 패널들의 높이가 그때그때 달라 화면 아래까지 남은 높이는 CSS 가 알 수 없다
-  const room = Math.max(0, innerHeight - container.getBoundingClientRect().top);
-  spinner.style.setProperty("--wt-loading-room", `${room}px`);
-  container.appendChild(spinner);
+  container.appendChild(loadingSpinner(container));
 }
 
 function draw(groups) {

@@ -11,6 +11,7 @@ import {
   setBoardRefresh,
   startSessionPolling,
 } from "./sessions.js";
+import { loadingSpinner } from "./spinner.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
@@ -77,6 +78,28 @@ export async function renderBoard() {
   renderGroups(visible.filter((group) => !isComplete(group)));
   renderCompleted(visible.filter(isComplete));
   attachDragHandlers(renderBoard);
+}
+
+// 시작·삭제는 워크트리를 만들고 세션을 띄우느라 몇 초가 걸린다. 그동안 목록이 그대로면
+// 눌린 건지 알 수 없으므로, 워크트리 탭과 같은 도는 원을 목록 자리에 세우고
+// 끝나면(실패로 끝나도) 목록을 다시 그려 걷는다
+async function withLoading(call) {
+  drawLoading();
+  try {
+    return await call();
+  } finally {
+    await renderBoard();
+  }
+}
+
+function drawLoading() {
+  // 지금 보고 있는 뷰의 목록 자리에만 세운다 — 다른 뷰는 감춰져 있어 보이지 않는다
+  const list = document.getElementById(view === VIEW_STATUS ? "kanban" : "groups");
+  list.innerHTML = "";
+  list.appendChild(loadingSpinner(list));
+  // 완료 영역도 함께 걷는다. 목록만 비우면 그 아래 완료 카드가 남아 다 그려진 화면으로
+  // 읽힌다 (다시 그릴 때 syncViewControls 가 제자리로 돌린다)
+  document.getElementById("done-today").hidden = true;
 }
 
 // 두 뷰가 같은 자리에 그린다. 상태별에서는 완료가 제 컬럼을 갖고 컬럼 수도 넷으로
@@ -401,8 +424,9 @@ function todoMenuItems(todo) {
     menuItem(t("board.startTodo"), () =>
       run(async () => {
         openMenuTodoId = null;
-        const result = await startTodoFlow(todo);
-        await renderBoard();
+        const result = await withLoading(() => startTodoFlow(todo));
+        // 알림은 목록을 다시 그린 **뒤에**. alert 는 화면을 멈추므로 먼저 띄우면
+        // 확인을 누른 다음에야 목록이 바뀐다 (워크트리 탭과 같은 순서)
         if (result?.message) alert(fromKorean(result.message));
       })
     ),
@@ -413,10 +437,13 @@ function todoMenuItems(todo) {
     menuItem(t("common.delete"), () =>
       run(async () => {
         openMenuTodoId = null;
-        if (confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
-          await api.deleteTodo(todo.id);
+        // 물어보는 동안은 목록을 그대로 둔다 — 무엇을 지우는지 보면서 답해야 한다.
+        // 취소하면 열린 케밥만 닫는다
+        if (!confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
+          await renderBoard();
+          return;
         }
-        await renderBoard();
+        await withLoading(() => api.deleteTodo(todo.id));
       })
     )
   );

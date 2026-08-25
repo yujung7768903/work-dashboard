@@ -398,23 +398,23 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
    넓혀 버린다. 0 으로 풀어야 1fr 을 지키고 안쪽이 말줄임으로 접힌다 */
 #worktree-list > .group { min-width: 0; }
 /* 목록을 받아 오는 동안, 스크롤이 생기지 않는 선까지 남은 화면을 채우고 그 한가운데에
-   도는 원 하나. 화면 아래까지의 높이는 worktrees.js 가 재서 --wt-loading-room 으로 준다
+   도는 원 하나. 화면 아래까지의 높이는 spinner.js 가 재서 --loading-room 으로 준다
    (--sp-48 은 본문 아래 여백. 그만큼 빼야 화면이 딱 맞고 스크롤이 안 생긴다) */
-.wt-loading {
+.loading-spin {
   grid-column: 1 / -1; display: grid; place-items: center;
-  min-height: max(160px, calc(var(--wt-loading-room, 50vh) - var(--sp-48)));
+  min-height: max(160px, calc(var(--loading-room, 50vh) - var(--sp-48)));
   /* 칸이 그 여백만큼 짧으니 위를 같은 만큼 띄워야 눈에 보이는 빈 자리의 한가운데다 */
   padding-top: var(--sp-48);
 }
-.wt-loading::after {
+.loading-spin::after {
   content: ""; width: 28px; height: 28px; border-radius: 50%;
   border: 3px solid color-mix(in srgb, var(--fg) 12%, transparent);
   border-top-color: var(--accent);
-  animation: wt-spin 0.7s linear infinite;
+  animation: spin 0.7s linear infinite;
 }
-@keyframes wt-spin { to { transform: rotate(360deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .wt-loading::after { animation-duration: 2.4s; }
+  .loading-spin::after { animation-duration: 2.4s; }
 }
 
 /* overflow 를 걸지 않음: 마지막 항목의 케밥 메뉴가 카드 밖으로 펼쳐져야 함 */

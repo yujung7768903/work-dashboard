@@ -108,6 +108,9 @@ const node = (tag) => ({
   },
   replaceChildren() {},
   querySelectorAll: () => [],
+  // 시작이 도는 동안 목록 자리에 세우는 도는 원이 남은 화면 높이를 여기서 잰다
+  // (static/js/spinner.js) — 로딩 표시는 tests/board_loading_check.mjs 가 본다
+  getBoundingClientRect: () => ({ top: 0 }),
   // 완료 항목 표시는 체크박스가 아니라 눌린 상태가 남는 아이콘이다 (board.js showDone)
   getAttribute: () => null,
   setAttribute() {},
@@ -142,6 +145,7 @@ globalThis.document = {
 globalThis.location = { pathname: "/board" };
 globalThis.window = { addEventListener() {}, location: globalThis.location };
 globalThis.history = { pushState() {}, replaceState() {} };
+globalThis.innerHeight = 800;
 
 await bootKorean();
 // 화면 모듈은 최상단에서 저장해 둔 값(뷰 모드·열 수)을 읽는다. 브라우저 밖에는 없는 것
