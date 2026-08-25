@@ -177,6 +177,9 @@ def _route_post(con, head, body):
         return autorun.start_todo(con, body["id"], cwd=body.get("cwd"))
     if head == "reorder":
         return _reorder(con, body)
+    if head == "open-path":
+        # note 에 적힌 경로를 눌렀을 때. 탐색기는 서버가 도는 컴퓨터에서 열린다
+        return browse.reveal(body.get("path"))
     if head == "precondition-check":
         # 돌릴 명령은 저장된 조건 문장에서 서버가 읽는다 — 화면은 몇 번째 항목인지만 보낸다
         return precondition.check(con, body.get("todo_id"), body.get("index"))

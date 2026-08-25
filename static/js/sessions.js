@@ -1,6 +1,7 @@
 // 활성 세션 영역. 이 영역만 폴링해 편집 중인 입력을 건드리지 않음
 import * as api from "./api.js";
 import { t } from "./i18n.js";
+import { linkify } from "./linkify.js";
 
 const POLL_INTERVAL_MS = 2000;
 const WORKING = "working";
@@ -355,8 +356,33 @@ function checkButton(todo, item, index) {
 function textField(label, value) {
   return [
     element("p", "label", label),
-    element("p", value ? "note-body" : "muted", value || t("common.empty")),
+    value ? noteBody(value) : element("p", "muted", t("common.empty")),
   ];
+}
+
+// note 는 서식 없는 글이지만 안에 적어 둔 주소·경로는 눌러서 연다 — 옮겨 붙이는
+// 수작업을 없애려는 것이라, 그 두 가지만 링크로 바꾸고 나머지는 글자 그대로 둔다
+function noteBody(value) {
+  const body = element("p", "note-body");
+  body.append(...linkify(value).map(notePart));
+  return body;
+}
+
+function notePart({ type, value }) {
+  if (type === "text") return document.createTextNode(value);
+  if (type === "url") {
+    const link = element("a", "note-link", value);
+    link.href = value;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    return link;
+  }
+  // 경로는 <a> 로 둘 수 없다 — 브라우저가 file:// 이동을 막는다. 서버가 탐색기를 띄운다
+  const button = element("button", "note-link", value);
+  button.type = "button";
+  button.title = value;
+  button.addEventListener("click", () => api.openPath(value).catch(() => {}));
+  return button;
 }
 
 // 채워진 시각만 최근 순으로. 완료 시각 없는 할일, 아직 끝나지 않은 워크트리가 있어 빈 값은 뺀다

@@ -139,7 +139,7 @@ Clicking a todo row or a session row opens the same dialog with three tabs:
 
 | Dialog tab | What it holds |
 | --- | --- |
-| Overview | Title, history, preconditions and the full context note |
+| Overview | Title, history, preconditions and the full context note. URLs in the note open in a new tab; absolute paths (`~/…`, `/…`) open the file manager on the machine running the server |
 | Session | Session id, location, the last 10 exchanges, and workspace/category assignment |
 | Worktree | The worktrees this todo used — state, history and commits |
 

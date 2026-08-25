@@ -1217,6 +1217,14 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#dir-b
   background: var(--bg); font-size: var(--fs-sm); line-height: var(--lh-body);
   white-space: pre-wrap;
 }
+/* note 안의 주소·경로. 경로는 버튼이지만(서버가 탐색기를 띄운다) 링크로 보여야 한다 */
+.note-link {
+  color: var(--accent); text-decoration: underline; cursor: pointer;
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; text-align: left; word-break: break-all;
+  /* 버튼은 브라우저마다 줄 안 기준선이 달라(파이어폭스는 가운데) 글자 줄에 맞춘다 */
+  vertical-align: baseline;
+}
 
 .dlg-head { margin-bottom: var(--sp-12); }
 .dlg-title {

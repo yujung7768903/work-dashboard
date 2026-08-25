@@ -90,6 +90,8 @@ export const startTodo = (id, cwd) =>
   request("POST", "/todo-start", cwd ? { id, cwd } : { id }, { silent: true });
 export const browseDir = (path) =>
   request("GET", `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`);
+// note 에 적힌 경로를 탐색기로 연다. 브라우저는 file:// 로 탐색기를 못 띄워 서버가 띄운다
+export const openPath = (path) => request("POST", "/open-path", { path });
 
 export const getSettings = () => request("GET", "/settings");
 export const updateSettings = (fields) => request("PATCH", "/settings", fields);

@@ -63,6 +63,53 @@ class ListDirTest(unittest.TestCase):
             browse.list_dir(file_path)
 
 
+class RevealTest(unittest.TestCase):
+    """note 의 경로를 눌렀을 때 어떤 명령으로 탐색기를 띄우는지.
+
+    reveal 자체는 창을 띄우므로 여기서 부르지 않는다 — 없는 경로(띄우기 전에 막히는
+    갈래)만 실제로 부르고, 나머지는 명령 조립만 본다
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(_rmtree, self.root)
+        self.file = os.path.join(self.root, "note.md")
+        with open(self.file, "w", encoding="utf-8") as handle:
+            handle.write("x")
+
+    def test_mac_reveals_the_file_itself(self):
+        self.assertEqual(
+            browse.reveal_command(self.file, browse.DARWIN), ["open", "-R", self.file]
+        )
+
+    def test_linux_opens_the_containing_folder_for_a_file(self):
+        self.assertEqual(
+            browse.reveal_command(self.file, browse.LINUX), ["xdg-open", self.root]
+        )
+
+    def test_linux_opens_a_folder_as_is(self):
+        self.assertEqual(
+            browse.reveal_command(self.root, browse.LINUX), ["xdg-open", self.root]
+        )
+
+    @unittest.skipUnless(shutil.which("wslpath"), "wslpath 없음 (WSL 아님)")
+    def test_wsl_selects_a_file_and_opens_a_folder(self):
+        file_command = browse.reveal_command(self.file, browse.WSL)
+        self.assertEqual(file_command[0], "explorer.exe")
+        self.assertTrue(file_command[1].startswith("/select,"), file_command)
+        folder_command = browse.reveal_command(self.root, browse.WSL)
+        self.assertEqual(folder_command[0], "explorer.exe")
+        self.assertFalse(folder_command[1].startswith("/select,"), folder_command)
+
+    def test_rejects_a_path_that_does_not_exist(self):
+        with self.assertRaises(Validation):
+            browse.reveal(os.path.join(self.root, "없는파일.md"))
+
+    def test_rejects_an_empty_path(self):
+        with self.assertRaises(Validation):
+            browse.reveal(None)
+
+
 def _rmtree(path):
     shutil.rmtree(path, ignore_errors=True)
 
