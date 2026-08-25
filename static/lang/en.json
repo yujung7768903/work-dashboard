@@ -69,7 +69,7 @@
   "autorun.candidates": "Candidates",
   "autorun.candidatesHint": "Todos labeled auto that have not run yet, in order. Drag to reorder, click to see details and preconditions.",
   "autorun.runs": "Runs",
-  "autorun.noCandidate": "No auto todo is up next. Ones that already ran are in the run list below.",
+  "autorun.noCandidate": "No todo to run right now.",
   "autorun.noRunYet": "No runs yet.",
   "autorun.groupAttention": "Needs you",
   "autorun.groupFailed": "Blocked / failed",

@@ -69,7 +69,7 @@
   "autorun.candidates": "候補",
   "autorun.candidatesHint": "auto ラベルの付いたタスクのうち、まだ回っていないものを順に表示。ドラッグで並べ替え、クリックで詳細と着手条件を確認",
   "autorun.runs": "実行",
-  "autorun.noCandidate": "今すぐ回す auto のタスクがありません。すでに回ったものは下の実行一覧にあります。",
+  "autorun.noCandidate": "今すぐ実行するタスクの候補がありません。",
   "autorun.noRunYet": "実行履歴がまだありません。",
   "autorun.groupAttention": "要確認",
   "autorun.groupFailed": "停止・失敗",

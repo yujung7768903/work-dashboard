@@ -69,7 +69,7 @@
   "autorun.candidates": "候选",
   "autorun.candidatesHint": "带 auto 标签且尚未运行过的待办，按顺序排列。拖动可调整顺序，点击查看详情与启动条件",
   "autorun.runs": "运行",
-  "autorun.noCandidate": "暂无待运行的 auto 待办。已经运行过的在下方的执行列表中。",
+  "autorun.noCandidate": "当前没有可执行的待办候选。",
   "autorun.noRunYet": "暂无运行记录。",
   "autorun.groupAttention": "需要确认",
   "autorun.groupFailed": "阻塞·失败",
