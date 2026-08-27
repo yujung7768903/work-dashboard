@@ -310,8 +310,10 @@ that is normally inferred from where sessions of that workspace have worked; a
 workspace that has never been worked in a repository yields nothing, so the tick
 skips it silently. The chip says so and opens the same folder picker the board's
 todo **Start** uses. What you pick is stored on the workspace (`workspaces.cwd`)
-and beats inference from then on, so the next tick starts the todo on its own —
-picking a path is a decision, not a launch button.
+— or on the todo itself (`todos.cwd`) when it belongs to no workspace, since
+there is nothing else to store it on — and beats inference from then on, so the
+next tick starts the todo on its own. Picking a path is a decision, not a launch
+button.
 
 A todo with preconditions is eligible only when the code can judge every item
 and every item is met. `#id` lines are resolved against that todo's status; a

@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS todos(
     title TEXT NOT NULL,
     note TEXT,
     precondition TEXT,
+    cwd TEXT,
     status TEXT NOT NULL DEFAULT 'todo',
     sort_order INTEGER NOT NULL,
     completed_at TEXT,
@@ -187,6 +188,7 @@ def connect(path=None):
     _add_finished_at_column(con)
     _add_tick_reason_column(con)
     _add_workspace_cwd_column(con)
+    _add_todo_cwd_column(con)
     _add_gtasks_columns(con)
     _rename_paused_status(con)
     _drop_session_workspace_column(con)
@@ -366,6 +368,19 @@ def _add_workspace_cwd_column(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(workspaces)")}
     if "cwd" not in columns:
         con.execute("ALTER TABLE workspaces ADD COLUMN cwd TEXT")
+    con.commit()
+
+
+def _add_todo_cwd_column(con):
+    """워크스페이스가 없는 할일의 작업 위치.
+
+    위치는 워크스페이스 단위 속성(workspaces.cwd)이지만, 소속 없는 할일은 적어 둘
+    워크스페이스가 없어 자율 수행 후보의 "작업 위치 미정" 을 영영 풀 수 없었다 —
+    그 할일에만 직접 남긴다
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    if "cwd" not in columns:
+        con.execute("ALTER TABLE todos ADD COLUMN cwd TEXT")
     con.commit()
 
 

@@ -215,10 +215,9 @@ function clearDropLines(list) {
     .forEach((row) => row.classList.remove("drop-before", "drop-after"));
 }
 
-// 위치 미정만 누를 수 있는 칩이다 — 나머지 사유는 이 자리에서 풀 것이 없다.
-// 워크스페이스가 없는 할일은 위치를 적어 둘 곳이 없어 글자로만 남긴다
+// 위치 미정만 누를 수 있는 칩이다 — 나머지 사유는 이 자리에서 풀 것이 없다
 function blockerChip(candidate) {
-  const pickable = candidate.blocker === CWD && Boolean(candidate.workspace_id);
+  const pickable = candidate.blocker === CWD;
   const chip = element(
     pickable ? "button" : "span",
     `badge blocker-${candidate.blocker}`,
@@ -230,8 +229,10 @@ function blockerChip(candidate) {
 }
 
 // 보드 케밥의 "시작" 이 쓰는 폴더 선택기를 그대로 연다 — 묻는 것이 같으면 묻는 화면도 같아야 한다.
-// 여기서 세션을 띄우지 않는 이유 — 고른 경로는 워크스페이스에 남으므로 다음 tick 이
-// 제 순서대로 시작한다. 지금 띄우면 자율 실행 기록 밖에서 도는 세션이 하나 더 생긴다
+// 여기서 세션을 띄우지 않는 이유 — 고른 경로는 저장되므로 다음 tick 이 제 순서대로
+// 시작한다. 지금 띄우면 자율 실행 기록 밖에서 도는 세션이 하나 더 생긴다.
+// 저장하는 곳 — 워크스페이스가 있으면 그쪽(그 워크스페이스의 후보가 다 풀린다),
+// 없으면 이 할일에만. 소속 없는 할일은 달리 적어 둘 곳이 없다
 function bindCwdPick(chip, candidate) {
   chip.type = "button";
   chip.addEventListener("click", async (event) => {
@@ -239,8 +240,11 @@ function bindCwdPick(chip, candidate) {
     event.stopPropagation();
     const cwd = await pickDirectory();
     if (!cwd) return;
+    const save = candidate.workspace_id
+      ? api.updateWorkspace(candidate.workspace_id, { cwd })
+      : api.updateTodo(candidate.todo_id, { cwd });
     // 실패하면 api.js 가 이미 알렸다. 목록은 그대로 두고 되돌린다
-    await api.updateWorkspace(candidate.workspace_id, { cwd }).then(renderAutorun, () => {});
+    await save.then(renderAutorun, () => {});
   });
 }
 

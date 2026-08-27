@@ -29,6 +29,9 @@ const CANDIDATES = [
     blocker: "precondition", precondition: { total: 3, met: 1, manual: 1 } },
   { todo_id: 61, title: "위치 모름", workspace_id: 3, workspace_name: "스터디",
     blocker: "cwd", precondition: null },
+  // 소속 없는 할일 — 위치를 적어 둘 워크스페이스가 없어 할일 자체에 저장한다
+  { todo_id: 62, title: "소속 없는 일", workspace_id: null, workspace_name: null,
+    blocker: "cwd", precondition: null },
 ];
 // 폴더 선택기가 처음 보여주는 곳. "이 폴더 선택" 을 누르면 이 경로가 그대로 답이 된다
 const BROWSE_AT = "/home/u/study";
@@ -49,6 +52,7 @@ globalThis.fetch = async (url, options) => {
     "/api/workspaces/3": { id: 3, cwd: BROWSE_AT },
     "/api/categories": [],
     "/api/todos/57": { todo: { id: 57, title: "제목" }, sessions: [] },
+    "/api/todos/62": { id: 62, cwd: BROWSE_AT },
     "/api/autorun-runs/3": { id: 3, outcome: "done" },
   }[url];
   return { ok: Boolean(body), status: body ? 200 : 404, json: async () => body ?? {} };
@@ -220,5 +224,19 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 elements["dir-browse-select"].onclick();
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(asked.includes("PATCH /api/workspaces/3"), asked.join(", "));
+
+// 소속 없는 할일의 칩도 같은 버튼이다 — 저장할 워크스페이스가 없다고 글자로만 남기면
+// 줄 클릭으로 새서 상세 팝업만 뜬다(실제로 그랬다). 경로는 그 할일에 저장된다
+const looseChip = cands[3].children[3];
+assert.equal(looseChip.className, "badge blocker-cwd");
+assert.equal(typeof looseChip.listeners.click, "function");
+let looseStopped = false;
+looseChip.listeners.click({ stopPropagation: () => (looseStopped = true) });
+assert.equal(looseStopped, true);
+assert.equal(elements["dir-browse-modal"].open, true);
+await new Promise((resolve) => setTimeout(resolve, 0));
+elements["dir-browse-select"].onclick();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.ok(asked.includes("PATCH /api/todos/62"), asked.join(", "));
 
 console.log("ok");

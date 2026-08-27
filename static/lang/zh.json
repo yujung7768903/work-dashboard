@@ -92,7 +92,7 @@
   "autorun.blocker.cwd": "工作路径未定",
   "autorun.blockerHint.ready": "现在就能运行，下一个 tick 会启动这一条",
   "autorun.blockerHint.precondition": "还有启动条件未满足，点开可看是哪几项",
-  "autorun.blockerHint.cwd": "还不知道该工作区的工作路径，点击指定后下一个 tick 就会开始",
+  "autorun.blockerHint.cwd": "还不知道工作路径，点击指定后下一个 tick 就会开始",
   "session.runningInitial": "运行中的会话 0",
   "session.runningCount": "运行中的会话 {count}",
   "session.unclassified": "待分类",

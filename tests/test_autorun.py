@@ -219,6 +219,28 @@ class CandidatePanel(AutorunCase):
         workspace_repo.update(self.con, blind["id"], cwd=tempfile.mkdtemp())
         self.assertEqual(autorun.candidates(self.con)[0]["blocker"], autorun.BLOCKER_READY)
 
+    def test_marks_unknown_cwd_without_a_workspace(self):
+        """소속 없는 할일은 세션 이력으로 추론할 워크스페이스가 없다 — 위치 미정으로 싣고,
+        화면이 워크스페이스 대신 이 할일에 저장할 수 있게 workspace_id 는 비운다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        loose = todo_repo.create(
+            self.con, "소속 없는 일", category_id=self.workspace["category_id"]
+        )
+        label_repo.set_for_todo(self.con, loose["id"], [self.label["id"]])
+        row = autorun.candidates(self.con)[0]
+        self.assertEqual(row["blocker"], autorun.BLOCKER_CWD)
+        self.assertIsNone(row["workspace_id"])
+
+    def test_designated_todo_cwd_clears_the_blocker(self):
+        """워크스페이스가 없으면 할일에 적은 위치가 그 자리를 대신한다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        loose = todo_repo.create(
+            self.con, "소속 없는 일", category_id=self.workspace["category_id"]
+        )
+        label_repo.set_for_todo(self.con, loose["id"], [self.label["id"]])
+        todo_repo.update(self.con, loose["id"], cwd=tempfile.mkdtemp())
+        self.assertEqual(autorun.candidates(self.con)[0]["blocker"], autorun.BLOCKER_READY)
+
     def test_counts_unmet_conditions(self):
         label_repo.set_for_todo(self.con, self.todo["id"], [])
         blocker = self._todo("먼저 할 일")
@@ -376,6 +398,20 @@ class Gates(AutorunCase):
         decision = autorun.judge(self.con)
         self.assertEqual(decision["reason"], autorun.REASON_READY)
         self.assertEqual(decision["todo"]["id"], self.todo["id"])
+        self.assertEqual(decision["cwd"], self.repo)
+
+    def test_todo_cwd_starts_a_todo_without_a_workspace(self):
+        """소속 없는 할일은 위치를 지정하기 전엔 NO_CWD 로 막히고, 할일에 적어 두면 그 경로에서 뜬다"""
+        label_repo.set_for_todo(self.con, self.todo["id"], [])
+        loose = todo_repo.create(
+            self.con, "소속 없는 일", category_id=self.workspace["category_id"]
+        )
+        label_repo.set_for_todo(self.con, loose["id"], [self.label["id"]])
+        self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_CWD)
+        todo_repo.update(self.con, loose["id"], cwd=self.repo)
+        decision = autorun.judge(self.con)
+        self.assertEqual(decision["reason"], autorun.REASON_READY)
+        self.assertEqual(decision["todo"]["id"], loose["id"])
         self.assertEqual(decision["cwd"], self.repo)
 
     def test_uncommitted_changes_do_not_block_start(self):

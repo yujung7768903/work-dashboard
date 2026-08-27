@@ -19,7 +19,8 @@ from app.repositories import labels as label_repo
 from app.repositories import workspaces as workspace_repo
 
 TABLE = "todos"
-EDITABLE_FIELDS = ("title", "note", "precondition", "status", "workspace_id")
+# cwd = 워크스페이스가 없는 할일의 작업 위치. 소속이 있으면 workspaces.cwd 가 그 역할이다
+EDITABLE_FIELDS = ("title", "note", "precondition", "status", "workspace_id", "cwd")
 LABEL_FIELD = "label_ids"  # 컬럼이 아니라 조인 테이블이라 따로 뗀다
 
 
