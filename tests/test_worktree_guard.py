@@ -55,6 +55,9 @@ class WorktreeGuardTest(unittest.TestCase):
             (os.path.join(self.wt, "app.py"), False, "워크트리 안 소스"),
             (os.path.join(self.main, "README.md"), False, "문서 확장자"),
             (os.path.join(self.main, "docs", "note.py"), False, "docs/ 아래"),
+            (os.path.join(self.main, "diagram.png"), False, "이미지 확장자"),
+            (os.path.join(self.main, "diagram.svg"), False, "svg 확장자"),
+            (os.path.join(self.main, "diagram.drawio"), False, "drawio 확장자"),
             ("/tmp/somewhere/app.py", False, "~/work 밖"),
             (os.path.join(self.loose, "app.py"), False, "레포가 아님"),
         )

@@ -286,6 +286,20 @@ class Prompt(AutorunCase):
         self.assertIn("포트 9080 이 비어 있을 것", text)
         self.assertIn("코드를 고치기 전에", text)
 
+    def test_tells_to_confirm_location_when_note_looks_unrelated(self):
+        """할일 134 처럼 note 가 완전히 다른 프로젝트를 가리키는데 작업 위치는
+        work-dashboard 인 경우를 세션이 스스로 걸러내라는 지시"""
+        text = self._text()
+        self.assertIn("할일 note 와 무관해 보이면", text)
+        self.assertIn("사용자에게 작업 위치를 확인한다", text)
+
+    def test_tells_docs_and_images_do_not_need_a_worktree(self):
+        """worktree_guard.py 가 문서·이미지는 메인 체크아웃에서도 이미 통과시키므로
+        세션이 그런 작업에도 반사적으로 EnterWorktree 를 부르지 않게 안내"""
+        text = self._text()
+        self.assertIn("문서·설정·이미지처럼", text)
+        self.assertIn("워크트리를 따로 만들지 않는다", text)
+
 
 class Launching(AutorunCase):
     def test_links_child_session_to_the_todo(self):

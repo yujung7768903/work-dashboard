@@ -14,7 +14,7 @@ EXIT_BLOCK = 2
 GIT_TIMEOUT_SEC = 2
 WORK_ROOT = os.path.expanduser("~/work")
 BYPASS_ENV = "ALLOW_MAIN_CHECKOUT"
-# 문서·설정은 메인 체크아웃에서 고쳐도 충돌 위험이 작아 통과시킴
+# 문서·설정·이미지는 메인 체크아웃에서 고쳐도(생성해도) 충돌 위험이 작아 통과시킴
 PASS_EXTENSIONS = {
     ".md",
     ".txt",
@@ -25,6 +25,13 @@ PASS_EXTENSIONS = {
     ".ini",
     ".cfg",
     ".conf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".webp",
+    ".drawio",
 }
 
 DENY_MESSAGE = """메인 체크아웃 소스 편집 차단: {path}
