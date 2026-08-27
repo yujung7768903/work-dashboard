@@ -474,6 +474,16 @@ class Prompt(AutorunCase):
         self.assertIn("포트 9080 이 비어 있을 것", text)
         self.assertIn("코드를 고치기 전에", text)
 
+    def test_tells_to_confirm_location_when_note_looks_unrelated(self):
+        text = self._text()
+        self.assertIn("할일 note 와 무관해 보이면", text)
+        self.assertIn("사용자에게 작업 위치를 확인한다", text)
+
+    def test_tells_docs_and_images_do_not_need_a_worktree(self):
+        text = self._text()
+        self.assertIn("문서·설정·이미지처럼", text)
+        self.assertIn("워크트리를 따로 만들지 않는다", text)
+
     def test_non_git_cwd_skips_worktree_and_commit_instructions(self):
         """할일 케밥의 "시작"이 고른 폴더는 git 저장소가 아닐 수 있다 — 그때는
         워크트리·커밋을 요구하면 안 끝낼 방법이 없어진다"""
