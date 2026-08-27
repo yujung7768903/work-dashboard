@@ -14,7 +14,7 @@ from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import transcript, worktrees
+from app.services import precondition, transcript, worktrees
 
 BLOCK_OPEN = '<work-dashboard session="{session}" state="{state}">'
 BLOCK_CLOSE = "</work-dashboard>"
@@ -253,7 +253,9 @@ def detail(con, session_row_id):
     return {
         "session": session,
         "messages": transcript.recent(session["claude_session_id"]),
-        "todos": [todo_repo.get(con, todo_id) for todo_id in todo_ids],
+        "todos": [
+            _with_conditions(con, todo_repo.get(con, todo_id)) for todo_id in todo_ids
+        ],
         # 워크트리 탭도 같은 팝업에 있다 — 세션에서 열든 할일에서 열든 같은 이력을 본다
         "worktrees": worktrees.history(con, todo_ids),
     }
@@ -262,11 +264,16 @@ def detail(con, session_row_id):
 def todo_detail(con, todo_id):
     """할일 팝업. 세션 탭도 같은 팝업에 있으므로 잡고 있는 세션을 함께 준다"""
     return {
-        "todo": todo_repo.get(con, todo_id),
+        "todo": _with_conditions(con, todo_repo.get(con, todo_id)),
         "sessions": session_repo.list_by_todo(con, todo_id),
         # 워크트리 탭용 이력. 병합·삭제된 워크트리도 이름과 상태로 남는다
         "worktrees": worktrees.history(con, [todo_id]),
     }
+
+
+def _with_conditions(con, todo):
+    """착수 조건을 항목으로 쪼개 붙인다 — 팝업이 원문 대신 체크리스트로 그린다"""
+    return {**todo, "precondition_items": precondition.items(con, todo["precondition"])}
 
 
 def scope_guard_block(con, jira_id):

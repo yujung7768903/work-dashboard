@@ -208,7 +208,7 @@ def _pull_space(con, space, task, report, dry_run):
         fields["name"] = title
     remote_done = _remote_done(task)
     if remote_done != (space["status"] == WORKSPACE_DONE):
-        # 완료를 풀면 active 로 돌아온다 — 폰에는 paused 에 해당하는 표현이 없다
+        # 완료를 풀면 active 로 돌아온다 — 폰에는 inactive 에 해당하는 표현이 없다
         fields["status"] = WORKSPACE_DONE if remote_done else WORKSPACE_ACTIVE
     _apply_pull(con, workspace_repo, space["id"], fields, f"[{space['name']}]", report, dry_run)
 

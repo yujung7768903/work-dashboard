@@ -6,8 +6,9 @@ planning.next_todo 를 그대로 쓴다 — 자율 실행이 다른 기준으로
 
 대상은 두 겹으로 좁힌다.
   1. `auto` 라벨 — 자율 실행 허가는 사람이 라벨로 준다
-  2. 조건 문장이 없을 것 — 선제조건은 자연어라 코드가 충족 여부를 판정할 수 없다.
-     조건이 붙은 할일은 사람이 판단해야 하므로 후보에서 뺀다
+  2. 착수 조건이 없거나, 있어도 전부 코드가 판정할 수 있고 전부 충족일 것
+     (precondition.all_met). 자유 문장이나 확인 명령이 섞이면 사람이 판단해야 하므로
+     종전대로 후보에서 뺀다
 """
 import json
 import os
@@ -17,6 +18,7 @@ import time
 
 from app.constants import (
     AUTORUN_BLOCKED_STREAK_LIMIT,
+    AUTORUN_CANDIDATE_LIMIT,
     AUTORUN_CLAUDE_BIN,
     AUTORUN_JOB_TERMINAL,
     AUTORUN_JOBS_ROOT,
@@ -25,22 +27,33 @@ from app.constants import (
     AUTORUN_MAX_CONCURRENT,
     AUTORUN_MODEL,
     OUTCOME_BLOCKED,
+    OUTCOME_HANDOVER,
     RATE_LIMITS_PATH,
+    REVIEW_LOCKED_MSG,
     STATUS_DOING,
     STATUS_DONE,
     USAGE_CRITICAL_PCT,
 )
 from app.db import now, transaction
+from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
-from app.services import planning, release, worktrees
+from app.repositories import todos as todo_repo
+from app.repositories import workspaces as workspace_repo
+from app.services import planning, precondition, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
 JOB_ID_PATTERN = re.compile(r"backgrounded[^\n]*?([0-9a-f]{8})")
 SESSION_WAIT_SEC = 30  # 잡이 state.json 에 sessionId 를 적을 때까지
+# 사람이 아닌데 UserPromptSubmit 을 태우는 턴. 자율 세션이 서브에이전트·백그라운드 작업을
+# 쓰면 완료 알림이 이 모양의 프롬프트로 들어온다 — 이걸 사람으로 보면 잡이 제 할 일을
+# 하는 중에 autorun 이 꺼진다. ponytail: 접두어 목록이라 새 모양이 생기면 다시 꺼진다.
+# 그때 여기에 한 줄 더한다
+SYSTEM_TURN_PREFIXES = ("<task-notification>", "<cross-session-message")
 SESSION_POLL_SEC = 1
 NAME_RETRY = 5
+JOB_ID_LENGTH = 8  # 잡 디렉터리 이름은 세션 id 앞 8자
 NAME_RETRY_SLEEP_SEC = 2
 FIVE_HOUR_KEY = "five_hour"
 MS_PER_SECOND = 1000
@@ -59,6 +72,17 @@ REASON_NO_USAGE = "사용률 데이터가 아예 없음 — 모르면 안 돈다
 REASON_NO_TODO = "돌릴 수 있는 할일이 없음"
 REASON_NO_CWD = "그 워크스페이스에서 작업하던 위치를 알 수 없음"
 REASON_READY = "시작 가능"
+
+# 할일 케밥의 "시작" 이 세션을 띄운 뒤 알려주는 문장
+MSG_SESSION_STARTED = "세션을 시작했습니다"
+# 사람이 직접 고른 작업 위치가 실제 디렉토리가 아닐 때
+MSG_NOT_A_DIRECTORY = "디렉토리가 아님"
+
+# 후보 한 건이 지금 못 도는 이유. 화면이 칩으로 그린다.
+# 사람이 이 자리에서 풀 수 있는 것만 남는다 — 이미 돈 것은 후보 목록에 아예 안 실린다
+BLOCKER_READY = "ready"
+BLOCKER_CWD = "cwd"
+BLOCKER_PRECONDITION = "precondition"
 
 # 실행 id → 워크트리 경로. 끝난 실행만 담는다(그 뒤로 바뀌지 않는다)
 _WORKTREE_CACHE = {}
@@ -83,13 +107,59 @@ def tick(con, dry_run=False, launcher=None):
     return decision
 
 
+def start_todo(con, todo_id, launcher=None, cwd=None):
+    """할일 케밥의 "시작" — 사람이 고른 할일 하나를 자율 실행과 같은 방식으로 세션에 올린다.
+
+    eligible() 의 자동 후보 판정(라벨·조건 문장·사용량 게이트)은 거치지 않는다 — 사람이
+    이 할일을 직접 고른 것 자체가 그 판단이다. 검토 대기만은 todos.update() 와 같은
+    이유로 막는다 — 안 막으면 확인하기 전에 같은 할일에 잡을 또 띄워 diff 가 두 벌 생긴다
+
+    cwd 를 받으면 target_cwd() 대신 그 경로를 그대로 쓴다 — 그 워크스페이스로 분류된
+    세션이 없어 위치를 못 정했을 때, 화면이 사람에게 물어 받은 값이 이 자리로 온다.
+    한 번 쓰면 launch() 가 그 경로로 세션을 등록하므로 다음부터는 target_cwd() 가
+    알아서 찾는다 — 매번 물을 필요가 없다
+    """
+    todo = todo_repo.get(con, todo_id)
+    if todo["id"] in autorun_repo.locked_todo_ids(con):
+        raise Validation(REVIEW_LOCKED_MSG)
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"])
+        if todo["workspace_id"] is not None
+        else None
+    )
+    if cwd:
+        if not os.path.isdir(cwd):
+            raise Validation(f"{MSG_NOT_A_DIRECTORY}: {cwd}")
+    else:
+        cwd = cwd_resolver(con)(todo)
+    if not cwd:
+        raise Validation(REASON_NO_CWD)
+    name = _job_name(todo)
+    launched = (launcher or launch)(
+        prompt=build_prompt(todo, workspace, cwd), cwd=cwd, name=name
+    )
+    if not launched.get("job_id"):
+        raise Validation(launched.get("error") or "잡을 띄우지 못함")
+    session_id = launched.get("session_id") or ""
+    if session_id:
+        session_repo.register(con, session_id, cwd=cwd)
+        if workspace:
+            session_repo.classify(con, session_id, workspace_id=workspace["id"])
+        session_repo.link_todo(con, session_id, todo_id)
+    return {
+        "job_id": launched["job_id"],
+        "session_id": session_id,
+        "message": f"{MSG_SESSION_STARTED} — {name}",
+    }
+
+
 def panel_runs(con, limit=10):
     """자율 수행 패널이 그리는 실행 목록.
 
     어느 워크트리에서 돌았는지와 거기서 열려 있는 포트를 붙인다 — 결과만 보고는 그
     변경을 어디서 봐야 하는지, 띄워 둔 서버가 몇 번인지 알 수 없다
     """
-    runs = autorun_repo.recent_with_todos(con, limit)
+    runs = _merged_runs(con, limit)
     for run in runs:
         path = _run_worktree(run)
         run["worktree_path"] = path
@@ -101,6 +171,18 @@ def panel_runs(con, limit=10):
         found = processes.get(os.path.realpath(run["worktree_path"] or "/")) or []
         run["ports"] = sorted({port for entry in found for port in entry["ports"]})
     return runs
+
+
+def _merged_runs(con, limit):
+    """사람이 손댈 실행은 오래됐어도 전부, 나머지는 최근 limit 건. id 순으로 되돌린다"""
+    runs = autorun_repo.attention_with_todos(con)
+    seen = {run["id"] for run in runs}
+    runs += [
+        run
+        for run in autorun_repo.recent_with_todos(con, limit)
+        if run["id"] not in seen
+    ]
+    return sorted(runs, key=lambda run: run["id"], reverse=True)
 
 
 def _run_worktree(run):
@@ -135,14 +217,16 @@ def judge(con):
     usage = usage_gate()
     if usage["reason"]:
         return {"reason": usage["reason"], "state": state, "usage": usage}
-    picked = pick(con)
+    keep = eligible(con)
+    picked = planning.next_todo(con, keep=keep)
     if not picked:
         # 끄지 않는다 — 후보가 비는 것은 일시적이다. 다른 세션이 그 할일을 잡고 있기만
-        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다
-        return {"reason": REASON_NO_TODO, "state": state}
-    cwd = target_cwd(con, picked["workspace"])
-    if not cwd:
-        return dict(picked, reason=REASON_NO_CWD, state=state)
+        # 해도 후보에서 빠지므로, 껐다가는 그 세션이 끝나 후보가 돌아와도 안 돈다.
+        # 위치 때문에 건너뛴 후보가 있었으면 그게 진짜 사유다 — NO_TODO 로 뭉뚱그리면
+        # 세션 한 번만 열면 풀리는 상태를 사람이 못 본다
+        reason = REASON_NO_CWD if "" in keep.cwd_memo.values() else REASON_NO_TODO
+        return {"reason": reason, "state": state}
+    cwd = keep.cwd_of(picked["todo"])
     return dict(
         picked,
         reason=REASON_READY,
@@ -153,34 +237,164 @@ def judge(con):
 
 
 def pick(con):
-    """자율 실행 후보 1건. 순위는 planning 이 정하고 여기서는 거르기만 한다"""
-    return planning.next_todo(con, keep=eligible(con))
+    """자율 실행 후보 1건. 화면의 후보 목록 맨 위와 같은 것이어야 한다 —
+    사람이 목록을 끌어 순서를 바꿨는데 다른 것이 돌면 그 조작이 거짓말이 된다.
+
+    남이 잡고 있는 할일은 여기서 뺀다. 목록은 그것도 '다른 세션이 잡음' 으로 보여주므로
+    거르는 자리가 다르다
+    """
+    keep = eligible(con)
+    claimed = todo_repo.ids_claimed_by_others(con)
+    rows = sorted_candidates(
+        con, lambda todo: keep(todo) and todo["id"] not in claimed
+    )
+    if not rows:
+        return None
+    todo = rows[0]
+    workspace = (
+        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
+    )
+    return {"todo": todo, "workspace": workspace}
+
+
+def sorted_candidates(con, keep, limit=None):
+    """후보 순서. 사람이 끌어 정한 순서(autorun_order)가 먼저고, 안 정한 것은 그 뒤에
+    planning 순위 그대로 붙는다. 정렬이 안정적이라 그 뒤끼리는 원래 순서를 지킨다
+    """
+    rows = planning.ranked(con, keep=keep)
+    ordered = sorted(
+        rows,
+        key=lambda todo: (todo["autorun_order"] is None, todo["autorun_order"] or 0),
+    )
+    return ordered[:limit] if limit else ordered
+
+
+def cwd_resolver(con):
+    """할일 → 작업 위치. 판정과 후보 목록이 같은 답을 쓰게 하나로 모았다.
+
+    위치는 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산한다 — 후보 수만큼
+    target_cwd 를 다시 돌리면 매번 세션 이력을 훑는다. 할일에 직접 적힌 위치(todos.cwd)가
+    있으면 그게 먼저다 — 워크스페이스가 없는 할일은 그 길밖에 없다. 없어진 경로는
+    workspaces.cwd 와 같은 규칙으로 무시한다
+    """
+    memo = {}
+
+    def resolve(todo):
+        own = (todo.get("cwd") or "").strip()
+        if own and os.path.isdir(own):
+            return own
+        workspace_id = todo["workspace_id"]
+        if workspace_id not in memo:
+            workspace = (
+                workspace_repo.get(con, workspace_id)
+                if workspace_id is not None
+                else None
+            )
+            memo[workspace_id] = target_cwd(con, workspace)
+        return memo[workspace_id]
+
+    resolve.memo = memo
+    return resolve
 
 
 def eligible(con):
-    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가 아닐 것
+    """후보 술어. 라벨이 붙어 있고, 조건 문장이 없고, 막히거나 요청 보류·검토 대기 상태가
+    아니고, 작업 위치를 알 수 있을 것
 
     검토 대기(locked_todo_ids)를 빼는 이유 — 안 빼면 사람이 확인하기 전에 같은
     할일에 잡을 또 띄워 diff 가 두 벌 생긴다. failed 는 안 뺀다 — AUTORUN_FAIL_LIMIT
-    이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다
+    이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다.
+
+    위치는 cwd_resolver 가 워크스페이스당 한 번만 계산하고, 그 결과를 `keep.cwd_memo`
+    로 내보낸다 — judge() 가 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가
+    있었는지"를 안다. 고른 할일의 위치는 `keep.cwd_of` 로 다시 묻는다 — 할일에
+    직접 적힌 위치는 memo 에 없다
     """
-    labeled = {
-        todo_id
-        for todo_id, labels in label_repo.map_by_todo(con).items()
-        if any(label["name"] == AUTORUN_LABEL for label in labels)
-    }
+    labeled = labeled_ids(con)
     excluded = (
         autorun_repo.blocked_todo_ids(con)
         | autorun_repo.requested_todo_ids(con)
         | autorun_repo.locked_todo_ids(con)
     )
+    cwd_of = cwd_resolver(con)
 
     def keep(todo):
         if todo["id"] not in labeled or todo["id"] in excluded:
             return False
-        return not (todo["precondition"] or "").strip()
+        text = (todo["precondition"] or "").strip()
+        if text and not precondition.all_met(con, text):
+            return False
+        # 위치를 못 정하면 실행 자체가 안 된다. 여기서 걸러야 다음 후보로 넘어간다
+        return bool(cwd_of(todo))
 
+    keep.cwd_memo = cwd_of.memo
+    keep.cwd_of = cwd_of
     return keep
+
+
+def labeled_ids(con):
+    """`auto` 라벨이 붙은 할일 id. 후보 판정과 후보 목록이 같은 집합을 본다"""
+    return {
+        todo_id
+        for todo_id, labels in label_repo.map_by_todo(con).items()
+        if any(label["name"] == AUTORUN_LABEL for label in labels)
+    }
+
+
+def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
+    """자율 수행 화면의 후보 목록. 순위대로 상위 N 건과 각각이 지금 못 도는 이유.
+
+    eligible() 이 거른 결과만 보여주면 목록이 늘 비어 '왜 안 도는지' 를 여전히 알 수
+    없다. 그래서 라벨이 붙은 할일은 못 도는 것도 싣고, 무엇에 막혔는지를 같이 준다.
+
+    다만 이미 한 번 돈 것(검토 대기·판단 보류·막힘)과 다른 세션이 잡은 것은 뺀다 —
+    그 넷은 사람이 후보 목록에서 풀 수 있는 게 없고, 아래 실행 목록과 세션 목록에
+    이미 제 구획으로 서 있다. 여기 남겨 두면 limit 줄을 다 차지해서 정작 다음에 돌
+    할일이 화면 밖으로 밀린다
+    """
+    labeled = labeled_ids(con)
+    ran = (
+        autorun_repo.blocked_todo_ids(con)
+        | autorun_repo.requested_todo_ids(con)
+        | autorun_repo.locked_todo_ids(con)
+        | todo_repo.ids_claimed_by_others(con, None)
+    )
+    cwd_of = cwd_resolver(con)
+    rows = sorted_candidates(
+        con,
+        lambda todo: todo["id"] in labeled and todo["id"] not in ran,
+        limit=limit,
+    )
+    return [
+        {
+            "todo_id": todo["id"],
+            "title": todo["title"],
+            "status": todo["status"],
+            # 위치를 지정하는 팝업이 어디에 저장할지 알아야 한다 — 워크스페이스가
+            # 있으면 그쪽(workspaces.cwd), 없으면 이 할일(todos.cwd)
+            "workspace_id": todo["workspace_id"],
+            "workspace_name": todo["workspace_name"],
+            "blocker": _blocker(con, todo, cwd_of),
+            "precondition": precondition.summary(con, todo["precondition"]),
+        }
+        for todo in rows
+    ]
+
+
+def _blocker(con, todo, cwd_of):
+    """무엇 하나만 고르면 되는 값이다 — 사람이 먼저 손댈 것부터 본다.
+
+    위치 미정을 조건 미충족보다 먼저 보는 이유 — 한 번 지정하면 그 워크스페이스의
+    후보가 다 풀리고, 조건은 할일마다 따로 풀어야 한다. 그리고 eligible() 이 위치
+    없는 후보를 건너뛰므로, 여기서 안 알려주면 화면은 "시작 가능"이라 적어 놓고
+    tick 은 조용히 지나간다 — 사람이 왜 안 도는지 알 방법이 없다
+    """
+    if not cwd_of(todo):
+        return BLOCKER_CWD
+    text = (todo["precondition"] or "").strip()
+    if text and not precondition.all_met(con, text):
+        return BLOCKER_PRECONDITION
+    return BLOCKER_READY
 
 
 def usage_gate(limits_path=RATE_LIMITS_PATH):
@@ -229,10 +443,18 @@ def target_cwd(con, workspace):
 
     '가장 최근' 이 아니라 '가장 많이' 인 이유 — 다른 저장소에서 이 워크스페이스의
     할일을 하나 잡기만 해도 최근 1위가 그쪽으로 넘어간다(실제로 그랬다). 저장소가
-    아닌 위치(홈·scratch)는 .git 이 없어 여기서 걸러진다
+    아닌 위치(홈·scratch)는 .git 이 없어 여기서 걸러진다.
+
+    사람이 지정한 위치(workspaces.cwd)가 있으면 그것이 먼저다 — 추론은 그 워크스페이스에서
+    저장소에 들어가 일해 본 적이 있어야 답이 나오고, 없으면 영영 안 나온다. 지정 위치에는
+    .git 을 요구하지 않는다: 저장소가 아닌 곳에서 하는 일(자료·문서)도 있고, 추론과 달리
+    엉뚱한 데를 짚을 위험이 없다. 없어진 경로면 무시하고 추론으로 내려간다
     """
     if not workspace:
         return ""
+    chosen = (workspace.get("cwd") or "").strip()
+    if chosen and os.path.isdir(chosen):
+        return chosen
     counted = {}
     for cwd, sessions in session_repo.cwd_counts_by_workspace(con, workspace["id"]):
         root = _main_checkout(cwd)
@@ -272,23 +494,63 @@ def build_prompt(todo, workspace, cwd):
 
 def _rules(cwd):
     """권한 규칙. --bg 하네스가 넣는 '끝나면 커밋·푸시·draft PR' 중 푸시·PR 만 취소한다 —
-    커밋은 조건부로 그대로 지시한다 — 사용자가 요구한 것을 다 했고 확인할 것도 없을 때만"""
-    return "\n".join(
-        [
-            "# 규칙 (아래가 하네스 기본 지시보다 우선한다)",
+    커밋은 조건부로 그대로 지시한다 — 사용자가 요구한 것을 다 했고 확인할 것도 없을 때만.
+
+    워크트리·커밋 지시는 cwd 가 git 저장소일 때만 성립한다 — 할일 케밥의 "시작"이 고른
+    폴더는 git 저장소가 아닐 수 있다(자동 실행의 target_cwd() 는 항상 git 저장소만
+    돌려주므로 이 분기를 안 탄다)
+    """
+    is_git = os.path.exists(os.path.join(cwd, ".git"))
+    # 이 파일 자신의 저장소 루트(세 단계 위) — cwd 가 work-dashboard 자기 자신인지 판정.
+    # 다른 프로젝트면 "python3 -m tests" 를 시킬 수 없다. 둘 다 _main_checkout 으로
+    # 워크트리 접미사를 지우고 비교해야, 이 함수가 워크트리 안에서 돌 때도 맞아떨어진다
+    this_repo = _main_checkout(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+    is_this_repo = _main_checkout(cwd).rstrip("/") == this_repo.rstrip("/")
+    test_line = (
+        "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다 (이 저장소는 `python3 -m tests`)."
+        if is_this_repo
+        else "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다 — 그 프로젝트의"
+        " 테스트·린트 실행법을 README·CLAUDE.md 등에서 확인해 실행한다."
+    )
+    if is_git:
+        where = (
             f"- 지금 위치({cwd})가 이 할일 note 와 무관해 보이면(예: note 가 전혀"
             " 다른 프로젝트를 새로 만드는 내용인데 지금 위치는 그 프로젝트가 아님)"
-            " 진행 전에 사용자에게 작업 위치를 확인한다.",
+            " 진행 전에 사용자에게 작업 위치를 확인한다.\n"
             f"- 코드를 고치는 작업이면 {cwd} 의 워크트리에서 한다. 메인 체크아웃"
             " 소스 편집은 훅이 막으므로 EnterWorktree 로 워크트리를 만들고 그 안에서"
             " 고친다. 문서·설정·이미지처럼 훅이 메인 체크아웃에서도 이미 허용하는"
-            " 파일만 바꾸는 작업이면 워크트리를 따로 만들지 않는다.",
+            " 파일만 바꾸는 작업이면 워크트리를 따로 만들지 않는다."
+        )
+        finish = (
+            "- 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도"
+            " 없다면, 이번 작업에 해당하는 변경만 diff 로 확인해 커밋한 뒤"
+            " `python3 dash.py autorun-finish` 를 부른다 (워크트리에 이전 작업이"
+            " 남긴 미커밋 변경이 있다면 그것까지 같이 커밋하지 않는다). 그렇지"
+            " 않다면(확인이 필요하거나 끝내지 못했다면) 커밋하지 않고"
+            " `autorun-finish` 도 부르지 않는다 — 변경은 워크트리에 남겨 둔 채"
+            " 끝낸다. 사람이 diff 로 검토한다."
+        )
+    else:
+        where = f"- {cwd} 에서 바로 작업한다 — git 저장소가 아니라 워크트리를 따로 만들지 않는다."
+        finish = (
+            "- 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도"
+            " 없다면 `python3 dash.py autorun-finish` 를 부른다. 그렇지 않다면"
+            "(확인이 필요하거나 끝내지 못했다면) `autorun-finish` 를 부르지 않는다"
+            " — 변경은 그대로 남겨 둔다. 사람이 결과물을 직접 검토한다."
+        )
+    return "\n".join(
+        [
+            "# 규칙 (아래가 하네스 기본 지시보다 우선한다)",
+            where,
             "- 푸시·PR 을 하지 않는다.",
             "- 브랜치 삭제, 운영 서버 접속·배포, 새 의존성 설치, `rm`·`mv`,"
             " sqlite 직접 수정을 하지 않는다. 상태 변경은 dash.py 명령으로만 한다.",
-            "- 외부로 나가는 발신(Jira 댓글, Confluence, 메일, 슬랙)을 하지 않는다.",
-            "- 테스트·린트는 돌린다. 검증 없는 변경은 미완성이다"
-            " (이 저장소는 `python3 -m tests`).",
+            "- 외부로 나가는 발신(Jira 댓글, Confluence, 메일, 슬랙)은 하지 않는다."
+            " 단, 할일 note 에 명시적으로 요청된 경우는 예외로 한다.",
+            test_line,
             "- 판단이 필요해 더 못 가면 멈추고 그 사실을 남긴다. 추측으로 진행하지 않는다.",
             "- 기능을 추가·수정할 때 grill me·superpowers 로 검토해(스펙 문서 작성x)"
             " 기획 공백이 나오거나, 구현 방향이 여럿인데 note 에 정해져 있지 않거나,"
@@ -296,13 +558,7 @@ def _rules(cwd):
             ' `python3 dash.py autorun-request "<무엇이 필요한지>"` 로 등록하고 끝낸다'
             " — 이때는 커밋하지 않는다. 할일 상태는 건드리지 않고, 이후 자율 수행"
             " 후보에서 빠진다.",
-            "- 사용자가 요구한 사항을 모두 작업했고 확인해야 할 것도 불분명한 것도"
-            " 없다면, 이번 작업에 해당하는 변경만 diff 로 확인해 커밋한 뒤"
-            " `python3 dash.py autorun-finish` 를 부른다 (워크트리에 이전 작업이"
-            " 남긴 미커밋 변경이 있다면 그것까지 같이 커밋하지 않는다). 그렇지"
-            " 않다면(확인이 필요하거나 끝내지 못했다면) 커밋하지 않고"
-            " `autorun-finish` 도 부르지 않는다 — 변경은 워크트리에 남겨 둔 채"
-            " 끝낸다. 사람이 diff 로 검토한다.",
+            finish,
         ]
     )
 
@@ -390,29 +646,40 @@ def _set_todo_status(con, todo_id, status):
         )
 
 
-def handover_if_human(con, claude_session_id):
-    """UserPromptSubmit 이 부른다. 도는 잡에 사람이 끼어들었으면 인계하고 autorun 을 끈다.
-    끝난 잡에 말을 거는 것은 검토라서 끄지 않는다 — 그 할일은 locked_todo_ids 가 이미 뺀다.
+def handover_if_human(con, claude_session_id, prompt):
+    """UserPromptSubmit 이 부른다. 도는 잡에 사람이 끼어들었으면 그 실행만 인계로 닫는다.
+    autorun 은 계속 돈다 — 원래는 전역 스위치를 껐는데, 세션 하나를 사람이 맡았다고 다른
+    할일까지 멈출 이유가 없고, 실제로 그 때문에 아침마다 꺼져 있었다.
+    끝난 잡에 말을 거는 것은 검토라서 건드리지 않는다 — 그 할일은 locked_todo_ids 가 이미 뺀다.
 
     무엇이 '사람' 인가 — 자율 세션의 **첫** 프롬프트는 자율 실행이 스스로 넣은 지시다.
-    그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다.
+    그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다 —
+    단, 시스템이 만들어 넣는 턴(SYSTEM_TURN_PREFIXES)은 빼야 한다. 서브에이전트 완료
+    알림이 이 훅을 태우는 바람에 잡 9·14·15 가 일하는 중에 autorun 을 껐다.
 
     그래서 **반드시 set_last_prompt 앞에서 불러야 한다** — 뒤에서 부르면 첫 프롬프트도
     사람으로 보인다. 판정이 훅과 런처 두 곳에 흩어져 있던 동안 실제로 그렇게 오판해서,
     자율 잡이 뜨자마자 autorun 이 꺼졌다
     """
+    if (prompt or "").lstrip().startswith(SYSTEM_TURN_PREFIXES):
+        return False
     session = session_repo.find(con, claude_session_id)
     if not (session or {}).get("last_prompt"):
         return False
-    return disable_for_session(con, claude_session_id)
+    return handover_run(con, claude_session_id)
 
 
-def disable_for_session(con, claude_session_id):
-    """그 세션이 아직 도는 자율 잡이면 autorun 을 끈다. 판정 없이 끄기만 하는 메커니즘"""
+def handover_run(con, claude_session_id):
+    """그 세션이 아직 도는 자율 잡이면 실행 기록을 인계로 닫는다. 판정 없이 닫기만 하는 메커니즘.
+
+    잡이 끝났다고 신고한 뒤(finished_at)의 프롬프트는 검토 피드백이다 — 닫지 않고 둔다.
+    tick 이 잡 종료를 보고 검토 대기로 닫아야 확인 버튼 흐름이 산다. 인계로 닫으면 그 할일이
+    검토 잠금에서 빠져 확인 없이 상태가 바뀐다
+    """
     run = autorun_repo.find_by_session(con, claude_session_id)
-    if not run or run["ended_at"]:
+    if not run or run["ended_at"] or run["finished_at"]:
         return False
-    autorun_repo.set_enabled(con, False)
+    autorun_repo.close_run(con, run["id"], OUTCOME_HANDOVER)
     return True
 
 
@@ -473,6 +740,29 @@ def _job_name(todo):
     return f"#{todo['id']} | {todo['title']}"
 
 
+def rename_todo_sessions(con, todo, jobs_root=AUTORUN_JOBS_ROOT):
+    """할일 제목이 바뀌면 그 할일을 잡았던 잡 이름도 따라간다.
+
+    이름을 안 고치면 `claude agents` 목록과 대시보드가 서로 다른 제목을 보여줘
+    어느 세션이 이 할일인지 알 수 없어진다. 잡 디렉터리 이름은 세션 id 앞 8자지만
+    그 규칙에 기대지 않고 state.json 의 sessionId 로 확인한 것만 고친다
+    """
+    name = _job_name(todo)
+    renamed = []
+    for session in session_repo.list_by_todo(con, todo["id"]):
+        session_id = session["claude_session_id"] or ""
+        job_id = session_id[:JOB_ID_LENGTH]
+        if not job_id:
+            continue
+        state = _read_json(os.path.join(jobs_root, job_id, "state.json"))
+        # 잡으로 띄우지 않은 세션(사람이 직접 연 터미널)은 고칠 파일이 없다
+        if not state or state.get("sessionId") != session_id:
+            continue
+        if _name_job(jobs_root, job_id, name):
+            renamed.append(job_id)
+    return renamed
+
+
 def _name_job(jobs_root, job_id, name):
     """`claude agents` 목록에서 알아볼 수 있게 할일 제목을 붙인다.
 
@@ -483,6 +773,10 @@ def _name_job(jobs_root, job_id, name):
         state = _read_json(path)
         if state is not None:
             state["name"], state["nameSource"] = name, "user"
+            # 리밋으로 다시 띄울 때 쓰는 플래그에도 이름이 박혀 있다 — 안 고치면 되돌아간다
+            flags = state.get("respawnFlags")
+            if isinstance(flags, list) and "--name" in flags:
+                flags[flags.index("--name") + 1] = name
             try:
                 with open(path, "w", encoding="utf-8") as handle:
                     json.dump(state, handle, ensure_ascii=False)

@@ -78,17 +78,17 @@ const list = document.getElementById("worktree-list");
 const drawing = worktrees.renderWorktrees();
 assert.equal(list.children.length, 1, "받는 동안 표시가 없다");
 const spinner = list.children[0];
-assert.equal(spinner.className, "wt-loading");
+assert.equal(spinner.className, "loading-spin");
 assert.equal(spinner.attributes.role, "status");
 assert.equal(spinner.attributes["aria-label"], "불러오는 중");
 // 화면 아래까지 남은 높이를 그대로 받아야 그 한가운데에 설 수 있다
-assert.equal(spinner.css["--wt-loading-room"], "600px");
+assert.equal(spinner.css["--loading-room"], "600px");
 
 // 응답이 오면 원은 사라지고 목록이 그 자리를 차지한다
 release();
 await drawing;
 assert.ok(
-  !list.children.some((child) => child.className === "wt-loading"),
+  !list.children.some((child) => child.className === "loading-spin"),
   "다 받았는데 도는 원이 남아 있다"
 );
 assert.equal(list.children.length, 1, "저장소 카드 하나가 그려져야 한다");
