@@ -517,15 +517,29 @@ class Handover(AutorunCase):
         """런처가 last_prompt 를 미리 심으면 자율 세션 자신의 첫 프롬프트가 사람으로
         오판돼 autorun 이 뜨자마자 꺼진다 — 실제로 job cfe5d3f4 가 그렇게 꺼졌다"""
         autorun.tick(self.con, launcher=Recorder())
-        self.assertFalse(autorun.handover_if_human(self.con, CHILD))
+        self.assertFalse(autorun.handover_if_human(self.con, CHILD, "자율 실행 지시 전문"))
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
     def test_second_prompt_is_a_human_and_hands_over(self):
         autorun.tick(self.con, launcher=Recorder())
         # 자율 세션의 첫 프롬프트는 훅이 그때 기록한다
         session_repo.set_last_prompt(self.con, CHILD, "자율 실행 지시 전문")
-        self.assertTrue(autorun.handover_if_human(self.con, CHILD))
+        self.assertTrue(autorun.handover_if_human(self.con, CHILD, "이거 개조식으로 써"))
         self.assertFalse(autorun_repo.state(self.con)["enabled"])
+
+    def test_system_turns_are_not_a_human(self):
+        """서브에이전트 완료 알림·다른 세션의 메시지도 UserPromptSubmit 을 태운다.
+        훅이 기록한 last_prompt 에 task-notification 14건·cross-session 3건이 남아 있고,
+        잡 9·14·15 는 일하는 중에 그 알림 때문에 autorun 이 꺼졌다"""
+        autorun.tick(self.con, launcher=Recorder())
+        session_repo.set_last_prompt(self.con, CHILD, "자율 실행 지시 전문")
+        for turn in (
+            "<task-notification>\n<task-id>aa3bb345e44e560f7</task-id>",
+            "  <cross-session-message from=\"uds:/run/x.sock\">본문</cross-session-message>",
+        ):
+            with self.subTest(turn=turn):
+                self.assertFalse(autorun.handover_if_human(self.con, CHILD, turn))
+                self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
     def test_review_feedback_leaves_autorun_on(self):
         """검토 대기 잡에 주는 피드백은 인계가 아니다 — 다른 할일까지 멈출 이유가 없다"""
@@ -533,13 +547,13 @@ class Handover(AutorunCase):
         run = autorun_repo.find_by_session(self.con, CHILD)
         autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
         session_repo.set_last_prompt(self.con, CHILD, "이거 브라우저 검증은 한거야?")
-        self.assertFalse(autorun.handover_if_human(self.con, CHILD))
+        self.assertFalse(autorun.handover_if_human(self.con, CHILD, "결과 봤어"))
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
     def test_handover_ignores_sessions_without_a_run(self):
         session_repo.register(self.con, "손세션", cwd=self.repo)
         session_repo.set_last_prompt(self.con, "손세션", "사람이 친 지시")
-        self.assertFalse(autorun.handover_if_human(self.con, "손세션"))
+        self.assertFalse(autorun.handover_if_human(self.con, "손세션", "다음 지시"))
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
 

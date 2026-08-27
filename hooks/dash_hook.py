@@ -51,9 +51,10 @@ def _on_prompt_submit(con, session_id, payload):
     판정은 서비스가 하고 훅은 순서만 지킨다 — set_last_prompt 앞에서 불러야 자율 세션
     자신의 첫 프롬프트를 사람으로 오판하지 않는다
     """
-    autorun.handover_if_human(con, session_id)
+    prompt = payload.get("prompt") or ""
+    autorun.handover_if_human(con, session_id, prompt)
     session_repo.set_state(con, session_id, STATE_WORKING)
-    session_repo.set_last_prompt(con, session_id, payload.get("prompt") or "")
+    session_repo.set_last_prompt(con, session_id, prompt)
     session = session_repo.find(con, session_id)
     if not session:
         return ""

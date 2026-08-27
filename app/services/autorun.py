@@ -39,6 +39,11 @@ from app.services import planning, release, worktrees
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
 JOB_ID_PATTERN = re.compile(r"backgrounded[^\n]*?([0-9a-f]{8})")
 SESSION_WAIT_SEC = 30  # 잡이 state.json 에 sessionId 를 적을 때까지
+# 사람이 아닌데 UserPromptSubmit 을 태우는 턴. 자율 세션이 서브에이전트·백그라운드 작업을
+# 쓰면 완료 알림이 이 모양의 프롬프트로 들어온다 — 이걸 사람으로 보면 잡이 제 할 일을
+# 하는 중에 autorun 이 꺼진다. ponytail: 접두어 목록이라 새 모양이 생기면 다시 꺼진다.
+# 그때 여기에 한 줄 더한다
+SYSTEM_TURN_PREFIXES = ("<task-notification>", "<cross-session-message")
 SESSION_POLL_SEC = 1
 NAME_RETRY = 5
 NAME_RETRY_SLEEP_SEC = 2
@@ -385,17 +390,21 @@ def _set_todo_status(con, todo_id, status):
         )
 
 
-def handover_if_human(con, claude_session_id):
+def handover_if_human(con, claude_session_id, prompt):
     """UserPromptSubmit 이 부른다. 도는 잡에 사람이 끼어들었으면 인계하고 autorun 을 끈다.
     끝난 잡에 말을 거는 것은 검토라서 끄지 않는다 — 그 할일은 locked_todo_ids 가 이미 뺀다.
 
     무엇이 '사람' 인가 — 자율 세션의 **첫** 프롬프트는 자율 실행이 스스로 넣은 지시다.
-    그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다.
+    그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다 —
+    단, 시스템이 만들어 넣는 턴(SYSTEM_TURN_PREFIXES)은 빼야 한다. 서브에이전트 완료
+    알림이 이 훅을 태우는 바람에 잡 9·14·15 가 일하는 중에 autorun 을 껐다.
 
     그래서 **반드시 set_last_prompt 앞에서 불러야 한다** — 뒤에서 부르면 첫 프롬프트도
     사람으로 보인다. 판정이 훅과 런처 두 곳에 흩어져 있던 동안 실제로 그렇게 오판해서,
     자율 잡이 뜨자마자 autorun 이 꺼졌다
     """
+    if (prompt or "").lstrip().startswith(SYSTEM_TURN_PREFIXES):
+        return False
     session = session_repo.find(con, claude_session_id)
     if not (session or {}).get("last_prompt"):
         return False
