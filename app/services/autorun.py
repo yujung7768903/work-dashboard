@@ -125,7 +125,7 @@ def start_todo(con, todo_id, launcher=None, cwd=None):
         if not os.path.isdir(cwd):
             raise Validation(f"{MSG_NOT_A_DIRECTORY}: {cwd}")
     else:
-        cwd = target_cwd(con, workspace)
+        cwd = cwd_resolver(con)(todo)
     if not cwd:
         raise Validation(REASON_NO_CWD)
     name = _job_name(todo)
@@ -220,7 +220,7 @@ def judge(con):
         # 세션 한 번만 열면 풀리는 상태를 사람이 못 본다
         reason = REASON_NO_CWD if "" in keep.cwd_memo.values() else REASON_NO_TODO
         return {"reason": reason, "state": state}
-    cwd = keep.cwd_memo[picked["todo"]["workspace_id"]]
+    cwd = keep.cwd_of(picked["todo"])
     return dict(
         picked,
         reason=REASON_READY,
@@ -264,14 +264,20 @@ def sorted_candidates(con, keep, limit=None):
 
 
 def cwd_resolver(con):
-    """워크스페이스 id → 작업 위치. 판정과 후보 목록이 같은 답을 쓰게 하나로 모았다.
+    """할일 → 작업 위치. 판정과 후보 목록이 같은 답을 쓰게 하나로 모았다.
 
-    위치는 할일이 아니라 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산한다 —
-    후보 수만큼 target_cwd 를 다시 돌리면 매번 세션 이력을 훑는다
+    위치는 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산한다 — 후보 수만큼
+    target_cwd 를 다시 돌리면 매번 세션 이력을 훑는다. 할일에 직접 적힌 위치(todos.cwd)가
+    있으면 그게 먼저다 — 워크스페이스가 없는 할일은 그 길밖에 없다. 없어진 경로는
+    workspaces.cwd 와 같은 규칙으로 무시한다
     """
     memo = {}
 
-    def resolve(workspace_id):
+    def resolve(todo):
+        own = (todo.get("cwd") or "").strip()
+        if own and os.path.isdir(own):
+            return own
+        workspace_id = todo["workspace_id"]
         if workspace_id not in memo:
             workspace = (
                 workspace_repo.get(con, workspace_id)
@@ -295,7 +301,8 @@ def eligible(con):
 
     위치는 cwd_resolver 가 워크스페이스당 한 번만 계산하고, 그 결과를 `keep.cwd_memo`
     로 내보낸다 — judge() 가 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가
-    있었는지"를 안다
+    있었는지"를 안다. 고른 할일의 위치는 `keep.cwd_of` 로 다시 묻는다 — 할일에
+    직접 적힌 위치는 memo 에 없다
     """
     labeled = labeled_ids(con)
     excluded = (
@@ -312,9 +319,10 @@ def eligible(con):
         if text and not precondition.all_met(con, text):
             return False
         # 위치를 못 정하면 실행 자체가 안 된다. 여기서 걸러야 다음 후보로 넘어간다
-        return bool(cwd_of(todo["workspace_id"]))
+        return bool(cwd_of(todo))
 
     keep.cwd_memo = cwd_of.memo
+    keep.cwd_of = cwd_of
     return keep
 
 
@@ -356,7 +364,8 @@ def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
             "todo_id": todo["id"],
             "title": todo["title"],
             "status": todo["status"],
-            # 위치를 지정하는 팝업이 어느 워크스페이스에 저장할지 알아야 한다
+            # 위치를 지정하는 팝업이 어디에 저장할지 알아야 한다 — 워크스페이스가
+            # 있으면 그쪽(workspaces.cwd), 없으면 이 할일(todos.cwd)
             "workspace_id": todo["workspace_id"],
             "workspace_name": todo["workspace_name"],
             "blocker": _blocker(con, todo, cwd_of),
@@ -374,7 +383,7 @@ def _blocker(con, todo, cwd_of):
     없는 후보를 건너뛰므로, 여기서 안 알려주면 화면은 "시작 가능"이라 적어 놓고
     tick 은 조용히 지나간다 — 사람이 왜 안 도는지 알 방법이 없다
     """
-    if not cwd_of(todo["workspace_id"]):
+    if not cwd_of(todo):
         return BLOCKER_CWD
     text = (todo["precondition"] or "").strip()
     if text and not precondition.all_met(con, text):

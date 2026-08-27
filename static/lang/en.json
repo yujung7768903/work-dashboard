@@ -92,7 +92,7 @@
   "autorun.blocker.cwd": "Work path unset",
   "autorun.blockerHint.ready": "Can start now. The next tick picks this one up.",
   "autorun.blockerHint.precondition": "Preconditions remain. Open it to see which ones.",
-  "autorun.blockerHint.cwd": "No work path known for this workspace. Click to pick one and the next tick starts it.",
+  "autorun.blockerHint.cwd": "No work path known yet. Click to pick one and the next tick starts it.",
   "session.runningInitial": "Running sessions (0)",
   "session.runningCount": "Running sessions ({count})",
   "session.unclassified": "Unclassified",
