@@ -46,7 +46,7 @@ globalThis.document = {
   body,
   getElementById: element,
   querySelectorAll: () => columnButtons,
-  // 열 수 버튼은 할일 탭·워크트리 탭이 함께 써서 문서에 위임으로 받는다
+  // 열 수 버튼은 할일·워크트리·워크스페이스 탭이 함께 써서 문서에 위임으로 받는다
   addEventListener: (type, handler) => ((listeners.document ??= {})[type] = handler),
 };
 

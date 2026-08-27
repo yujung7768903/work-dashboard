@@ -309,7 +309,7 @@ button:disabled { color: var(--line); cursor: default; }
   display: flex; gap: var(--gap); color: var(--muted);
   flex-wrap: wrap; font-size: var(--fs-sm);
 }
-/* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다. 할일·워크트리 탭이 같이 쓴다 */
+/* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다. 할일·워크트리·워크스페이스 탭이 같이 쓴다 */
 .view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
 .view-columns button.active { background: var(--softer); color: var(--accent); }
 /* 할일 탭의 아이콘 묶음. 줄 오른쪽 끝에 완료 표시·1열·2열이 한 덩어리로 붙는다 —
@@ -372,9 +372,11 @@ button:disabled { color: var(--line); cursor: default; }
    한 줄로 길게 보고 싶을 때가 있다. 고르는 곳은 보드 위 아이콘 두 개(static/js/layout.js) */
 body[data-board-columns="1"] #groups,
 body[data-board-columns="1"] #done-groups,
+body[data-board-columns="1"] #workspace-list,
 body[data-board-columns="1"] #worktree-list { grid-template-columns: 1fr; }
 body[data-board-columns="2"] #groups,
 body[data-board-columns="2"] #done-groups,
+body[data-board-columns="2"] #workspace-list,
 body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 /* 워크스페이스별·프로젝트별 전환은 왼쪽, 열 수 아이콘(.view-columns)은 오른쪽 */
 #worktree-controls {
@@ -657,6 +659,13 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 }
 
 /* ── 워크스페이스 ─────────────────────────────────────────────────────────── */
+/* 추가 폼은 왼쪽, 열 수 아이콘(.view-columns)은 오른쪽 끝 — 보드의 #board-controls 와 같은 배치.
+   form 의 기본 세로 마진은 이 줄이 대신 갖는다 */
+#workspace-controls {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--gap);
+  color: var(--muted); font-size: var(--fs-sm); margin: var(--gap) 0;
+}
+#workspace-controls form { margin: 0; }
 /* 카드 그리드. 보드와 같은 기준으로 1↔2컬럼 */
 #workspace-list { display: grid; gap: var(--gap); align-items: stretch; }
 .ws-card {
