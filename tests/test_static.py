@@ -136,6 +136,25 @@ class RouteTest(unittest.TestCase):
         )
         self.assertEqual(payload["category_id"], ops)
 
+    def test_patch_session_with_a_todo_answers_with_the_new_workspace(self):
+        """할일 상세 창에서 워크스페이스를 바꾸면 응답과 할일 양쪽에 새 소속이 실려야 한다"""
+        from app.repositories import sessions as session_repo
+        from app.repositories import todos as todo_repo
+
+        dev = category_repo.get_by_name(self.con, "개발")["id"]
+        old = workspace_repo.create(self.con, dev, "예전 방")["id"]
+        new = workspace_repo.create(self.con, dev, "새 방")["id"]
+        todo = todo_repo.create(self.con, "옮길 일", workspace_id=old)
+        session_repo.register(self.con, "route-sess")
+        row_id = session_repo.get(self.con, "route-sess")["id"]
+        session_repo.link_todo(self.con, "route-sess", todo["id"])
+        payload = server.route(
+            self.con, "PATCH", f"/api/sessions/{row_id}", {}, {"workspace_id": new}
+        )
+        self.assertEqual(payload["workspace_id"], new)
+        self.assertIsNone(payload["created_todo"])
+        self.assertEqual(todo_repo.get(self.con, todo["id"])["workspace_id"], new)
+
     def test_delete_todo_endpoint(self):
         ops = category_repo.get_by_name(self.con, "운영")["id"]
         created = server.route(

@@ -571,6 +571,8 @@ function classifyRow(session, workspaces, categories, dialog) {
       const result = await api.classifySession(session.id, fields);
       save.disabled = false;
       await renderSessions();
+      // 붙어 있던 할일이 그 워크스페이스로 옮겨지므로 뒤에 깔린 보드도 따라가야 한다
+      await refreshBoard?.();
       // 할일이 자동으로 생겼으면 닫지 않고 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
       if (result?.created_todo) {
         openDetail({ session, tab: OVERVIEW_TAB });
