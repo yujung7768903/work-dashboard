@@ -1043,6 +1043,8 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 #autorun-list .outcome-blocked { color: var(--warn); }
 /* 요청도 사람이 볼 때까지 후보에서 빠져 있다는 점에서 막힘과 같은 계열 색을 쓴다 */
 #autorun-list .outcome-requested { color: var(--warn); }
+/* 인계는 사람이 이어받아 자율 실행 쪽은 끝난 것 — 검토 대기처럼 누를 것도 경고할 것도 없다 */
+#autorun-list .outcome-handover { color: var(--soft); }
 #autorun-list .outcome-running { color: var(--accent); }
 /* 시작·종료 시각. 자릿수가 흔들리지 않게 tabular-nums 로 못박는다 */
 #autorun-list .when {

@@ -18,9 +18,11 @@ const NO_RUN = t("autorun.noRunYet");
 // 돌고 있음)과 섞이면 목록에서 무엇을 봐야 하는지 알 수 없어 배지를 따로 둔다
 // requested = 세션이 실패한 게 아니라 판단(기획 공백·방향 미정·정보 부족)을 요청하고
 // 스스로 멈춘 것. 사유는 autorun-request 로 남긴 텍스트라 배지 마우스오버로 보여준다
+// handover = 도는 잡에 사람이 끼어들어 그 세션을 이어받은 것. 자율 실행 쪽 일은 거기서 끝이다
 const OUTCOME_LABELS = {
   done: t("common.done"), review: t("common.review"), failed: t("autorun.outcomeFailed"),
   blocked: t("autorun.outcomeBlocked"), requested: t("autorun.outcomeRequested"),
+  handover: t("autorun.outcomeHandover"),
 };
 const REVIEW = "review";
 const REQUESTED = "requested";
@@ -55,7 +57,8 @@ const RUN_GROUPS = [
   ["running", RUNNING_LABEL, (run) => !run.outcome],
   ["failed", t("autorun.groupFailed"),
     (run) => run.outcome === "blocked" || run.outcome === "failed"],
-  ["done", t("common.done"), (run) => run.outcome === "done"],
+  // 인계도 여기 — 사람이 이어받았으니 자율 실행이 더 볼 것은 없다
+  ["done", t("common.done"), (run) => run.outcome === "done" || run.outcome === "handover"],
 ];
 // 접혀서 시작하는 구획. 사람이 손댈 것(확인 필요·진행 중)은 펴 두고, 이미 끝난 것만 접는다.
 // 폴링이 5초마다 다시 그리므로 화면 밖(모듈)에 들고 있어야 접은 것이 도로 펴지지 않는다

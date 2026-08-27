@@ -211,10 +211,18 @@ AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun �
 # 비었거나, 방향이 여럿인데 note 에 안 정해져 있거나, 토큰·Jira·문서 위치가 없어서
 # 추측 대신 사람 판단을 기다린다. blocked 처럼 다음 tick 후보에서 빠지지만 실패 횟수에는
 # 안 세고 blocked_streak 도 안 건드린다 — 오류가 아니라 의도적인 정지라서다
-AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked", "requested")
-OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_FAILED, OUTCOME_BLOCKED, OUTCOME_REQUESTED = (
-    AUTORUN_OUTCOMES
-)
+# handover(인계)는 도는 잡에 사람이 프롬프트를 넣어 그 세션을 이어받은 것이다. 실행 기록만
+# 닫고 autorun 은 계속 돈다 — 세션 하나를 사람이 맡았다고 다른 할일까지 멈출 이유가 없다.
+# 실패도 성공도 아니라 실패 횟수에 안 세고, 사람이 이미 그 세션에 있으니 주의 목록에도 안 든다
+AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked", "requested", "handover")
+(
+    OUTCOME_DONE,
+    OUTCOME_REVIEW,
+    OUTCOME_FAILED,
+    OUTCOME_BLOCKED,
+    OUTCOME_REQUESTED,
+    OUTCOME_HANDOVER,
+) = AUTORUN_OUTCOMES
 # --bg 잡의 상태 파일. 이 값들이면 잡이 끝난 것으로 보고 실행 기록을 닫는다.
 # blocked(리밋)는 열어 둔다 — resume-limited-jobs.py 가 다시 밀어 준다
 AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")

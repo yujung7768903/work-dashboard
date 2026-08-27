@@ -65,6 +65,7 @@
   "autorun.outcomeFailed": "失败",
   "autorun.outcomeBlocked": "受阻",
   "autorun.outcomeRequested": "待决策",
+  "autorun.outcomeHandover": "已移交",
   "autorun.reviewHint": "确认并合并变更后点击此处标记为完成",
   "autorun.candidates": "候选",
   "autorun.candidatesHint": "带 auto 标签且尚未运行过的待办，按顺序排列。拖动可调整顺序，点击查看详情与启动条件",
