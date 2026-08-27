@@ -115,6 +115,7 @@
   "session.classifySave": "分類を保存",
   "session.classifyPlaceholder": "分類先を選択",
   "session.classifying": "分類中…",
+  "session.classified": "分類を保存しました。",
   "session.categoryOnly": "カテゴリのみ",
   "session.classifyRequired": "ワークスペースかカテゴリを選んでください",
   "session.recentMessages": "最近のやり取り",
