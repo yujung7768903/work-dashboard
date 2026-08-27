@@ -1,6 +1,7 @@
 // 활성 세션 영역. 이 영역만 폴링해 편집 중인 입력을 건드리지 않음
 import * as api from "./api.js";
 import { t } from "./i18n.js";
+import { linkify } from "./linkify.js";
 
 const POLL_INTERVAL_MS = 2000;
 const WORKING = "working";
@@ -31,6 +32,8 @@ const TIME_FIELDS = [
 ];
 // 워크트리 History 의 이벤트. 끝난 시각은 하나만 채워진다 —
 // 병합됐으면 merged_at, 병합 없이 지웠으면 deleted_at
+// 착수 조건 항목 표시. 판정 못 하는 항목(자유 문장·확인 명령)은 물음표로 남는다
+const CONDITION_MARKS = { met: "✓", unmet: "✗", unknown: "?" };
 const WORKTREE_TIME_FIELDS = [
   ["created_at", t("history.created")],
   ["merged_at", t("history.merged")],
@@ -38,8 +41,16 @@ const WORKTREE_TIME_FIELDS = [
 ];
 
 let timer = null;
+// 팝업에서 할일을 고치면 뒤에 깔린 보드도 다시 그려야 한다. 여기서 main.js·board.js 를
+// 가져오면 팝업 렌더만 node 로 검증하는 테스트가 탭 초기화까지 끌고 들어와 못 돈다 —
+// 보드가 자기 갱신 함수를 맡기고 간다
+let refreshBoard = null;
 // 사용자가 펼친 '대기 중'은 폴링이 접지 않도록 모듈에 남긴다
 let showIdle = false;
+
+export function setBoardRefresh(refresh) {
+  refreshBoard = refresh;
+}
 
 export async function renderSessions() {
   const payload = await api.getSessions();
@@ -115,7 +126,7 @@ export function openDetail(target) {
   body.textContent = t("common.loading");
   if (!dialog.open) dialog.showModal();
   loadContext(target)
-    .then((context) => body.replaceChildren(...tabbed(context, dialog)))
+    .then((context) => body.replaceChildren(...tabbed(context)))
     .catch((error) => {
       body.textContent = error.message;
     });
@@ -131,7 +142,7 @@ async function loadContext(target) {
   if (target.session) {
     const detail = await api.getSession(target.session.id);
     // 분류 직후처럼 방금 만들어진 할일을 보여줘야 할 때만 개요로 열린다
-    return { ...detail, ...common, tab: target.tab ?? SESSION_TAB };
+    return { ...detail, ...common, tab: target.tab ?? SESSION_TAB, notice: target.notice };
   }
   const { todo, sessions, worktrees } = await api.getTodo(target.todo.id);
   // 할일에서 열면 세션 탭은 그 할일을 마지막으로 잡은 세션을 보여준다
@@ -142,16 +153,18 @@ async function loadContext(target) {
     todos: [todo],
     worktrees,
     ...common,
-    tab: OVERVIEW_TAB,
+    // 분류 저장 뒤 다시 그릴 때만 세션 탭으로 돌아온다
+    tab: target.tab ?? OVERVIEW_TAB,
+    notice: target.notice,
     // 할일에서 열면 세션 탭 머리도 개요와 같은 할일 표기를 쓴다
     fromTodo: true,
   };
 }
 
-function tabbed(context, dialog) {
+function tabbed(context) {
   const panes = {
     [OVERVIEW_TAB]: overviewPane(context.todos),
-    [SESSION_TAB]: sessionPane(context, dialog),
+    [SESSION_TAB]: sessionPane(context),
     [WORKTREE_TAB]: worktreePane(context.worktrees),
   };
   Object.entries(panes).forEach(([key, pane]) => {
@@ -199,22 +212,179 @@ export function rawTitleMark() {
 
 function todoBlock(todo) {
   const block = element("div", "dlg-section");
+  fillTodoBlock(block, todo);
+  return block;
+}
+
+// 보기와 수정이 같은 자리를 번갈아 쓴다 — 고치려고 팝업을 닫고 다시 열지 않게
+function fillTodoBlock(block, todo) {
   // 할일 번호를 제목 앞에 붙인다 — dash.py 명령에 넣을 id 를 팝업에서 바로 읽게
   const title = element("p", "dlg-title", `#${todo.id} | ${todo.title}`);
   if (todo.needs_title) title.append(rawTitleMark());
-  block.append(title, historySection(events(todo, TIME_FIELDS)));
-  block.append(...textField(t("common.precondition"), todo.precondition));
-  // 하위 할일은 보드 카드에서 펼쳐 보므로 여기서는 안 그린다
-  block.append(...textField("note", todo.note));
+  title.append(editButton(block, todo));
+  block.replaceChildren(
+    title,
+    historySection(events(todo, TIME_FIELDS)),
+    conditionSection(todo),
+    // 하위 할일은 보드 카드에서 펼쳐 보므로 여기서는 안 그린다
+    ...textField("note", todo.note)
+  );
+}
+
+function editButton(block, todo) {
+  const button = element("button", "dlg-edit", t("common.edit"));
+  button.type = "button";
+  button.addEventListener("click", () => fillTodoEdit(block, todo));
+  return button;
+}
+
+// 제목·착수 조건·note 만 고친다. 상태·라벨·워크스페이스는 보드 케밥에 이미 있다
+function fillTodoEdit(block, todo) {
+  const title = element("input");
+  title.value = todo.title;
+  const precondition = element("textarea");
+  precondition.value = todo.precondition ?? "";
+  precondition.placeholder = t("common.preconditionExample");
+  const note = element("textarea");
+  note.value = todo.note ?? "";
+
+  const status = element("p", "session-status", "");
+  const save = element("button", null, t("common.save"));
+  save.type = "button";
+  const cancel = element("button", null, t("common.cancel"));
+  cancel.type = "button";
+  cancel.addEventListener("click", () => fillTodoBlock(block, todo));
+  save.addEventListener("click", () => {
+    save.disabled = true;
+    status.textContent = "";
+    api
+      .updateTodo(todo.id, {
+        title: title.value,
+        precondition: precondition.value || null,
+        note: note.value || null,
+      })
+      // 착수 조건 항목은 서버가 쪼개 주므로 저장 응답이 아니라 다시 읽은 것으로 그린다
+      .then(() => api.getTodo(todo.id))
+      .then((payload) => {
+        fillTodoBlock(block, payload.todo);
+        // 제목이 바뀌면 뒤에 깔린 보드도 따라가야 한다 — 팝업만 고치면 두 곳이 어긋난다
+        return refreshBoard?.();
+      })
+      .catch((error) => {
+        save.disabled = false;
+        status.textContent = error.message;
+      });
+  });
+
+  const actions = element("div", "dlg-actions");
+  actions.append(save, cancel);
+  block.replaceChildren(
+    editField(t("common.title"), title),
+    editField(t("common.precondition"), precondition, t("common.preconditionHint")),
+    editField("note", note),
+    actions,
+    status
+  );
+  title.focus();
+}
+
+function editField(label, control, hint) {
+  const field = element("div", "field");
+  field.append(element("label", null, label));
+  if (hint) field.append(element("p", "hint", hint));
+  field.append(control);
+  return field;
+}
+
+// 착수 조건은 원문 한 덩어리가 아니라 항목별 충족 여부로 본다 — 무엇이 안 풀려서
+// 자율 수행이 이 할일을 안 잡는지는 항목 단위로만 알 수 있다.
+// #id 는 서버가 할일 상태로 판정하고, '확인: <명령>' 은 버튼을 눌러야 돈다
+function conditionSection(todo) {
+  const block = element("div", "dlg-log");
+  block.appendChild(element("p", "label", t("common.precondition")));
+  const items = todo.precondition_items ?? [];
+  if (!items.length) {
+    block.appendChild(element("p", "muted", t("common.empty")));
+    return block;
+  }
+  const list = element("ul", "cond-list");
+  items.forEach((item, index) => list.appendChild(conditionRow(todo, item, index)));
+  block.appendChild(list);
   return block;
+}
+
+function conditionRow(todo, item, index) {
+  const row = document.createElement("li");
+  row.className = `cond ${item.kind}`;
+  row.append(
+    element("span", `cond-mark ${metClass(item)}`, CONDITION_MARKS[metClass(item)]),
+    element("span", "text", item.text)
+  );
+  if (item.command) row.append(checkButton(todo, item, index));
+  return row;
+}
+
+function metClass(item) {
+  if (item.met === true) return "met";
+  if (item.met === false) return "unmet";
+  return "unknown";
+}
+
+// 명령은 눌렀을 때만 돈다. 결과는 그 줄에 남겨 둔다 — 다시 누르면 덮어쓴다
+function checkButton(todo, item, index) {
+  const wrap = element("span", "cond-check");
+  const button = element("button", "cond-run", t("autorun.conditionCheck"));
+  button.type = "button";
+  button.title = item.command;
+  const output = element("span", "cond-out");
+  button.addEventListener("click", () => {
+    output.textContent = t("autorun.conditionChecking");
+    api
+      .checkPrecondition(todo.id, index)
+      .then((result) => {
+        wrap.className = `cond-check ${result.exit_code === 0 ? "met" : "unmet"}`;
+        output.textContent = `exit ${result.exit_code ?? "-"} ${result.output}`.trim();
+        output.title = result.output;
+      })
+      .catch((error) => {
+        output.textContent = error.message;
+      });
+  });
+  wrap.append(button, output);
+  return wrap;
 }
 
 // note·착수 조건 둘 다 여러 줄이 오는 글이라 같은 라벨+본문 짝을 쓴다
 function textField(label, value) {
   return [
     element("p", "label", label),
-    element("p", value ? "note-body" : "muted", value || t("common.empty")),
+    value ? noteBody(value) : element("p", "muted", t("common.empty")),
   ];
+}
+
+// note 는 서식 없는 글이지만 안에 적어 둔 주소·경로는 눌러서 연다 — 옮겨 붙이는
+// 수작업을 없애려는 것이라, 그 두 가지만 링크로 바꾸고 나머지는 글자 그대로 둔다
+function noteBody(value) {
+  const body = element("p", "note-body");
+  body.append(...linkify(value).map(notePart));
+  return body;
+}
+
+function notePart({ type, value }) {
+  if (type === "text") return document.createTextNode(value);
+  if (type === "url") {
+    const link = element("a", "note-link", value);
+    link.href = value;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    return link;
+  }
+  // 경로는 <a> 로 둘 수 없다 — 브라우저가 file:// 이동을 막는다. 서버가 탐색기를 띄운다
+  const button = element("button", "note-link", value);
+  button.type = "button";
+  button.title = value;
+  button.addEventListener("click", () => api.openPath(value).catch(() => {}));
+  return button;
 }
 
 // 채워진 시각만 최근 순으로. 완료 시각 없는 할일, 아직 끝나지 않은 워크트리가 있어 빈 값은 뺀다
@@ -335,7 +505,7 @@ function commitSection(row) {
   return block;
 }
 
-function sessionPane(context, dialog) {
+function sessionPane(context) {
   const pane = element("div", "dlg-pane");
   if (!context.session) {
     pane.appendChild(element("p", "muted", t("session.noSession")));
@@ -343,7 +513,7 @@ function sessionPane(context, dialog) {
   }
   pane.append(
     headBlock(context.session, context.categories, context.fromTodo ? context.todos[0] : null),
-    classifyRow(context.session, context.workspaces, context.categories, dialog),
+    classifyRow(context),
     logSection(context.messages)
   );
   return pane;
@@ -384,10 +554,12 @@ function metaLine(session) {
   );
 }
 
-function classifyRow(session, workspaces, categories, dialog) {
+function classifyRow(context) {
+  const { session } = context;
   const row = element("div", "session-classify");
-  const select = targetSelect(session, workspaces, categories);
-  const status = element("p", "session-status", "");
+  const select = targetSelect(session, context.workspaces, context.categories);
+  // 방금 저장하고 다시 그린 팝업이면 끝났다는 안내를 이어서 보인다
+  const status = element("p", "session-status", context.notice ?? "");
 
   const save = element("button", null, t("session.classifySave"));
   save.addEventListener("click", async () => {
@@ -403,12 +575,15 @@ function classifyRow(session, workspaces, categories, dialog) {
       const result = await api.classifySession(session.id, fields);
       save.disabled = false;
       await renderSessions();
-      // 할일이 자동으로 생겼으면 닫지 않고 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
-      if (result?.created_todo) {
-        openDetail({ session, tab: OVERVIEW_TAB });
-        return;
-      }
-      dialog.close();
+      // 붙어 있던 할일이 그 워크스페이스로 옮겨지므로 뒤에 깔린 보드도 따라가야 한다
+      await refreshBoard?.();
+      // 닫지 않고 같은 곳에서 다시 그린다 — 머리의 소속과 선택이 새 분류를 따라가고,
+      // 끝났다는 안내가 남는다. 할일이 자동으로 생겼으면 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
+      openDetail({
+        ...(context.fromTodo ? { todo: context.todos[0] } : { session }),
+        tab: result?.created_todo ? OVERVIEW_TAB : SESSION_TAB,
+        notice: t("session.classified"),
+      });
     } catch (error) {
       save.disabled = false;
       status.textContent = error.message;

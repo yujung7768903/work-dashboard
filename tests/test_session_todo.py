@@ -119,6 +119,27 @@ class AutoTodoTest(unittest.TestCase):
         self.assertIsNone(self.classify(["새 지시"]))
         self.assertEqual(session_repo.linked_todo_ids(self.con, SID), [existing["id"]])
 
+    def test_reclassifying_moves_the_linked_todo(self):
+        """세션의 소속은 연결된 할일에서 파생된다 — 할일을 안 옮기면 저장이 조용히 무시된다"""
+        existing = todo_repo.create(self.con, "이미 있는 일", workspace_id=self.workspace)
+        session_repo.link_todo(self.con, SID, existing["id"])
+        ops = category_repo.get_by_name(self.con, "운영")["id"]
+        other = workspace_repo.create(self.con, ops, "다른 방")["id"]
+        self.assertIsNone(self.classify(["새 지시"], workspace_id=other))
+        moved = todo_repo.get(self.con, existing["id"])
+        self.assertEqual((moved["workspace_id"], moved["category_id"]), (other, ops))
+        self.assertEqual(
+            session_repo.get_by_row_id(self.con, self.session["id"])["workspace_id"], other
+        )
+
+    def test_reclassifying_to_the_same_workspace_keeps_the_order(self):
+        """같은 곳으로 다시 저장해도 할일이 목록 끝으로 밀리면 안 된다"""
+        first = todo_repo.create(self.con, "먼저", workspace_id=self.workspace)
+        todo_repo.create(self.con, "나중", workspace_id=self.workspace)
+        session_repo.link_todo(self.con, SID, first["id"])
+        self.classify(["새 지시"])
+        self.assertEqual(todo_repo.get(self.con, first["id"])["sort_order"], first["sort_order"])
+
     def test_no_prompt_anywhere_creates_nothing(self):
         """transcript 도 없고 지시도 없으면 제목을 지어낼 근거가 없다"""
         self.assertIsNone(self.classify([]))

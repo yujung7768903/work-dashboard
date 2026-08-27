@@ -113,23 +113,33 @@ started inside a worktree.
 
 | Tab | What it holds |
 | --- | --- |
-| Board | The whole tree, the next todo, running sessions (polled every 2s) and the autonomous-run switch |
+| Board | The whole tree, the next todo and running sessions (polled every 2s) |
+| Autorun | The on/off switch, the candidate queue and the runs, grouped by state |
 | Workspaces | Creating a workspace and editing its background, purpose, goal and considerations |
 | Settings | Categories and labels |
 | Usage | Rate-limit windows and the token and cost trend |
 
-The board has two sub-tabs: **Todos** and **Worktrees**. On the worktree
-sub-tab, the kebab menu (⋮) on each row applies (merges) or deletes the
-worktree, and starts, restarts or stops its server. That sub-tab groups
-worktrees by workspace or by project; the project view also lists worktrees no
-workspace claims. Both sub-tabs lay their cards out in one or two columns, and
-the left rail collapses to icons.
+The board has two sub-tabs: **Todos** and **Worktrees**. The todo sub-tab
+switches between two views — by workspace (one card per workspace) and by
+status, which stands the same todos up in the columns the todo rows use: todo,
+in progress, needs review and done. In the status view one todo is one card,
+its number and the workspace it belongs to sit above the title as a small
+line, every card
+is the same height and a title longer than two lines is cut with an ellipsis.
+Cards stand in the order their sessions last ran, newest first; todos no
+session has ever claimed gather at the bottom.
+On the worktree sub-tab, the kebab menu (⋮)
+on each row applies (merges) or deletes the worktree, and starts, restarts or
+stops its server. That sub-tab groups worktrees by workspace or by project;
+the project view also lists worktrees no workspace claims. Cards lay out in
+one or two columns (the status view is always four), and the left rail
+collapses to icons.
 
 Clicking a todo row or a session row opens the same dialog with three tabs:
 
 | Dialog tab | What it holds |
 | --- | --- |
-| Overview | Title, history, preconditions and the full context note |
+| Overview | Title, history, preconditions and the full context note. URLs in the note open in a new tab; absolute paths (`~/…`, `/…`) open the file manager on the machine running the server |
 | Session | Session id, location, the last 10 exchanges, and workspace/category assignment |
 | Worktree | The worktrees this todo used — state, history and commits |
 
@@ -283,6 +293,35 @@ nothing turns it back on.
 A tick that finds no eligible todo does nothing at all, which is why this is a
 cron entry and not a daemon.
 
+The **Autorun** tab holds the switch and two lists. Candidates are the
+`auto`-labelled todos that have not run yet, in priority order, each with a chip
+naming what holds it back right now — an eligible-only list is empty most of the
+time and never explains itself. Ones that already ran (awaiting review, awaiting
+your call, blocked) and ones another session holds are left out: there is nothing
+to resolve from this list, they already have their own group in the run and
+session lists, and keeping them here fills the rows so the todo that actually
+runs next falls off screen. Drag a candidate by its handle to reorder; the order
+lands in `todos.autorun_order` and is the one a tick picks from, so the top of the list
+is never a lie. Runs are grouped by state — needs you, running, blocked or
+failed, done — and the groups that need a human stay open.
+
+The one chip you can act on is **work path unset**. A run needs a directory, and
+that is normally inferred from where sessions of that workspace have worked; a
+workspace that has never been worked in a repository yields nothing, so the tick
+skips it silently. The chip says so and opens the same folder picker the board's
+todo **Start** uses. What you pick is stored on the workspace (`workspaces.cwd`)
+— or on the todo itself (`todos.cwd`) when it belongs to no workspace, since
+there is nothing else to store it on — and beats inference from then on, so the
+next tick starts the todo on its own. Picking a path is a decision, not a launch
+button.
+
+A todo with preconditions is eligible only when the code can judge every item
+and every item is met. `#id` lines are resolved against that todo's status; a
+`Check:` command or a free-text sentence is not, and keeps the todo out of the
+queue until a human clears it. The `Check` button in the todo dialog runs the
+stored command — `POST /api/precondition-check` takes `{todo_id, index}` and
+reads the command back from the saved text, never from the request.
+
 ## Google Tasks sync
 
 Bolted on so the board can be read and ticked off from a phone. Google allows
@@ -424,7 +463,7 @@ that it runs "every 10 minutes" would be a lie.
   run awaiting review, say) is **skipped and reported**. Local rules win.
 - The phone has no `todo`/`doing` distinction. Un-completing there comes back as
   `todo` even if it was `doing`; a workspace likewise comes back `active` rather
-  than `paused`.
+  than `inactive`.
 - A category switched off is skipped whole. Its list link stays, so switching it
   back on does not create a second list.
 

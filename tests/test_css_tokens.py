@@ -63,6 +63,32 @@ class CssTokenTest(unittest.TestCase):
         sizes = re.findall(r"--fs-[a-z]+:\s*(\d+)px", _body("app.css"))
         self.assertEqual(sorted(int(size) for size in sizes), [9, 11, 13, 20, 32])
 
+    def test_baseline_alignment_does_not_spread(self):
+        """줄 정렬에 baseline 을 새로 쓰지 않는다.
+
+        baseline 은 글자가 없는 요소(손잡이·아이콘)를 위로, 작은 글자(배지·경과)를
+        아래로 밀어 한 줄로 안 읽힌다. 자율 수행 목록이 그렇게 어긋났고, DOM 구조
+        검사로는 안 잡혀 사람이 화면을 보고서야 알았다 — 그래서 여기서 막는다.
+
+        아래 목록은 그 전부터 있던 자리다. 화면을 보고 하나씩 정리할 대상이지
+        옳다고 인정한 예외가 아니다. 줄이는 것은 되고 늘리는 것은 안 된다
+        """
+        legacy = {
+            "app.css": {".ws-head", "#session-list li", ".log-list li"},
+            "usage.css": {
+                ".u-week-head", ".u-lim-row", ".u-lim-row .u-delta", ".u-reset",
+                ".u-rows > div", ".u-tip-row", ".u-rail-head", ".u-sess-scope",
+            },
+        }
+        for name, allowed in legacy.items():
+            found = {
+                selector.strip()
+                for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", _body(name))
+                if "align-items: baseline" in body
+            }
+            with self.subTest(name):
+                self.assertEqual(sorted(found - allowed), [])
+
     def test_dark_tokens_outrank_the_light_ones(self):
         """어두운 토큰 블록은 위 :root 를 이겨야 한다. :where() 로 감싸면 특이도가 0 이라
         색은 밝은 채로 남고 button 같은 요소 규칙만 어두워진다"""

@@ -4,6 +4,7 @@ from app.errors import Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
+from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 
@@ -27,10 +28,16 @@ def _workspace_groups(con):
     # 라벨은 트리 한 번에 한 번만 읽는다. 카드마다 다시 물으면 카드 수만큼 쿼리가 는다
     labels = label_repo.map_by_todo(con)
     locked = autorun_repo.locked_todo_ids(con)
+    # 세션 활동 시각도 한 번에. 상태별 뷰가 카드를 이 순서로 세운다
+    last_session = session_repo.last_activity_by_todo(con)
     groups = []
     for workspace in workspace_repo.list_all(con):
         todos = _enriched(
-            con, todo_repo.list_by_workspace(con, workspace["id"]), labels, locked
+            con,
+            todo_repo.list_by_workspace(con, workspace["id"]),
+            labels,
+            locked,
+            last_session,
         )
         category = by_id.get(workspace["category_id"]) or {}
         groups.append(
@@ -47,7 +54,7 @@ def _workspace_groups(con):
                 jira_id=workspace["jira_id"],
             )
         )
-    groups.append(_unassigned_group(con, labels, locked))
+    groups.append(_unassigned_group(con, labels, locked, last_session))
     return groups
 
 
@@ -73,22 +80,26 @@ def _category_groups(con):
     return groups
 
 
-def _unassigned_group(con, labels, locked):
+def _unassigned_group(con, labels, locked, last_session=None):
     return _group(
         kind=KIND_UNASSIGNED,
         item_id=None,
         name=UNASSIGNED_LABEL,
         sort_order=None,
-        todos=_enriched(con, todo_repo.list_by_workspace(con, None), labels, locked),
+        todos=_enriched(
+            con, todo_repo.list_by_workspace(con, None), labels, locked, last_session
+        ),
     )
 
 
-def _enriched(con, todos, labels, locked):
+def _enriched(con, todos, labels, locked, last_session=None):
     enriched = []
     for todo in todos:
         item = dict(todo)
         item["labels"] = labels.get(todo["id"], [])
         item["autorun_locked"] = todo["id"] in locked
+        # 상태별 뷰가 카드를 세우는 순서. 한 번도 안 잡힌 할일은 None
+        item["last_session_at"] = (last_session or {}).get(todo["id"])
         enriched.append(item)
     return enriched
 

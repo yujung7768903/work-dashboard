@@ -39,7 +39,9 @@ def ensure_from_session(con, session_row_id, workspace_id, root=None):
     """분류 직후 호출. 만든 할일 또는 만들지 않았으면 None.
 
     워크스페이스를 인자로 받는 이유 — 세션에는 워크스페이스가 저장되지 않는다.
-    세션의 소속은 여기서 만드는 할일 연결로 비로소 생긴다.
+    세션의 소속은 여기서 만드는 할일 연결로 비로소 생긴다. 그래서 이미 할일이 붙어
+    있으면 새로 만들지 않고 그 할일을 옮긴다 — 안 옮기면 다시 분류한 것이 어디에도
+    남지 않아 저장이 조용히 무시된다
 
     제목 요약은 기다리지 않는다 — 첫 문장 제목으로 바로 돌려주고 요약은 뒤따라 붙는다
     """
@@ -47,7 +49,9 @@ def ensure_from_session(con, session_row_id, workspace_id, root=None):
         return None
     session = session_repo.get_by_row_id(con, session_row_id)
     # 이미 잡은 할일이 있으면 그게 이 세션의 작업이다. 새로 만들면 같은 일이 두 줄 된다
-    if session_repo.linked_todo_ids(con, session["claude_session_id"]):
+    linked = session_repo.linked_todo_ids(con, session["claude_session_id"])
+    if linked:
+        _move(con, linked, workspace_id)
         return None
     prompts = _prompts(session, root)
     if not prompts:
@@ -67,6 +71,13 @@ def ensure_from_session(con, session_row_id, workspace_id, root=None):
     db_path = _db_path(con)
     schedule(lambda: retitle(db_path, todo["id"], prompts[0], raw_title))
     return created
+
+
+def _move(con, todo_ids, workspace_id):
+    # 같은 곳이면 건드리지 않는다 — update 는 sort_order 를 새로 매겨 목록 끝으로 밀어낸다
+    for todo_id in todo_ids:
+        if todo_repo.get(con, todo_id)["workspace_id"] != workspace_id:
+            todo_repo.update(con, todo_id, workspace_id=workspace_id)
 
 
 def retitle(db_path, todo_id, prompt, raw_title):

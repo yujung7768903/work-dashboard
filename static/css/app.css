@@ -309,15 +309,31 @@ button:disabled { color: var(--line); cursor: default; }
   display: flex; gap: var(--gap); color: var(--muted);
   flex-wrap: wrap; font-size: var(--fs-sm);
 }
-#board-controls label { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; }
 /* 열 수 아이콘은 줄 오른쪽 끝. 고른 쪽만 액센트 색 면이 남는다. 할일·워크트리 탭이 같이 쓴다 */
 .view-columns { display: flex; gap: var(--sp-4); margin-left: auto; }
 .view-columns button.active { background: var(--softer); color: var(--accent); }
+/* 할일 탭의 아이콘 묶음. 줄 오른쪽 끝에 완료 표시·1열·2열이 한 덩어리로 붙는다 —
+   아이콘끼리는 뷰 전환과의 사이보다 좁아야 한 묶음으로 읽힌다 */
+#todo-tools { display: flex; gap: var(--sp-4); margin-left: auto; }
+#todo-tools .view-columns { margin-left: 0; }
+/* 눌려 있는 동안 액센트 면이 남는다. 열 수 아이콘의 .active 와 같은 표시 */
+#show-done[aria-pressed="true"] { background: var(--softer); color: var(--accent); }
+/* 워크스페이스별·상태별 전환. 워크트리 탭의 #worktree-view 와 같은 알약 버튼 */
+#todo-view { display: flex; gap: var(--sp-4); }
+#todo-view button {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: none; color: var(--muted); font-weight: 600; cursor: pointer;
+}
+#todo-view button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+#todo-view button.active { background: var(--softer); color: var(--accent); }
 
 /* 카테고리 색을 쓰는 요소들. --cat 은 JS 가 인라인으로 덮고, 없으면 기본값 */
-.group, .ws-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
+.group, .ws-card, .kanban-card, .session-cat { --cat: #aab0c4; }  /* 분류 전 = 옅은 회색 */
 .cat-pill { --cat: #4e5468; }               /* 전체 라벨 = 중립 회색 */
-.group, .ws-card, .cat-pill, .session-cat {
+.group, .ws-card, .kanban-card, .cat-pill, .session-cat {
   --cat-bg: color-mix(in srgb, var(--cat) var(--cat-mix), var(--surface));
   --cat-ink: color-mix(in srgb, var(--cat) 72%, var(--fg));
 }
@@ -348,6 +364,10 @@ button:disabled { color: var(--line); cursor: default; }
 /* 세로 화면은 1컬럼, 넓으면 2컬럼. 간격은 grid gap 이 담당하므로 카드 세로 마진 없음 */
 /* stretch: 같은 행의 두 카드를 더 긴 쪽 높이에 맞춰 아래선을 정렬 */
 #groups, #done-groups { display: grid; gap: var(--gap); align-items: stretch; margin: var(--gap) 0; }
+/* 뷰를 바꾸면 board.js 가 안 쓰는 쪽에 hidden 을 건다. [hidden] 의 display:none 은
+   UA 스타일이라 위·아래의 display 선언에 밀리므로 여기서 다시 적어 둔다 */
+#groups[hidden], #done-today[hidden], #kanban[hidden],
+#todo-tools[hidden] { display: none; }
 /* 고른 열 수는 아래 화면 폭 기준(@media min-width 1240px)을 이긴다 — 화면이 넓어도
    한 줄로 길게 보고 싶을 때가 있다. 고르는 곳은 보드 위 아이콘 두 개(static/js/layout.js) */
 body[data-board-columns="1"] #groups,
@@ -378,23 +398,23 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
    넓혀 버린다. 0 으로 풀어야 1fr 을 지키고 안쪽이 말줄임으로 접힌다 */
 #worktree-list > .group { min-width: 0; }
 /* 목록을 받아 오는 동안, 스크롤이 생기지 않는 선까지 남은 화면을 채우고 그 한가운데에
-   도는 원 하나. 화면 아래까지의 높이는 worktrees.js 가 재서 --wt-loading-room 으로 준다
+   도는 원 하나. 화면 아래까지의 높이는 spinner.js 가 재서 --loading-room 으로 준다
    (--sp-48 은 본문 아래 여백. 그만큼 빼야 화면이 딱 맞고 스크롤이 안 생긴다) */
-.wt-loading {
+.loading-spin {
   grid-column: 1 / -1; display: grid; place-items: center;
-  min-height: max(160px, calc(var(--wt-loading-room, 50vh) - var(--sp-48)));
+  min-height: max(160px, calc(var(--loading-room, 50vh) - var(--sp-48)));
   /* 칸이 그 여백만큼 짧으니 위를 같은 만큼 띄워야 눈에 보이는 빈 자리의 한가운데다 */
   padding-top: var(--sp-48);
 }
-.wt-loading::after {
+.loading-spin::after {
   content: ""; width: 28px; height: 28px; border-radius: 50%;
   border: 3px solid color-mix(in srgb, var(--fg) 12%, transparent);
   border-top-color: var(--accent);
-  animation: wt-spin 0.7s linear infinite;
+  animation: spin 0.7s linear infinite;
 }
-@keyframes wt-spin { to { transform: rotate(360deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .wt-loading::after { animation-duration: 2.4s; }
+  .loading-spin::after { animation-duration: 2.4s; }
 }
 
 /* overflow 를 걸지 않음: 마지막 항목의 케밥 메뉴가 카드 밖으로 펼쳐져야 함 */
@@ -461,6 +481,81 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   color: color-mix(in srgb, var(--cat) 72%, var(--fg));
   font-size: var(--fs-micro); font-weight: 600; white-space: nowrap;
 }
+/* ── 칸반 ─────────────────────────────────────────────────────────────────── */
+/* 할일 줄이 쓰는 상태 표기와 같은 네 칸(대기·진행중·검토 대기·완료) 고정.
+   minmax(0,1fr) 이라 화면이 좁아지면 컬럼이 같이 좁아진다 — 가로 스크롤을 걸면
+   마지막 카드의 케밥 메뉴가 잘린다 */
+#kanban {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap); align-items: start; margin: var(--gap) 0;
+}
+/* 컬럼은 각자 위에서부터 쌓인다 — 옆 컬럼 카드 높이에 맞춰 늘어나지 않는다 */
+.kanban-col { display: flex; flex-direction: column; gap: var(--sp-8); }
+.kanban-head {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: 0 var(--sp-4); font-weight: 700;
+}
+/* 진행중은 액센트로, 완료는 회색으로. 지금 손에 쥔 칸이 눈에 먼저 들어와야 한다 */
+.kanban-col[data-status="doing"] .kanban-col-name { color: var(--accent); }
+.kanban-col[data-status="done"] .kanban-col-name { color: var(--muted); }
+/* 컬럼에 든 할일 수. 목록 뷰 .group-meta 와 같은 회색 숫자 */
+.kanban-count {
+  color: var(--muted); font-size: var(--fs-sm); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* 빈 컬럼도 자리를 지킨다 — 카드가 없으면 컬럼이 사라져 상태 구분이 흐려진다 */
+.kanban-empty {
+  padding: var(--sp-12) var(--pad-card); margin: 0;
+  border-radius: var(--r-card); box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--muted); font-size: var(--fs-sm);
+}
+/* 할일 하나가 카드 하나. 카드 안은 두 줄뿐이라(워크스페이스 이름 · 할일) 여백을
+   목록 뷰 카드보다 좁게 잡는다 — 컬럼을 훑는 화면이라 카드 높이가 곧 훑는 거리다.
+   왼쪽 색띠는 카테고리 색. 이름줄까지 색을 얹으면 두 줄짜리 카드가 알록달록해진다 */
+.kanban-card {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-8) var(--sp-12);
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card); border-left: 3px solid var(--cat);
+}
+/* 검토 대기 칸의 할일은 status 가 done 이지만 아직 끝난 것이 아니다 — 목록 뷰의
+   완료 취소선이 그대로 걸리면 확인이 남은 건이 끝난 것처럼 보인다 */
+.kanban-col[data-status="review"] .todo.done .title {
+  color: var(--fg); text-decoration: none;
+}
+/* 어느 워크스페이스의 할일인지. 제목보다 작고 옅어 제목이 먼저 읽힌다 */
+.kanban-ws {
+  color: var(--cat-ink); font-size: var(--fs-micro); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kanban-card.unassigned .kanban-ws { color: var(--muted); }
+/* 할일 번호. 색·두께는 옆의 워크스페이스 이름을 그대로 물려받는다 — 한 줄로 읽히는
+   이름표라 둘을 다르게 칠할 이유가 없다. 목록 뷰 .todo-id 와 달리 칸도 잡지 않는다:
+   카드마다 맨 앞이 번호라 자릿수를 맞출 세로줄이 없다 */
+.kanban-id { margin-right: var(--sp-4); }
+/* 카드가 이미 여백과 경계를 갖는다 — 줄이 자기 여백·윗선을 또 두면 카드가 커진다 */
+.kanban-card .todo { padding: 0; border-top: none; align-items: flex-start; }
+/* 컬럼이 좁아 #id 칸까지 두면 제목에 남는 폭이 없다. #id 는 카드 첫 줄에 있다 */
+.kanban-card .todo-id { display: none; }
+/* 라벨 칸. 카드 좌우 여백만큼 밖으로 빼서 구분선이 카드 폭을 가로지른다 —
+   선이 여백 안에서 끊기면 카드가 두 장처럼 보인다.
+   라벨이 없는 카드는 이 칸이 빈 채로 남아 높이를 지킨다 */
+.kanban-foot {
+  margin: var(--sp-4) calc(var(--sp-12) * -1) 0;
+  padding: var(--sp-8) var(--sp-12) 0;
+  border-top: 1px solid var(--line);
+  min-height: 25px;
+}
+/* 줄 안에서는 오른쪽으로 밀려 있었지만(제목이 남는 폭을 쓴다) 여기서는 제 칸이라 왼쪽부터 */
+.kanban-foot .todo-labels { justify-content: flex-start; }
+/* 제목 자리를 두 줄로 고정한다 — 한 줄짜리도 두 줄을 잡아 카드 높이가 균일해지고,
+   넘치는 제목은 말줄임으로 끊는다. 세 줄짜리 하나가 컬럼의 리듬을 깨지 않아야 한다 */
+.kanban-card .todo .title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+  height: calc(var(--fs-body) * var(--lh-body) * 2);
+}
+
 /* 펼침 아이콘. 폭 1.2em 은 뒤따르는 목록 들여쓰기와 같은 값이고, 높이도 같은 값으로
    맞춰 hover 면이 원이 된다 (다른 아이콘 버튼은 --icon-box 정사각) */
 .row-toggle {
@@ -609,6 +704,49 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
   display: block; width: 100%; text-align: left; background: none; white-space: nowrap;
 }
 
+/* ── 폴더 선택기 (할일 케밥 "시작" 이 위치를 못 정했을 때) ────────────────────── */
+/* 팝업 몸통 — #todo-add-form·#session-modal-body 와 같은 자리: 다이얼로그 자체는
+   padding:0 로 두고(닫기 버튼이 제목과 같은 선에 고정되도록) 스크롤은 여기가 맡는다 */
+#dir-browse-body { padding: var(--sp-20); overflow: auto; }
+
+/* 빵부스러기 — Figma "다른 이름으로 저장" 처럼 지나온 폴더를 눌러 곧장 되돌아간다.
+   마지막(지금 폴더)은 disabled 로 굵게 남겨 "여기 있음" 을 표시 */
+.dir-browse-crumbs {
+  display: flex; align-items: center; gap: var(--sp-2); overflow-x: auto;
+  padding-bottom: var(--sp-8); margin-bottom: var(--sp-8);
+  border-bottom: 1px solid var(--line);
+}
+.dir-browse-crumbs button {
+  flex: none; padding: var(--sp-2); background: none;
+  color: var(--muted); font-size: var(--fs-sm); white-space: nowrap;
+}
+.dir-browse-crumbs button:hover:not(:disabled) { background: var(--bg); color: var(--fg); }
+/* 지금 폴더는 눌러도 아무 데도 못 가므로 disabled 지만, 회색 눈금이 아니라
+   "여기 있음" 으로 읽혀야 한다 — 전역 button:disabled 보다 특이도를 올려 이긴다 */
+.dir-browse-crumbs button:disabled { color: var(--fg); font-weight: 700; cursor: default; }
+
+.dir-browse-list {
+  max-height: 16em; overflow-y: auto; border: 1px solid var(--line);
+  border-radius: var(--r-ctl); margin-bottom: var(--sp-12);
+}
+.dir-browse-entry {
+  display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left;
+  background: none; border-radius: 0; padding: var(--sp-8) var(--sp-12);
+}
+.dir-browse-entry:hover { background: var(--bg); }
+.dir-browse-icon { flex: none; display: flex; color: var(--muted); }
+.dir-browse-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dir-browse-empty {
+  margin: 0; padding: var(--sp-16); color: var(--muted); font-size: var(--fs-sm);
+  text-align: center;
+}
+/* 폴더면 어디든 고를 수 있다 — git 저장소로 제한하지 않는다. 그래서 액센트는
+   항상 켜져 있다 */
+.dir-browse-primary { background: var(--accent); color: #fff; }
+.dir-browse-primary:hover { background: color-mix(in srgb, var(--accent) 85%, black); }
+
 /* ── 설정 (카테고리·라벨) ─────────────────────────────────────────────────── */
 /* 두 목록이 한 화면에 겹치므로 무엇의 목록인지 제목으로 가른다 */
 .set-head { margin: var(--gap) 0 var(--sp-8); font-size: var(--fs-body); font-weight: 700; }
@@ -709,26 +847,85 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
   border: none; border-radius: var(--r-ctl); box-shadow: var(--shadow-card);
 }
 
-/* ── 자율 수행 패널 ──────────────────────────────────────────────────────── */
-#autorun-panel {
+/* ── 자율 수행 탭 ────────────────────────────────────────────────────────── */
+/* 스위치와 주기를 한 줄로 — 켜짐 여부와 마지막 tick 을 화면 맨 위에서 한 번에 읽는다 */
+.ar-state {
+  display: flex; align-items: center; gap: var(--sp-12);
   background: var(--surface); border-radius: var(--r-card);
   box-shadow: var(--shadow-card);
-  padding: var(--sp-12) var(--pad-card); margin: var(--gap) 0;
+  padding: var(--sp-12) var(--pad-card); margin: 0 0 var(--gap);
 }
-#autorun-panel > summary {
-  display: flex; align-items: center; gap: var(--sp-8);
-  cursor: pointer; list-style: none; font-weight: 600;
+.ar-head {
+  font-size: var(--fs-body); font-weight: 700; margin: var(--sp-24) 0 var(--sp-8);
 }
-#autorun-panel > summary::-webkit-details-marker { display: none; }
-#autorun-panel > summary::before {
-  content: ""; flex: none; width: 6px; height: 6px;
-  border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
-  transform: rotate(-45deg); transition: transform 0.12s;
+.ar-hint { color: var(--muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-8); }
+/* 판까지는 어느 쪽이든 8. 힌트 줄이 뒤따를 때만 4 로 붙인다 — 힌트는 제목의 일부다.
+   판 쪽에 margin 을 더하는 방법은 안 된다. 형제 margin 은 합쳐지지 않고 큰 쪽만 남는다 */
+.ar-head:has(+ .ar-hint) { margin-bottom: var(--sp-4); }
+/* 후보와 실행은 같은 문법을 쓴다 — 패널 하나(카드) 안에 줄이 들어간다.
+   줄마다 카드를 주면 같은 화면에서 카드 둥글기가 두 종류로 갈라진다 */
+/* 위아래 여백은 줄이 가진 것(--sp-8)으로 충분하다. 판에 또 얹으면 위아래가 어긋난다
+   — 옛 패널이 details summary 아래 붙어 있던 시절의 4/12 를 그대로 물려받아 그랬다 */
+.ar-cands {
+  list-style: none; margin: 0;
+  padding: 0 var(--pad-card);
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
 }
-#autorun-panel[open] > summary::before { transform: rotate(45deg); }
-/* 라벨·점·주기를 한 줄로 — 켜짐 여부와 주기를 제목 옆에서 한 번에 읽는다 */
-#autorun-head {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-12);
+/* 실행 쪽은 판이 상태마다 하나씩이라 바깥은 판이 아니라 그 판들을 세로로 세우는 통이다 */
+#autorun-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: var(--sp-8);
+}
+/* 줄 안의 세로 정렬도 두 목록이 같다. baseline 을 쓰면 글자가 없는 손잡이는 위로,
+   작은 글자(사유 칩·경과)는 아래로 어긋나 가로 한 줄로 안 읽힌다 */
+.ar-cands li, #autorun-list .ar-group-rows li { align-items: center; }
+
+/* 후보 줄. 워크스페이스 / 할일(남는 폭) / 사유 칩.
+   손잡이는 칸을 차지하지 않는다 — 칸으로 두면 그만큼 들여써져 실행 목록과 글자
+   시작점이 어긋난다. 카드 왼쪽 여백에 겹쳐 띄운다 */
+.ar-cands li {
+  position: relative;
+  display: grid; grid-template-columns: 12em minmax(0, 1fr) 14em;
+  gap: var(--sp-8); cursor: pointer; padding: var(--sp-8) 0;
+}
+.ar-cands li + li { border-top: 1px solid var(--line); }
+.ar-cands li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-cands li.empty {
+  grid-template-columns: 1fr; color: var(--muted); cursor: default;
+}
+/* 손잡이. 자리는 늘 잡아 두고 hover 에서만 보인다 — 나타날 때 줄이 밀리면 안 된다.
+   점 여섯 개는 배경 그라디언트로 찍는다. 아이콘 파일이나 svg 노드를 늘리지 않는다 */
+.ar-cands .ar-grip {
+  position: absolute; left: calc(-1 * var(--sp-12)); top: 50%;
+  transform: translateY(-50%);
+  width: 6px; height: var(--sp-12); cursor: grab; opacity: 0;
+  background-image: radial-gradient(currentColor 1px, transparent 1px);
+  /* 시작점을 왼쪽 위로 못박는다. center 로 두면 6px 폭에 3px 칸이 가운데 정렬되면서
+     칸 경계가 1.5px 에서 시작해 좌우 끝에 반쪽 점이 생긴다 — 2열이 아니라 3열로 보인다 */
+  background-size: 3px 4px; background-position: 0 0; background-repeat: repeat;
+  color: var(--muted); transition: opacity 0.12s;
+}
+.ar-cands li:hover .ar-grip,
+.ar-cands .ar-grip:focus-visible { opacity: 1; }
+.ar-cands li.dragging { opacity: 0.4; }
+.ar-cands li.dragging .ar-grip { cursor: grabbing; }
+/* 삽입선. 놓으면 어디로 가는지 미리 보여준다 — 안쪽 그림자로 그려 줄 높이가 안 흔들린다 */
+.ar-cands li.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
+.ar-cands li.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
+.ar-cands .scope { font-weight: 600; }
+.ar-cands .prompt { color: var(--text); }
+.ar-cands .badge { font-weight: 600; font-size: var(--fs-sm); text-align: right; }
+/* 지금 돌 수 있는 것만 강조하고, 막힌 것은 왜 막혔는지 색으로 갈라 준다 */
+.ar-cands .blocker-ready { color: var(--good); }
+.ar-cands .blocker-precondition { color: var(--soft); }
+.ar-cands .blocker-cwd { color: var(--warn); }
+/* 위치 미정 칩만 버튼이다 — 눌러 경로를 고르면 그 자리에서 풀린다. 실행 목록의 검토
+   대기 버튼과 같은 방식으로 기본 외양을 걷어내되, 이 칸은 오른쪽 정렬이라 그것만 다르다 */
+.ar-cands button.badge {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 600;
+  font-size: var(--fs-sm); cursor: pointer; text-decoration: underline dotted;
+  text-align: right;
 }
 #autorun-cycle {
   font-weight: 400; font-size: var(--fs-sm); color: var(--muted);
@@ -764,21 +961,66 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .switch .state::after { content: "OFF"; }
 .switch input:checked ~ .state { color: var(--accent); }
 .switch input:checked ~ .state::after { content: "ON"; }
-#autorun-list { list-style: none; margin: var(--sp-8) 0 0; padding: 0; }
-/* 자율 실행 기록이 없으면 목록의 위쪽 마진 때문에 패널 아래 여백만 넓어진다 */
-#autorun-list:empty { display: none; }
+/* 상태마다 판 하나. 판을 펼치면 그 안에 칸 이름 줄과 실행 줄이 들어간다 */
+#autorun-list li.ar-group {
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+  padding: 0 var(--pad-card);
+}
+/* 판 머리. 눌러서 접고 편다 — 끝난 것(막힘·실패·완료)은 접힌 채로 시작한다 */
+.ar-group-head {
+  display: flex; align-items: center; gap: var(--sp-8); cursor: pointer;
+  font-weight: 700; padding: var(--sp-12) 0;
+}
+.ar-group:not(.collapsed) .ar-group-head { border-bottom: 1px solid var(--line); }
+/* 꺾쇠는 세션 패널과 같은 방식으로 CSS 가 그린다 — ▾ 문자는 글꼴마다 크기·기울기가
+   달라 같은 화면 안에서 다른 아이콘처럼 보인다 */
+.ar-group-head .mark {
+  flex: none; width: 6px; height: 6px; margin-left: var(--sp-2);
+  border-right: 1.6px solid var(--muted); border-bottom: 1.6px solid var(--muted);
+  transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.12s;
+}
+.ar-group.collapsed .ar-group-head .mark {
+  transform: rotate(-45deg) translate(-1px, 1px);
+}
+.ar-group-head:hover { color: var(--accent); }
+.ar-group-head:hover .mark { border-color: var(--accent); }
+.ar-group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ar-group-head .count {
+  color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums;
+}
+/* 아래 4 는 판 위쪽 머리 여백(12)과 맞추기 위한 것이다 — 줄이 이미 8 을 갖고 있다 */
+.ar-group-rows { list-style: none; margin: 0; padding: 0 0 var(--sp-4); }
+/* 칸 이름. 판마다 리스트 바로 위에 있고 데이터 줄과 같은 격자를 쓴다 */
+#autorun-list li.head {
+  cursor: default; color: var(--muted); font-weight: 600;
+}
+/* 글자 크기는 줄이 아니라 칸에 준다. 줄에 주면 격자 폭의 em 이 그 크기로 바뀌어
+   헤더 칸이 데이터 줄보다 좁아지고, 칸 시작 x 가 줄마다 어긋난다 */
+#autorun-list li.head > * { font-size: var(--fs-sm); }
+#autorun-list li.empty {
+  display: block; color: var(--muted); cursor: default;
+  background: var(--surface); border-radius: var(--r-card);
+  box-shadow: var(--shadow-card); padding: var(--sp-12) var(--pad-card);
+}
 /* 어느 줄이든 눌러서 상세 팝업을 연다 — 세션 목록과 같은 규칙 */
 /* 표처럼 칸 시작 위치가 줄마다 같아야 한다. flex 로는 안 된다 — 워크스페이스 이름이
    길거나 상태 글자('검토 대기' ↔ '완료')가 길면 그만큼 뒤 칸이 밀린다. 격자로 못박는다:
-   워크스페이스 / 할일(남는 폭) / 워크트리 / 포트 / 상태 / 경과 */
-#autorun-list li {
+   워크스페이스 / 할일(남는 폭) / 워크트리 / 포트 / 상태 / 시작 / 종료 / 경과.
+   워크트리 칸을 20 에서 12 로 줄여 새로 들어온 시각 두 칸을 댄다. 더 넓히면
+   그만큼 할일 제목이 잘리는데, 제목이 잘리는 쪽이 나쁘다 — 넘친 브랜치 이름은
+   마우스오버로 뜨는 전체 경로 안에 그대로 들어 있다.
+   시각은 'MM-DD HH:MM' 11 글자가 최대라 5em 이면 남는다 */
+#autorun-list .ar-group-rows li {
   display: grid;
-  grid-template-columns: 12em minmax(0, 1fr) 20em 6em 5em 4em;
-  gap: var(--sp-8); align-items: baseline; padding: var(--sp-4) 0;
+  grid-template-columns: 12em minmax(0, 1fr) 12em 6em 7em 5em 5em 4em;
+  gap: var(--sp-8); padding: var(--sp-8) 0;
   cursor: pointer;
 }
 /* 칸을 넘치는 글자는 줄바꿈 없이 잘라낸다 — 한 줄 높이가 줄마다 달라지면 표가 아니다 */
-#autorun-list li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#autorun-list .ar-group-rows li > * {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 #autorun-list .scope { font-weight: 600; }
 #autorun-list .prompt { color: var(--muted); }
 #autorun-list .wt { color: var(--muted); font-size: var(--fs-sm); }
@@ -802,8 +1044,43 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 요청도 사람이 볼 때까지 후보에서 빠져 있다는 점에서 막힘과 같은 계열 색을 쓴다 */
 #autorun-list .outcome-requested { color: var(--warn); }
 #autorun-list .outcome-running { color: var(--accent); }
+/* 시작·종료 시각. 자릿수가 흔들리지 않게 tabular-nums 로 못박는다 */
+#autorun-list .when {
+  color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+}
+/* 마지막 칸은 두 목록 다 오른쪽 끝에 붙인다 — 후보의 사유 칩과 눈이 맞는다.
+   헤더의 마지막 칸 이름도 같이 붙여야 이름과 값이 한 줄로 읽힌다 */
+#autorun-list li.head > :last-child { text-align: right; }
 #autorun-list .age {
   color: var(--muted); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── 착수 조건 체크리스트 (상세 팝업) ─────────────────────────────────────── */
+.cond-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; }
+/* 목록 줄 정렬은 화면 어디서나 center 다 — 확인 버튼처럼 글자 크기가 다른 것이
+   섞이면 baseline 은 서로 다른 높이로 흩어진다 */
+.cond-list li {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-2) 0; font-size: var(--fs-sm);
+}
+.cond-list .text { flex: 1; min-width: 0; }
+.cond-mark { flex: none; width: var(--sp-12); font-weight: 700; }
+.cond-mark.met { color: var(--good); }
+.cond-mark.unmet { color: var(--danger); }
+/* 판정 못 하는 항목. 실패가 아니라 '코드가 모른다' 라서 색을 따로 쓴다 */
+.cond-mark.unknown { color: var(--muted); }
+.cond-check { display: inline-flex; align-items: center; gap: var(--sp-4); }
+.cond-check.met .cond-out { color: var(--good); }
+.cond-check.unmet .cond-out { color: var(--danger); }
+.cond-run {
+  border: 1px solid var(--line); background: none; color: inherit;
+  padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-micro); cursor: pointer;
+}
+.cond-out {
+  color: var(--muted); font-size: var(--fs-micro);
+  max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ── 세션 패널 ────────────────────────────────────────────────────────────── */
@@ -863,7 +1140,8 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
    팝업을 보려고 위로 스크롤해야 했다. 닫기 버튼의 기준 상자 역할은 fixed 도 한다 */
 /* 할일 추가 팝업도 같은 외양을 쓴다 — 팝업이 두 종류로 보일 이유가 없다 */
 #session-modal[open],
-#todo-add-modal[open] {
+#todo-add-modal[open],
+#dir-browse-modal[open] {
   position: fixed; inset: 0; margin: auto;
   display: flex; flex-direction: column;
   width: min(620px, calc(100vw - var(--sp-24))); max-height: 80vh; overflow: hidden;
@@ -871,10 +1149,14 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
   background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
 }
 /* 팝업이 열린 동안 뒤 화면은 고정. 스크롤은 팝업 본문만 갖는다 */
-html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidden; }
-#session-modal::backdrop, #todo-add-modal::backdrop { background: rgba(0, 23, 51, 0.45); }
+html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#dir-browse-modal[open]) {
+  overflow: hidden;
+}
+#session-modal::backdrop, #todo-add-modal::backdrop, #dir-browse-modal::backdrop {
+  background: rgba(0, 23, 51, 0.45);
+}
 /* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
-#session-modal form, #todo-add-modal form { margin: 0; }
+#session-modal form, #todo-add-modal form, #dir-browse-modal form { margin: 0; }
 /* 전역 form 은 한 줄 flex 다(빠른 추가·설정 폼용). 팝업 폼은 라벨과 칸이 붙어야 하므로
    세로로 쌓는다 — display 를 안 바꾸면 제목·세 칸·버튼이 한 줄에 흩어진다.
    여백은 세션 팝업 본문과 같은 값 */
@@ -882,7 +1164,8 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 /* textarea 는 .field 공통 규칙이 이미 100%. 한 줄 입력·선택도 같은 폭이어야 줄이 맞는다 */
 #todo-add-form .field input, #todo-add-form .field select { width: 100%; }
 /* 확인 버튼은 오른쪽 끝. 팝업의 마지막 동작 위치를 세션 팝업과 같게 둔다 */
-.dlg-actions { display: flex; justify-content: flex-end; margin-top: var(--sp-20); }
+/* 버튼이 둘 이상이면 붙어 보인다 — 저장·취소가 한 덩어리로 읽히면 잘못 누른다 */
+.dlg-actions { display: flex; justify-content: flex-end; gap: var(--sp-8); margin-top: var(--sp-20); }
 .modal-close {
   position: absolute; top: var(--sp-12); right: var(--sp-12); z-index: 1;
   background: none; color: var(--muted);
@@ -934,6 +1217,14 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   background: var(--bg); font-size: var(--fs-sm); line-height: var(--lh-body);
   white-space: pre-wrap;
 }
+/* note 안의 주소·경로. 경로는 버튼이지만(서버가 탐색기를 띄운다) 링크로 보여야 한다 */
+.note-link {
+  color: var(--accent); text-decoration: underline; cursor: pointer;
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; text-align: left; word-break: break-all;
+  /* 버튼은 브라우저마다 줄 안 기준선이 달라(파이어폭스는 가운데) 글자 줄에 맞춘다 */
+  vertical-align: baseline;
+}
 
 .dlg-head { margin-bottom: var(--sp-12); }
 .dlg-title {
@@ -964,6 +1255,14 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
 #session-modal button.copy {
   padding: var(--sp-2) var(--sp-8); font-size: var(--fs-sm); color: var(--muted);
 }
+/* 개요의 수정 버튼과 그 입력칸. 세션 id 복사 버튼과 같은 크기 — 둘 다 제목 줄의 곁가지다 */
+#session-modal button.dlg-edit {
+  margin-left: var(--sp-8); padding: var(--sp-2) var(--sp-8);
+  font-size: var(--fs-sm); font-weight: 400; color: var(--muted);
+}
+#session-modal .field input { width: 100%; }
+/* 기존 note 는 여러 줄이 쌓여 있다 — 공용 60px 상자로는 고칠 때 두세 줄만 보인다 */
+#session-modal .field textarea { min-height: 120px; }
 
 /* 팝업 워크트리 탭 — 이름 / 상태 / 커밋 차이 한 줄, 아래에 시각과 커밋 목록.
    보드 워크트리 탭의 격자를 쓰지 않는다: 여기는 한 워크트리를 펼쳐 보는 자리다 */
@@ -1037,7 +1336,7 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]) { overflow: hidd
   --cat-mix: 28%;
 }
 :where([data-theme="dark"]) .cat-pill { --cat: #8b95a1; --on-cat: #14181d; }
-:where([data-theme="dark"]) :is(.group, .ws-card) { --cat: #444a5c; }
+:where([data-theme="dark"]) :is(.group, .ws-card, .kanban-card) { --cat: #444a5c; }
 :where([data-theme="dark"]) button { background-color: #2a2e3f; }
 :where([data-theme="dark"]) button:hover:not(:disabled) { background-color: #343950; }
 :where([data-theme="dark"]) #repo-link:hover { background-color: #343950; }

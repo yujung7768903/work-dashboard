@@ -274,8 +274,8 @@ class WorkspaceRepoTest(unittest.TestCase):
 
     def test_list_all_filters_by_status(self):
         active = workspace_repo.create(self.con, self.dev, "진행중")
-        paused = workspace_repo.create(self.con, self.dev, "보류")
-        workspace_repo.update(self.con, paused["id"], status="paused")
+        inactive = workspace_repo.create(self.con, self.dev, "보류")
+        workspace_repo.update(self.con, inactive["id"], status="inactive")
         names = [
             item["name"]
             for item in workspace_repo.list_all(self.con, status=WORKSPACE_ACTIVE)
