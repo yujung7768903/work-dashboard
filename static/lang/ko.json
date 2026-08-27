@@ -92,7 +92,7 @@
   "autorun.blocker.cwd": "작업 위치 미정",
   "autorun.blockerHint.ready": "지금 돌 수 있다. 다음 tick 에 이 할일이 시작된다",
   "autorun.blockerHint.precondition": "착수 조건이 남았다. 눌러서 어느 항목인지 본다",
-  "autorun.blockerHint.cwd": "일할 경로를 아직 모른다. 눌러서 지정하면 다음 tick 에 시작된다",
+  "autorun.blockerHint.cwd": "작업 위치가 지정되지 않았습니다. 위치를 지정하면 다음 회차에 수행됩니다.",
   "session.runningInitial": "돌고 있는 세션 0",
   "session.runningCount": "돌고 있는 세션 {count}",
   "session.unclassified": "분류 전",

@@ -225,8 +225,6 @@ elements["dir-browse-select"].onclick();
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.ok(asked.includes("PATCH /api/workspaces/3"), asked.join(", "));
 
-// 소속 없는 할일의 칩도 같은 버튼이다 — 저장할 워크스페이스가 없다고 글자로만 남기면
-// 줄 클릭으로 새서 상세 팝업만 뜬다(실제로 그랬다). 경로는 그 할일에 저장된다
 const looseChip = cands[3].children[3];
 assert.equal(looseChip.className, "badge blocker-cwd");
 assert.equal(typeof looseChip.listeners.click, "function");
