@@ -126,7 +126,7 @@ export function openDetail(target) {
   body.textContent = t("common.loading");
   if (!dialog.open) dialog.showModal();
   loadContext(target)
-    .then((context) => body.replaceChildren(...tabbed(context, dialog)))
+    .then((context) => body.replaceChildren(...tabbed(context)))
     .catch((error) => {
       body.textContent = error.message;
     });
@@ -142,7 +142,7 @@ async function loadContext(target) {
   if (target.session) {
     const detail = await api.getSession(target.session.id);
     // 분류 직후처럼 방금 만들어진 할일을 보여줘야 할 때만 개요로 열린다
-    return { ...detail, ...common, tab: target.tab ?? SESSION_TAB };
+    return { ...detail, ...common, tab: target.tab ?? SESSION_TAB, notice: target.notice };
   }
   const { todo, sessions, worktrees } = await api.getTodo(target.todo.id);
   // 할일에서 열면 세션 탭은 그 할일을 마지막으로 잡은 세션을 보여준다
@@ -153,16 +153,18 @@ async function loadContext(target) {
     todos: [todo],
     worktrees,
     ...common,
-    tab: OVERVIEW_TAB,
+    // 분류 저장 뒤 다시 그릴 때만 세션 탭으로 돌아온다
+    tab: target.tab ?? OVERVIEW_TAB,
+    notice: target.notice,
     // 할일에서 열면 세션 탭 머리도 개요와 같은 할일 표기를 쓴다
     fromTodo: true,
   };
 }
 
-function tabbed(context, dialog) {
+function tabbed(context) {
   const panes = {
     [OVERVIEW_TAB]: overviewPane(context.todos),
-    [SESSION_TAB]: sessionPane(context, dialog),
+    [SESSION_TAB]: sessionPane(context),
     [WORKTREE_TAB]: worktreePane(context.worktrees),
   };
   Object.entries(panes).forEach(([key, pane]) => {
@@ -503,7 +505,7 @@ function commitSection(row) {
   return block;
 }
 
-function sessionPane(context, dialog) {
+function sessionPane(context) {
   const pane = element("div", "dlg-pane");
   if (!context.session) {
     pane.appendChild(element("p", "muted", t("session.noSession")));
@@ -511,7 +513,7 @@ function sessionPane(context, dialog) {
   }
   pane.append(
     headBlock(context.session, context.categories, context.fromTodo ? context.todos[0] : null),
-    classifyRow(context.session, context.workspaces, context.categories, dialog),
+    classifyRow(context),
     logSection(context.messages)
   );
   return pane;
@@ -552,10 +554,12 @@ function metaLine(session) {
   );
 }
 
-function classifyRow(session, workspaces, categories, dialog) {
+function classifyRow(context) {
+  const { session } = context;
   const row = element("div", "session-classify");
-  const select = targetSelect(session, workspaces, categories);
-  const status = element("p", "session-status", "");
+  const select = targetSelect(session, context.workspaces, context.categories);
+  // 방금 저장하고 다시 그린 팝업이면 끝났다는 안내를 이어서 보인다
+  const status = element("p", "session-status", context.notice ?? "");
 
   const save = element("button", null, t("session.classifySave"));
   save.addEventListener("click", async () => {
@@ -571,12 +575,15 @@ function classifyRow(session, workspaces, categories, dialog) {
       const result = await api.classifySession(session.id, fields);
       save.disabled = false;
       await renderSessions();
-      // 할일이 자동으로 생겼으면 닫지 않고 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
-      if (result?.created_todo) {
-        openDetail({ session, tab: OVERVIEW_TAB });
-        return;
-      }
-      dialog.close();
+      // 붙어 있던 할일이 그 워크스페이스로 옮겨지므로 뒤에 깔린 보드도 따라가야 한다
+      await refreshBoard?.();
+      // 닫지 않고 같은 곳에서 다시 그린다 — 머리의 소속과 선택이 새 분류를 따라가고,
+      // 끝났다는 안내가 남는다. 할일이 자동으로 생겼으면 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
+      openDetail({
+        ...(context.fromTodo ? { todo: context.todos[0] } : { session }),
+        tab: result?.created_todo ? OVERVIEW_TAB : SESSION_TAB,
+        notice: t("session.classified"),
+      });
     } catch (error) {
       save.disabled = false;
       status.textContent = error.message;

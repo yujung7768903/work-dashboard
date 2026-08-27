@@ -115,6 +115,7 @@
   "session.classifySave": "保存分类",
   "session.classifyPlaceholder": "选择分类",
   "session.classifying": "分类中…",
+  "session.classified": "分类已保存。",
   "session.categoryOnly": "仅分类（无工作区）",
   "session.classifyRequired": "请选择工作区或分类",
   "session.recentMessages": "最近对话",

@@ -115,6 +115,7 @@
   "session.classifySave": "분류 저장",
   "session.classifyPlaceholder": "분류 선택",
   "session.classifying": "분류 중…",
+  "session.classified": "분류 완료됐습니다.",
   "session.categoryOnly": "카테고리만",
   "session.classifyRequired": "워크스페이스나 카테고리를 고르세요",
   "session.recentMessages": "최근 대화",

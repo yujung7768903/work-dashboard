@@ -115,6 +115,7 @@
   "session.classifySave": "Save classification",
   "session.classifyPlaceholder": "Choose a workspace or category",
   "session.classifying": "Classifying…",
+  "session.classified": "Classification saved.",
   "session.categoryOnly": "Category only",
   "session.classifyRequired": "Choose a workspace or a category",
   "session.recentMessages": "Recent messages",
