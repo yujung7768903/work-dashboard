@@ -69,7 +69,7 @@ claude --bg --model <상수> --permission-mode acceptEdits <프롬프트>
 | 5시간 창 사용률 ≥ 90% | `app/services/usage.py` (`RATE_LIMITS_PATH`), `USAGE_CRITICAL_PCT` | 시작 안 함. 다음 tick 재확인 |
 | 사용률 데이터가 아예 없음 | 사이드카에 `five_hour.used_percentage` 가 없음 | 시작 안 함 — 모르면 안 돎. 낡은 값은 그대로 쓴다(statusline 이 안 그려지면 늘 낡으므로) |
 | 대상 워크스페이스 워킹트리가 더러움 | `git status --porcelain` | 그 할일 건너뛰고 다음 후보 |
-| 사람이 그 잡에 프롬프트를 넣음 | `UserPromptSubmit` 훅 + 그 세션이 자율 세션 | autorun 즉시 off. 그 잡은 사람 것으로 인계 |
+| 사람이 그 잡에 프롬프트를 넣음 | `UserPromptSubmit` 훅 + 그 세션이 자율 세션 | 그 실행만 `handover` 로 닫음. autorun 은 계속 — 세션 하나를 사람이 맡았다고 다른 할일까지 멈출 이유가 없음. 잡이 끝났다고 신고한 뒤(`finished_at`)의 프롬프트는 검토 피드백이라 건드리지 않음 |
 | 같은 할일이 2회 연속 실패 | `autorun_runs.outcome` | 그 할일 `blocked` 처리, 다음 할일로 |
 | `blocked` 가 연속 3건 | `autorun_state.blocked_streak` | autorun off + 대시보드 경고 |
 | ③ 큐에서 `blocked` 만료 | `decisions.status` | 그 할일을 `blocked` 로 두고 다음 할일로 |

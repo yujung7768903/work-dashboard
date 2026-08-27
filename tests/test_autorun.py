@@ -12,6 +12,7 @@ from app.constants import (
     AUTORUN_CANDIDATE_LIMIT,
     AUTORUN_LABEL,
     OUTCOME_BLOCKED,
+    OUTCOME_HANDOVER,
     OUTCOME_DONE,
     OUTCOME_FAILED,
     OUTCOME_REQUESTED,
@@ -791,28 +792,35 @@ class Outcomes(AutorunCase):
 
 
 class Handover(AutorunCase):
-    def test_human_prompt_turns_autorun_off(self):
+    def _run(self):
+        return autorun_repo.find_by_session(self.con, CHILD)
+
+    def test_human_prompt_closes_that_run_only(self):
+        """전역 스위치는 그대로다 — 세션 하나를 사람이 맡았다고 다른 할일까지 멈추지 않는다"""
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
-        self.assertTrue(autorun.disable_for_session(self.con, CHILD))
-        self.assertFalse(autorun_repo.state(self.con)["enabled"])
+        self.assertTrue(autorun.handover_run(self.con, CHILD))
+        self.assertEqual(self._run()["outcome"], OUTCOME_HANDOVER)
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+        self.assertEqual(autorun_repo.open_runs(self.con), [])
 
     def test_other_session_is_left_alone(self):
-        self.assertFalse(autorun.disable_for_session(self.con, "남의 세션"))
+        self.assertFalse(autorun.handover_run(self.con, "남의 세션"))
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
     def test_the_jobs_own_first_prompt_is_not_a_human(self):
         """런처가 last_prompt 를 미리 심으면 자율 세션 자신의 첫 프롬프트가 사람으로
-        오판돼 autorun 이 뜨자마자 꺼진다 — 실제로 job cfe5d3f4 가 그렇게 꺼졌다"""
+        오판돼 뜨자마자 인계된다 — 실제로 job cfe5d3f4 가 그렇게 꺼졌다"""
         autorun.tick(self.con, launcher=Recorder())
         self.assertFalse(autorun.handover_if_human(self.con, CHILD, "자율 실행 지시 전문"))
-        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+        self.assertIsNone(self._run()["ended_at"])
 
     def test_second_prompt_is_a_human_and_hands_over(self):
         autorun.tick(self.con, launcher=Recorder())
         # 자율 세션의 첫 프롬프트는 훅이 그때 기록한다
         session_repo.set_last_prompt(self.con, CHILD, "자율 실행 지시 전문")
         self.assertTrue(autorun.handover_if_human(self.con, CHILD, "이거 개조식으로 써"))
-        self.assertFalse(autorun_repo.state(self.con)["enabled"])
+        self.assertEqual(self._run()["outcome"], OUTCOME_HANDOVER)
+        self.assertTrue(autorun_repo.state(self.con)["enabled"])
 
     def test_system_turns_are_not_a_human(self):
         """서브에이전트 완료 알림·다른 세션의 메시지도 UserPromptSubmit 을 태운다.
@@ -826,22 +834,39 @@ class Handover(AutorunCase):
         ):
             with self.subTest(turn=turn):
                 self.assertFalse(autorun.handover_if_human(self.con, CHILD, turn))
-                self.assertTrue(autorun_repo.state(self.con)["enabled"])
+                self.assertIsNone(self._run()["ended_at"])
+
+    def test_feedback_after_finish_signal_is_review_not_handover(self):
+        """잡이 끝났다고 신고한 뒤의 프롬프트는 검토 피드백이다. 인계로 닫으면 tick 이 검토
+        대기로 닫을 기회가 없어져 확인 버튼 흐름과 검토 잠금이 사라진다"""
+        autorun.tick(self.con, launcher=Recorder())
+        session_repo.set_last_prompt(self.con, CHILD, "자율 실행 지시 전문")
+        autorun_repo.mark_finished(self.con, CHILD)
+        self.assertFalse(autorun.handover_if_human(self.con, CHILD, "여기 오타 있어"))
+        self.assertIsNone(self._run()["ended_at"])
 
     def test_review_feedback_leaves_autorun_on(self):
         """검토 대기 잡에 주는 피드백은 인계가 아니다 — 다른 할일까지 멈출 이유가 없다"""
         autorun.tick(self.con, launcher=Recorder())
-        run = autorun_repo.find_by_session(self.con, CHILD)
+        run = self._run()
         autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
         session_repo.set_last_prompt(self.con, CHILD, "이거 브라우저 검증은 한거야?")
         self.assertFalse(autorun.handover_if_human(self.con, CHILD, "결과 봤어"))
-        self.assertTrue(autorun_repo.state(self.con)["enabled"])
+        self.assertEqual(self._run()["outcome"], OUTCOME_REVIEW)
 
     def test_handover_ignores_sessions_without_a_run(self):
         session_repo.register(self.con, "손세션", cwd=self.repo)
         session_repo.set_last_prompt(self.con, "손세션", "사람이 친 지시")
         self.assertFalse(autorun.handover_if_human(self.con, "손세션", "다음 지시"))
         self.assertTrue(autorun_repo.state(self.con)["enabled"])
+
+    def test_handover_is_not_a_failure_and_not_locked(self):
+        """사람이 이어받은 것이지 잡이 못 한 것이 아니다 — 실패 횟수·검토 잠금·주의 목록 어디에도 안 든다"""
+        run = autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
+        autorun_repo.close_run(self.con, run["id"], OUTCOME_HANDOVER)
+        self.assertEqual(autorun_repo.consecutive_failures(self.con, self.todo["id"]), 0)
+        self.assertNotIn(self.todo["id"], autorun_repo.locked_todo_ids(self.con))
+        self.assertEqual(autorun_repo.attention_with_todos(self.con), [])
 
 
 class RecentWithTodos(AutorunCase):

@@ -65,6 +65,7 @@
   "autorun.outcomeFailed": "Failed",
   "autorun.outcomeBlocked": "Blocked",
   "autorun.outcomeRequested": "Needs input",
+  "autorun.outcomeHandover": "Handed over",
   "autorun.reviewHint": "Click once you have reviewed and merged the changes to mark it done",
   "autorun.candidates": "Candidates",
   "autorun.candidatesHint": "Todos labeled auto that have not run yet, in order. Drag to reorder, click to see details and preconditions.",

@@ -27,6 +27,7 @@ from app.constants import (
     AUTORUN_MAX_CONCURRENT,
     AUTORUN_MODEL,
     OUTCOME_BLOCKED,
+    OUTCOME_HANDOVER,
     RATE_LIMITS_PATH,
     REVIEW_LOCKED_MSG,
     STATUS_DOING,
@@ -641,8 +642,10 @@ def _set_todo_status(con, todo_id, status):
 
 
 def handover_if_human(con, claude_session_id, prompt):
-    """UserPromptSubmit 이 부른다. 도는 잡에 사람이 끼어들었으면 인계하고 autorun 을 끈다.
-    끝난 잡에 말을 거는 것은 검토라서 끄지 않는다 — 그 할일은 locked_todo_ids 가 이미 뺀다.
+    """UserPromptSubmit 이 부른다. 도는 잡에 사람이 끼어들었으면 그 실행만 인계로 닫는다.
+    autorun 은 계속 돈다 — 원래는 전역 스위치를 껐는데, 세션 하나를 사람이 맡았다고 다른
+    할일까지 멈출 이유가 없고, 실제로 그 때문에 아침마다 꺼져 있었다.
+    끝난 잡에 말을 거는 것은 검토라서 건드리지 않는다 — 그 할일은 locked_todo_ids 가 이미 뺀다.
 
     무엇이 '사람' 인가 — 자율 세션의 **첫** 프롬프트는 자율 실행이 스스로 넣은 지시다.
     그때는 last_prompt 가 아직 비어 있다(런처는 심지 않는다). 두 번째부터가 사람이다 —
@@ -658,15 +661,20 @@ def handover_if_human(con, claude_session_id, prompt):
     session = session_repo.find(con, claude_session_id)
     if not (session or {}).get("last_prompt"):
         return False
-    return disable_for_session(con, claude_session_id)
+    return handover_run(con, claude_session_id)
 
 
-def disable_for_session(con, claude_session_id):
-    """그 세션이 아직 도는 자율 잡이면 autorun 을 끈다. 판정 없이 끄기만 하는 메커니즘"""
+def handover_run(con, claude_session_id):
+    """그 세션이 아직 도는 자율 잡이면 실행 기록을 인계로 닫는다. 판정 없이 닫기만 하는 메커니즘.
+
+    잡이 끝났다고 신고한 뒤(finished_at)의 프롬프트는 검토 피드백이다 — 닫지 않고 둔다.
+    tick 이 잡 종료를 보고 검토 대기로 닫아야 확인 버튼 흐름이 산다. 인계로 닫으면 그 할일이
+    검토 잠금에서 빠져 확인 없이 상태가 바뀐다
+    """
     run = autorun_repo.find_by_session(con, claude_session_id)
-    if not run or run["ended_at"]:
+    if not run or run["ended_at"] or run["finished_at"]:
         return False
-    autorun_repo.set_enabled(con, False)
+    autorun_repo.close_run(con, run["id"], OUTCOME_HANDOVER)
     return True
 
 

@@ -65,6 +65,7 @@
   "autorun.outcomeFailed": "失敗",
   "autorun.outcomeBlocked": "ブロック",
   "autorun.outcomeRequested": "要確認",
+  "autorun.outcomeHandover": "引き継ぎ",
   "autorun.reviewHint": "変更を確認してマージしたら、ここを押して完了にできます",
   "autorun.candidates": "候補",
   "autorun.candidatesHint": "auto ラベルの付いたタスクのうち、まだ回っていないものを順に表示。ドラッグで並べ替え、クリックで詳細と着手条件を確認",

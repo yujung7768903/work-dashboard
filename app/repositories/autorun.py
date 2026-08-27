@@ -5,6 +5,7 @@ from app.constants import (
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_HANDOVER,
     OUTCOME_REQUESTED,
     OUTCOME_REVIEW,
 )
@@ -177,7 +178,8 @@ def consecutive_failures(con, todo_id):
     """그 할일의 끝난 실행을 뒤에서부터, 성공이 나오기 전까지 센 실패 수.
 
     review 도 성공으로 센다 — 사람이 아직 확인하지 않았을 뿐 잡은 할일을 끝냈다.
-    실패로 세면 확인이 밀린 동안 그 할일이 blocked 로 올라가 후보에서 빠진다
+    실패로 세면 확인이 밀린 동안 그 할일이 blocked 로 올라가 후보에서 빠진다.
+    인계도 실패가 아니다 — 사람이 이어받은 것이지 잡이 못 한 것이 아니다
     """
     count = 0
     for row in con.execute(
@@ -185,7 +187,9 @@ def consecutive_failures(con, todo_id):
         " ORDER BY id DESC",
         (todo_id,),
     ):
-        if row["outcome"] in (OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_REQUESTED):
+        if row["outcome"] in (
+            OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_REQUESTED, OUTCOME_HANDOVER
+        ):
             break
         count += 1
     return count
