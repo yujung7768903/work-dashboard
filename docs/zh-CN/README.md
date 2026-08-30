@@ -65,21 +65,29 @@ cd work-dashboard
 
 然后打开 `http://127.0.0.1:9080`。数据库在首次连接时创建，因此没有迁移步骤。
 
-`setup.sh` 会把[钩子](#钩子)以绝对路径登记到 `~/.claude/settings.json`，共八条。第二次运行
-只会提示没有变化；把检出目录挪走之后，它改写路径而不是再添一条。你自己加的钩子原样保留，
-原文件留作 `settings.json.bak`。
+`setup.sh` 是只需运行一次的唯一步骤，它把[钩子](#钩子)以绝对路径登记到
+`~/.claude/settings.json`，共八条。第二次运行只会提示没有变化；把检出目录挪走之后，它改写
+路径而不是再添一条。你自己加的钩子原样保留，原文件留作 `settings.json.bak`。
 
 接着开一个 Claude Code 会话。若还没有工作区，这个会话会被注入初始设置流程 —— 它把
 `~/.claude/projects` 里最近的历史按每个会话一行读成摘要，归拢后提出工作区和待办，等你改完
-才写进数据库。不想用就执行 `python3 dash.py onboard --skip`，以后不再出现。
+才写进数据库。随便发一句话就会开始 —— 钩子会在第一条提示里注入流程，不必特意说“帮我
+设置”。不想用就执行 `python3 dash.py onboard --skip`，以后不再出现。
+
+## 脚本命令
+
+| 命令 | 何时用 | 做什么 |
+| --- | --- | --- |
+| `./setup.sh` | 安装时一次 | 把八条钩子登记到 `~/.claude/settings.json` |
+| `./start.sh` | 每次 | 启动服务器，打印 pid 和日志路径 |
+| `./restart.sh` | 每次 | 重启由本目录启动的服务器 |
+| `./stop.sh` | 每次 | 停止由本目录启动的服务器 |
+| `python3 server.py` | 代替 `start.sh` | 改为前台运行 |
 
 ```bash
 ./start.sh --port 9081     # 换个端口，例如给工作树用
 ./start.sh --lan           # 让手机、平板也能打开
-./restart.sh               # 重启由本目录启动的服务器
-./stop.sh                  # 停止
 ./stop.sh --port 9081      # 只停在该端口上的那个
-python3 server.py          # 改为前台运行
 ```
 
 `start.sh` 会把参数原样传给 `server.py`，并打印 pid 和日志路径。日志按天一个文件

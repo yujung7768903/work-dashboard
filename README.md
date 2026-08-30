@@ -74,25 +74,34 @@ cd work-dashboard
 Then open `http://127.0.0.1:9080`. The database is created on first connect, so
 there is no migration step.
 
-`setup.sh` registers the [hooks](#hooks) in `~/.claude/settings.json` as eight
-entries with absolute paths. A second run reports no change, and once you move
-the checkout it rewrites those paths instead of adding a second copy. Hooks you
-added yourself are left alone, and the previous file is kept as
-`settings.json.bak`.
+`setup.sh` is the one step you run only once. It registers the [hooks](#hooks)
+in `~/.claude/settings.json` as eight entries with absolute paths. A second run
+reports no change, and once you move the checkout it rewrites those paths
+instead of adding a second copy. Hooks you added yourself are left alone, and
+the previous file is kept as `settings.json.bak`.
 
 Open a Claude Code session next. With no workspaces yet, that session is handed
 the first-time setup procedure: it reads a one-line-per-session summary of your
 recent history from `~/.claude/projects`, groups it, and proposes workspaces and
-todos for you to correct before anything is written. `python3 dash.py onboard
---skip` declines it for good.
+todos for you to correct before anything is written. Send any prompt to begin —
+the hook injects the procedure on the first one, so it does not have to be a
+request to set up. `python3 dash.py onboard --skip` declines it for good.
+
+## Commands
+
+| Command | When | What it does |
+| --- | --- | --- |
+| `./setup.sh` | Once, at install | Registers the eight hooks in `~/.claude/settings.json` |
+| `./start.sh` | Every time | Starts the server, prints its pid and log path |
+| `./restart.sh` | Every time | Replaces the server started from this directory |
+| `./stop.sh` | Every time | Stops the server started from this directory |
+| `python3 server.py` | Instead of `start.sh` | Runs in the foreground |
 
 ```bash
 ./start.sh --port 9081     # a different port, e.g. for a worktree
 ./start.sh --lan           # also reachable from your phone or tablet
-./restart.sh               # restart the server started from this directory
-./stop.sh                  # stop it
+./start.sh --force         # a second server in this directory anyway
 ./stop.sh --port 9081      # stop only the one on that port
-python3 server.py          # run in the foreground instead
 ```
 
 `start.sh` passes its arguments through to `server.py` and prints the pid and log
