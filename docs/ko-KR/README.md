@@ -64,11 +64,22 @@ Claude 는 CLI 로 다루고, 둘이 같은 sqlite 파일을 읽고 쓴다. 프�
 ```bash
 git clone https://github.com/yujung7768903/work-dashboard.git
 cd work-dashboard
+./setup.sh
 ./start.sh
 ```
 
-`http://127.0.0.1:9080` 을 연다. DB 는 최초 연결 때 만들어지므로 마이그레이션이나
-초기 설치 단계가 없다.
+`http://127.0.0.1:9080` 을 연다. DB 는 최초 연결 때 만들어지므로 마이그레이션 단계가
+없다.
+
+`setup.sh` 는 [훅](#훅)을 `~/.claude/settings.json` 에 여덟 항목으로, 절대 경로로
+등록한다. 두 번째 실행은 바뀐 것이 없다고만 찍고, 체크아웃을 옮긴 뒤에는 항목을
+하나 더 붙이는 대신 경로를 고쳐 쓴다. 직접 넣어둔 훅은 건드리지 않고, 이전 파일은
+`settings.json.bak` 으로 남긴다.
+
+그다음 Claude Code 세션을 연다. 워크스페이스가 아직 없으면 그 세션에 초기 설정
+절차가 주입된다 — `~/.claude/projects` 의 최근 기록을 세션당 한 줄로 요약해 읽고,
+묶어서 워크스페이스와 할일을 제안한 뒤 사용자가 고친 것만 DB 에 쓴다. 쓰지 않을
+거면 `python3 dash.py onboard --skip` 으로 다시 뜨지 않게 한다.
 
 ```bash
 ./start.sh --port 9081     # 다른 포트. 예를 들어 워크트리용
@@ -227,9 +238,9 @@ python3 dash.py autorun-finish               # 완료 — 검토 대기로
 | `hooks/stale_base.py` | `UserPromptSubmit` | 브랜치가 upstream 또는 기준 브랜치보다 뒤처졌으면 세션당 한 번 경고 |
 
 `worktree_serve.py` 는 이 저장소의 `.claude/settings.json` 에 이미 등록돼 있어 새로
-clone 해도 따로 할 일이 없다. 나머지 다섯은 `~/.claude/settings.json` 에 절대 경로로
-등록한다. 경로는 워크트리가 아니라 메인 체크아웃을 가리켜야 한다 — 워크트리는 병합
-뒤 지워진다.
+clone 해도 따로 할 일이 없다. 나머지 다섯은 `./setup.sh` 가 `~/.claude/settings.json`
+에 절대 경로로 등록한다. 경로는 워크트리가 아니라 메인 체크아웃을 가리켜야 한다 —
+워크트리는 병합 뒤 지워진다. 손으로 넣으면 이런 모양이다.
 
 ```json
 {
@@ -483,6 +494,7 @@ sqlite 를 웹 서버·CLI·훅이 직접 연다. 중재하는 프로세스는 �
 work-dashboard/
 ├── dash.py               # CLI 진입점 — 파싱·위임·출력만
 ├── server.py             # HTTP 진입점 (http.server, 프레임워크 없음)
+├── setup.sh              # 훅을 ~/.claude/settings.json 에 등록
 ├── start.sh              # 백그라운드 실행, 날짜별 로그, 7일치 정리
 ├── stop.sh · restart.sh  # 이 디렉토리의 서버만 다룬다
 ├── serving.sh            # 서버 탐지·종료 공용 함수
