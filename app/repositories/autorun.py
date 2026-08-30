@@ -5,6 +5,7 @@ from app.constants import (
     OUTCOME_BLOCKED,
     OUTCOME_DONE,
     OUTCOME_FAILED,
+    OUTCOME_HANDOVER,
     OUTCOME_REQUESTED,
     OUTCOME_REVIEW,
 )
@@ -12,6 +13,13 @@ from app.db import now, transaction
 from app.errors import NotFound, Validation
 
 STATE_ROW_ID = 1
+
+# 실행 한 줄에 화면이 필요로 하는 것 — 할일 제목·워크스페이스·그 세션의 위치
+RUN_JOIN = """SELECT r.*, t.title AS todo_title, w.name AS workspace_name, s.cwd AS cwd
+                FROM autorun_runs r
+                JOIN todos t ON t.id = r.todo_id
+                LEFT JOIN workspaces w ON w.id = t.workspace_id
+                LEFT JOIN sessions s ON s.claude_session_id = r.claude_session_id"""
 
 
 def state(con):
@@ -131,14 +139,19 @@ def recent_with_todos(con, limit=10):
     cwd 는 그 자율 세션이 마지막으로 있던 위치다 — 잡이 EnterWorktree 로 워크트리에
     들어가면 훅이 그 경로로 갱신하므로, 어느 워크트리에서 돌았는지가 여기서 나온다
     """
+    rows = con.execute(f"{RUN_JOIN} ORDER BY r.id DESC LIMIT ?", (limit,))
+    return [dict(row) for row in rows]
+
+
+def attention_with_todos(con):
+    """사람이 손대야 끝나는 실행(요청·검토 대기)과 아직 도는 실행.
+
+    최근 N 건 창으로만 보면 그 뒤로 실행이 쌓일수록 오래된 요청이 목록 밖으로 밀려
+    영영 안 보인다 — 정작 사람이 봐야 하는 것이 먼저 사라지는 셈이다
+    """
     rows = con.execute(
-        """SELECT r.*, t.title AS todo_title, w.name AS workspace_name, s.cwd AS cwd
-             FROM autorun_runs r
-             JOIN todos t ON t.id = r.todo_id
-             LEFT JOIN workspaces w ON w.id = t.workspace_id
-             LEFT JOIN sessions s ON s.claude_session_id = r.claude_session_id
-            ORDER BY r.id DESC LIMIT ?""",
-        (limit,),
+        f"{RUN_JOIN} WHERE r.ended_at IS NULL OR r.outcome IN (?,?) ORDER BY r.id DESC",
+        (OUTCOME_REQUESTED, OUTCOME_REVIEW),
     )
     return [dict(row) for row in rows]
 
@@ -165,7 +178,8 @@ def consecutive_failures(con, todo_id):
     """그 할일의 끝난 실행을 뒤에서부터, 성공이 나오기 전까지 센 실패 수.
 
     review 도 성공으로 센다 — 사람이 아직 확인하지 않았을 뿐 잡은 할일을 끝냈다.
-    실패로 세면 확인이 밀린 동안 그 할일이 blocked 로 올라가 후보에서 빠진다
+    실패로 세면 확인이 밀린 동안 그 할일이 blocked 로 올라가 후보에서 빠진다.
+    인계도 실패가 아니다 — 사람이 이어받은 것이지 잡이 못 한 것이 아니다
     """
     count = 0
     for row in con.execute(
@@ -173,7 +187,9 @@ def consecutive_failures(con, todo_id):
         " ORDER BY id DESC",
         (todo_id,),
     ):
-        if row["outcome"] in (OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_REQUESTED):
+        if row["outcome"] in (
+            OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_REQUESTED, OUTCOME_HANDOVER
+        ):
             break
         count += 1
     return count

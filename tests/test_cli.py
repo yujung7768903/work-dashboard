@@ -67,6 +67,22 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("미분류", out)
 
+    def test_edit_todo_updates_note(self):
+        self.run_cli("add-workspace", "개발", "KT")
+        self.run_cli("add-todo", "락", "--workspace", "1")
+        code, out, _ = self.run_cli("edit-todo", "1", "--note", "새 컨텍스트")
+        self.assertEqual(code, 0)
+        self.assertIn("락", out)
+        _, note_out, _ = self.run_cli("show-note", "1")
+        self.assertIn("새 컨텍스트", note_out)
+
+    def test_edit_todo_without_any_field_exits_one(self):
+        self.run_cli("add-workspace", "개발", "KT")
+        self.run_cli("add-todo", "락", "--workspace", "1")
+        code, _, err = self.run_cli("edit-todo", "1")
+        self.assertEqual(code, 1)
+        self.assertIn("--title", err)
+
     def test_show_by_jira_id(self):
         self.run_cli("add-workspace", "개발", "KT", "--jira", "KT-1530")
         code, out, _ = self.run_cli("show", "KT-1530")

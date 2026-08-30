@@ -34,7 +34,7 @@ CATEGORY_PALETTE = (
 COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
 
 TODO_STATUSES = ("todo", "doing", "done")
-WORKSPACE_STATUSES = ("active", "paused", "done")
+WORKSPACE_STATUSES = ("active", "inactive", "done")
 STATUS_TODO, STATUS_DOING, STATUS_DONE = TODO_STATUSES
 WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 
@@ -80,9 +80,10 @@ ONBOARDING_DECLINED_FLAG = "onboarding_declined"
 # 두 곳에서 다르게 설명하면 어느 쪽 규약이 맞는지 알 수 없다.
 # 세션에는 첫 줄만 주입되므로(session_link) 판정 문장이 첫 줄에 와야 한다
 PRECONDITION_HINT = (
-    "참/거짓이 갈리는 한 문장을 첫 줄에 쓴다."
-    " 다른 할일이 조건이면 #id 로 적고, 명령으로 확인되면 둘째 줄에 '확인: <명령>'."
-    " 조건이 있는 할일은 자율 수행 후보에서 빠진다"
+    "참/거짓이 갈리는 한 문장을 한 줄에 하나씩 쓴다."
+    " 다른 할일이 조건이면 #id 로 적고, 명령으로 확인되면 다음 줄에 '확인: <명령>'."
+    " #id 조건은 그 할일이 done 이 되면 저절로 풀린다."
+    " 코드가 판정할 수 없는 문장이 하나라도 있으면 자율 수행 후보에서 빠진다"
 )
 PRECONDITION_EXAMPLE = "#57 이 done 일 것\n확인: git -C ~/work/work-dashboard status --short"
 
@@ -198,6 +199,7 @@ MODEL_FAMILY_OTHER = "Other"  # 화면이 이 이름만 사전에서 꺼내 옮�
 AUTORUN_LABEL = "auto"  # 이 라벨이 붙은 할일만 후보. 자율 실행 허가는 사람이 라벨로 준다
 AUTORUN_MODEL = "claude-sonnet-5"  # 모델은 상수. 성공률 학습·자동 선택은 하지 않는다
 AUTORUN_MAX_CONCURRENT = 1  # 사용량 창을 나눠 쓰면 둘 다 리밋에 걸리고 diff 가 섞인다
+AUTORUN_CANDIDATE_LIMIT = 5  # 자율 수행 화면 후보 줄 수. 더 보여줘도 다음에 돌 것은 맨 위 하나다
 AUTORUN_FAIL_LIMIT = 2  # 같은 할일이 이만큼 연속 실패하면 막고 다음 할일로
 AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun 자체를 끈다
 # review(검토 대기)가 성공한 잡의 첫 결과다. 다 끝냈고 확인할 것도 불분명한 것도 없을
@@ -209,15 +211,26 @@ AUTORUN_BLOCKED_STREAK_LIMIT = 3  # blocked 가 이만큼 연속이면 autorun �
 # 비었거나, 방향이 여럿인데 note 에 안 정해져 있거나, 토큰·Jira·문서 위치가 없어서
 # 추측 대신 사람 판단을 기다린다. blocked 처럼 다음 tick 후보에서 빠지지만 실패 횟수에는
 # 안 세고 blocked_streak 도 안 건드린다 — 오류가 아니라 의도적인 정지라서다
-AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked", "requested")
-OUTCOME_DONE, OUTCOME_REVIEW, OUTCOME_FAILED, OUTCOME_BLOCKED, OUTCOME_REQUESTED = (
-    AUTORUN_OUTCOMES
-)
+# handover(인계)는 도는 잡에 사람이 프롬프트를 넣어 그 세션을 이어받은 것이다. 실행 기록만
+# 닫고 autorun 은 계속 돈다 — 세션 하나를 사람이 맡았다고 다른 할일까지 멈출 이유가 없다.
+# 실패도 성공도 아니라 실패 횟수에 안 세고, 사람이 이미 그 세션에 있으니 주의 목록에도 안 든다
+AUTORUN_OUTCOMES = ("done", "review", "failed", "blocked", "requested", "handover")
+(
+    OUTCOME_DONE,
+    OUTCOME_REVIEW,
+    OUTCOME_FAILED,
+    OUTCOME_BLOCKED,
+    OUTCOME_REQUESTED,
+    OUTCOME_HANDOVER,
+) = AUTORUN_OUTCOMES
 # --bg 잡의 상태 파일. 이 값들이면 잡이 끝난 것으로 보고 실행 기록을 닫는다.
 # blocked(리밋)는 열어 둔다 — resume-limited-jobs.py 가 다시 밀어 준다
 AUTORUN_JOBS_ROOT = os.path.expanduser("~/.claude/jobs")
 AUTORUN_JOB_TERMINAL = ("done", "failed", "stopped")
 AUTORUN_CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
 AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기동 시간만 덮는다
+# 검토 대기(review) 중인 할일에 새 잡을 또 띄우면 확인 전에 diff 가 두 벌 생긴다.
+# 할일 상태 수정과 할일 케밥의 "시작" 둘 다 이 문구로 막는다
+REVIEW_LOCKED_MSG = "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요"
 # 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
 MERGE_TEST_TIMEOUT_SEC = 600

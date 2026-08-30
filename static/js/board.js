@@ -1,10 +1,17 @@
 // 보드 탭 렌더. 카테고리 라벨 필터, 빠른 추가, 상태 토글, 완료 워크스페이스 이동
 import * as api from "./api.js";
 import { attachDragHandlers } from "./dnd.js";
-import { t } from "./i18n.js";
+import { pickDirectory } from "./browse.js";
+import { fromKorean, t } from "./i18n.js";
+import { drawKanban } from "./kanban.js";
 import { renderBoardTab, run } from "./main.js";
-import { startAutorunPolling } from "./autorun.js";
-import { openDetail, rawTitleMark, startSessionPolling } from "./sessions.js";
+import {
+  openDetail,
+  rawTitleMark,
+  setBoardRefresh,
+  startSessionPolling,
+} from "./sessions.js";
+import { loadingSpinner } from "./spinner.js";
 import { focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
@@ -16,6 +23,15 @@ const DONE = "done";
 const ALL_CATEGORIES = { id: null, name: t("board.allCategories") };
 const NO_COMPLETED = t("board.noCompleted");
 
+// 상세 팝업에서 할일을 고치면 이 목록도 다시 그려야 한다 (static/js/sessions.js)
+setBoardRefresh(() => renderBoard());
+
+// 워크스페이스별(카드 목록)·상태별(컬럼) 전환. 기기마다 다른 취향이라 서버가 아니라
+// 브라우저에 남긴다 (워크트리 탭의 뷰 전환·layout.js 의 열 수와 같은 방식)
+const VIEW_KEY = "todo-view";
+const VIEW_STATUS = "status";
+let view = localStorage.getItem(VIEW_KEY) === VIEW_STATUS ? VIEW_STATUS : GROUP_BY_WORKSPACE;
+
 // null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
 let activeCategoryId = null;
 // 케밥 메뉴가 열린 할일. 한 번에 하나만 열림
@@ -26,7 +42,7 @@ let labelMenuTodoId = null;
 let allLabels = [];
 
 function showDone() {
-  return document.getElementById("show-done").checked;
+  return document.getElementById("show-done").getAttribute("aria-pressed") === "true";
 }
 
 // 두 하위 탭이 함께 쓰는 위쪽 — 다음에 할 일·세션 패널·빠른 추가·카테고리 라벨.
@@ -43,7 +59,6 @@ export async function renderShared() {
   renderNext(next);
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
-  startAutorunPolling();
   startSessionPolling();
 }
 
@@ -55,9 +70,49 @@ export function currentCategoryId() {
 export async function renderBoard() {
   const [tree] = await Promise.all([api.getTree(GROUP_BY_WORKSPACE), renderShared()]);
   const visible = tree.groups.filter(inActiveCategory);
+  syncViewControls();
+  if (view === VIEW_STATUS) {
+    drawKanban(visible);
+    return;
+  }
   renderGroups(visible.filter((group) => !isComplete(group)));
   renderCompleted(visible.filter(isComplete));
   attachDragHandlers(renderBoard);
+}
+
+// 시작·삭제는 워크트리를 만들고 세션을 띄우느라 몇 초가 걸린다. 그동안 목록이 그대로면
+// 눌린 건지 알 수 없으므로, 워크트리 탭과 같은 도는 원을 목록 자리에 세우고
+// 끝나면(실패로 끝나도) 목록을 다시 그려 걷는다
+async function withLoading(call) {
+  drawLoading();
+  try {
+    return await call();
+  } finally {
+    await renderBoard();
+  }
+}
+
+function drawLoading() {
+  // 지금 보고 있는 뷰의 목록 자리에만 세운다 — 다른 뷰는 감춰져 있어 보이지 않는다
+  const list = document.getElementById(view === VIEW_STATUS ? "kanban" : "groups");
+  list.innerHTML = "";
+  list.appendChild(loadingSpinner(list));
+  // 완료 영역도 함께 걷는다. 목록만 비우면 그 아래 완료 카드가 남아 다 그려진 화면으로
+  // 읽힌다 (다시 그릴 때 syncViewControls 가 제자리로 돌린다)
+  document.getElementById("done-today").hidden = true;
+}
+
+// 두 뷰가 같은 자리에 그린다. 상태별에서는 완료가 제 컬럼을 갖고 컬럼 수도 넷으로
+// 고정이라, 목록 뷰의 완료 토글·열 수 아이콘은 고를 것이 없어 감춘다
+function syncViewControls() {
+  const status = view === VIEW_STATUS;
+  document.querySelectorAll("#todo-view button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === view);
+  });
+  document.getElementById("kanban").hidden = !status;
+  document.getElementById("groups").hidden = status;
+  document.getElementById("done-today").hidden = status;
+  document.getElementById("todo-tools").hidden = status;
 }
 
 // 할일이 하나라도 있고 전부 done 이면 카드째 완료 영역으로 내려감
@@ -229,32 +284,13 @@ function addDialogFields() {
   );
 }
 
-function todoElement(todo) {
+// 칸반 뷰도 이 줄을 그대로 쓴다. 거기서는 컬럼이 이미 상태를 말하므로 상태 칩을 뺀다
+// (static/js/kanban.js)
+export function todoElement(todo, { withStatus = true, withLabels = true } = {}) {
   const row = document.createElement("div");
   row.className = `todo ${todo.status}`;
   row.dataset.todoId = todo.id;
   row.draggable = true;
-
-  const statusButton = document.createElement("button");
-  if (todo.autorun_locked) {
-    // 원본 상태(done)는 그대로 두고 화면에는 남은 동작(검토 대기)을 보여준다 —
-    // 안 그러면 자율 수행이 끝난 할일이 그냥 '완료'로 보여 아직 검토 전인 걸 놓친다
-    statusButton.textContent = t("common.review");
-    statusButton.disabled = true;
-    statusButton.title = t("board.reviewLockedHint");
-  } else {
-    statusButton.textContent = todo.status;
-    statusButton.title = t("board.statusCycle");
-  }
-  statusButton.addEventListener("click", (event) => {
-    // 행 전체가 팝업을 여는 클릭이라 버튼은 거기까지 올라가지 않게 막는다
-    event.stopPropagation();
-    if (todo.autorun_locked) return;
-    run(async () => {
-      await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
-      await renderBoard();
-    });
-  });
 
   // 상세 팝업·세션 줄과 같은 #id 표기
   const idNode = document.createElement("span");
@@ -266,14 +302,44 @@ function todoElement(todo) {
   title.textContent = todo.title;
   if (todo.needs_title) title.append(rawTitleMark());
 
-  row.append(statusButton, idNode, title, labelStrip(todo), todoMenu(todo));
+  if (withStatus) row.appendChild(statusButton(todo));
+  row.append(idNode, title);
+  // 칸반 카드는 라벨을 줄이 아니라 카드 아래 칸에 둔다 — 좁은 컬럼에서 제목과 한 줄을
+  // 나눠 쓰면 둘 다 좁아진다 (static/js/kanban.js)
+  if (withLabels) row.appendChild(labelStrip(todo));
+  row.appendChild(todoMenu(todo));
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
 }
 
+// 상태 칩. 누르면 다음 상태로 넘어가는 손잡이라 표시와 조작을 겸한다
+function statusButton(todo) {
+  const button = document.createElement("button");
+  if (todo.autorun_locked) {
+    // 원본 상태(done)는 그대로 두고 화면에는 남은 동작(검토 대기)을 보여준다 —
+    // 안 그러면 자율 수행이 끝난 할일이 그냥 '완료'로 보여 아직 검토 전인 걸 놓친다
+    button.textContent = t("common.review");
+    button.disabled = true;
+    button.title = t("board.reviewLockedHint");
+  } else {
+    button.textContent = todo.status;
+    button.title = t("board.statusCycle");
+  }
+  button.addEventListener("click", (event) => {
+    // 행 전체가 팝업을 여는 클릭이라 버튼은 거기까지 올라가지 않게 막는다
+    event.stopPropagation();
+    if (todo.autorun_locked) return;
+    run(async () => {
+      await api.updateTodo(todo.id, { status: STATUS_CYCLE[todo.status] });
+      await renderBoard();
+    });
+  });
+  return button;
+}
+
 // 제목과 케밥 사이 세 번째 칸. 붙은 라벨이 없으면 빈 칸으로 남아 제목이 그만큼 넓게 쓴다
-function labelStrip(todo) {
+export function labelStrip(todo) {
   const strip = document.createElement("span");
   strip.className = "todo-labels";
   (todo.labels || []).forEach((label) => {
@@ -300,11 +366,34 @@ const PLUS_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="t
         stroke-width="1.5" stroke-linecap="round"/>
 </svg>`;
 
+// 위치를 모르는 워크스페이스는 서버가 reason.noCwd 로 막는다. 그때만 작업 디렉토리를
+// 물어 다시 시도한다 — 한 번 성공하면 그 세션이 위치를 기록해 다음부터는 안 물어도 된다
+async function startTodoFlow(todo) {
+  try {
+    return await api.startTodo(todo.id);
+  } catch (error) {
+    if (error.message !== t("reason.noCwd")) {
+      alert(error.message);
+      return null;
+    }
+  }
+  const cwd = await pickDirectory();
+  if (!cwd) return null;
+  try {
+    return await api.startTodo(todo.id, cwd);
+  } catch (error) {
+    alert(error.message);
+    return null;
+  }
+}
+
 // 라벨 수정·삭제는 오른쪽 케밥 메뉴 안으로. 워크스페이스 카드와 같은 ws-menu 스타일 재사용
 function todoMenu(todo) {
   const wrapper = document.createElement("div");
   wrapper.className = "ws-menu";
   const toggle = document.createElement("button");
+  // kebab: 글리프가 baseline 에 매달려 원형 hover 면보다 아래로 찍힌다. CSS 가 보정한다
+  toggle.className = "kebab";
   toggle.textContent = "⋮";
   toggle.title = t("board.todoMenu");
   toggle.addEventListener("click", (event) => {
@@ -332,6 +421,15 @@ function todoMenuItems(todo) {
     return items;
   }
   items.append(
+    menuItem(t("board.startTodo"), () =>
+      run(async () => {
+        openMenuTodoId = null;
+        const result = await withLoading(() => startTodoFlow(todo));
+        // 알림은 목록을 다시 그린 **뒤에**. alert 는 화면을 멈추므로 먼저 띄우면
+        // 확인을 누른 다음에야 목록이 바뀐다 (워크트리 탭과 같은 순서)
+        if (result?.message) alert(fromKorean(result.message));
+      })
+    ),
     menuItem(t("board.labelEdit"), () => {
       labelMenuTodoId = todo.id;
       run(renderBoard);
@@ -339,10 +437,13 @@ function todoMenuItems(todo) {
     menuItem(t("common.delete"), () =>
       run(async () => {
         openMenuTodoId = null;
-        if (confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
-          await api.deleteTodo(todo.id);
+        // 물어보는 동안은 목록을 그대로 둔다 — 무엇을 지우는지 보면서 답해야 한다.
+        // 취소하면 열린 케밥만 닫는다
+        if (!confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
+          await renderBoard();
+          return;
         }
-        await renderBoard();
+        await withLoading(() => api.deleteTodo(todo.id));
       })
     )
   );
@@ -411,7 +512,21 @@ document.getElementById("todo-add-form").addEventListener("submit", (event) => {
   });
 });
 
-document.getElementById("board-controls").addEventListener("change", () => run(renderBoard));
+// 완료 항목 표시. 체크박스 대신 눌린 상태가 남는 아이콘이라 aria-pressed 가 값이다
+document.getElementById("show-done").addEventListener("click", (event) => {
+  const button = event.currentTarget;
+  button.setAttribute("aria-pressed", String(!showDone()));
+  run(renderBoard);
+});
+
+document.getElementById("todo-view").addEventListener("click", (event) => {
+  // 버튼 안에 아이콘 svg 가 있어 event.target 이 버튼이 아닐 수 있다
+  const chosen = event.target.closest("button")?.dataset.view;
+  if (!chosen || chosen === view) return;
+  view = chosen;
+  localStorage.setItem(VIEW_KEY, chosen);
+  run(renderBoard);
+});
 
 // 항목 밖을 누르면 열린 케밥 메뉴 닫기
 document.addEventListener("click", () => {

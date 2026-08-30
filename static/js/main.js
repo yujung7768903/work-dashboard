@@ -1,5 +1,6 @@
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
 // (이 모듈은 boot.js 가 언어를 확정한 뒤에 들어온다 — 아래 TITLES 가 그때 번역된다)
+import { startAutorunPolling, stopAutorunPolling } from "./autorun.js";
 import { renderBoard, renderShared } from "./board.js";
 import { t } from "./i18n.js";
 import { renderSettings } from "./settings.js";
@@ -33,6 +34,7 @@ const RENDERERS = {
   workspace: renderWorkspaceTab,
   settings: renderSettings,
   usage: renderUsage,
+  autorun: startAutorunPolling,
 };
 
 // 사이드바 최상단과 일치시킨다 — 한도부터 확인하고 들어오는 흐름
@@ -44,6 +46,7 @@ const TITLES = {
   workspace: t("nav.workspace"),
   settings: t("nav.settings"),
   usage: t("nav.usage"),
+  autorun: t("nav.autorun"),
 };
 
 export function showError(message) {
@@ -76,6 +79,8 @@ function showTab(name, push = true) {
   Object.keys(RENDERERS).forEach((key) => {
     document.getElementById(`tab-${key}`).hidden = key !== name;
   });
+  // 자율 수행 폴링은 그 탭에서만 돈다 — 떠난 뒤에도 돌면 5초마다 헛 요청이 나간다
+  stopAutorunPolling();
   document.getElementById("page-title").textContent = TITLES[name];
   run(RENDERERS[name]);
 }

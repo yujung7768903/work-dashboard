@@ -59,6 +59,13 @@
                   stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+        <button data-tab="autorun" data-i18n="nav.autorun" data-i18n-title="nav.autorun">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6.7 5.9 10.4 8l-3.7 2.1z" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button data-tab="workspace" data-i18n="nav.workspace" data-i18n-title="nav.workspace">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
@@ -106,21 +113,6 @@
         <p id="next-line"><span data-i18n="board.nextLine"></span>
           <span id="next-text" data-i18n="common.loading"></span>
         </p>
-        <!-- 기본 접힘. 펼치면 자율 실행으로 돌린 할일 목록 -->
-        <details id="autorun-panel">
-          <summary>
-            <span id="autorun-head">
-              <span data-i18n="autorun.title"></span>
-              <label class="switch" id="autorun-switch" data-i18n-title="autorun.toggleHint">
-                <input type="checkbox" id="autorun-toggle">
-                <span class="track"></span>
-                <span class="state"></span>
-              </label>
-              <span id="autorun-cycle"></span>
-            </span>
-          </summary>
-          <ul id="autorun-list"></ul>
-        </details>
         <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
         <details id="session-panel">
           <summary>
@@ -165,7 +157,24 @@
 
         <div id="board-todos">
         <div id="board-controls">
-          <label data-i18n="board.showDone"><input type="checkbox" id="show-done"></label>
+          <!-- 워크스페이스별(카드 목록)·상태별(상태 컬럼) 전환. 워크트리 탭의 뷰 전환과 같은 형태 -->
+          <div id="todo-view">
+            <button type="button" class="active" data-view="workspace"
+                    data-i18n="board.viewWorkspace"></button>
+            <button type="button" data-view="status" data-i18n="board.viewStatus"></button>
+          </div>
+          <!-- 줄 오른쪽 끝의 아이콘 묶음 — 완료 표시·1열·2열. 상태별 뷰에서는 완료가 제
+               컬럼을 갖고 컬럼 수도 넷으로 고정이라 board.js 가 이 묶음째 감춘다 -->
+          <div id="todo-tools">
+          <!-- 완료 항목 표시. 눌린 상태가 남는 아이콘이라 aria-pressed 가 값이다 -->
+          <button type="button" class="icon-btn" id="show-done" aria-pressed="false"
+                  data-i18n-title="board.showDone" data-i18n-aria-label="board.showDone">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M5.6 8.2 7.3 9.9l3.1-3.5" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
           <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 화면 폭이 정하던 것을 직접 고른다 -->
           <div class="view-columns">
             <button type="button" class="icon-btn" data-columns="1"
@@ -189,12 +198,15 @@
               </svg>
             </button>
           </div>
+          </div>
         </div>
         <div id="groups"></div>
         <details id="done-today">
           <summary data-i18n="common.done"></summary>
           <div id="done-groups"></div>
         </details>
+        <!-- 상태별 뷰. 상태 컬럼 → 할일 카드. 컬럼 수가 넷으로 고정이라 열 수 아이콘은 감춘다 -->
+        <div id="kanban" hidden></div>
         </div>
 
         <div id="board-worktrees" hidden>
@@ -236,11 +248,37 @@
       </section>
 
       <section id="tab-workspace" class="tab" hidden>
-        <form id="workspace-add">
-          <input id="workspace-new-name" data-i18n-placeholder="workspace.newPlaceholder" required>
-          <select id="workspace-new-category"></select>
-          <button type="submit" data-i18n="common.add"></button>
-        </form>
+        <!-- 추가 폼은 왼쪽, 열 수 아이콘은 오른쪽 끝. 할일·워크트리 탭의 view-columns 와
+             같은 취향(body[data-board-columns])을 공유하므로 여기서 고르면 보드도 같이 바뀐다 -->
+        <div id="workspace-controls">
+          <form id="workspace-add">
+            <input id="workspace-new-name" data-i18n-placeholder="workspace.newPlaceholder" required>
+            <select id="workspace-new-category"></select>
+            <button type="submit" data-i18n="common.add"></button>
+          </form>
+          <div class="view-columns">
+            <button type="button" class="icon-btn" data-columns="1"
+                    data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4" fill="none"
+                      stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" data-columns="2"
+                    data-i18n-title="board.twoColumns" data-i18n-aria-label="board.twoColumns">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <rect x="2.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="8.6" y="2.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="2.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <rect x="8.6" y="8.6" width="4.8" height="4.8" rx="1.2"
+                      fill="none" stroke="currentColor" stroke-width="1.5"/>
+              </svg>
+            </button>
+          </div>
+        </div>
         <div id="workspace-list"></div>
       </section>
 
@@ -272,6 +310,25 @@
           <button type="submit" data-i18n="common.add"></button>
         </form>
         <ul id="label-list" class="set-list"></ul>
+      </section>
+
+      <!-- 자율 수행. 보드에서 떼어낸 이유 — 후보와 사람이 처리할 실행을 상태별로 봐야 한다 -->
+      <section id="tab-autorun" class="tab" hidden>
+        <div class="ar-state">
+          <label class="switch" id="autorun-switch" data-i18n-title="autorun.toggleHint">
+            <input type="checkbox" id="autorun-toggle">
+            <span class="track"></span>
+            <span class="state"></span>
+          </label>
+          <span id="autorun-cycle"></span>
+        </div>
+
+        <h2 class="ar-head" data-i18n="autorun.candidates"></h2>
+        <p class="ar-hint" data-i18n="autorun.candidatesHint"></p>
+        <ul id="autorun-candidates" class="ar-cands"></ul>
+
+        <h2 class="ar-head" data-i18n="autorun.runs"></h2>
+        <ul id="autorun-list" class="ar-runs"></ul>
       </section>
 
       <!-- client_id·secret 은 구글 콘솔에서 직접 받아야 한다. 어디서 어떻게 받는지
@@ -381,6 +438,20 @@
       </div>
       <div class="dlg-actions"><button type="submit" data-i18n="common.add"></button></div>
     </form>
+  </dialog>
+
+  <!-- 작업 위치를 못 정했을 때만 연다 — 할일 케밥의 "시작" 과 자율 수행 후보의 위치 미정 칩 (static/js/browse.js) -->
+  <dialog id="dir-browse-modal">
+    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
+    <div id="dir-browse-body">
+      <div class="dlg-head"><p class="dlg-title" data-i18n="board.startTodoCwdPrompt"></p></div>
+      <div class="dir-browse-crumbs" id="dir-browse-crumbs"></div>
+      <div class="dir-browse-list" id="dir-browse-list"></div>
+      <div class="dlg-actions">
+        <button type="button" class="dir-browse-primary" id="dir-browse-select"
+                data-i18n="board.dirBrowseSelect"></button>
+      </div>
+    </div>
   </dialog>
 
   <script type="module" src="/js/boot.js"></script>

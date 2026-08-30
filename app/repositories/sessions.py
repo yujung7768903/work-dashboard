@@ -223,6 +223,17 @@ def list_by_todo(con, todo_id):
     return [dict(row) for row in rows]
 
 
+def last_activity_by_todo(con):
+    """할일마다 그것을 잡은 세션이 마지막으로 살아 있던 시각. 상태별 뷰가 카드를 이 순서로
+    세운다 — 방금 손댄 것이 위로 온다. 끝난 세션도 센다(last_seen_at 이 그대로 남는다)"""
+    rows = con.execute(
+        """SELECT st.todo_id AS todo_id, MAX(s.last_seen_at) AS seen FROM sessions s
+            JOIN session_todos st ON st.session_id = s.id
+            GROUP BY st.todo_id"""
+    )
+    return {row["todo_id"]: row["seen"] for row in rows}
+
+
 def cwds_by_workspace(con, workspace_id):
     """그 워크스페이스에서 돌았던 작업 위치. 최근 순.
     워크스페이스에는 저장소 경로가 없어 워크트리 뷰가 여기서 저장소를 유추한다"""

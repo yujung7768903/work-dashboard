@@ -24,7 +24,7 @@ function applySide(collapsed) {
   button.setAttribute("aria-expanded", String(!collapsed));
 }
 
-// 할일 탭·워크트리 탭 둘 다 .view-columns 를 쓰므로 위임으로 한 번에 받는다
+// 할일·워크트리·워크스페이스 탭이 다 .view-columns 를 쓰므로 위임으로 한 번에 받는다
 document.addEventListener("click", (event) => {
   // 버튼 안에 아이콘 svg 가 있어 event.target 이 버튼이 아닐 수 있다
   const button = event.target.closest(".view-columns button");

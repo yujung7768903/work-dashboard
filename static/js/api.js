@@ -4,7 +4,7 @@ import { fromKorean, t } from "./i18n.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
-async function request(method, path, body) {
+async function request(method, path, body, { silent } = {}) {
   const options = { method };
   if (body !== undefined) {
     options.headers = JSON_HEADERS;
@@ -25,8 +25,9 @@ async function request(method, path, body) {
     // 바꾸려던 게 안 바뀌었으면 반드시 눈에 띄어야 한다 — 호출부마다 에러 표시가
     // 제각각(상단바 텍스트·툴팁·무시)이라 여기서 한 번에 띄운다.
     // GET 은 제외 — 목록 폴링이 실패하면 몇 초마다 창이 뜬다.
-    // confirm 은 호출부가 되묻는 흐름이라 여기서 가로채면 창이 두 번 뜬다
-    if (method !== "GET" && !error.confirm) globalThis.alert?.(error.message);
+    // confirm 은 호출부가 되묻는 흐름이라 여기서 가로채면 창이 두 번 뜬다.
+    // silent 는 호출부가 실패를 되물어 재시도할 때 쓴다 — startTodo 의 위치 선택처럼
+    if (method !== "GET" && !error.confirm && !silent) globalThis.alert?.(error.message);
     throw error;
   }
   return payload;
@@ -61,6 +62,9 @@ export const disconnectGtasks = () => request("POST", "/gtasks-disconnect", {});
 export const getAutorun = () => request("GET", "/autorun");
 export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });
 export const confirmAutorunRun = (id) => request("PATCH", `/autorun-runs/${id}`);
+// 돌릴 명령은 서버가 저장된 조건 문장에서 읽는다 — 여기서는 몇 번째 항목인지만 보낸다
+export const checkPrecondition = (todoId, index) =>
+  request("POST", "/precondition-check", { todo_id: todoId, index });
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });
@@ -82,6 +86,12 @@ export const getTodo = (id) => request("GET", `/todos/${id}`);
 export const createTodo = (fields) => request("POST", "/todos", fields);
 export const updateTodo = (id, fields) => request("PATCH", `/todos/${id}`, fields);
 export const deleteTodo = (id) => request("DELETE", `/todos/${id}`);
+export const startTodo = (id, cwd) =>
+  request("POST", "/todo-start", cwd ? { id, cwd } : { id }, { silent: true });
+export const browseDir = (path) =>
+  request("GET", `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`);
+// note 에 적힌 경로를 탐색기로 연다. 브라우저는 file:// 로 탐색기를 못 띄워 서버가 띄운다
+export const openPath = (path) => request("POST", "/open-path", { path });
 
 export const getSettings = () => request("GET", "/settings");
 export const updateSettings = (fields) => request("PATCH", "/settings", fields);
