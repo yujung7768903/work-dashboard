@@ -10,7 +10,9 @@ from app.services import browse
 
 class ListDirTest(unittest.TestCase):
     def setUp(self):
-        self.root = tempfile.mkdtemp()
+        # macOS 의 /var 는 /private/var 심볼릭 링크다. list_dir 이 realpath 로 정규화하므로
+        # 기대값도 같은 기준이어야 한다
+        self.root = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(_rmtree, self.root)
 
     def _mkdir(self, *parts):
@@ -71,7 +73,9 @@ class RevealTest(unittest.TestCase):
     """
 
     def setUp(self):
-        self.root = tempfile.mkdtemp()
+        # macOS 의 /var 는 /private/var 심볼릭 링크다. list_dir 이 realpath 로 정규화하므로
+        # 기대값도 같은 기준이어야 한다
+        self.root = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(_rmtree, self.root)
         self.file = os.path.join(self.root, "note.md")
         with open(self.file, "w", encoding="utf-8") as handle:
