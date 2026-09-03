@@ -280,7 +280,7 @@ button:disabled { color: var(--line); cursor: default; }
 /* 아이콘·기호 하나뿐인 작은 버튼. 정사각으로 잡아 hover 면이 원으로 뜬다 —
    기본 버튼의 둥근 사각형은 아이콘 하나에는 폭이 남아 애매하게 보인다.
    면은 hover 에서만: 평소엔 아이콘만 떠 있다 */
-.icon-btn, .group-add, .ws-menu > button, .modal-close, #repo-link {
+.icon-btn, .ws-menu > button, .modal-close, #repo-link {
   width: var(--icon-box); height: var(--icon-box); flex: none; padding: 0;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; background: none; color: var(--muted);
@@ -296,7 +296,6 @@ button:disabled { color: var(--line); cursor: default; }
    글자색을 섞은 반투명 면이라 밝은 테마에선 옅은 회색, 어두운 테마에선 옅은 흰빛으로 뜬다.
    :not(:disabled) 는 같은 조건의 기본 button:hover 규칙을 이기기 위한 것 */
 .icon-btn:hover:not(:disabled),
-.group-add:hover:not(:disabled),
 .ws-menu > button:hover,
 #repo-link:hover,
 .modal-close:hover,
@@ -439,10 +438,11 @@ body[data-board-columns="2"] #worktree-list { grid-template-columns: 1fr 1fr; }
 .group-meta { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 /* 글자 크기가 달라 박스만 늘려서는 안 맞는다. 각자 안에서 세로 가운데로 */
 .group-name, .group-meta { display: flex; align-items: center; }
-/* 이름이 남는 폭을 먹어 진행 수·추가 버튼이 오른쪽에 붙는다 */
+/* 이름이 남는 폭을 먹어 진행 수·케밥이 오른쪽에 붙는다 */
 .group-name { flex: 1; }
-/* 크기가 고정된 원이라 늘어나지 않는다 — 줄 가운데에 직접 놓는다 */
-.group-add { align-self: center; }
+/* 케밥은 크기가 고정된 원이라 늘어나지 않는다 — 줄 가운데에 직접 놓는다.
+   메뉴 항목은 헤더의 작은 글자·굵기를 물려받지 않고 할일 줄 케밥과 같은 크기로 */
+.group > summary > .ws-menu { align-self: center; font-size: var(--fs-body); font-weight: 500; }
 
 .todo {
   display: flex; align-items: center; gap: var(--sp-8);
@@ -1149,9 +1149,10 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* fixed + inset 0 + margin auto = 스크롤 위치와 무관하게 화면 정중앙.
    position: relative 로 두면 문서 흐름상의 자리에 뜨는 탓에 아래쪽 카드에서 열면
    팝업을 보려고 위로 스크롤해야 했다. 닫기 버튼의 기준 상자 역할은 fixed 도 한다 */
-/* 할일 추가 팝업도 같은 외양을 쓴다 — 팝업이 두 종류로 보일 이유가 없다 */
+/* 할일 추가·워크스페이스 수정 팝업도 같은 외양을 쓴다 — 팝업이 여러 종류로 보일 이유가 없다 */
 #session-modal[open],
 #todo-add-modal[open],
+#ws-edit-modal[open],
 #dir-browse-modal[open] {
   position: fixed; inset: 0; margin: auto;
   display: flex; flex-direction: column;
@@ -1160,14 +1161,21 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
   background: var(--surface); color: var(--fg); box-shadow: var(--shadow-pop);
 }
 /* 팝업이 열린 동안 뒤 화면은 고정. 스크롤은 팝업 본문만 갖는다 */
-html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#dir-browse-modal[open]) {
+html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#ws-edit-modal[open]),
+html:has(#dir-browse-modal[open]) {
   overflow: hidden;
 }
-#session-modal::backdrop, #todo-add-modal::backdrop, #dir-browse-modal::backdrop {
+#session-modal::backdrop, #todo-add-modal::backdrop, #ws-edit-modal::backdrop,
+#dir-browse-modal::backdrop {
   background: rgba(0, 23, 51, 0.45);
 }
 /* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
-#session-modal form, #todo-add-modal form, #dir-browse-modal form { margin: 0; }
+#session-modal form, #todo-add-modal form, #ws-edit-modal form, #dir-browse-modal form { margin: 0; }
+/* 워크스페이스 수정 팝업 본문. 편집 카드의 그림자·여백은 팝업이 대신 갖는다 */
+#ws-edit-body { padding: var(--sp-20); overflow: auto; }
+#ws-edit-body .ws-card { box-shadow: none; padding: 0; }
+/* 저장·취소는 다른 팝업의 마지막 동작과 같은 자리(오른쪽 끝). 워크스페이스 탭 카드에서는 왼쪽 */
+#ws-edit-body .ws-actions { justify-content: flex-end; }
 /* 전역 form 은 한 줄 flex 다(빠른 추가·설정 폼용). 팝업 폼은 라벨과 칸이 붙어야 하므로
    세로로 쌓는다 — display 를 안 바꾸면 제목·세 칸·버튼이 한 줄에 흩어진다.
    여백은 세션 팝업 본문과 같은 값 */

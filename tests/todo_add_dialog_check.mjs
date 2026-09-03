@@ -1,4 +1,4 @@
-// 워크스페이스 카드의 + 버튼이 팝업을 열고, 그 폼이 제목·착수 조건·note 를 한 번에
+// 카드 헤더 케밥의 "할일 추가" 가 팝업을 열고, 그 폼이 제목·착수 조건·note 를 한 번에
 // 보내는지 본다. prompt 를 쓰면 브라우저가 둘째부터 억제해 제목만 물어본 꼴이 되므로
 // prompt 를 아예 호출하지 않는 것도 함께 본다.
 // 실행: node tests/todo_add_dialog_check.mjs (tests/test_todo_add_dialog.py 가 부른다)
@@ -85,11 +85,16 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 const board = await import("../static/js/board.js");
 await board.renderBoard();
 
-// + 버튼은 카드마다 하나 — 미분류 카드에도 있어야 한다 (자잘한 건은 거기서 끝낸다)
-const plusButtons = created.filter((made) => made.className === "group-add");
-assert.equal(plusButtons.length, 2, "+ 버튼이 워크스페이스·미분류 두 카드에 없다");
-const [plus, unassignedPlus] = plusButtons;
-plus.listeners.click({ preventDefault() {}, stopPropagation() {} });
+// 할일 추가는 카드 헤더 케밥 안에 — 미분류 카드에도 있어야 한다 (자잘한 건은 거기서 끝낸다).
+// 두 카드 다 할일이 없어 첫 화면의 ⋮ 는 헤더 것 둘뿐이다
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const click = (target) => target.listeners.click({ preventDefault() {}, stopPropagation() {} });
+const kebabs = () => created.filter((made) => made.textContent === "⋮");
+const addItem = () => created.filter((made) => made.textContent === "할일 추가").pop();
+assert.equal(kebabs().length, 2, "케밥이 워크스페이스·미분류 두 카드에 없다");
+click(kebabs()[0]);
+await settle();
+click(addItem());
 assert.equal(elements["todo-add-modal"].open, true, "팝업이 안 열렸다");
 assert.equal(elements["todo-add-scope"].textContent, "작업 대시보드에 할일 추가");
 // 워크스페이스가 카테고리를 결정하므로 카테고리 칸은 숨어 있어야 한다
@@ -111,8 +116,11 @@ assert.deepEqual(posted[0].body, {
 });
 assert.equal(elements["todo-add-modal"].open, false, "보낸 뒤 팝업이 닫혀야 한다");
 
-// 미분류 카드는 워크스페이스가 없으니 팝업에서 카테고리를 골라 그걸 실어 보내야 한다
-unassignedPlus.listeners.click({ preventDefault() {}, stopPropagation() {} });
+// 미분류 카드는 워크스페이스가 없으니 팝업에서 카테고리를 골라 그걸 실어 보내야 한다.
+// 카드는 워크스페이스 → 미분류 순으로 그려지므로 마지막 ⋮ 가 미분류 헤더의 것
+click(kebabs().pop());
+await settle();
+click(addItem());
 assert.equal(elements["todo-add-scope"].textContent, "미분류에 할일 추가");
 assert.equal(elements["todo-add-category-field"].hidden, false, "카테고리 칸이 숨어 있다");
 assert.match(elements["todo-add-category"].innerHTML, /운영/, "카테고리 목록이 안 채워졌다");

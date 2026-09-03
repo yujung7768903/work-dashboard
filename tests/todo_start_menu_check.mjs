@@ -155,7 +155,9 @@ const board = await import("../static/js/board.js");
 await board.renderBoard();
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-const toggles = () => created.filter((made) => made.textContent === "⋮");
+// 카드 헤더에도 ⋮ 가 있다 — 할일 줄 케밥만 툴팁으로 가른다
+const toggles = () =>
+  created.filter((made) => made.textContent === "⋮" && made.title === "시작 · 라벨 수정 · 삭제");
 // 빵부스러기는 button.textContent 를 그대로 쓰지만(단일 문자열), 폴더 목록 행은
 // 아이콘·이름·배지 세 span 을 자식으로 붙여서 만든다(browse.js) — 그래서 행은
 // textContent 가 아니라 자식(이름 span)으로 찾아야 한다
