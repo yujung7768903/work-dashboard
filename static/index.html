@@ -409,7 +409,7 @@
     <div id="session-modal-body"></div>
   </dialog>
 
-  <!-- 카드의 + 버튼이 여는 추가 폼. 세 값을 한 번에 받는다 —
+  <!-- 카드 헤더 케밥의 "할일 추가" 가 여는 폼. 세 값을 한 번에 받는다 —
        prompt 를 연달아 띄우면 브라우저가 둘째부터 억제해 제목만 물어본 꼴이 된다 -->
   <dialog id="todo-add-modal">
     <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
@@ -438,6 +438,15 @@
       </div>
       <div class="dlg-actions"><button type="submit" data-i18n="common.add"></button></div>
     </form>
+  </dialog>
+
+  <!-- 카드 헤더 케밥의 "수정". 워크스페이스 탭의 편집 카드를 그대로 담는다 (static/js/board.js) -->
+  <dialog id="ws-edit-modal">
+    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
+    <div id="ws-edit-body">
+      <div class="dlg-head"><p class="dlg-title" id="ws-edit-title"></p></div>
+      <div id="ws-edit-card"></div>
+    </div>
   </dialog>
 
   <!-- 작업 위치를 못 정했을 때만 연다 — 할일 케밥의 "시작" 과 자율 수행 후보의 위치 미정 칩 (static/js/browse.js) -->

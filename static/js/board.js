@@ -12,7 +12,7 @@ import {
   startSessionPolling,
 } from "./sessions.js";
 import { loadingSpinner } from "./spinner.js";
-import { focusWorkspace, menuItem } from "./workspace.js";
+import { editCard, focusWorkspace, menuItem } from "./workspace.js";
 
 const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
 const GROUP_BY_WORKSPACE = "workspace";
@@ -34,12 +34,16 @@ let view = localStorage.getItem(VIEW_KEY) === VIEW_STATUS ? VIEW_STATUS : GROUP_
 
 // null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
 let activeCategoryId = null;
-// 케밥 메뉴가 열린 할일. 한 번에 하나만 열림
-let openMenuTodoId = null;
+// 열린 케밥 메뉴. 할일 줄은 todo:<id>, 카드 헤더는 group:<id>(미분류는 group:). 한 번에 하나만
+let openMenuKey = null;
+const todoKey = (todo) => `todo:${todo.id}`;
+const groupKey = (group) => `group:${group.id ?? ""}`;
 // 그 케밥 메뉴가 라벨 목록으로 들어가 있는 할일. 메뉴를 닫으면 첫 화면으로 돌아온다
 let labelMenuTodoId = null;
 // 설정 탭에서 만든 라벨 전체. 케밥 메뉴가 켜고 끌 목록으로 쓴다
 let allLabels = [];
+// 수정 팝업의 카테고리 선택지. 라벨과 같은 이유로 보드를 그릴 때 함께 받아 둔다
+let allCategories = [];
 
 function showDone() {
   return document.getElementById("show-done").getAttribute("aria-pressed") === "true";
@@ -56,6 +60,7 @@ export async function renderShared() {
   // 케밥 메뉴가 라벨 목록을 그리려면 있어야 한다. 메뉴를 열 때 따로 부르면
   // 메뉴가 한 박자 늦게 채워지므로 보드를 그릴 때 같이 받아 둔다
   allLabels = labels;
+  allCategories = categories;
   renderNext(next);
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
@@ -232,7 +237,7 @@ function groupElement(group, alwaysShowDone = false) {
   metaNode.textContent = meta;
   summary.append(name, metaNode);
   // 미분류에도 붙인다 — 워크스페이스를 만들 값 없는 자잘한 건은 여기서 끝낸다
-  if (group.kind !== GROUP_BY_CATEGORY) summary.appendChild(groupAddButton(group));
+  if (group.kind !== GROUP_BY_CATEGORY) summary.appendChild(groupMenu(group));
   details.appendChild(summary);
 
   group.todos
@@ -243,20 +248,85 @@ function groupElement(group, alwaysShowDone = false) {
   return details;
 }
 
-// 카드에서 바로 할일 추가. 워크스페이스 카드면 카테고리는 서버가 그쪽에서 가져오고,
-// 미분류 카드면 팝업에서 고른 카테고리로 넣는다
-function groupAddButton(group) {
-  const button = document.createElement("button");
-  button.className = "group-add";
-  button.innerHTML = PLUS_SVG;
-  button.title = t("board.addTodoTitle", { name: groupName(group) });
-  button.addEventListener("click", (event) => {
+// 카드 헤더 케밥. 할일 줄 케밥과 같은 ws-menu 스타일. 할일 추가는 미분류 카드에도 있지만
+// 수정·삭제는 워크스페이스 카드에만 — 미분류는 고칠 워크스페이스가 없다
+function groupMenu(group) {
+  const key = groupKey(group);
+  const wrapper = document.createElement("div");
+  wrapper.className = "ws-menu";
+  const toggle = document.createElement("button");
+  toggle.className = "kebab";
+  toggle.textContent = "⋮";
+  toggle.title =
+    group.kind === UNASSIGNED_KIND ? t("board.addTodo") : t("board.workspaceMenu");
+  toggle.addEventListener("click", (event) => {
     // summary 클릭은 카드를 접으므로 기본 동작까지 막는다
     event.preventDefault();
     event.stopPropagation();
-    openAddDialog(group);
+    openMenuKey = openMenuKey === key ? null : key;
+    labelMenuTodoId = null;
+    run(renderBoard);
   });
-  return button;
+  wrapper.appendChild(toggle);
+  if (openMenuKey === key) wrapper.appendChild(groupMenuItems(group));
+  return wrapper;
+}
+
+function groupMenuItems(group) {
+  const items = document.createElement("div");
+  items.className = "ws-menu-items";
+  // 워크스페이스 카드면 카테고리는 서버가 그쪽에서 가져오고, 미분류 카드면 팝업에서 고른
+  // 카테고리로 넣는다
+  items.appendChild(
+    menuItem(t("board.addTodo"), () => {
+      openMenuKey = null;
+      openAddDialog(group);
+      run(renderBoard);
+    })
+  );
+  if (group.kind === UNASSIGNED_KIND) return items;
+  items.append(
+    menuItem(t("common.edit"), () =>
+      run(async () => {
+        openMenuKey = null;
+        await openEditDialog(group);
+        await renderBoard();
+      })
+    ),
+    menuItem(t("common.delete"), () =>
+      run(async () => {
+        openMenuKey = null;
+        // 물어보는 동안은 목록을 그대로 둔다 (할일 삭제와 같은 순서). 소속 할일은 서버가
+        // 미분류로 내린다 — 지워지지 않는다
+        if (!confirm(t("workspace.confirmDelete", { name: group.name }))) {
+          await renderBoard();
+          return;
+        }
+        await withLoading(() => api.deleteWorkspace(group.id));
+      })
+    )
+  );
+  return items;
+}
+
+// 워크스페이스 탭의 편집 카드를 팝업에 띄운다. 배경·목표 같은 본문은 보드 목록에 안 실려
+// 오므로 그 워크스페이스만 다시 받는다
+async function openEditDialog(group) {
+  const { workspace } = await api.getWorkspace(group.id);
+  const dialog = document.getElementById("ws-edit-modal");
+  document.getElementById("ws-edit-title").textContent = t("workspace.editTitle", {
+    name: workspace.name,
+  });
+  document.getElementById("ws-edit-card").replaceChildren(
+    editCard(workspace, allCategories, {
+      onSave: async () => {
+        dialog.close();
+        await renderBoard();
+      },
+      onCancel: () => dialog.close(),
+    })
+  );
+  if (!dialog.open) dialog.showModal();
 }
 
 // 팝업이 어느 워크스페이스로 넣을지. 팝업은 하나뿐이라 열 때마다 덮어쓴다
@@ -359,13 +429,6 @@ export const CHEVRON_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria
         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
-// 사이드바 아이콘과 같은 격자·스트로크. 글자 + 는 폰트마다 글리프가 위아래로 치우쳐
-// 세로 가운데를 맞춰도 어긋나 보이므로 도형으로 그린다
-const PLUS_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-  <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
-        stroke-width="1.5" stroke-linecap="round"/>
-</svg>`;
-
 // 위치를 모르는 워크스페이스는 서버가 reason.noCwd 로 막는다. 그때만 작업 디렉토리를
 // 물어 다시 시도한다 — 한 번 성공하면 그 세션이 위치를 기록해 다음부터는 안 물어도 된다
 async function startTodoFlow(todo) {
@@ -398,12 +461,12 @@ function todoMenu(todo) {
   toggle.title = t("board.todoMenu");
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
-    openMenuTodoId = openMenuTodoId === todo.id ? null : todo.id;
+    openMenuKey = openMenuKey === todoKey(todo) ? null : todoKey(todo);
     labelMenuTodoId = null;
     run(renderBoard);
   });
   wrapper.appendChild(toggle);
-  if (openMenuTodoId === todo.id) wrapper.appendChild(todoMenuItems(todo));
+  if (openMenuKey === todoKey(todo)) wrapper.appendChild(todoMenuItems(todo));
   return wrapper;
 }
 
@@ -423,7 +486,7 @@ function todoMenuItems(todo) {
   items.append(
     menuItem(t("board.startTodo"), () =>
       run(async () => {
-        openMenuTodoId = null;
+        openMenuKey = null;
         const result = await withLoading(() => startTodoFlow(todo));
         // 알림은 목록을 다시 그린 **뒤에**. alert 는 화면을 멈추므로 먼저 띄우면
         // 확인을 누른 다음에야 목록이 바뀐다 (워크트리 탭과 같은 순서)
@@ -436,7 +499,7 @@ function todoMenuItems(todo) {
     }),
     menuItem(t("common.delete"), () =>
       run(async () => {
-        openMenuTodoId = null;
+        openMenuKey = null;
         // 물어보는 동안은 목록을 그대로 둔다 — 무엇을 지우는지 보면서 답해야 한다.
         // 취소하면 열린 케밥만 닫는다
         if (!confirm(t("board.confirmDeleteTodo", { title: todo.title }))) {
@@ -530,8 +593,8 @@ document.getElementById("todo-view").addEventListener("click", (event) => {
 
 // 항목 밖을 누르면 열린 케밥 메뉴 닫기
 document.addEventListener("click", () => {
-  if (openMenuTodoId === null) return;
-  openMenuTodoId = null;
+  if (openMenuKey === null) return;
+  openMenuKey = null;
   labelMenuTodoId = null;
   run(renderBoard);
 });

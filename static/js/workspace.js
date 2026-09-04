@@ -39,12 +39,18 @@ export async function renderWorkspaceTab() {
   workspaces.forEach((workspace) => {
     const card =
       workspace.id === editingId
-        ? editCard(workspace, categories)
+        ? editCard(workspace, categories, { onSave: closeEdit, onCancel: closeEdit })
         : readCard(workspace, categories, counts);
     if (workspace.id === focusId) card.classList.add("focused");
     list.appendChild(card);
   });
   focusId = null;
+}
+
+// 저장·취소 뒤 읽기 카드로 돌아온다
+async function closeEdit() {
+  editingId = null;
+  await renderWorkspaceTab();
 }
 
 function countsByWorkspace(tree) {
@@ -146,7 +152,7 @@ function menuItems(workspace) {
     menuItem(t("common.delete"), () =>
       run(async () => {
         openMenuId = null;
-        if (!confirm(t("workspace.confirmDelete"))) {
+        if (!confirm(t("workspace.confirmDelete", { name: workspace.name }))) {
           await renderWorkspaceTab();
           return;
         }
@@ -159,7 +165,7 @@ function menuItems(workspace) {
   return items;
 }
 
-// 보드의 할일 케밥 메뉴도 같은 항목 버튼을 씀
+// 보드의 할일·카드 헤더 케밥 메뉴도 같은 항목 버튼을 씀
 export function menuItem(label, onClick) {
   const button = document.createElement("button");
   button.textContent = label;
@@ -170,7 +176,9 @@ export function menuItem(label, onClick) {
   return button;
 }
 
-function editCard(workspace, categories) {
+// 보드 카드 케밥의 "수정" 도 이 카드를 팝업에 띄운다 (static/js/board.js). 저장·취소 뒤
+// 무엇을 할지는 부르는 쪽이 정한다 — 여기서는 읽기 카드로, 보드에서는 팝업을 닫는다
+export function editCard(workspace, categories, { onSave, onCancel }) {
   const card = document.createElement("div");
   card.className = "ws-card";
   const inputs = {};
@@ -199,7 +207,7 @@ function editCard(workspace, categories) {
     card.appendChild(labeled(label, inputs[key]));
   });
 
-  card.appendChild(editActions(workspace, inputs));
+  card.appendChild(editActions(workspace, inputs, { onSave, onCancel }));
   return card;
 }
 
@@ -219,7 +227,7 @@ function labeled(label, control) {
   return row;
 }
 
-function editActions(workspace, inputs) {
+function editActions(workspace, inputs, { onSave, onCancel }) {
   const actions = document.createElement("div");
   actions.className = "ws-actions";
 
@@ -228,17 +236,13 @@ function editActions(workspace, inputs) {
   save.addEventListener("click", () =>
     run(async () => {
       await api.updateWorkspace(workspace.id, collect(inputs));
-      editingId = null;
-      await renderWorkspaceTab();
+      await onSave();
     })
   );
 
   const cancel = document.createElement("button");
   cancel.textContent = t("common.cancel");
-  cancel.addEventListener("click", () => {
-    editingId = null;
-    run(renderWorkspaceTab);
-  });
+  cancel.addEventListener("click", () => run(onCancel));
 
   actions.append(save, cancel);
   return actions;
