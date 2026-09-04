@@ -96,6 +96,8 @@ class RouteTest(unittest.TestCase):
              {"kind": "x", "ids": []}),
             (Validation, "id 없이 할일 조회", "GET", "/api/todos", {}),
             (Validation, "id 없이 세션 수정", "PATCH", "/api/sessions", {"category_id": 1}),
+            (Validation, "빈 문장을 세션에 보냄", "POST", "/api/session-message",
+             {"session_id": 1, "text": "  "}),
         ):
             with self.subTest(why=why):
                 with self.assertRaises(exc):

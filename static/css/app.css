@@ -1323,6 +1323,50 @@ html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#dir-b
   background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent);
 }
 .session-log > li.assistant { color: var(--muted); }
+/* 폴링으로 새로 들어온 답은 본문색 — 옅은 이전 줄들 사이에서 눈에 먼저 들어와야 한다 */
+.session-log > li.fresh .text { color: var(--fg); }
+
+/* 세션 탭 입력. 선택창이 열려 있으면 CLI 와 같은 라벨+설명 선택지를 보이고, 고르면
+   입력칸을 채운다 — 보내기는 늘 버튼 한 번이다. 열린 선택창을 끊는 전송이라 보낼 문장을
+   눈으로 확인하고 보내게 한다 */
+.pending .dlg-badge.open {
+  min-width: 0;
+  background: color-mix(in srgb, var(--warn) 18%, var(--surface)); color: var(--warn);
+}
+.question { margin-top: var(--sp-12); }
+/* 배지(9px)와 질문(13px)은 baseline 이 어긋난다. 첫 줄 높이 안에서 가운데로 */
+.q-head { display: flex; align-items: flex-start; gap: var(--sp-8); margin: 0 0 var(--sp-4); }
+.q-head .dlg-badge { min-width: 0; flex: none; margin-top: var(--sp-2); }
+.choices { display: grid; gap: var(--sp-4); margin: 0; padding: 0; list-style: none; }
+.choice {
+  display: grid; grid-template-columns: var(--sp-16) 1fr; column-gap: var(--sp-8); align-items: start;
+  width: 100%; text-align: left; padding: var(--sp-8) var(--sp-12);
+  border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: var(--surface); color: var(--fg); font-weight: 400;
+}
+.choice:hover:not(:disabled) { background: var(--bg); }
+.choice .mark {
+  width: var(--sp-16); height: var(--sp-16); align-self: center;
+  border: 1.5px solid var(--muted); border-radius: var(--r-pill);
+  display: grid; place-items: center; font-size: var(--fs-micro); line-height: var(--lh-tight);
+  color: transparent;
+}
+/* 복수 선택은 네모, 단일 선택은 원 — CLI 선택창과 같은 구분 */
+.choice.multi .mark { border-radius: var(--sp-2); }
+.choice .lbl { font-weight: 600; line-height: var(--lh-heading); }
+.choice .desc { grid-column: 2; color: var(--muted); font-size: var(--fs-sm); }
+.choice.selected { border-color: var(--accent); background: var(--softer); }
+.choice.selected .mark { border-color: var(--accent); background: var(--accent); color: var(--surface); }
+.compose { margin-top: var(--sp-20); }
+.compose textarea { display: block; width: 100%; min-height: 72px; resize: vertical; }
+.compose .hint { margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-sm); }
+.compose-actions { display: flex; align-items: center; gap: var(--sp-12); margin-top: var(--sp-8); }
+.compose-actions .how { margin: 0; color: var(--muted); font-size: var(--fs-sm); }
+.compose-actions .how b { color: var(--fg); font-weight: 600; }
+.compose-actions button { margin-left: auto; flex: none; }
+.compose .session-status { flex-basis: auto; margin-top: var(--sp-8); }
+.compose .session-status.ok { color: var(--good); }
+.compose .session-status.info { color: var(--muted); }
 
 /* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음.
    레일이 208px 을 먹으므로 2컬럼 기준을 그만큼 올렸다 */

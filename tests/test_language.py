@@ -56,6 +56,7 @@ BROWSER_FACING = (
     "app/repositories/todos.py",
     "app/repositories/workspaces.py",
     "app/services/serve.py",
+    "app/services/session_message.py",
     "app/services/worktrees.py",
 )
 RAISED = tuple(

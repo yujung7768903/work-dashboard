@@ -105,7 +105,66 @@ class RecentTest(unittest.TestCase):
         self.assertEqual(transcript.tail(path, max_bytes=10), [])
 
 
+def ask(tool_use_id, questions):
+    """Claude 가 AskUserQuestion 을 부른 transcript 줄"""
+    return {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "text", "text": "골라 주세요"},
+                {"type": "tool_use", "id": tool_use_id, "name": "AskUserQuestion",
+                 "input": {"questions": questions}},
+            ]
+        },
+    }
+
+
+def answered(tool_use_id):
+    """그 질문에 답(또는 Esc 중단)이 들어온 줄"""
+    return {
+        "type": "user",
+        "message": {"content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": "ok"}]},
+    }
+
+
+QUESTIONS = [{"question": "제목 문체는?", "header": "제목", "multiSelect": False,
+              "options": [{"label": "질문형", "description": "a"}, {"label": "명사형", "description": "b"}]}]
+
+
+class PendingQuestionTest(unittest.TestCase):
+    def test_unanswered_question_is_pending(self):
+        root = write_transcript(SID, [{"type": "user", "message": {"content": "초안 써줘"}}, ask("toolu_1", QUESTIONS)])
+        self.assertEqual(
+            transcript.pending_question(SID, root),
+            {"tool_use_id": "toolu_1", "questions": QUESTIONS},
+        )
+
+    def test_answered_or_interrupted_question_is_not_pending(self):
+        root = write_transcript(SID, [ask("toolu_1", QUESTIONS), answered("toolu_1")])
+        self.assertIsNone(transcript.pending_question(SID, root))
+
+    def test_latest_question_wins(self):
+        """앞 질문은 답했고 뒤 질문만 열려 있으면 뒤 것이 대기다"""
+        root = write_transcript(
+            SID, [ask("toolu_1", QUESTIONS), answered("toolu_1"), ask("toolu_2", QUESTIONS)]
+        )
+        self.assertEqual(transcript.pending_question(SID, root)["tool_use_id"], "toolu_2")
+
+    def test_no_question_or_no_file(self):
+        root = write_transcript(SID, [{"type": "assistant", "message": {"content": [{"type": "text", "text": "끝"}]}}])
+        self.assertIsNone(transcript.pending_question(SID, root))
+        self.assertIsNone(transcript.pending_question(SID, tempfile.mkdtemp()))
+
+
 class DetailTest(unittest.TestCase):
+    def test_detail_carries_pending_question(self):
+        con = temp_db()
+        session = session_repo.register(con, SID)
+        root = write_transcript(SID, [ask("toolu_9", QUESTIONS)])
+        with mock.patch.object(transcript, "TRANSCRIPT_ROOT", root):
+            payload = session_link.detail(con, session["id"])
+        self.assertEqual(payload["pending_question"]["tool_use_id"], "toolu_9")
+
     def test_detail_carries_session_id_and_messages(self):
         con = temp_db()
         session = session_repo.register(con, SID, cwd="/home/user/work")

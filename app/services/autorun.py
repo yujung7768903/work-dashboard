@@ -799,3 +799,33 @@ def _read_json(path):
             return json.load(handle)
     except (OSError, ValueError):
         return None
+
+
+def child_env():
+    """claude 를 자식으로 띄울 때의 환경. 대시보드 서버가 Claude 세션 안에서 떴으면
+    CLAUDECODE 가 물려와 중첩 실행으로 거절될 수 있어 그것만 뺀다"""
+    env = dict(os.environ)
+    env.pop("CLAUDECODE", None)
+    return env
+
+
+def resume_session(session_id, text, cwd, claude_bin=AUTORUN_CLAUDE_BIN):
+    """끝난 세션을 `claude --bg --resume` 으로 다시 띄우고 text 를 첫 프롬프트로 준다.
+
+    launch() 와 달리 모델을 강제하지 않는다 — 그 세션이 쓰던 모델을 이어 쓴다.
+    세션 id 를 이미 알므로 state.json 을 기다리지 않는다. 살아 있는 세션에 쓰면 복사본이
+    뜨니 호출하는 쪽이 먼저 확인해야 한다 (session_message.send)
+    """
+    argv = [claude_bin, "--bg", "--resume", session_id, text]
+    try:
+        result = subprocess.run(
+            argv, cwd=cwd, capture_output=True, text=True,
+            timeout=AUTORUN_LAUNCH_TIMEOUT_SEC, env=child_env(),
+        )
+    except Exception as error:  # 실행 파일이 없거나 기동이 늦음
+        return {"job_id": "", "error": str(error)}
+    output = (result.stdout or "") + (result.stderr or "")
+    match = JOB_ID_PATTERN.search(output)
+    if not match:
+        return {"job_id": "", "error": output.strip()[-300:]}
+    return {"job_id": match.group(1), "error": ""}

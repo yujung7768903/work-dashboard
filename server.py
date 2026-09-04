@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """작업 대시보드 HTTP 진입점. 라우팅과 직렬화만 담당"""
 import argparse
+import ipaddress
 import json
 import os
 import posixpath
@@ -36,6 +37,7 @@ from app.services import (
     precondition,
     release,
     session_link,
+    session_message,
     session_todo,
     usage,
     worktrees,
@@ -45,6 +47,7 @@ STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
 API_PREFIX = "/api/"
 NONE_LITERAL = "none"
+LOCAL_ONLY_HEAD = "session-message"
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -183,6 +186,9 @@ def _route_post(con, head, body):
     if head == "precondition-check":
         # 돌릴 명령은 저장된 조건 문장에서 서버가 읽는다 — 화면은 몇 번째 항목인지만 보낸다
         return precondition.check(con, body.get("todo_id"), body.get("index"))
+    if head == "session-message":
+        # 세션 탭의 입력칸. 살아 있는 세션이면 소켓으로, 끝났으면 --resume 으로 넣는다
+        return session_message.send(con, body.get("session_id"), body.get("text"))
     if head == "worktrees":
         repo, branch, action = body.get("repo"), body.get("branch"), body.get("action")
         # 서버 조작(띄우기·다시 띄우기·내리기)은 할일·세션을 건드리지 않아 con 을 받지 않는다
@@ -306,6 +312,20 @@ def _reorder(con, body):
     return {"reordered": len(ids)}
 
 
+def guard_origin(method, path, client_host):
+    """세션 입력은 이 PC 에서 온 요청만. --lan 화면은 인증이 없는데, 이 엔드포인트는
+    도구가 달린 에이전트에 프롬프트를 넣는 힘이 있다"""
+    if method == "POST" and path == f"{API_PREFIX}{LOCAL_ONLY_HEAD}" and not is_loopback(client_host):
+        raise Validation("세션 입력은 이 PC 에서만 보낼 수 있습니다")
+
+
+def is_loopback(host):
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _single(query, key, default):
     values = query.get(key)
     return values[0] if values else default
@@ -337,6 +357,7 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method, parsed):
         con = connect()
         try:
+            guard_origin(method, parsed.path, self.client_address[0])
             payload = route(
                 con, method, parsed.path, parse_qs(parsed.query), self._read_body()
             )

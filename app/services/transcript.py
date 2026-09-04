@@ -132,3 +132,62 @@ def _text(content, collapse=True):
     if not collapse:
         return "\n".join(blocks).strip()
     return " ".join(" ".join(blocks).split())
+
+
+ASK_TOOL = "AskUserQuestion"
+TOOL_USE_BLOCK = "tool_use"
+TOOL_RESULT_BLOCK = "tool_result"
+ASSISTANT_ROLE = ROLES[1]
+
+
+def pending_question(claude_session_id, root=None):
+    """답을 기다리는 AskUserQuestion. 없으면 None.
+
+    {"tool_use_id", "questions"} — questions 는 도구 입력 그대로(question·header·multiSelect·options).
+    parse_line 은 도구 블록을 버리므로 여기서 원문 항목을 직접 본다. 꼬리 한 창만 읽는다 —
+    답을 기다리는 질문은 반드시 끝 근처에 있고, CLI 에서 골랐거나 Esc 로 끊었으면
+    같은 tool_use_id 의 tool_result 가 뒤따른다
+    """
+    path = find_path(claude_session_id, root)
+    if not path:
+        return None
+    asked = None
+    answered = set()
+    for line in tail(path):
+        entry = _entry(line)
+        if not entry:
+            continue
+        for block in _blocks(entry):
+            kind = block.get("type")
+            if (
+                kind == TOOL_USE_BLOCK
+                and entry.get("type") == ASSISTANT_ROLE
+                and block.get("name") == ASK_TOOL
+            ):
+                asked = {
+                    "tool_use_id": block.get("id") or "",
+                    "questions": (block.get("input") or {}).get("questions") or [],
+                }
+            elif kind == TOOL_RESULT_BLOCK:
+                answered.add(block.get("tool_use_id"))
+    if asked and asked["tool_use_id"] not in answered:
+        return asked
+    return None
+
+
+def _entry(line):
+    """transcript 한 줄을 dict 로. 서브에이전트 줄과 깨진 줄은 None"""
+    try:
+        entry = json.loads(line)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(entry, dict) or entry.get("isSidechain"):
+        return None
+    return entry
+
+
+def _blocks(entry):
+    content = (entry.get("message") or {}).get("content")
+    if not isinstance(content, list):
+        return []
+    return [block for block in content if isinstance(block, dict)]

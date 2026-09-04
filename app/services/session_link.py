@@ -253,6 +253,8 @@ def detail(con, session_row_id):
     return {
         "session": session,
         "messages": transcript.recent(session["claude_session_id"]),
+        # 답을 기다리는 선택창. 세션 탭이 선택지 버튼으로 그린다
+        "pending_question": transcript.pending_question(session["claude_session_id"]),
         "todos": [
             _with_conditions(con, todo_repo.get(con, todo_id)) for todo_id in todo_ids
         ],

@@ -41,6 +41,10 @@ const WORKTREE_TIME_FIELDS = [
 ];
 
 let timer = null;
+// 팝업 세션 탭의 답 기다리기 폴링. 첫 전송 뒤에만 돈다
+let detailTimer = null;
+const DETAIL_POLL_MS = 3000;
+const SENT_PREVIEW_CHARS = 60;
 // 팝업에서 할일을 고치면 뒤에 깔린 보드도 다시 그려야 한다. 여기서 main.js·board.js 를
 // 가져오면 팝업 렌더만 node 로 검증하는 테스트가 탭 초기화까지 끌고 들어와 못 돈다 —
 // 보드가 자기 갱신 함수를 맡기고 간다
@@ -120,10 +124,13 @@ function sessionRow(session) {
 // 세션 줄·사용량 레일의 세션 카드·보드의 할일이 모두 이 팝업 하나를 쓴다.
 // 어디서 열었느냐는 처음 켜지는 탭만 바꾼다 — 세션은 세션 탭, 할일은 개요 탭
 export function openDetail(target) {
-  // 폴링이 목록을 다시 그려도 팝업은 별도 요소라 안 건드린다. 대화는 열 때 한 번만 읽음
+  // 폴링이 목록을 다시 그려도 팝업은 별도 요소라 안 건드린다. 대화는 열 때 한 번 읽고,
+  // 세션 탭에서 무언가를 보낸 뒤부터만 답을 기다리며 다시 읽는다 (startDetailPolling)
   const dialog = document.getElementById("session-modal");
   const body = document.getElementById("session-modal-body");
   body.textContent = t("common.loading");
+  stopDetailPolling();
+  dialog.addEventListener?.("close", stopDetailPolling, { once: true });
   if (!dialog.open) dialog.showModal();
   loadContext(target)
     .then((context) => body.replaceChildren(...tabbed(context)))
@@ -511,10 +518,15 @@ function sessionPane(context) {
     pane.appendChild(element("p", "muted", t("session.noSession")));
     return pane;
   }
+  // 로그와 답변 대기 질문은 한 상자에 — 보낸 뒤 폴링이 이 상자만 다시 그리고 입력칸은 둔다
+  const live = element("div", "session-live");
+  const compose = composeSection(context.session, live);
+  compose.render(context.messages, context.pending_question);
   pane.append(
     headBlock(context.session, context.categories, context.fromTodo ? context.todos[0] : null),
     classifyRow(context),
-    logSection(context.messages)
+    live,
+    compose.node
   );
   return pane;
 }
@@ -639,7 +651,8 @@ function targetSelect(session, workspaces, categories) {
   return select;
 }
 
-function logSection(messages) {
+// known 은 이미 보여준 발화의 열쇠 집합. 없으면(첫 그림) 새 줄 표시를 안 한다
+function logSection(messages, known = null) {
   const section = element("div", "dlg-section");
   section.appendChild(element("p", "label", t("session.recentMessages")));
   if (!messages.length) {
@@ -648,7 +661,8 @@ function logSection(messages) {
   }
   const list = element("ul", "session-log");
   messages.forEach((message) => {
-    const item = element("li", message.role);
+    const fresh = known && !known.has(messageKey(message));
+    const item = element("li", fresh ? `${message.role} fresh` : message.role);
     item.title = message.text; // 목록에서는 몇 줄만 보이므로 전문은 툴팁으로
     item.append(
       element("span", "dlg-badge", ROLE_LABELS[message.role] ?? message.role),
@@ -658,6 +672,167 @@ function logSection(messages) {
   });
   section.appendChild(list);
   return section;
+}
+
+// recent() 는 꼬리 10개라 개수로는 새 줄을 못 가른다 — 내용으로 가른다
+function messageKey(message) {
+  return `${message.role}\n${message.text}`;
+}
+
+// 답을 기다리는 선택창. CLI 와 같은 라벨·설명을 보이고, 누르면 answers 를 고쳐 입력칸을 채운다.
+// 바로 보내지 않는다 — 질문이 여럿이면 다 고른 뒤 한 번에 나가야 하고, 선택창을 끊는 전송이라
+// 보낼 문장을 눈으로 확인하고 보내는 게 맞다
+function questionSection(question, answers, fill) {
+  const section = element("div", "dlg-section dlg-log pending");
+  const label = element("p", "label", t("session.pendingQuestion"));
+  label.append(element("span", "dlg-badge open", t("session.questionOpen")));
+  section.appendChild(label);
+  (question.questions ?? []).forEach((item) => {
+    const block = element("div", "question");
+    const head = element("p", "q-head");
+    if (item.header) head.append(element("span", "dlg-badge", item.header));
+    head.append(element("span", "q-text", item.question));
+    const list = element("ul", "choices");
+    (item.options ?? []).forEach((option) => {
+      list.appendChild(choiceItem(item, option, answers, fill, list));
+    });
+    block.append(head, list);
+    section.appendChild(block);
+  });
+  return section;
+}
+
+function choiceItem(question, option, answers, fill, list) {
+  const item = document.createElement("li");
+  const button = element("button", question.multiSelect ? "choice multi" : "choice");
+  button.type = "button";
+  button.append(
+    element("span", "mark", "✓"),
+    element("span", "lbl", option.label),
+    element("span", "desc", option.description ?? "")
+  );
+  button.classList.toggle("selected", (answers.get(question.question) ?? []).includes(option.label));
+  button.addEventListener("click", () => {
+    const current = answers.get(question.question) ?? [];
+    // 단일 선택은 바꿔 끼우고, 복수 선택은 켜고 끈다
+    const next = !question.multiSelect
+      ? [option.label]
+      : current.includes(option.label)
+        ? current.filter((label) => label !== option.label)
+        : [...current, option.label];
+    answers.set(question.question, next);
+    Array.from(list.children).forEach((row) => {
+      const choice = row.children[0];
+      choice.classList.toggle("selected", next.includes(choice.children[1].textContent));
+    });
+    fill();
+  });
+  item.appendChild(button);
+  return item;
+}
+
+// 세션 탭 아래쪽 입력칸. 선택지로 채우든 직접 치든 같은 칸이고 보내기는 버튼(Ctrl+Enter) 한 번.
+// 선택창이 열려 있으면 서버가 now 로 보내 그 선택창을 닫는다 — 어느 쪽인지 버튼 옆에 미리 보인다.
+// 보낸 문장은 로그에 끼워 넣지 않는다: 세션 기록에 메타로 남아 recent() 에 안 잡히므로
+// 폴링 첫 틱에 사라진다. 상태 줄에만 남긴다
+function composeSection(session, live) {
+  const node = element("div", "compose");
+  const input = element("textarea");
+  input.placeholder = t("session.sendPlaceholder");
+  const hint = element("p", "hint", t("session.sendHint"));
+  const actions = element("div", "compose-actions");
+  const how = element("p", "how");
+  const send = element("button", null, t("session.send"));
+  send.type = "button";
+  const status = element("p", "session-status", "");
+  actions.append(how, send);
+  node.append(input, hint, actions, status);
+
+  let pending = null;
+  let known = null;
+  const answers = new Map(); // 질문 → 고른 라벨들
+
+  const render = (messages, question) => {
+    pending = question ?? null;
+    live.replaceChildren(
+      logSection(messages, known),
+      ...(pending ? [questionSection(pending, answers, fill)] : [])
+    );
+    known = new Set(messages.map(messageKey));
+    hint.textContent = pending ? t("session.choiceHint") : t("session.sendHint");
+    send.textContent = pending ? t("session.sendAnswer") : t("session.send");
+    how.replaceChildren(
+      element("b", null, pending ? t("session.deliverNow") : t("session.deliverNext")),
+      element("span", null, ` · ${pending ? t("session.deliverNowHint") : t("session.deliverNextHint")}`)
+    );
+  };
+  // 질문 순서대로 "질문 - 라벨" 한 줄씩. 복수 선택은 ", " 로 잇는다 (CLI 가 답을 적는 형식과 같다)
+  const fill = () => {
+    input.value = (pending?.questions ?? [])
+      .filter((item) => answers.get(item.question)?.length)
+      .map((item) => `${item.question} - ${answers.get(item.question).join(", ")}`)
+      .join("\n");
+  };
+  const submit = async () => {
+    const text = input.value.trim();
+    if (!text || send.disabled) return;
+    send.disabled = true;
+    status.className = "session-status";
+    status.textContent = t("session.sending");
+    try {
+      const result = await api.sendSessionMessage(session.id, text);
+      const oneLine = text.replace(/\s*\n\s*/g, " / ");
+      const preview =
+        oneLine.length > SENT_PREVIEW_CHARS ? `${oneLine.slice(0, SENT_PREVIEW_CHARS)}…` : oneLine;
+      const resumed = result.delivered === "resumed";
+      status.className = resumed ? "session-status info" : "session-status ok";
+      status.textContent = resumed
+        ? t("session.resumed", { job: result.job_id })
+        : t("session.sent", { text: preview });
+      input.value = "";
+      answers.clear();
+      startDetailPolling(session.id, render);
+    } catch (error) {
+      status.className = "session-status";
+      status.textContent = error.message;
+    } finally {
+      send.disabled = false;
+    }
+  };
+  send.addEventListener("click", submit);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.ctrlKey) {
+      event.preventDefault();
+      submit();
+    }
+  });
+  return { node, render };
+}
+
+// 보낸 뒤 답이 오는지 보는 폴링. 팝업이 열려 있는 동안만 돌고, 닫히면 openDetail 이 건 close
+// 리스너가 멈춘다. 그리는 시점에 걸지 않는다 — node 렌더 검사가 끝나지 않는다
+function startDetailPolling(sessionId, render) {
+  stopDetailPolling();
+  const dialog = document.getElementById("session-modal");
+  if (!dialog.open) return;
+  const tick = async () => {
+    if (!dialog.open) {
+      stopDetailPolling();
+      return;
+    }
+    try {
+      const detail = await api.getSession(sessionId);
+      render(detail.messages, detail.pending_question);
+    } catch {
+      // 다음 틱에 다시 읽는다
+    }
+  };
+  detailTimer = setInterval(tick, DETAIL_POLL_MS);
+}
+
+function stopDetailPolling() {
+  if (detailTimer) clearInterval(detailTimer);
+  detailTimer = null;
 }
 
 function optgroup(label) {
