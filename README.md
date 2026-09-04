@@ -125,7 +125,8 @@ rather than the `0.0.0.0` that `server.py` echoes back.
 
 > [!WARNING]
 > With `--lan`, anything on the same network can open the dashboard, and there is
-> no authentication.
+> no authentication. The one exception is the session tab's input box: it puts
+> prompts into a tool-enabled agent, so the server accepts it from this PC only.
 
 Port 9080 belongs to the main checkout so that it always has the same address.
 Worktrees run from 9081 up, and `server.py` refuses `--port 9080` when it is
@@ -162,7 +163,7 @@ Clicking a todo row or a session row opens the same dialog with three tabs:
 | Dialog tab | What it holds |
 | --- | --- |
 | Overview | Title, history, preconditions and the full context note. URLs in the note open in a new tab; absolute paths (`~/…`, `/…`) open the file manager on the machine running the server |
-| Session | Session id, location, the last 10 exchanges, and workspace/category assignment |
+| Session | Session id, location, the last 10 exchanges, workspace/category assignment, and an input box that sends text to the running Claude session. While Claude waits on a multiple-choice question, the choices appear as buttons: picking fills the box, Send answers. An ended session is relaunched with `--resume` |
 | Worktree | The worktrees this todo used — state, history and commits |
 
 ## The CLI
@@ -344,6 +345,20 @@ and every item is met. `#id` lines are resolved against that todo's status; a
 queue until a human clears it. The `Check` button in the todo dialog runs the
 stored command — `POST /api/precondition-check` takes `{todo_id, index}` and
 reads the command back from the saved text, never from the request.
+
+### Talking to a session from the dialog
+
+The session tab's input box posts `{session_id, text}` to `POST /api/session-message`.
+A live session receives the text over its own unix socket (`cc-socks/<pid>.sock`,
+the same channel Claude Code uses for cross-session SendMessage), found through
+`claude agents --json` each time — the pid is never stored, because the daemon's
+spare processes can end up serving a different session than the one they registered
+as. While an `AskUserQuestion` dialog is open the message goes out with priority
+`now`, which closes the dialog like Esc and makes the text the next input; otherwise
+it queues behind the current work. A session that has ended is relaunched with
+`claude --bg --resume <session_id> "<text>"` instead. The receiving session treats
+the text as a message from another session, so it confirms before irreversible
+actions such as commits or pushes.
 
 ## Google Tasks sync
 
