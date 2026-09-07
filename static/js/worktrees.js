@@ -1,6 +1,6 @@
 // 보드의 워크트리 하위 탭. 워크스페이스마다 저장소 하나, 그 아래 브랜치·워크트리 행
 import * as api from "./api.js";
-import { CHEVRON_SVG, currentCategoryId } from "./board.js";
+import { CHEVRON_SVG, inActiveCategory } from "./board.js";
 import { fromKorean, t } from "./i18n.js";
 import { run } from "./main.js";
 import { openDetail } from "./sessions.js";
@@ -76,11 +76,6 @@ function syncViewButtons() {
   document.querySelectorAll("#worktree-view button").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === groupBy);
   });
-}
-
-function inActiveCategory(group) {
-  const active = currentCategoryId();
-  return active === null || group.category_id === active;
 }
 
 document.getElementById("worktree-view").addEventListener("click", (event) => {

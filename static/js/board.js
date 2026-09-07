@@ -21,6 +21,8 @@ const UNASSIGNED_KIND = "unassigned";
 const UNASSIGNED_LABEL = t("common.unassigned");
 const DONE = "done";
 const ALL_CATEGORIES = { id: null, name: t("board.allCategories") };
+// 미분류 라벨. 카테고리 id 는 숫자라 문자열 표지와 겹치지 않는다
+const UNASSIGNED_FILTER = { id: UNASSIGNED_KIND, name: UNASSIGNED_LABEL };
 const NO_COMPLETED = t("board.noCompleted");
 
 // 상세 팝업에서 할일을 고치면 이 목록도 다시 그려야 한다 (static/js/sessions.js)
@@ -32,7 +34,8 @@ const VIEW_KEY = "todo-view";
 const VIEW_STATUS = "status";
 let view = localStorage.getItem(VIEW_KEY) === VIEW_STATUS ? VIEW_STATUS : GROUP_BY_WORKSPACE;
 
-// null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만 남음
+// null 이면 전체. 카테고리 라벨을 누르면 그 카테고리 워크스페이스만, 미분류 라벨을
+// 누르면(UNASSIGNED_FILTER.id) 워크스페이스 없는 미분류 카드만 남음
 let activeCategoryId = null;
 // 열린 케밥 메뉴. 할일 줄은 todo:<id>, 카드 헤더는 group:<id>(미분류는 group:). 한 번에 하나만
 let openMenuKey = null;
@@ -65,11 +68,6 @@ export async function renderShared() {
   renderQuickCategories(categories);
   renderCategoryFilter(categories);
   startSessionPolling();
-}
-
-// 고른 카테고리 라벨. 워크트리 탭도 같은 필터를 따른다
-export function currentCategoryId() {
-  return activeCategoryId;
 }
 
 export async function renderBoard() {
@@ -125,9 +123,13 @@ function isComplete(group) {
   return group.total_count > 0 && group.done_count === group.total_count;
 }
 
-// 미분류는 카테고리가 없으므로 필터를 걸면 숨김
-function inActiveCategory(group) {
-  return activeCategoryId === null || group.category_id === activeCategoryId;
+// 고른 라벨에 드는 그룹인지. 워크트리 탭도 같은 필터를 따른다 (static/js/worktrees.js).
+// 카테고리 라벨을 걸면 미분류 카드는 카테고리가 없어 숨고, 미분류 라벨은 그 카드만
+// 남긴다 — 워크스페이스는 카테고리가 필수라 category_id 가 빈 그룹은 미분류뿐이다 (app/db.py)
+export function inActiveCategory(group) {
+  if (activeCategoryId === null) return true;
+  if (activeCategoryId === UNASSIGNED_FILTER.id) return group.category_id == null;
+  return group.category_id === activeCategoryId;
 }
 
 // 미분류 카드의 이름은 서버가 한국어로 내려준다 — 사용자가 지은 이름이 아니라
@@ -165,9 +167,11 @@ function renderCategoryFilter(categories) {
   if (container.dataset.signature !== signature) {
     container.dataset.signature = signature;
     container.innerHTML = "";
+    // 미분류는 보드에서도 카드가 맨 뒤라 라벨도 맨 뒤에 둔다
     container.append(
       filterPill(ALL_CATEGORIES),
-      ...categories.map((category) => filterPill(category))
+      ...categories.map((category) => filterPill(category)),
+      filterPill(UNASSIGNED_FILTER)
     );
   }
   syncActivePills(container);
