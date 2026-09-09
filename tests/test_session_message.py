@@ -100,6 +100,15 @@ class SendTest(unittest.TestCase):
                 session_message.send(self.con, gone, "x", agents=lambda sid: None, resume=Resume())
 
 
+class RenameLineTest(unittest.TestCase):
+    def test_rename_frame_is_a_control_action_for_that_session(self):
+        frame = json.loads(session_message.rename_line(SID, "#7 | 제목"))
+        self.assertEqual(frame["type"], "control")
+        self.assertEqual(frame["action"], "rename")
+        self.assertEqual(frame["name"], "#7 | 제목")
+        self.assertEqual(frame["session_id"], SID)  # pid 가 재사용돼 다른 세션이 받으면 그쪽이 버리게
+
+
 class SocketTest(unittest.TestCase):
     def test_socket_path_prefers_runtime_dir_then_tmp(self):
         runtime = tempfile.mkdtemp()
@@ -128,14 +137,14 @@ class SocketTest(unittest.TestCase):
 
         thread = threading.Thread(target=accept)
         thread.start()
-        session_message._deliver(path, '{"type":"user"}\n')
+        session_message.deliver(path, '{"type":"user"}\n')
         thread.join(timeout=3)
         server.close()
         self.assertEqual(received, [b'{"type":"user"}\n'])
 
     def test_deliver_reports_a_missing_socket(self):
         with self.assertRaises(Validation):
-            session_message._deliver(os.path.join(tempfile.mkdtemp(), "none.sock"), "x\n")
+            session_message.deliver(os.path.join(tempfile.mkdtemp(), "none.sock"), "x\n")
 
 
 def stub_claude(script_body):
@@ -159,6 +168,23 @@ class ProcessTest(unittest.TestCase):
 
     def test_live_pid_is_none_when_claude_is_missing(self):
         self.assertIsNone(session_message.live_pid(SID, claude_bin="/nonexistent/claude"))
+
+    def test_live_sessions_maps_every_row_by_session_id(self):
+        rows = json.dumps(
+            [
+                {"sessionId": "job", "kind": "background", "name": "잡"},
+                {"sessionId": SID, "pid": PID, "kind": "interactive", "name": "x"},
+                "이상한 행",
+            ]
+        )
+        stub, _ = stub_claude(f"echo '{rows}'\n")
+        live = session_message.live_sessions(claude_bin=stub)
+        self.assertEqual(set(live), {"job", SID})
+        self.assertEqual(live[SID]["pid"], PID)
+        self.assertNotIn("pid", live["job"])  # --bg 잡 행에는 pid 가 없다
+
+    def test_live_sessions_is_empty_when_claude_is_missing(self):
+        self.assertEqual(session_message.live_sessions(claude_bin="/nonexistent/claude"), {})
 
     def test_resume_session_passes_resume_and_text_without_forcing_a_model(self):
         stub, args = stub_claude('echo "backgrounded (20 words) … 793abbd8"\n')

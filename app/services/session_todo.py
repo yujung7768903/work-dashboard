@@ -23,7 +23,7 @@ from app.constants import (
 from app.db import connect
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.services import summary, transcript
+from app.services import session_name, summary, transcript
 
 ITEM_PATTERN = re.compile(r"^\s*(?:[-*•·]|\d+[.)])\s+(?P<item>\S.*)$")
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
@@ -81,13 +81,13 @@ def _move(con, todo_ids, workspace_id):
 
 
 def retitle(db_path, todo_id, prompt, raw_title):
-    """요약이 오면 제목을 갈아 끼우고 note 의 표시를 지운다.
+    """요약이 오면 제목을 갈아 끼우고 note 의 표시를 지운다. 그리고 세션 이름을 제목에 맞춘다.
 
-    실패하면 아무것도 안 한다 — 표시가 note 에 남아 보드·팝업에서 '손봐야 할 제목' 으로 보인다
+    요약이 실패하면 제목은 그대로다 — 표시가 note 에 남아 보드·팝업에서 '손봐야 할 제목' 으로
+    보인다. 세션 이름은 그래도 붙인다: 분류로 할일이 생기고 세션에 연결된 게 여기서 확정되는데,
+    요약 하나 때문에 세션이 이름 없이 남으면 안 된다
     """
     title = summary.one_line(prompt)
-    if not title:
-        return
     # 경로가 비면 connect() 가 기본 경로(사용자의 실제 DB)로 떨어진다 — 남의 DB 에 쓰는 것보다
     # 제목을 못 고치는 편이 낫다
     if not db_path:
@@ -96,9 +96,12 @@ def retitle(db_path, todo_id, prompt, raw_title):
         # 연결을 새로 연다 — 요청 스레드의 연결은 sqlite 가 다른 스레드에서 쓰게 해주지 않는다
         with contextlib.closing(connect(db_path)) as con:
             current = todo_repo.get(con, todo_id)
-            if current["title"] != raw_title:
-                return  # 그 사이 사용자가 고친 제목을 요약이 덮으면 안 된다
-            todo_repo.update(con, todo_id, title=title, note=_without_raw_mark(current["note"]))
+            # 그 사이 사용자가 고친 제목을 요약이 덮으면 안 된다
+            if title and current["title"] == raw_title:
+                current = todo_repo.update(
+                    con, todo_id, title=title, note=_without_raw_mark(current["note"])
+                )
+            session_name.sync_todo(con, current)
     except Exception as error:  # 뒷일이라 응답으로 알릴 데가 없어 서버 로그에만 남긴다
         print(f"제목 요약 반영 실패 (할일 {todo_id}): {error}", flush=True)
 

@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 import server
 from app.constants import (
@@ -30,7 +31,7 @@ from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import autorun
+from app.services import autorun, session_name
 from tests.support import temp_db
 
 SID = "sess-autorun"
@@ -985,14 +986,17 @@ class WebToggle(AutorunCase):
 
 
 class TitleRename(AutorunCase):
-    """제목을 고치면 그 할일을 잡았던 잡 이름도 따라가야 한다.
+    """제목을 고치면 그 할일을 잡은 세션 이름도 따라가야 한다.
 
-    안 따라가면 `claude agents` 목록과 대시보드가 서로 다른 제목을 보여준다
+    안 따라가면 `claude agents` 목록과 대시보드가 서로 다른 제목을 보여준다.
+    --bg 잡은 state.json 으로, 살아 있는 대화형 세션은 소켓 control/rename 으로 바꾼다
     """
 
     def setUp(self):
         super().setUp()
         self.jobs = tempfile.mkdtemp()
+        self.live = {}  # `claude agents --json` 흉내: session_id → 행
+        self.sent = []  # 소켓으로 나간 (경로, 프레임)
 
     def _job(self, job_id, session_id, name, flags=None):
         directory = os.path.join(self.jobs, job_id)
@@ -1012,12 +1016,16 @@ class TitleRename(AutorunCase):
 
     def _rename(self, title):
         updated = todo_repo.update(self.con, self.todo["id"], title=title)
-        return autorun.rename_todo_sessions(self.con, updated, jobs_root=self.jobs)
+        return session_name.sync_todo(
+            self.con, updated, jobs_root=self.jobs, agents=lambda: self.live,
+            deliver=lambda path, line: self.sent.append((path, json.loads(line))),
+        )
 
     def test_renames_job_of_the_linked_session(self):
         old = f"#{self.todo['id']} | {self.todo['title']}"
         self._job(SID[:8], SID, old, ["--name", old])
-        self.assertEqual(self._rename("고친 제목"), [SID[:8]])
+        self.assertEqual(self._rename("고친 제목"), [SID])
+        self.assertEqual(self.sent, [])  # 잡은 파일로 바꾼다. 소켓은 안 쓴다
         state = self._state(SID[:8])
         new = f"#{self.todo['id']} | 고친 제목"
         self.assertEqual(state["name"], new)
@@ -1030,15 +1038,83 @@ class TitleRename(AutorunCase):
         self.assertEqual(self._rename("고친 제목"), [])
         self.assertEqual(self._state(SID[:8])["name"], "남의 잡")
 
-    def test_no_job_file_is_not_an_error(self):
-        """사람이 터미널에서 직접 연 세션은 고칠 파일이 없다"""
+    def test_ended_session_without_job_file_is_left_alone(self):
+        """사람이 터미널에서 직접 연 뒤 끝난 세션은 고칠 파일도 소켓도 없다"""
         self.assertEqual(self._rename("고친 제목"), [])
+        self.assertEqual(self.sent, [])
+
+    def test_live_interactive_session_gets_a_rename_frame(self):
+        self.live[SID] = {"pid": 4242, "name": "work-dashboard-68", "kind": "interactive"}
+        self.assertEqual(self._rename("고친 제목"), [SID])
+        ((path, frame),) = self.sent
+        self.assertTrue(path.endswith("/4242.sock"))
+        self.assertEqual(frame["action"], "rename")
+        self.assertEqual(frame["name"], f"#{self.todo['id']} | 고친 제목")
+        self.assertEqual(frame["session_id"], SID)
+
+    def test_session_already_named_is_not_touched(self):
+        self.live[SID] = {"pid": 4242, "name": f"#{self.todo['id']} | 고친 제목"}
+        self.assertEqual(self._rename("고친 제목"), [])
+        self.assertEqual(self.sent, [])
+
+    def test_bg_row_without_pid_is_not_a_socket_target(self):
+        """`claude agents` 의 --bg 행에는 pid 가 없다 — 잡 파일이 없으면 닿을 길이 없다"""
+        self.live[SID] = {"name": "잡", "kind": "background"}
+        self.assertEqual(self._rename("고친 제목"), [])
+
+    def test_unreachable_socket_skips_that_session_only(self):
+        other = "other-live-session"
+        session_repo.register(self.con, other, cwd=self.repo)
+        session_repo.link_todo(self.con, other, self.todo["id"])
+        self.live[SID] = {"pid": 1, "name": "죽은 소켓"}
+        self.live[other] = {"pid": 2, "name": "산 소켓"}
+
+        def deliver(path, line):
+            if path.endswith("/1.sock"):
+                raise Validation("세션 소켓에 연결하지 못했습니다")
+            self.sent.append((path, json.loads(line)))
+
+        updated = todo_repo.update(self.con, self.todo["id"], title="고친 제목")
+        renamed = session_name.sync_todo(
+            self.con, updated, jobs_root=self.jobs, agents=lambda: self.live, deliver=deliver
+        )
+        self.assertEqual(renamed, [other])
+        self.assertEqual(len(self.sent), 1)
+
+    def test_agents_is_asked_once_per_sync(self):
+        other = "other-live-session"
+        session_repo.register(self.con, other, cwd=self.repo)
+        session_repo.link_todo(self.con, other, self.todo["id"])
+        asked = []
+        updated = todo_repo.update(self.con, self.todo["id"], title="고친 제목")
+        session_name.sync_todo(
+            self.con, updated, jobs_root=self.jobs,
+            agents=lambda: asked.append(1) or {}, deliver=lambda path, line: None,
+        )
+        self.assertEqual(asked, [1])
+
+    def test_later_sync_reads_sessions_now_and_renames_in_the_background(self):
+        """웹 PATCH 는 `claude agents` 를 기다리지 않는다 — 스레드는 DB 를 다시 열지 않는다"""
+        jobs = []
+        self.live[SID] = {"pid": 4242, "name": "옛 이름"}
+        updated = todo_repo.update(self.con, self.todo["id"], title="고친 제목")
+        with mock.patch.object(session_name, "schedule", jobs.append), mock.patch.object(
+            session_name.session_message, "live_sessions", lambda claude_bin=None: self.live
+        ), mock.patch.object(
+            session_name.session_message, "deliver",
+            lambda path, line: self.sent.append((path, json.loads(line))),
+        ):
+            session_name.sync_todo_later(self.con, updated)
+            self.assertEqual(self.sent, [])
+            self.con.close()  # 요청 연결이 닫힌 뒤에 돌아도 된다
+            jobs[0]()
+        self.assertEqual(self.sent[0][1]["name"], f"#{self.todo['id']} | 고친 제목")
 
     def test_patch_renames_only_when_title_changes(self):
         calls = []
-        original = autorun.rename_todo_sessions
-        autorun.rename_todo_sessions = lambda con, todo: calls.append(todo["title"])
-        self.addCleanup(setattr, autorun, "rename_todo_sessions", original)
+        original = session_name.sync_todo_later
+        session_name.sync_todo_later = lambda con, todo: calls.append(todo["title"])
+        self.addCleanup(setattr, session_name, "sync_todo_later", original)
         path = f"/api/todos/{self.todo['id']}"
         server.route(self.con, "PATCH", path, {}, {"note": "메모만"})
         self.assertEqual(calls, [])

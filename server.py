@@ -38,6 +38,7 @@ from app.services import (
     release,
     session_link,
     session_message,
+    session_name,
     session_todo,
     usage,
     worktrees,
@@ -240,9 +241,9 @@ def _route_patch(con, head, item_id, body):
         return workspace_repo.update(con, item_id, **body)
     if head == "todos":
         updated = todo_repo.update(con, item_id, **body)
-        # 제목이 바뀌면 그 할일을 잡은 세션의 잡 이름도 같이 맞춘다
+        # 제목이 바뀌면 그 할일을 잡은 세션 이름도 같이 맞춘다
         if "title" in body:
-            autorun.rename_todo_sessions(con, updated)
+            session_name.sync_todo_later(con, updated)
         return updated
     if head == "autorun-runs":
         # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다

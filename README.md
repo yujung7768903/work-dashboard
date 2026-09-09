@@ -360,6 +360,18 @@ it queues behind the current work. A session that has ended is relaunched with
 the text as a message from another session, so it confirms before irreversible
 actions such as commits or pushes.
 
+### Session names follow todo titles
+
+A session linked to a todo is named `#<id> | <title>`, the same name autonomous
+runs get at launch. Linking a todo (`link-todo`, or classifying a session into a
+workspace from the web) and editing a title (the dialog, `edit-todo`, the summary
+that replaces an auto-created title) rename every session holding that todo: a
+background job through its `state.json`, a live interactive session through the
+same unix socket as messages, with `{"type":"control","action":"rename"}` — what
+`/rename` does inside the session. Nothing polls; those are the only moments a
+name can drift. A session that has already ended keeps its old name until it is
+resumed and links the todo again.
+
 ## Google Tasks sync
 
 Bolted on so the board can be read and ticked off from a phone. Google allows

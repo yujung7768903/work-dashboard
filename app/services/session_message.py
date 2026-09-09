@@ -4,6 +4,8 @@ Claude Code 는 세션마다 /run/user/<uid>/cc-socks/<pid>.sock 을 열고 줄 
 {"type":"user","message":{"content":...}} 가 들어오면 프롬프트 큐에 사용자 메시지로 들어간다 —
 SendMessage 가 다른 세션에 보낼 때 쓰는 것과 같은 길이다. 세션 쪽은 이걸 다른 세션이
 보낸 메시지로 취급해서 되돌리기 힘든 작업은 한 번 되묻는다.
+{"type":"control","action":"rename","name":...} 은 그 세션의 /rename 과 같다 — 세션 이름이
+바뀌고 트랜스크립트 옆 custom-title.json 에도 남는다 (session_name 이 할일 제목을 따라 붙일 때).
 
 pid 는 저장하지 않는다. 데몬 spare 프로세스는 처음 등록될 때와 다른 세션을 맡을 수 있어
 훅에서 적어 두면 어긋난다. `claude agents --json` 이 유일하게 믿을 수 있는 매핑이다
@@ -56,6 +58,16 @@ def send(con, session_row_id, text, *, agents=None, deliver=None, resume=None):
 
 def live_pid(claude_session_id, claude_bin=AUTORUN_CLAUDE_BIN):
     """`claude agents --json` 에서 이 세션의 pid. 돌고 있지 않으면 None (1~2초)"""
+    row = live_sessions(claude_bin).get(claude_session_id) or {}
+    return int(row["pid"]) if row.get("pid") else None
+
+
+def live_sessions(claude_bin=AUTORUN_CLAUDE_BIN):
+    """`claude agents --json` 을 {session_id: 행} 으로. claude 가 없거나 출력이 이상하면 빈 dict.
+
+    pid 는 대화형 세션 행에만 있다 — --bg 잡 행에는 없어서 잡은 소켓으로 못 닿는다
+    (잡 이름은 autorun.rename_job 이 state.json 으로 바꾼다)
+    """
     try:
         result = subprocess.run(
             [claude_bin, "agents", "--json"], capture_output=True, text=True,
@@ -63,11 +75,12 @@ def live_pid(claude_session_id, claude_bin=AUTORUN_CLAUDE_BIN):
         )
         rows = json.loads(result.stdout or "[]")
     except (OSError, ValueError, subprocess.TimeoutExpired):
-        return None
-    for row in rows:
-        if isinstance(row, dict) and row.get("sessionId") == claude_session_id and row.get("pid"):
-            return int(row["pid"])
-    return None
+        return {}
+    return {
+        row["sessionId"]: row
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("sessionId"), str)
+    }
 
 
 def socket_path(pid):
@@ -91,7 +104,19 @@ def _line(claude_session_id, text, priority):
     return json.dumps(message, ensure_ascii=False) + "\n"
 
 
-def _deliver(path, line):
+def rename_line(claude_session_id, name):
+    """세션 이름을 바꾸는 control 프레임. session_id 는 user 프레임과 같은 이유로 넣는다"""
+    message = {
+        "type": "control",
+        "action": "rename",
+        "name": name,
+        "session_id": claude_session_id,
+        "from": SENDER,
+    }
+    return json.dumps(message, ensure_ascii=False) + "\n"
+
+
+def deliver(path, line):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(SOCKET_TIMEOUT_SEC)
         try:
@@ -99,3 +124,6 @@ def _deliver(path, line):
             sock.sendall(line.encode("utf-8"))
         except OSError as error:
             raise Validation(f"세션 소켓에 연결하지 못했습니다: {error}") from error
+
+
+_deliver = deliver  # send() 의 deliver 인자가 같은 이름을 가려서

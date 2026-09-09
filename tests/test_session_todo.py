@@ -16,7 +16,7 @@ from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
-from app.services import session_link, session_todo, summary, transcript
+from app.services import session_link, session_message, session_todo, summary, transcript
 from tests.support import temp_db
 
 SID = "sess-auto-todo"
@@ -27,6 +27,10 @@ def run_inline(case):
     patcher = mock.patch.object(session_todo, "schedule", lambda work: work())
     patcher.start()
     case.addCleanup(patcher.stop)
+    # 요약 뒤에 세션 이름을 맞추러 `claude agents` 를 부른다 — 여기엔 살아 있는 세션이 없다
+    agents = mock.patch.object(session_message, "live_sessions", lambda claude_bin=None: {})
+    agents.start()
+    case.addCleanup(agents.stop)
 
 
 def _db_path(con):
@@ -236,6 +240,31 @@ class SummaryTitleTest(unittest.TestCase):
         with mock.patch.object(summary, "one_line", return_value="요약된 제목"):
             jobs[0]()
         self.assertEqual(todo_repo.get(self.con, created["id"])["title"], "내가 고친 제목")
+
+    def _renames(self, one_line):
+        """뒷일까지 돌린 뒤 세션 소켓으로 나간 이름들과 만들어진 할일"""
+        run_inline(self)
+        sent = []
+        live = {SID: {"pid": 77, "name": "옛 이름"}}
+        with mock.patch.object(summary, "one_line", return_value=one_line), mock.patch.object(
+            session_message, "live_sessions", lambda claude_bin=None: live
+        ), mock.patch.object(
+            session_message, "deliver", lambda path, line: sent.append(json.loads(line)["name"])
+        ):
+            created = session_todo.ensure_from_session(
+                self.con, self.row_id, self.workspace, root=self.root
+            )
+        return sent, created
+
+    def test_session_is_renamed_once_with_the_summarized_title(self):
+        """이름은 요약이 온 뒤 한 번 — 첫 문장으로 붙였다가 다시 바꾸면 두 번 깜빡인다"""
+        sent, created = self._renames("요약된 제목")
+        self.assertEqual(sent, [f"#{created['id']} | 요약된 제목"])
+
+    def test_session_is_renamed_even_when_the_summary_fails(self):
+        """요약이 실패해도 세션이 이름 없이 남으면 안 된다 — 첫 문장 제목으로라도 붙인다"""
+        sent, created = self._renames(None)
+        self.assertEqual(sent, [f"#{created['id']} | {self.prompt}"])
 
     def test_retitle_survives_a_missing_todo(self):
         """뒷일은 응답을 이미 보낸 뒤라 예외가 서버로 올라가면 안 된다"""
