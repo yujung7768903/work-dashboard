@@ -36,6 +36,7 @@ from app.services import (
     planning,
     release,
     session_link,
+    session_name,
     usage,
 )
 
@@ -471,6 +472,8 @@ def _cmd_edit_todo(con, args):
     if not fields:
         raise Validation("--title/--note/--precondition 중 하나는 있어야 함")
     updated = todo_repo.update(con, args.todo_id, **fields)
+    if "title" in fields:
+        session_name.sync_todo(con, updated)
     print(f"{updated['id']}. {updated['title']}")
 
 
@@ -715,6 +718,9 @@ def _cmd_link_todo(con, args):
     session_repo.link_todo(
         con, session, args.todo_id, claim=not args.past, status=args.status
     )
+    # 끝난 히스토리 세션은 살아 있지 않아 이름 붙일 곳이 없다
+    if not args.past:
+        session_name.sync_todo(con, todo_repo.get(con, args.todo_id))
     print(f"할일 {args.todo_id} 연결됨" + (f" ({args.status})" if args.status else ""))
 
 

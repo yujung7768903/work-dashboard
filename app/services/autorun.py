@@ -98,7 +98,7 @@ def tick(con, dry_run=False, launcher=None):
     if dry_run or decision["reason"] != REASON_READY:
         return decision
     launched = (launcher or launch)(
-        prompt=decision["prompt"], cwd=decision["cwd"], name=_job_name(decision["todo"])
+        prompt=decision["prompt"], cwd=decision["cwd"], name=job_name(decision["todo"])
     )
     if not launched.get("job_id"):
         decision["error"] = launched.get("error") or "잡을 띄우지 못함"
@@ -134,7 +134,7 @@ def start_todo(con, todo_id, launcher=None, cwd=None):
         cwd = cwd_resolver(con)(todo)
     if not cwd:
         raise Validation(REASON_NO_CWD)
-    name = _job_name(todo)
+    name = job_name(todo)
     launched = (launcher or launch)(
         prompt=build_prompt(todo, workspace, cwd), cwd=cwd, name=name
     )
@@ -736,31 +736,25 @@ def _wait_for_session(jobs_root, job_id):
     return ""
 
 
-def _job_name(todo):
+def job_name(todo):
+    """세션·잡에 붙는 이름. 할일 id 가 앞에 있어 `claude agents` 목록에서 보드와 바로 맞춰진다"""
     return f"#{todo['id']} | {todo['title']}"
 
 
-def rename_todo_sessions(con, todo, jobs_root=AUTORUN_JOBS_ROOT):
-    """할일 제목이 바뀌면 그 할일을 잡았던 잡 이름도 따라간다.
+def rename_job(session_id, name, jobs_root=AUTORUN_JOBS_ROOT):
+    """그 세션이 --bg 잡이면 잡 이름을 바꾼다. 잡이 아니면 False.
 
-    이름을 안 고치면 `claude agents` 목록과 대시보드가 서로 다른 제목을 보여줘
-    어느 세션이 이 할일인지 알 수 없어진다. 잡 디렉터리 이름은 세션 id 앞 8자지만
-    그 규칙에 기대지 않고 state.json 의 sessionId 로 확인한 것만 고친다
+    잡 디렉터리 이름은 세션 id 앞 8자지만 그 규칙에 기대지 않고 state.json 의 sessionId 로
+    확인한 것만 고친다. 사람이 직접 연 세션은 여기 파일이 없다 — 그건 소켓으로 바꾼다
+    (session_name)
     """
-    name = _job_name(todo)
-    renamed = []
-    for session in session_repo.list_by_todo(con, todo["id"]):
-        session_id = session["claude_session_id"] or ""
-        job_id = session_id[:JOB_ID_LENGTH]
-        if not job_id:
-            continue
-        state = _read_json(os.path.join(jobs_root, job_id, "state.json"))
-        # 잡으로 띄우지 않은 세션(사람이 직접 연 터미널)은 고칠 파일이 없다
-        if not state or state.get("sessionId") != session_id:
-            continue
-        if _name_job(jobs_root, job_id, name):
-            renamed.append(job_id)
-    return renamed
+    job_id = (session_id or "")[:JOB_ID_LENGTH]
+    if not job_id:
+        return False
+    state = _read_json(os.path.join(jobs_root, job_id, "state.json"))
+    if not state or state.get("sessionId") != session_id:
+        return False
+    return _name_job(jobs_root, job_id, name)
 
 
 def _name_job(jobs_root, job_id, name):

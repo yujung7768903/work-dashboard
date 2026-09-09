@@ -4,11 +4,13 @@ import os
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from unittest import mock
 
 import dash
 from app.constants import DB_PATH_ENV, SESSION_ID_ENV
 from app.db import connect
 from app.repositories import sessions as session_repo
+from app.services import session_message
 from tests.support import temp_db_path
 
 
@@ -17,6 +19,10 @@ class CliTest(unittest.TestCase):
         os.environ[DB_PATH_ENV] = temp_db_path()
         # 테스트를 돌리는 세션의 실제 값이 새어 들어오면 결과가 실행 환경에 좌우된다
         os.environ.pop(SESSION_ID_ENV, None)
+        # link-todo·edit-todo 가 세션 이름을 맞추러 `claude agents` 를 부른다 — 여기엔 살아 있는 세션이 없다
+        patcher = mock.patch.object(session_message, "live_sessions", lambda claude_bin=None: {})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         os.environ.pop(DB_PATH_ENV, None)
@@ -254,6 +260,36 @@ class CliTest(unittest.TestCase):
         """todo 로 연결하는 것은 연결하지 않은 것과 같은 말이라 받지 않는다"""
         with self.assertRaises(SystemExit):
             self.run_cli("link-todo", "1", "--status", "todo")
+
+    def test_link_todo_renames_the_live_session_after_the_todo(self):
+        """이 세션이 할일을 잡으면 `claude agents` 목록의 이름도 `#id | 제목` 이 된다"""
+        session_repo.register(connect(), "env-sess")
+        os.environ[SESSION_ID_ENV] = "env-sess"
+        self.run_cli("add-todo", "세션 이름 맞추기", "--category", "운영")
+        sent = []
+        live = {"env-sess": {"pid": 77, "name": "옛 이름"}}
+        with mock.patch.object(
+            session_message, "live_sessions", lambda claude_bin=None: live
+        ), mock.patch.object(session_message, "deliver", lambda path, line: sent.append((path, line))):
+            code, _, _ = self.run_cli("link-todo", "1")
+        self.assertEqual(code, 0)
+        ((path, line),) = sent
+        self.assertTrue(path.endswith("/77.sock"))
+        self.assertEqual(json.loads(line)["name"], "#1 | 세션 이름 맞추기")
+
+    def test_edit_todo_title_renames_the_live_session(self):
+        session_repo.register(connect(), "env-sess")
+        os.environ[SESSION_ID_ENV] = "env-sess"
+        self.run_cli("add-todo", "처음 제목", "--category", "운영")
+        self.run_cli("link-todo", "1")
+        sent = []
+        live = {"env-sess": {"pid": 77, "name": "#1 | 처음 제목"}}
+        with mock.patch.object(
+            session_message, "live_sessions", lambda claude_bin=None: live
+        ), mock.patch.object(session_message, "deliver", lambda path, line: sent.append(line)):
+            self.run_cli("edit-todo", "1", "--title", "고친 제목")
+            self.run_cli("edit-todo", "1", "--note", "메모만")  # 제목이 아니면 부르지 않는다
+        self.assertEqual([json.loads(line)["name"] for line in sent], ["#1 | 고친 제목"])
 
     def test_bare_session_flag_scopes_to_env_session(self):
         from app.db import connect
