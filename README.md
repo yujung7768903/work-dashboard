@@ -317,6 +317,33 @@ nothing turns it back on.
 A tick that finds no eligible todo does nothing at all, which is why this is a
 cron entry and not a daemon.
 
+### Stale `doing` judgment
+
+A todo left in `doing` for 14 days is usually either finished, no longer worth
+doing, or never really started. Which one is not something a rule can tell — the
+evidence lives in different places (a merged worktree, a completion message in
+the last session, a sibling todo that did the work instead). So once a day a
+`claude -p` call reads the evidence for each stale todo and returns a verdict:
+
+| verdict | what happens |
+| --- | --- |
+| `done` | status → done, note gets `[자동 판정 <date>] 완료로 닫음 — <reason>` |
+| `invalid` | status → done, note says `무효로 닫음` |
+| `todo` | status → todo (it was never in progress) |
+| `keep` | nothing; asked again after 14 days |
+
+A verdict under 0.7 confidence changes nothing. Todos held by a live session, an
+open autonomous run, or a review lock are never judged. Everything is reversible
+from the board — the note line says why it moved.
+
+```cron
+0 10 * * 1-5 /usr/bin/python3 /absolute/path/work-dashboard/dash.py judge-stale >/dev/null 2>&1
+```
+
+```bash
+python3 dash.py judge-stale --dry-run [--limit N]   # see verdicts without writing anything
+```
+
 The **Autorun** tab holds the switch and two lists. Candidates are the
 `auto`-labelled todos that have not run yet, in priority order, each with a chip
 naming what holds it back right now — an eligible-only list is empty most of the

@@ -234,3 +234,34 @@ AUTORUN_LAUNCH_TIMEOUT_SEC = 180  # --bg 는 띄우자마자 돌아오므로 기
 REVIEW_LOCKED_MSG = "자율 수행 검토 대기 중입니다. 자율 수행 패널에서 확인해 주세요"
 # 병합 전 테스트. 이 저장소는 40초대지만 다른 저장소의 통합 테스트까지 덮는 넉넉한 상한
 MERGE_TEST_TIMEOUT_SEC = 600
+
+# ⑥ 방치된 doing 판정. 오래 손대지 않은 doing 을 모델이 근거(note·세션·트랜스크립트·
+# 워크트리 병합 여부)로 읽고 끝났는지·무효인지·대기로 돌릴지 정한다. 규칙으로 판정하지
+# 않는 이유 — "끝났다"는 흔적이 커밋·문서·대화 중 어디에 남는지가 할일마다 달라서다.
+# 실측(2026-11-05): doing 84건 중 62건이 14일 이상 방치, 평균 40일
+STALE_JUDGE_IDLE_DAYS = 14  # 이보다 오래 updated_at 이 안 움직인 doing 만 본다
+STALE_JUDGE_REPEAT_DAYS = 14  # 한 번 keep 으로 본 할일은 이만큼 지나야 다시 본다
+STALE_JUDGE_BATCH = 10  # 하루 한 번 도는 크론이라 모델 호출 수를 이만큼으로 막는다
+STALE_JUDGE_MODEL = "claude-sonnet-5"
+STALE_JUDGE_TIMEOUT_SEC = 180
+# 이 값 밑이면 상태를 안 바꾸고 keep 으로 기록만 한다 — 틀리면 끝난 척하는 할일이 남는다
+STALE_JUDGE_MIN_CONFIDENCE = 0.7
+STALE_JUDGE_VERDICTS = ("done", "invalid", "todo", "keep")
+(
+    VERDICT_DONE,
+    VERDICT_INVALID,
+    VERDICT_TODO,
+    VERDICT_KEEP,
+) = STALE_JUDGE_VERDICTS
+# note 에 남기는 머리말. 사람이 보드에서 왜 바뀌었는지 읽고, 틀렸으면 되돌릴 수 있어야 한다
+STALE_JUDGE_NOTE_MARK = "[자동 판정"
+STALE_JUDGE_LABELS = {
+    VERDICT_DONE: "완료로 닫음",
+    VERDICT_INVALID: "무효로 닫음",
+    VERDICT_TODO: "대기로 되돌림",
+}
+STALE_JUDGE_SESSION_LIMIT = 3  # 근거에 넣는 세션 수. 최근 것부터
+STALE_JUDGE_TRANSCRIPT_MESSAGES = 8
+STALE_JUDGE_TEXT_CHARS = 400  # 발화·note 한 조각의 길이 상한. 프롬프트를 수천 자로 막는다
+STALE_JUDGE_NOTE_CHARS = 1500
+STALE_JUDGE_SIBLING_LIMIT = 15  # 같은 워크스페이스의 다른 할일. 대체·중복 판단 근거
