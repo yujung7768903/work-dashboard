@@ -52,3 +52,12 @@ def mark_deleted(con, path, deleted_at):
 def find(con, path):
     row = con.execute("SELECT * FROM worktrees WHERE path=?", (path,)).fetchone()
     return dict(row) if row else None
+
+
+def list_by_branch_fragment(con, fragment):
+    """브랜치 이름에 그 조각이 든 워크트리. 할일 번호(todo-<id>-)로 병합 여부를 찾을 때 쓴다"""
+    rows = con.execute(
+        "SELECT * FROM worktrees WHERE branch LIKE ? ORDER BY created_at DESC",
+        (f"%{fragment}%",),
+    )
+    return [dict(row) for row in rows]

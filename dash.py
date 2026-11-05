@@ -14,6 +14,7 @@ from app.constants import (
     PRECONDITION_HINT,
     SECONDS_PER_MINUTE,
     SESSION_ID_ENV,
+    STALE_JUDGE_BATCH,
     STATUS_DOING,
     STATUS_DONE,
     UNASSIGNED_LABEL,
@@ -37,6 +38,7 @@ from app.services import (
     release,
     session_link,
     session_name,
+    stale_judge,
     usage,
 )
 
@@ -299,6 +301,18 @@ def _build_parser():
     )
     _add_json_flag(autorun_tick)
     autorun_tick.set_defaults(handler=_cmd_autorun_tick)
+
+    judge_stale = sub.add_parser(
+        "judge-stale", help="방치된 doing 을 모델이 읽고 done·무효·대기로 정리 (일 1회 크론)"
+    )
+    judge_stale.add_argument(
+        "--dry-run", action="store_true", dest="dry_run", help="판정만 보고 상태·기록은 안 바꿈"
+    )
+    judge_stale.add_argument(
+        "--limit", type=int, default=STALE_JUDGE_BATCH, help="한 번에 묻는 할일 수"
+    )
+    _add_json_flag(judge_stale)
+    judge_stale.set_defaults(handler=_cmd_judge_stale)
 
     autorun_prompt = sub.add_parser("autorun-prompt", help="자율 세션에 줄 지시 전문")
     autorun_prompt.add_argument("todo_id", type=int)
@@ -867,6 +881,22 @@ def _cmd_autorun_tick(con, args):
               f" session={decision['run']['claude_session_id'] or '(못 받음)'}")
     if decision.get("error"):
         print(f"  실패: {decision['error']}", file=sys.stderr)
+
+
+def _cmd_judge_stale(con, args):
+    report = stale_judge.run(con, dry_run=args.dry_run, limit=args.limit)
+    if args.as_json:
+        _emit_json(report)
+        return
+    if not report["judged"]:
+        print("판정할 방치 doing 없음")
+        return
+    for item in report["results"]:
+        change = f"→ {item['status']}" if item["applied"] else "(유지)"
+        print(
+            f"{item['todo_id']}. {item['title']}: {item['verdict']}"
+            f" {item['confidence']:.2f} {change} — {item['reason']}"
+        )
 
 
 def _cmd_autorun_prompt(con, args):

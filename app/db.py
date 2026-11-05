@@ -130,6 +130,18 @@ CREATE TABLE IF NOT EXISTS autorun_runs(
     requested_note TEXT,
     finished_at TEXT
 );
+-- 방치된 doing 판정 기록. 상태 변경은 todos 에, 판정 자체는 여기 남긴다 — keep 으로 본
+-- 할일을 매일 다시 묻지 않으려면 마지막 판정 시각이 필요하고, 틀린 판정을 되짚으려면
+-- 사유가 필요하다
+CREATE TABLE IF NOT EXISTS stale_judgments(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    todo_id INTEGER NOT NULL REFERENCES todos(id),
+    judged_at TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    confidence REAL,
+    reason TEXT,
+    applied INTEGER NOT NULL DEFAULT 0
+);
 -- ⑤ 구글 태스크 연동. autorun_state 와 같은 이유로 단일 행. 문제가 생겨도 enabled 를
 -- 건드리지 않고 last_error 만 채운다 — 끄고 켜는 것은 사람의 판단이다
 CREATE TABLE IF NOT EXISTS gtasks_state(
