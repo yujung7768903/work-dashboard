@@ -182,8 +182,9 @@ def evidence(con, todo, root=None):
 def ask(facts, claude_bin=AUTORUN_CLAUDE_BIN, model=STALE_JUDGE_MODEL):
     """`claude -p` 한 번. 실패·파싱 불가는 keep 으로 — 모델이 안 보이면 아무것도 안 바꾼다"""
     try:
+        # 판정 근거(note·대화 발췌)는 프롬프트에 다 넣으므로 MCP 가 필요 없다. 세션마다 MCP 서버가 뜨면 WSL 연동 부하만 쌓인다
         result = subprocess.run(
-            [claude_bin, "-p", "--model", model, prompt(facts)],
+            [claude_bin, "-p", "--strict-mcp-config", "--model", model, prompt(facts)],
             capture_output=True,
             text=True,
             timeout=STALE_JUDGE_TIMEOUT_SEC,
