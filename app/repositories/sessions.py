@@ -100,6 +100,47 @@ def set_last_prompt(con, claude_session_id, text):
     return find(con, claude_session_id)
 
 
+LAST_REPLY_MAX_CHARS = 300
+WAITING_KINDS = {"permission", "input"}
+
+
+def set_waiting(con, claude_session_id, kind):
+    """권한·입력 대기 표시. None 이면 해제. 없는 세션은 조용히 무시"""
+    if kind is not None and kind not in WAITING_KINDS:
+        raise ValueError(f"알 수 없는 대기 종류: {kind}")
+    if not find(con, claude_session_id):
+        return None
+    with transaction(con):
+        con.execute(
+            "UPDATE sessions SET waiting=?, last_seen_at=? WHERE claude_session_id=?",
+            (kind, now(), claude_session_id),
+        )
+    return find(con, claude_session_id)
+
+
+def set_last_reply(con, claude_session_id, text):
+    """마지막 답변 앞부분만. 전문은 transcript 에 있음"""
+    if not find(con, claude_session_id):
+        return None
+    collapsed = " ".join((text or "").split())[:LAST_REPLY_MAX_CHARS]
+    with transaction(con):
+        con.execute(
+            "UPDATE sessions SET last_reply=?, last_seen_at=? WHERE claude_session_id=?",
+            (collapsed, now(), claude_session_id),
+        )
+    return find(con, claude_session_id)
+
+
+def list_waiting(con):
+    """끝나지 않은 세션 중 대기 중인 것"""
+    rows = con.execute(
+        f"{WITH_NAMES} WHERE s.waiting IS NOT NULL AND s.state <> ?"
+        " ORDER BY s.last_seen_at DESC",
+        (STATE_ENDED,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def classify(con, claude_session_id, category_name=None, workspace_id=None):
     """워크스페이스를 주면 카테고리는 그 워크스페이스의 것이 이김.
 

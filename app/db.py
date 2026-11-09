@@ -193,6 +193,7 @@ def connect(path=None):
     con.executescript(SCHEMA)
     con.commit()
     _add_category_style_columns(con)
+    _add_manager_columns(con)
     _add_precondition_columns(con)
     _add_autorun_order_column(con)
     _add_usage_account_column(con)
@@ -409,4 +410,14 @@ def _add_category_style_columns(con):
             "UPDATE categories SET color=? WHERE id=?",
             (palette_color(row["sort_order"]), row["id"]),
         )
+    con.commit()
+
+
+def _add_manager_columns(con):
+    """매니저가 읽는 세션 대기 상태와 마지막 답변 요약을 뒤늦게 붙임"""
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(sessions)")}
+    if "waiting" not in columns:
+        con.execute("ALTER TABLE sessions ADD COLUMN waiting TEXT")
+    if "last_reply" not in columns:
+        con.execute("ALTER TABLE sessions ADD COLUMN last_reply TEXT")
     con.commit()
