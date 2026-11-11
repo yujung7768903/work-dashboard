@@ -1,5 +1,5 @@
 // 할일 상세 개요 탭의 수정. 제목 줄의 버튼이 제목·착수 조건·note 입력칸으로 바꿔치고,
-// 저장이 그 세 값만 PATCH 로 보내며, 응답 대신 다시 읽은 할일로 보기 화면을 되돌리는지 본다.
+// 저장이 그 네 값(제목·우선순위·착수 조건·note)만 PATCH 로 보내며, 응답 대신 다시 읽은 할일로 보기 화면을 되돌리는지 본다.
 // 실행: node tests/todo_detail_edit_check.mjs
 // (tests/test_todo_detail_edit.py 가 이걸 부른다)
 import assert from "node:assert/strict";
@@ -62,6 +62,7 @@ const BEFORE = {
 const AFTER = {
   ...BEFORE,
   title: "고친 제목",
+  priority: "7",
   precondition: null,
   precondition_items: [],
   note: "새 note",
@@ -96,19 +97,22 @@ const edit = title.children.at(-1);
 assert.equal(edit.textContent, "수정");
 
 edit.listeners.click();
-// 제목 / 착수 조건 / note / 버튼 / 상태
-assert.equal(block.children.length, 5);
+// 제목 / 우선순위 / 착수 조건 / note / 버튼 / 상태
+assert.equal(block.children.length, 6);
 assert.deepEqual(
-  block.children.slice(0, 3).map((field) => field.children[0].textContent),
-  ["제목", "착수 조건", "note"]
+  block.children.slice(0, 4).map((field) => field.children[0].textContent),
+  ["제목", "우선순위", "착수 조건", "note"]
 );
-const [titleField, conditionField, noteField, actions] = block.children;
+const [titleField, priorityField, conditionField, noteField, actions] = block.children;
+// 우선순위를 안 정한 할일은 빈 칸
+assert.equal(priorityField.children.at(-1).value, "");
 // 지금 값이 채워져 있어야 한다 — 빈 칸이면 고치려다 지운다
 assert.equal(titleField.children.at(-1).value, "고칠 할일");
 assert.equal(conditionField.children.at(-1).value, "기획 확정");
 assert.equal(noteField.children.at(-1).value, "예전 note");
 
 titleField.children.at(-1).value = "고친 제목";
+priorityField.children.at(-1).value = "7";
 conditionField.children.at(-1).value = "";
 noteField.children.at(-1).value = "새 note";
 const [save, cancel] = actions.children;
@@ -125,6 +129,7 @@ assert.equal(patch.url, "/api/todos/42");
 // 빈 칸은 null 로 — 빈 문자열을 보내면 착수 조건이 '판정 불가 문장 하나'로 남는다
 assert.deepEqual(JSON.parse(patch.body), {
   title: "고친 제목",
+  priority: "7",
   precondition: null,
   note: "새 note",
 });

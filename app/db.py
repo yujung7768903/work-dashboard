@@ -202,6 +202,7 @@ def connect(path=None):
     _add_tick_reason_column(con)
     _add_workspace_cwd_column(con)
     _add_todo_cwd_column(con)
+    _add_todo_priority_column(con)
     _add_gtasks_columns(con)
     _rename_paused_status(con)
     _drop_session_workspace_column(con)
@@ -394,6 +395,18 @@ def _add_todo_cwd_column(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
     if "cwd" not in columns:
         con.execute("ALTER TABLE todos ADD COLUMN cwd TEXT")
+    con.commit()
+
+
+def _add_todo_priority_column(con):
+    """할일 우선순위 숫자. 클수록 높고, NULL 은 '정하지 않음'.
+
+    보드 순서(sort_order)는 한 워크스페이스 안의 줄 세우기라 워크스페이스끼리 견줄 수 없다 —
+    워크스페이스를 열린 할일의 최고 우선순위로 세우려면 워크스페이스를 넘어 비교되는 값이 필요하다
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    if "priority" not in columns:
+        con.execute("ALTER TABLE todos ADD COLUMN priority INTEGER")
     con.commit()
 
 

@@ -33,6 +33,7 @@ from app.services import (
     browse,
     gtasks,
     gtasks_setup,
+    manager_panel,
     planning,
     precondition,
     release,
@@ -153,6 +154,12 @@ def _route_get(con, head, item_id, query):
         return settings_repo.payload(con)
     if head == "browse":
         return browse.list_dir(_single(query, "path", None))
+    if head == "manager":
+        # 칸(part)마다 따로 부른다 — 보조 세션 목록은 수 초 걸려 다른 칸을 붙잡으면 안 된다
+        try:
+            return manager_panel.snapshot(_single(query, "part", None), con=con)
+        except ValueError as error:
+            raise Validation(str(error))
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 

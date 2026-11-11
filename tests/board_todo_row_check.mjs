@@ -1,16 +1,20 @@
-// 보드 할일 줄이 상태·#id·제목 세 칸 순서로 그려지는지 본다.
+// 보드 할일 줄이 상태·#id·우선순위·제목 순서로 그려지는지 본다.
+// 우선순위는 '{이 할일}/{열린 할일 중 최고}', 정하지 않았으면 '-'.
 // 실행: node tests/board_todo_row_check.mjs (tests/test_board_todo_row.py 가 부른다)
 import assert from "node:assert/strict";
 import { bootKorean } from "./i18n_boot.mjs";
 
 const GROUP = {
   id: 7, kind: "workspace", name: "작업 대시보드", total_count: 1, done_count: 0,
-  todos: [{ id: 12, title: "결정 대기 큐 구현", status: "todo", labels: [] }],
+  todos: [
+    { id: 12, title: "결정 대기 큐 구현", status: "todo", labels: [], priority: 3 },
+    { id: 13, title: "우선순위 없음", status: "todo", labels: [], priority: null },
+  ],
 };
 
 globalThis.fetch = async (url) => {
   const body = {
-    "/api/tree?group_by=workspace": { groups: [GROUP] },
+    "/api/tree?group_by=workspace": { groups: [GROUP], priority_max: 10 },
     "/api/next": null,
     "/api/categories": [],
     "/api/labels": [],
@@ -79,16 +83,20 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 const board = await import("../static/js/board.js");
 await board.renderBoard();
 
-const row = created.find((made) => made.className === "todo todo");
-assert.ok(row, "할일 줄이 안 그려졌다");
+const rows = created.filter((made) => made.className === "todo todo");
+assert.equal(rows.length, 2, "할일 줄이 안 그려졌다");
 
-const [status, id, title] = row.children;
+const [status, id, priority, title] = rows[0].children;
 assert.equal(status.tag, "button", "첫 칸은 상태 버튼이어야 한다");
 assert.equal(status.textContent, "todo");
 assert.equal(id.className, "todo-id", "둘째 칸은 #id 여야 한다");
 assert.equal(id.textContent, "#12");
-assert.equal(title.className, "title", "셋째 칸은 제목이어야 한다");
+assert.equal(priority.className, "todo-priority", "셋째 칸은 우선순위여야 한다");
+assert.equal(priority.textContent, "3/10");
+assert.equal(title.className, "title", "넷째 칸은 제목이어야 한다");
 assert.equal(title.textContent, "결정 대기 큐 구현");
+
+assert.equal(rows[1].children[2].textContent, "-", "우선순위가 없으면 '-'");
 
 console.log("ok");
 // renderBoard 가 자율 수행·세션 폴링 타이머를 켠다. 안 끄면 node 가 끝나지 않는다

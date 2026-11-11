@@ -60,6 +60,9 @@ export const syncGtasks = () => request("POST", "/gtasks-sync", {});
 export const disconnectGtasks = () => request("POST", "/gtasks-disconnect", {});
 
 export const getAutorun = () => request("GET", "/autorun");
+// 매니저 탭 한 칸. part: automations · helpers · decisions
+export const getManager = (part) =>
+  request("GET", `/manager?part=${encodeURIComponent(part)}`);
 export const setAutorun = (enabled) => request("PATCH", "/autorun", { enabled });
 export const confirmAutorunRun = (id) => request("PATCH", `/autorun-runs/${id}`);
 // 돌릴 명령은 서버가 저장된 조건 문장에서 읽는다 — 여기서는 몇 번째 항목인지만 보낸다

@@ -197,9 +197,10 @@ class SummaryTitleTest(unittest.TestCase):
     def test_background_job_works_from_another_thread(self):
         """뒷일은 다른 스레드에서 돈다 — 요청 스레드의 sqlite 연결을 만지면 거부당한다"""
         jobs = []
+        # 이름 맞추기가 실제 `claude agents` 를 부르면 그 CLI 가 멈춘 날 이 테스트도 멈춘다
         with mock.patch.object(session_todo, "schedule", jobs.append), mock.patch.object(
             summary, "one_line", return_value="요약된 제목"
-        ):
+        ), mock.patch.object(session_message, "live_sessions", return_value=[]):
             created = session_todo.ensure_from_session(
                 self.con, self.row_id, self.workspace, root=self.root
             )

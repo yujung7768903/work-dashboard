@@ -43,6 +43,9 @@ const todoKey = (todo) => `todo:${todo.id}`;
 const groupKey = (group) => `group:${group.id ?? ""}`;
 // 그 케밥 메뉴가 라벨 목록으로 들어가 있는 할일. 메뉴를 닫으면 첫 화면으로 돌아온다
 let labelMenuTodoId = null;
+// 열린 할일 전체 중 가장 높은 우선순위. 할일 줄의 '3/10' 에서 분모 — 보드를 그릴 때마다
+// 서버 트리에서 받는다(카테고리로 걸러 보여도 분모는 전체 기준)
+let priorityMax = null;
 // 설정 탭에서 만든 라벨 전체. 케밥 메뉴가 켜고 끌 목록으로 쓴다
 let allLabels = [];
 // 수정 팝업의 카테고리 선택지. 라벨과 같은 이유로 보드를 그릴 때 함께 받아 둔다
@@ -73,6 +76,7 @@ export async function renderShared() {
 export async function renderBoard() {
   const [tree] = await Promise.all([api.getTree(GROUP_BY_WORKSPACE), renderShared()]);
   const visible = tree.groups.filter(inActiveCategory);
+  priorityMax = tree.priority_max ?? null;
   syncViewControls();
   if (view === VIEW_STATUS) {
     drawKanban(visible);
@@ -377,7 +381,7 @@ export function todoElement(todo, { withStatus = true, withLabels = true } = {})
   if (todo.needs_title) title.append(rawTitleMark());
 
   if (withStatus) row.appendChild(statusButton(todo));
-  row.append(idNode, title);
+  row.append(idNode, priorityBadge(todo), title);
   // 칸반 카드는 라벨을 줄이 아니라 카드 아래 칸에 둔다 — 좁은 컬럼에서 제목과 한 줄을
   // 나눠 쓰면 둘 다 좁아진다 (static/js/kanban.js)
   if (withLabels) row.appendChild(labelStrip(todo));
@@ -385,6 +389,23 @@ export function todoElement(todo, { withStatus = true, withLabels = true } = {})
   // 세션 줄과 같은 팝업. 할일에서 열면 개요 탭이 먼저 보인다
   row.addEventListener("click", () => openDetail({ todo }));
   return row;
+}
+
+// '{이 할일 우선순위}/{열린 할일 중 최고}'. 우선순위를 안 정한 할일은 '-'
+export function priorityText(todo) {
+  if (todo.priority == null) return "-";
+  return `${todo.priority}/${priorityMax ?? "-"}`;
+}
+
+export function priorityBadge(todo) {
+  const node = document.createElement("span");
+  node.className = "todo-priority";
+  node.textContent = priorityText(todo);
+  node.title =
+    todo.priority == null
+      ? t("board.priorityNone")
+      : t("board.priorityHint", { priority: todo.priority, max: priorityMax ?? "-" });
+  return node;
 }
 
 // 상태 칩. 누르면 다음 상태로 넘어가는 손잡이라 표시와 조작을 겸한다

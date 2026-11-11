@@ -147,11 +147,14 @@ def _build_parser():
     move_todo.add_argument("--workspace", required=True, help="워크스페이스 id 또는 none")
     move_todo.set_defaults(handler=_cmd_move_todo)
 
-    edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건 수정")
+    edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건·우선순위 수정")
     edit_todo.add_argument("todo_id", type=int)
     edit_todo.add_argument("--title", default=None)
     edit_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
     edit_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
+    edit_todo.add_argument(
+        "--priority", default=None, help="1 이상 정수, 클수록 높음. '-' 를 주면 우선순위를 없앤다"
+    )
     edit_todo.set_defaults(handler=_cmd_edit_todo)
 
     set_status = sub.add_parser("set-status")
@@ -480,11 +483,12 @@ def _cmd_edit_todo(con, args):
             ("title", args.title),
             ("note", args.note),
             ("precondition", args.precondition),
+            ("priority", args.priority),
         )
         if value is not None
     }
     if not fields:
-        raise Validation("--title/--note/--precondition 중 하나는 있어야 함")
+        raise Validation("--title/--note/--precondition/--priority 중 하나는 있어야 함")
     updated = todo_repo.update(con, args.todo_id, **fields)
     if "title" in fields:
         session_name.sync_todo(con, updated)
@@ -590,7 +594,8 @@ def _cmd_show_todo(con, args):
         return
     for todo in todos:
         marker = " (컨텍스트)" if todo["note"] else ""
-        print(f"{todo['id']}. [{todo['status']}] {todo['title']}{marker}")
+        rank = f" (우선순위 {todo['priority']})" if todo.get("priority") else ""
+        print(f"{todo['id']}. [{todo['status']}] {todo['title']}{rank}{marker}")
         if todo["precondition"]:
             print(f"    조건: {_one_line(todo['precondition'])}")
 
