@@ -33,6 +33,8 @@ COMMAND_TOKENS = 2
 # 처럼 띄우면 래퍼가 앞 두 토큰을 다 차지해 서버를 놓친다
 COMMAND_WRAPPERS = ("nohup", "env")
 LSOF_TIMEOUT_SEC = 5
+# 모든 lsof 호출에 -b -w 를 준다. 없으면 WSL 의 /mnt/c 처럼 멈춘 마운트를 stat 하다
+# 시간 제한에 걸려 빈 결과가 오고, 서버를 못 찾아 종료·포트 표시가 조용히 빠진다
 # transcript 는 줄마다 그때의 cwd 를 남긴다. 이스케이프된 도구 결과(\"cwd\")는 걸리지 않는다
 CWD_PATTERN = re.compile(r'"cwd"\s*:\s*"([^"]+)"')
 
@@ -218,7 +220,7 @@ def serving_port(root):
 def _listening_ports():
     """{pid: 듣고 있는 포트}. 한 프로세스가 여럿 들으면 가장 작은 것 (보통 그게 웹 포트)"""
     found = {}
-    for pid, name in _lsof_fields(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]):
+    for pid, name in _lsof_fields(["lsof", "-b", "-w", "-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]):
         port = _port_of(name)
         if port and port < found.get(pid, port + 1):
             found[pid] = port
@@ -227,7 +229,7 @@ def _listening_ports():
 
 def _cwd_by_pid(pids):
     joined = ",".join(str(pid) for pid in sorted(pids))
-    return dict(_lsof_fields(["lsof", "-a", "-d", "cwd", "-p", joined, "-Fpn"]))
+    return dict(_lsof_fields(["lsof", "-b", "-w", "-a", "-d", "cwd", "-p", joined, "-Fpn"]))
 
 
 def _lsof_fields(argv):
@@ -300,12 +302,15 @@ def _processes_with_cwd(root):
 
 
 def _by_proc(root):
+    """커널이 주는 cwd 링크는 이미 풀린 절대 경로라 root 만 푼다. 남의 cwd 를 realpath 하면
+    WSL 의 /mnt/c 처럼 멈춘 마운트 아래 프로세스에서 stat 이 끝나지 않는다"""
+    target = os.path.realpath(root)
     found = []
     for entry in os.listdir("/proc"):
         if not entry.isdigit():
             continue
         try:
-            if os.path.realpath(os.readlink(f"/proc/{entry}/cwd")) != os.path.realpath(root):
+            if os.readlink(f"/proc/{entry}/cwd") != target:
                 continue
             with open(f"/proc/{entry}/cmdline", "rb") as handle:
                 raw = handle.read()
@@ -316,7 +321,7 @@ def _by_proc(root):
 
 
 def _by_lsof(root):
-    pids = _run(["lsof", "-a", "-d", "cwd", "-t", root])
+    pids = _run(["lsof", "-b", "-w", "-a", "-d", "cwd", "-t", root])
     found = []
     for line in pids.splitlines():
         if not line.strip().isdigit():

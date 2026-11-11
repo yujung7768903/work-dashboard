@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 
 from app.constants import STATUS_DONE, STATUS_TODO
 from app.repositories import categories as category_repo
@@ -162,6 +163,22 @@ class ServingProcessTest(unittest.TestCase):
         root = _worktree_dir()
         proc, _ = serve(root, self, "-u")
         self.assertIn(proc.pid, [pid for pid, _ in release.serving_processes(root)])
+
+    @unittest.skipUnless(os.path.isdir("/proc"), "/proc 이 있는 리눅스에서만")
+    def test_other_processes_cwd_is_not_resolved(self):
+        """WSL 에서 /mnt/c 가 멈추면 그 아래를 cwd 로 쥔 프로세스 경로를 realpath 하다 영원히
+        멈춘다. 커널이 주는 cwd 링크는 이미 풀린 경로라 다시 풀 필요가 없다"""
+        root = _worktree_dir()
+        real = os.path.realpath
+        resolved = []
+
+        def spy(path, *args, **kwargs):
+            resolved.append(path)
+            return real(path, *args, **kwargs)
+
+        with unittest.mock.patch.object(release.os.path, "realpath", spy):
+            release._by_proc(root)
+        self.assertEqual([root], resolved)
 
     def test_process_without_a_listening_port_is_not_a_server(self):
         """워크트리를 cwd 로 도는 훅·도구가 이름만으로 서버로 잡히면 안 된다"""

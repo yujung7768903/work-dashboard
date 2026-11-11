@@ -672,7 +672,7 @@ def _cwds_by_pid(pids):
     """[(pid, cwd)] — 그 pid 들의 작업 위치. lsof 한 번"""
     found = []
     pid = None
-    for line in _run(["lsof", "-a", "-d", "cwd", "-p",
+    for line in _run(["lsof", "-b", "-w", "-a", "-d", "cwd", "-p",
                       ",".join(str(item) for item in sorted(pids)), "-F", "pn"]).splitlines():
         if line.startswith("p") and line[1:].strip().isdigit():
             pid = int(line[1:])
@@ -685,7 +685,7 @@ def _ports_by_pid():
     """pid → 듣고 있는 포트. 저장소와 무관하므로 전체에서 한 번만 부른다"""
     ports = {}
     pid = None
-    for line in _run(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pn"]).splitlines():
+    for line in _run(["lsof", "-b", "-w", "-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pn"]).splitlines():
         if line.startswith("p") and line[1:].strip().isdigit():
             pid = int(line[1:])
             continue
