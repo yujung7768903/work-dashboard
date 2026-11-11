@@ -245,10 +245,15 @@ function editButton(block, todo) {
   return button;
 }
 
-// 제목·착수 조건·note 만 고친다. 상태·라벨·워크스페이스는 보드 케밥에 이미 있다
+// 제목·우선순위·착수 조건·note 만 고친다. 상태·라벨·워크스페이스는 보드 케밥에 이미 있다
 function fillTodoEdit(block, todo) {
   const title = element("input");
   title.value = todo.title;
+  // 비우면 '정하지 않음'. 서버가 빈 값을 NULL 로 받는다 (app/repositories/todos.py)
+  const priority = element("input");
+  priority.type = "number";
+  priority.min = "1";
+  priority.value = todo.priority ?? "";
   const precondition = element("textarea");
   precondition.value = todo.precondition ?? "";
   precondition.placeholder = t("common.preconditionExample");
@@ -267,6 +272,7 @@ function fillTodoEdit(block, todo) {
     api
       .updateTodo(todo.id, {
         title: title.value,
+        priority: priority.value || null,
         precondition: precondition.value || null,
         note: note.value || null,
       })
@@ -287,6 +293,7 @@ function fillTodoEdit(block, todo) {
   actions.append(save, cancel);
   block.replaceChildren(
     editField(t("common.title"), title),
+    editField(t("common.priority"), priority, t("common.priorityHint")),
     editField(t("common.precondition"), precondition, t("common.preconditionHint")),
     editField("note", note),
     actions,

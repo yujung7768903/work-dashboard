@@ -19,7 +19,33 @@ def tree(con, group_by):
     if group_by not in GROUP_BY_CHOICES:
         raise Validation(f"group_by 는 {GROUP_BY_CHOICES} 중 하나여야 함")
     builder = _workspace_groups if group_by == GROUP_BY_WORKSPACE else _category_groups
-    return {"group_by": group_by, "groups": builder(con)}
+    groups = builder(con)
+    return {
+        "group_by": group_by,
+        "groups": groups,
+        # 할일 줄의 '3/10' 에서 분모. 화면이 그룹을 걸러도 분모는 전체 기준이어야 한다
+        "priority_max": open_priority_max(
+            todo for group in groups for todo in group["todos"]
+        ),
+    }
+
+
+def open_priority_max(todos):
+    """열린(완료 아닌) 할일 중 가장 높은 우선순위. 하나도 없으면 None"""
+    values = [
+        todo["priority"]
+        for todo in todos
+        if todo["status"] != STATUS_DONE and todo.get("priority") is not None
+    ]
+    return max(values) if values else None
+
+
+def workspace_rank(group):
+    """워크스페이스 카드 순서. 열린 할일의 최고 우선순위가 높은 쪽, 같으면 열린 할일이 많은 쪽,
+    그래도 같으면 사람이 끌어 정한 순서(sort_order). 우선순위가 하나도 없는 카드는 뒤로 간다"""
+    top = open_priority_max(group["todos"])
+    open_count = group["total_count"] - group["done_count"]
+    return (top is None, -(top or 0), -open_count, group["sort_order"])
 
 
 def _workspace_groups(con):
@@ -54,6 +80,7 @@ def _workspace_groups(con):
                 jira_id=workspace["jira_id"],
             )
         )
+    groups.sort(key=workspace_rank)
     groups.append(_unassigned_group(con, labels, locked, last_session))
     return groups
 

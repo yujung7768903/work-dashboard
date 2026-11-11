@@ -2,7 +2,7 @@
 // 어느 워크스페이스의 할일인지는 카드 위 작은 줄로 얹는다 — 워크스페이스를 카드로 감싸면
 // 이름줄이 자리를 먹고 카드가 커져 목록을 훑기 어렵다.
 // 데이터·카테고리 필터·다시 그리기는 board.js 가 맡고, 이 모듈은 그리기만 한다
-import { labelStrip, todoElement } from "./board.js";
+import { labelStrip, priorityText, todoElement } from "./board.js";
 import { t } from "./i18n.js";
 
 const UNASSIGNED_KIND = "unassigned";
@@ -95,7 +95,8 @@ function cardElement({ group, todo }) {
   // #id 를 워크스페이스 이름 앞에. 이름이 길어 말줄임으로 끊겨도 번호는 남는다
   const id = document.createElement("span");
   id.className = "kanban-id";
-  id.textContent = `#${todo.id}`;
+  // 목록 뷰의 우선순위 칸은 카드에서 숨으므로(app.css) 번호 옆에 붙여 같은 줄에서 읽힌다
+  id.textContent = `#${todo.id} · ${priorityText(todo)}`;
   const name = document.createElement("span");
   name.className = "kanban-ws-name";
   name.textContent =

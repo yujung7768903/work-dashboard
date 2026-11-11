@@ -45,6 +45,7 @@ FIRST_SORT_ORDER = 1
 # 그대로 찍히므로 설명이 아니라 사용자에게 보내는 문장으로 쓴다
 # 분류 대상 누락: 할일 생성·세션 분류 세 곳
 SCOPE_REQUIRED_MSG = "카테고리나 워크스페이스 중 하나를 선택해 주세요"
+PRIORITY_INVALID_MSG = "우선순위는 1 이상 정수로 입력해 주세요"
 
 # 세션이 띄운 하위 프로세스에 실려오는 자기 세션 id. 훅 stdin 의 session_id 와 같은 값이라
 # CLI 가 이걸로 자기 세션을 안다 — 모델이 주입 블록의 UUID 를 옮겨 적지 않아도 된다
@@ -265,3 +266,10 @@ STALE_JUDGE_TRANSCRIPT_MESSAGES = 8
 STALE_JUDGE_TEXT_CHARS = 400  # 발화·note 한 조각의 길이 상한. 프롬프트를 수천 자로 막는다
 STALE_JUDGE_NOTE_CHARS = 1500
 STALE_JUDGE_SIBLING_LIMIT = 15  # 같은 워크스페이스의 다른 할일. 대체·중복 판단 근거
+
+# 매니저 탭. 매니저 레포 위치 — 보조 세션 목록(manager.py 보조 --json)·결정 대기(state/manager.db,
+# 읽기 전용)·주기 점검 훅 상수를 여기서 읽는다
+MANAGER_HOME_ENV = "WORK_DASHBOARD_MANAGER_HOME"
+MANAGER_HOME_DEFAULT = os.path.expanduser("~/work/manager")
+# manager.py 보조 는 claude agents --json 을 부른다(수 초). 그보다 넉넉히
+MANAGER_HELPERS_TIMEOUT_SEC = 45

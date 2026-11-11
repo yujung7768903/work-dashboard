@@ -34,7 +34,9 @@ token and cost trends.
 ## Features
 
 - **Three-layer board** — categories group workspaces, workspaces hold todos.
-  Priority is expressed by order alone, and everything is drag-reorderable.
+  Todos can carry a priority number (higher first, shown as `3/10` against the
+  highest open one), and workspaces are ordered by their highest open priority,
+  then by open todo count. Within a workspace, order is drag-reorderable.
 - **Live session tracking** — hooks register each Claude Code session, inject its
   workspace context, and keep the board in sync while you work.
 - **Worktree lifecycle** — see each git worktree's state and commits, and start,
@@ -43,6 +45,10 @@ token and cost trends.
   merge → release the todo, the server and the branch, in that order.
 - **Autonomous runs** — hand a labelled todo to a background `claude` job on a
   five-minute cron. Off by default.
+- **Manager view** — read-only list of what runs without you (crontab, the
+  manager's periodic check, SRE checks) with next run and last result, plus the
+  manager's helper sessions and the decisions waiting for you. Set
+  `WORK_DASHBOARD_MANAGER_HOME` if the manager repo is not at `~/work/manager`.
 - **Usage view** — rate-limit windows and daily token and cost trends, read from
   local Claude Code logs.
 - **Status line** — the current todo, worktree and server port, rendered into the

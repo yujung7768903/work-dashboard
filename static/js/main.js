@@ -3,6 +3,7 @@
 import { startAutorunPolling, stopAutorunPolling } from "./autorun.js";
 import { renderBoard, renderShared } from "./board.js";
 import { t } from "./i18n.js";
+import { startManagerPolling, stopManagerPolling } from "./manager.js";
 import { renderSettings } from "./settings.js";
 import { renderUsage } from "./usage.js";
 import { renderWorkspaceTab } from "./workspace.js";
@@ -35,6 +36,7 @@ const RENDERERS = {
   settings: renderSettings,
   usage: renderUsage,
   autorun: startAutorunPolling,
+  manager: startManagerPolling,
 };
 
 // 사이드바 최상단과 일치시킨다 — 한도부터 확인하고 들어오는 흐름
@@ -47,6 +49,7 @@ const TITLES = {
   settings: t("nav.settings"),
   usage: t("nav.usage"),
   autorun: t("nav.autorun"),
+  manager: t("nav.manager"),
 };
 
 export function showError(message) {
@@ -81,6 +84,7 @@ function showTab(name, push = true) {
   });
   // 자율 수행 폴링은 그 탭에서만 돈다 — 떠난 뒤에도 돌면 5초마다 헛 요청이 나간다
   stopAutorunPolling();
+  stopManagerPolling();
   document.getElementById("page-title").textContent = TITLES[name];
   run(RENDERERS[name]);
 }

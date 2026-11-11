@@ -66,6 +66,13 @@
                   stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
         </button>
+        <button data-tab="manager" data-i18n="nav.manager" data-i18n-title="nav.manager">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8.6" r="5.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M8 5.8v2.9l1.9 1.2M6.4 1.9h3.2" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button data-tab="workspace" data-i18n="nav.workspace" data-i18n-title="nav.workspace">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
@@ -377,6 +384,23 @@
           <button type="button" id="gtasks-plan-go" data-i18n="gtasks.planGo"></button>
         </div>
       </dialog>
+
+      <!-- 매니저 탭. 보기 전용 — 켜고 끄는 스위치는 없다 (static/js/manager.js) -->
+      <section id="tab-manager" class="tab" hidden>
+        <h2 class="ar-head mgr-head"><span data-i18n="manager.automations"></span>
+          <span class="mgr-count" id="mgr-automations-count"></span></h2>
+        <p class="ar-hint" data-i18n="manager.automationsHint"></p>
+        <ul id="mgr-automations" class="mgr-list"></ul>
+
+        <h2 class="ar-head mgr-head"><span data-i18n="manager.helpers"></span>
+          <span class="mgr-count" id="mgr-helpers-count"></span></h2>
+        <ul id="mgr-helpers" class="mgr-list"></ul>
+
+        <h2 class="ar-head mgr-head"><span data-i18n="manager.decisions"></span>
+          <span class="mgr-count" id="mgr-decisions-count"></span></h2>
+        <p class="ar-hint" data-i18n="manager.decisionsHint"></p>
+        <ul id="mgr-decisions" class="mgr-list"></ul>
+      </section>
 
       <section id="tab-usage" class="tab" hidden>
         <div class="u-shell">

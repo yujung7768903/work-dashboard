@@ -2,6 +2,7 @@
 from app import ordering
 from app.constants import (
     AUTO_TODO_NOTE_RAW_TITLE,
+    PRIORITY_INVALID_MSG,
     REVIEW_LOCKED_MSG,
     SCOPE_REQUIRED_MSG,
     STATE_IDLE,
@@ -20,7 +21,9 @@ from app.repositories import workspaces as workspace_repo
 
 TABLE = "todos"
 # cwd = 워크스페이스가 없는 할일의 작업 위치. 소속이 있으면 workspaces.cwd 가 그 역할이다
-EDITABLE_FIELDS = ("title", "note", "precondition", "status", "workspace_id", "cwd")
+EDITABLE_FIELDS = (
+    "title", "note", "precondition", "status", "workspace_id", "cwd", "priority"
+)
 LABEL_FIELD = "label_ids"  # 컬럼이 아니라 조인 테이블이라 따로 뗀다
 
 
@@ -203,6 +206,8 @@ def _validated_assignments(con, current, fields):
         assignments[key] = value
     if "title" in assignments:
         assignments["title"] = _clean_title(assignments["title"])
+    if "priority" in assignments:
+        assignments["priority"] = clean_priority(assignments["priority"])
     if "status" in assignments:
         if current["id"] in autorun_repo.locked_todo_ids(con):
             raise Validation(REVIEW_LOCKED_MSG)
@@ -243,6 +248,22 @@ def _shaped(row):
     todo = dict(row)
     todo["needs_title"] = AUTO_TODO_NOTE_RAW_TITLE in (todo.get("note") or "")
     return todo
+
+
+def clean_priority(value):
+    """1 이상 정수 또는 None(정하지 않음). 빈 문자열·'-' 도 None 으로 받는다 — 화면 입력칸을
+    비우거나 CLI 에서 '-' 를 주는 것이 '우선순위 없앰' 이다"""
+    if value is None or (isinstance(value, str) and value.strip() in ("", "-")):
+        return None
+    if isinstance(value, bool):
+        raise Validation(PRIORITY_INVALID_MSG)
+    try:
+        number = int(str(value).strip())
+    except ValueError:
+        raise Validation(PRIORITY_INVALID_MSG)
+    if number < 1:
+        raise Validation(PRIORITY_INVALID_MSG)
+    return number
 
 
 def _clean_title(title):

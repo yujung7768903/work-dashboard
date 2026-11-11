@@ -141,26 +141,27 @@ assert.equal(cards.length, 2, "대기 컬럼에는 대기 할일 두 건이 각�
 // 세션이 돈 할일이 위로. 워크스페이스 순서(작업 대시보드가 먼저)를 뒤집는다
 const [workspace, row] = cards[0].children;
 assert.equal(workspace.className, "kanban-ws", "카드 첫 줄은 워크스페이스 이름");
-// 카드 첫 줄은 할일 번호 + 워크스페이스 이름 순. 이름이 말줄임으로 끊겨도 번호는 남는다
+// 카드 첫 줄은 할일 번호·우선순위(안 정했으면 -) + 워크스페이스 이름 순. 이름이 말줄임으로 끊겨도 번호는 남는다
 assert.deepEqual(
   workspace.children.map((cell) => [cell.className, cell.textContent]),
   [
-    ["kanban-id", "#21"],
+    ["kanban-id", "#21 · -"],
     ["kanban-ws-name", "KT 동시성"],
   ],
   "세션이 최근에 돈 할일이 맨 위"
 );
-assert.equal(row.children[1].textContent, "락 재설계");
+// 할일 줄 = [#id(숨김), 우선순위(숨김), 제목, …] — 둘은 카드 첫 줄이 대신 보인다
+assert.equal(row.children[2].textContent, "락 재설계");
 // 카드 = [첫 줄(#id · 워크스페이스), 할일 줄]
 const workspaceOf = (card) => card.children[0].children[1].textContent;
-const titleOf = (card) => card.children[1].children[1].textContent;
+const titleOf = (card) => card.children[1].children[2].textContent;
 assert.equal(workspaceOf(cards[1]), "작업 대시보드");
 assert.equal(titleOf(cards[1]), "결정 대기 큐");
 // 컬럼이 이미 상태를 말하므로 줄 안에 상태 칩을 두지 않는다. 라벨도 줄에서 빠져
 // 카드 아래 칸으로 내려간다 — 좁은 컬럼에서 제목과 한 줄을 나눠 쓰면 둘 다 좁아진다
 assert.deepEqual(
   row.children.map((cell) => cell.className),
-  ["todo-id", "title", "ws-menu"]
+  ["todo-id", "todo-priority", "title", "ws-menu"]
 );
 // 라벨 칸은 라벨이 없어도 그린다 — 있는 카드만 길어지면 카드 높이가 갈린다
 const foot = (card) => card.children[2];
@@ -187,7 +188,7 @@ assert.equal(columns[3].children.slice(1).length, 1, "완료 칸에는 나머지
 // 케밥은 카드에 남은 조작 손잡이다. 누르면 목록이 아니라 이 화면이 다시 그려져야 한다 —
 // 안 그러면 메뉴가 숨어 있는 목록 쪽에만 열려 카드에서는 아무 일도 안 일어난 것처럼 보인다
 calls.length = 0;
-row.children[2].children[0].listeners.click({ stopPropagation() {} });
+row.children.at(-1).children[0].listeners.click({ stopPropagation() {} });
 // 핸들러는 안쪽 비동기를 기다리지 않는다 — 재렌더가 끝날 틈을 준다
 await new Promise((resolve) => setTimeout(resolve, 50));
 assert.equal(elements.error.textContent, "", "케밥 열기가 오류로 끝났다");
