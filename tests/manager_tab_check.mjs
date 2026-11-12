@@ -50,6 +50,21 @@ const PAYLOAD = {
     ],
   },
   helpers: { error: "RuntimeError: claude agents 응답 없음", items: [] },
+  tools: {
+    error: null,
+    items: [
+      { id: "mcp:rovo", kind: "mcp", name: "Jira·Confluence", source: "claude.ai Atlassian Rovo", category: "work",
+        desc: "Jira 이슈와 Confluence 페이지 조회·작성", status: "connected", checked_at: agoMinutes(5) },
+      { id: "mcp:discord", kind: "mcp", name: "디스코드", source: "plugin:discord:discord", category: "talk",
+        desc: "매니저 채널로 사용자와 주고받기", status: "connected", checked_at: agoMinutes(5) },
+      { id: "cli:aws", kind: "cli", name: "AWS CLI", source: "aws", category: "infra",
+        desc: "AWS 리소스 조회", status: "auth", checked_at: agoMinutes(5) },
+      { id: "mcp:x", kind: "mcp", name: "mystery", source: "mystery", category: "etc",
+        desc: null, status: "unknown", checked_at: agoMinutes(5) },
+      { id: "cmd:open", kind: "command", name: "manager.py open", source: "open", category: "command",
+        desc: "사용자 PC 에 띄운다", detail: "사용자 PC 에 띄운다 — URL 은 기본 브라우저", status: "available", checked_at: null },
+    ],
+  },
   decisions: {
     error: null,
     items: [
@@ -147,6 +162,47 @@ const confirmBody = elements["mgr-decision-body"].children;
 assert.match(sectionText(confirmBody[1]), /완료 근거\|master 905f617 반영/);
 assert.equal(sectionText(confirmBody[2]), "확인할 것|기록 없음");
 
+// 도구 목록 — 칩(받은 분류만)·'연결됨' 줄·줄마다 아이콘/이름/설명/상태
+const chipTexts = () => elements["mgr-tools-cats"].children.map((chip) => chip.textContent);
+const toolNames = () => elements["mgr-tools"].children.map((row) => row.children[1]?.children[0].textContent);
+assert.deepEqual(chipTexts(), ["전체", "업무 도구", "소통", "인프라", "매니저 명령", "기타"]);
+assert.match(elements["mgr-tools-cats"].children[0].className, /\bon\b/);
+assert.equal(elements["mgr-tools-count"].textContent, "5");
+const connected = elements["mgr-tools-connected"];
+assert.equal(connected.hidden, false);
+assert.equal(connected.children[0].textContent, "연결됨");
+assert.deepEqual(connected.children[1].children.map((icon) => icon.title), ["Jira·Confluence", "디스코드"], "연결된 외부 도구만");
+assert.equal(connected.children[2].textContent, "2");
+assert.equal(connected.children[3].textContent, "5m 전 확인");
+const toolRows = elements["mgr-tools"].children;
+const toolCells = (row) => [row.children[0].textContent, row.children[1].children[0].textContent,
+  row.children[1].children[1].textContent, row.children[2].textContent];
+assert.deepEqual(toolCells(toolRows[0]), ["J", "Jira·Confluence", "Jira 이슈와 Confluence 페이지 조회·작성", "연결됨"]);
+assert.deepEqual(toolCells(toolRows[2]), ["A", "AWS CLI", "AWS 리소스 조회", "인증 필요"]);
+assert.deepEqual(toolCells(toolRows[3]), ["M", "mystery", "설명 없음", "확인 안 됨"], "확인 못 한 것은 확인 안 됨, 설명은 지어내지 않음");
+assert.deepEqual(toolCells(toolRows[4]), [">_", "manager.py open", "사용자 PC 에 띄운다", "사용 가능"]);
+assert.match(toolRows[4].title, /URL 은 기본 브라우저/, "전문은 줄의 title 로");
+assert.match(toolRows[0].children[0].className, /mgr-ico work/);
+// 보기 전용 — 줄에 버튼·클릭 동작이 없다
+assert.equal(Object.keys(toolRows[0].listeners).length, 0);
+// 칩을 누르면 그 분류만, 다시 전체
+elements["mgr-tools-cats"].children[4].listeners.click();
+assert.deepEqual(toolNames(), ["manager.py open"]);
+assert.equal(elements["mgr-tools-count"].textContent, "5", "개수는 전체 그대로");
+elements["mgr-tools-cats"].children[0].listeners.click();
+assert.equal(toolNames().length, 5);
+// 검색 — 이름·설명·출처에서 찾는다. 없으면 '맞는 도구가 없습니다'
+const search = elements["mgr-tools-search"];
+search.value = "confluence";
+search.listeners.input();
+assert.deepEqual(toolNames(), ["Jira·Confluence"]);
+search.value = "없는도구";
+search.listeners.input();
+assert.equal(elements["mgr-tools"].children[0].textContent, "맞는 도구가 없습니다");
+search.value = "";
+search.listeners.input();
+assert.equal(toolNames().length, 5);
+
 // 칸마다 10줄씩 페이지로 넘긴다. 칸끼리 페이지가 따로 가고, 폴링으로 다시 그려도 보던 페이지가 남는다
 const autoTemplate = PAYLOAD.automations.items[0];
 PAYLOAD.automations.items = Array.from({ length: 23 }, (_, index) => ({ ...autoTemplate, name: `자동화 ${index + 1}` }));
@@ -190,5 +246,18 @@ PAYLOAD.automations.items = PAYLOAD.automations.items.slice(0, 12);
 await manager.renderManager();
 assert.deepEqual(autoNames(), ["자동화 11", "자동화 12"]);
 assert.deepEqual(labels("automations"), ["이전", "1", "2", "다음"]);
+
+// 도구 목록도 10줄씩 넘긴다 — 분류를 바꾸면 첫 페이지로
+const toolTemplate = PAYLOAD.tools.items[4];
+PAYLOAD.tools.items = Array.from({ length: 14 }, (_, index) => ({ ...toolTemplate, id: `c${index}`, name: `명령 ${index + 1}` }));
+await manager.renderManager();
+assert.equal(toolNames().length, 10);
+assert.deepEqual(labels("tools"), ["이전", "1", "2", "다음"]);
+assert.deepEqual(chipTexts(), ["전체", "매니저 명령"], "받은 목록에 있는 분류만 칩으로");
+assert.equal(elements["mgr-tools-connected"].hidden, true, "연결된 외부 도구가 없으면 줄을 숨긴다");
+pager("tools").children.at(-1).listeners.click();
+assert.deepEqual(toolNames(), ["명령 11", "명령 12", "명령 13", "명령 14"]);
+elements["mgr-tools-cats"].children[1].listeners.click();
+assert.equal(toolNames()[0], "명령 1");
 
 console.log("ok");

@@ -1,5 +1,5 @@
 // 매니저 탭 — 휴대폰 '예약 작업' 목록처럼 한 줄에 하나씩, 보기 전용.
-// 세 칸(자동화·보조 세션·결정 대기)은 서버에서 따로 받는다. 보조 세션 목록은 claude agents 를
+// 네 칸(보조 세션·도구 목록·자동화·결정 대기)은 서버에서 따로 받는다. 보조 세션 목록은 claude agents 를
 // 부르느라 수 초 걸려, 한 번에 받으면 나머지 두 칸까지 그만큼 늦게 뜬다 (app/services/manager_panel.py)
 import * as api from "./api.js";
 import { language, t } from "./i18n.js";
@@ -8,7 +8,7 @@ import { linkify } from "./linkify.js";
 import { CHEVRON_SVG } from "./icons.js";
 
 // 화면 순서 — 보조 세션이 맨 위 (static/index.html)
-const PARTS = ["helpers", "automations", "decisions"];
+const PARTS = ["helpers", "tools", "automations", "decisions"];
 // 칸마다 한 번에 보이는 줄 수. 넘치면 칸 아래 페이지 넘김으로 본다 — 자동화만 27줄이라 아래 칸이 밀려났다
 export const PAGE_SIZE = 10;
 // 칸마다 지금 보는 페이지(0부터)와 마지막으로 받은 응답. 페이지를 넘길 때는 다시 받지 않는다
@@ -49,6 +49,7 @@ export function stopManagerPolling() {
 }
 
 export async function renderManager() {
+  bindToolSearch();
   // 첫 진입에만 칸마다 '불러오는 중'. 보조 세션 칸은 수 초 걸려 빈 칸이 '없음'으로 읽힌다.
   // 폴링 재렌더 때는 지금 목록을 둔 채 바꾼다 — 1분마다 깜빡이지 않게
   PARTS.forEach((part) => {
@@ -76,11 +77,13 @@ async function renderPart(part) {
 function drawPart(part) {
   const section = sections[part];
   const list = document.getElementById(`mgr-${part}`);
-  const total = pageCount(section.items.length);
+  const items = part === "tools" ? drawToolsChrome(section) : section.items;
+  const total = pageCount(items.length);
   pages[part] = Math.min(pages[part], total - 1);
   const start = pages[part] * PAGE_SIZE;
-  const rows = section.items.slice(start, start + PAGE_SIZE).map(ROW_BUILDERS[part]);
+  const rows = items.slice(start, start + PAGE_SIZE).map(ROW_BUILDERS[part]);
   if (section.error) rows.unshift(note(t("manager.partFailed", { error: section.error }), "mgr-error"));
+  else if (!rows.length && section.items.length) rows.push(note(t("manager.toolsNoMatch")));
   else if (!rows.length) rows.push(note(EMPTY[part]()));
   else if (part === "automations") rows.unshift(automationHead());
   list.replaceChildren(...rows);
@@ -136,12 +139,14 @@ function pagerButton(className, disabled, onClick) {
 const EMPTY = {
   automations: () => t("manager.empty.automations"),
   helpers: () => t("manager.empty.helpers"),
+  tools: () => t("manager.empty.tools"),
   decisions: () => t("manager.empty.decisions"),
 };
 
 const ROW_BUILDERS = {
   automations: automationRow,
   helpers: helperRow,
+  tools: toolRow,
   decisions: decisionRow,
 };
 
@@ -231,6 +236,113 @@ function decisionRow(item) {
       openDecision(item);
     }
   });
+  return line;
+}
+
+// ── 도구 목록 — 휴대폰 '앱 및 서비스 연결하기' 화면처럼 ─────────────────────────
+// 위에 분류 칩·검색, '연결됨' 줄에 연결된 외부 도구 아이콘과 개수, 아래 줄마다 둥근 아이콘·이름·
+// 한 줄 설명·오른쪽 상태. 보기 전용 — 연결 버튼은 없다. 목록·상태는 서버가 실제 설정에서 읽는다
+// (app/services/manager_tools.py). 분류·검색은 받은 목록을 화면에서 거르기만 한다
+
+// 칩 순서. 받은 목록에 있는 분류만 칩으로 낸다
+const TOOL_CATEGORIES = {
+  work: () => t("manager.toolCat.work"),
+  talk: () => t("manager.toolCat.talk"),
+  infra: () => t("manager.toolCat.infra"),
+  command: () => t("manager.toolCat.command"),
+  etc: () => t("manager.toolCat.etc"),
+};
+// 상태 → (칩 색, 문구). 확인하지 못한 것은 '확인 안 됨' 그대로 드러낸다
+const TOOL_STATUS = {
+  connected: ["ok", () => t("manager.toolStatus.connected")],
+  available: ["ok", () => t("manager.toolStatus.available")],
+  auth: ["waiting", () => t("manager.toolStatus.auth")],
+  failed: ["failed", () => t("manager.toolStatus.failed")],
+  unknown: ["", () => t("manager.toolStatus.unknown")],
+};
+// '연결됨' 줄에 겹쳐 보이는 아이콘 수. 나머지는 개수로만
+export const CONNECTED_ICONS = 10;
+const toolFilter = { category: "all", query: "" };
+let searchBound = false;
+
+function bindToolSearch() {
+  if (searchBound) return;
+  searchBound = true;
+  const input = document.getElementById("mgr-tools-search");
+  input.addEventListener?.("input", () => {
+    toolFilter.query = input.value.trim().toLowerCase();
+    pages.tools = 0;
+    if (sections.tools) drawPart("tools");
+  });
+}
+
+export function filterTools(items, { category, query }) {
+  return items.filter((item) => {
+    if (category !== "all" && item.category !== category) return false;
+    if (!query) return true;
+    return [item.name, item.desc, item.source].some((text) => text && text.toLowerCase().includes(query));
+  });
+}
+
+// 칩·'연결됨' 줄을 그리고 지금 거른 목록을 돌려준다
+function drawToolsChrome(section) {
+  const present = Object.keys(TOOL_CATEGORIES).filter((key) => section.items.some((item) => item.category === key));
+  if (toolFilter.category !== "all" && !present.includes(toolFilter.category)) toolFilter.category = "all";
+  const chips = ["all", ...present].map((key) => {
+    const chip = pagerButton(`mgr-cat${key === toolFilter.category ? " on" : ""}`, false, () => {
+      toolFilter.category = key;
+      pages.tools = 0;
+      drawPart("tools");
+    });
+    chip.textContent = key === "all" ? t("manager.toolCat.all") : TOOL_CATEGORIES[key]();
+    chip.setAttribute?.("aria-pressed", String(key === toolFilter.category));
+    return chip;
+  });
+  document.getElementById("mgr-tools-cats").replaceChildren(...chips);
+  drawConnected(section.items);
+  return filterTools(section.items, toolFilter);
+}
+
+function drawConnected(items) {
+  const box = document.getElementById("mgr-tools-connected");
+  const connected = items.filter((item) => item.kind !== "command" && item.status === "connected");
+  box.hidden = !connected.length;
+  if (box.hidden) return box.replaceChildren();
+  const stack = el("span", "mgr-ico-stack");
+  stack.append(...connected.slice(0, CONNECTED_ICONS).map((item) => {
+    const icon = toolIcon(item, "mgr-ico sm");
+    icon.title = item.name;
+    return icon;
+  }));
+  const checked = items.find((item) => item.checked_at)?.checked_at;
+  box.replaceChildren(
+    el("span", "mgr-connected-label", t("manager.toolConnected")),
+    stack,
+    el("span", "mgr-connected-count", String(connected.length)),
+    el("span", "mgr-sub mgr-checked", checked ? t("manager.toolChecked", { age: formatAge(checked) }) : "")
+  );
+}
+
+// 둥근 아이콘 — 상표 이미지 대신 분류 색의 글자. 매니저 명령은 모두 같은 터미널 표시
+function toolIcon(item, className = "mgr-ico") {
+  const mark = item.kind === "command" ? ">_" : Array.from(item.name || "?")[0].toUpperCase();
+  const icon = el("span", `${className} ${item.category}`, mark);
+  icon.setAttribute?.("aria-hidden", "true");
+  return icon;
+}
+
+function toolRow(item) {
+  const [tone, label] = TOOL_STATUS[item.status] ?? TOOL_STATUS.unknown;
+  const line = el("li", "mgr-row mgr-tool");
+  line.title = [item.name, item.detail || item.desc, item.kind === "command" ? "" : item.source]
+    .filter(Boolean)
+    .join("\n");
+  const main = el("div", "mgr-main");
+  const desc = item.desc
+    ? el("span", "mgr-sub", item.desc)
+    : el("span", "mgr-sub mgr-nodesc", t("manager.noDesc"));
+  main.append(el("span", "mgr-title", item.name), desc);
+  line.append(toolIcon(item), main, el("span", `mgr-chip ${tone}`.trim(), label()));
   return line;
 }
 

@@ -1,4 +1,4 @@
-"""매니저 탭 — 사용자가 손대지 않아도 도는 자동화, 떠 있는 보조 세션, 사용자 결정 대기.
+"""매니저 탭 — 사용자가 손대지 않아도 도는 자동화, 떠 있는 보조 세션, 매니저가 쓰는 도구(manager_tools.py), 사용자 결정 대기.
 
 목록은 실제 설정에서 읽는다. 자동화는 crontab 과 매니저 점검 훅의 상수, 보조 세션은
 `manager.py 보조 --json`, 결정 대기는 매니저 DB(state/manager.db)다. 매니저 DB 는 읽기
@@ -23,9 +23,9 @@ from app.constants import (
     MANAGER_HOME_ENV,
     MANAGER_HELPERS_TIMEOUT_SEC,
 )
-from app.services import cron
+from app.services import cron, manager_tools
 
-PARTS = ("automations", "helpers", "decisions")
+PARTS = ("automations", "helpers", "tools", "decisions")
 STATUS_OK = "ok"
 STATUS_FAIL = "fail"
 STATUS_NODATA = "nodata"
@@ -45,7 +45,7 @@ CONFIRM_STATUS = "confirm"
 
 def snapshot(part=None, now=None, con=None, **sources):
     """part 하나만, 없으면 셋 다. con 은 대시보드 DB(자율 실행 tick 기록을 읽는다).
-    sources 는 테스트 주입점(crontab_text, manager_home, helpers_fn)"""
+    sources 는 테스트 주입점(crontab_text, manager_home, helpers_fn, tools_external_fn)"""
     names = (part,) if part else PARTS
     unknown = [name for name in names if name not in PARTS]
     if unknown:
@@ -56,6 +56,9 @@ def snapshot(part=None, now=None, con=None, **sources):
             now, con=con, **_pick(sources, "crontab_text", "manager_home")
         ),
         "helpers": lambda: helpers(**_pick(sources, "manager_home", "helpers_fn")),
+        "tools": lambda: manager_tools.tools(
+            sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
+        ),
         "decisions": lambda: decisions(now, con=con, **_pick(sources, "manager_home")),
     }
     return {name: _section(builders[name]) for name in names}

@@ -386,12 +386,31 @@
       </dialog>
 
       <!-- 매니저 탭. 보기 전용 — 켜고 끄는 스위치는 없다 (static/js/manager.js).
-           보조 세션이 맨 위 — 지금 움직이는 것부터 본다. 칸마다 10줄씩 페이지로 넘긴다 -->
+           보조 세션이 맨 위 — 지금 움직이는 것부터 본다. 칸마다 10줄씩 페이지로 넘긴다.
+           도구 목록은 보조 세션 바로 아래 — 분류 칩·검색, '연결됨' 줄, 도구마다 한 줄 (보기 전용, 연결 버튼 없음) -->
       <section id="tab-manager" class="tab" hidden>
         <h2 class="ar-head mgr-head"><span data-i18n="manager.helpers"></span>
           <span class="mgr-count" id="mgr-helpers-count"></span></h2>
         <ul id="mgr-helpers" class="mgr-list"></ul>
         <nav class="mgr-pager" id="mgr-helpers-pager" hidden></nav>
+
+        <h2 class="ar-head mgr-head"><span data-i18n="manager.tools"></span>
+          <span class="mgr-count" id="mgr-tools-count"></span></h2>
+        <p class="ar-hint" data-i18n="manager.toolsHint"></p>
+        <div class="mgr-tools-bar">
+          <div class="mgr-cats" id="mgr-tools-cats"></div>
+          <label class="mgr-search">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <path d="m10.5 10.5 3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <input type="search" id="mgr-tools-search" data-i18n-placeholder="manager.toolSearch"
+                   data-i18n-aria-label="manager.toolSearch">
+          </label>
+        </div>
+        <div class="mgr-connected" id="mgr-tools-connected" hidden></div>
+        <ul id="mgr-tools" class="mgr-list"></ul>
+        <nav class="mgr-pager" id="mgr-tools-pager" hidden></nav>
 
         <h2 class="ar-head mgr-head"><span data-i18n="manager.automations"></span>
           <span class="mgr-count" id="mgr-automations-count"></span></h2>

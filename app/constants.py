@@ -273,3 +273,7 @@ MANAGER_HOME_ENV = "WORK_DASHBOARD_MANAGER_HOME"
 MANAGER_HOME_DEFAULT = os.path.expanduser("~/work/manager")
 # manager.py 보조 는 claude agents --json 을 부른다(수 초). 그보다 넉넉히
 MANAGER_HELPERS_TIMEOUT_SEC = 45
+# 매니저 탭 도구 목록. claude mcp list 는 stdio 서버(디스코드 봇 포함)를 실제로 띄워 보므로 한 시간에 한 번만
+TOOLS_CACHE_SEC = 3600
+TOOLS_MCP_TIMEOUT_SEC = 90
+TOOLS_CLI_TIMEOUT_SEC = 15

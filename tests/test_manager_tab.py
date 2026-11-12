@@ -79,11 +79,13 @@ class ManagerTabTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
 
     def test_helpers_section_first(self):
-        # 보조 세션이 맨 위, 칸마다 바로 아래 페이지 넘김
+        # 보조 세션이 맨 위, 도구 목록이 바로 아래, 칸마다 바로 아래 페이지 넘김
         html = open(os.path.join(os.path.dirname(HERE), "static", "index.html"), encoding="utf-8").read()
-        order = [html.index(f'id="mgr-{part}"') for part in ("helpers", "automations", "decisions")]
+        parts = ("helpers", "tools", "automations", "decisions")
+        order = [html.index(f'id="mgr-{part}"') for part in parts]
         self.assertEqual(order, sorted(order))
-        for part in ("helpers", "automations", "decisions"):
+        self.assertLess(html.index('id="mgr-helpers-pager"'), html.index('id="mgr-tools-count"'))
+        for part in parts:
             self.assertLess(html.index(f'id="mgr-{part}"'), html.index(f'id="mgr-{part}-pager"'))
 
     def test_current_automations_use_one_format(self):
