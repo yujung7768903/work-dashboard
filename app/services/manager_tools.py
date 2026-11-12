@@ -28,8 +28,12 @@ from app.constants import (
     TOOLS_MCP_TIMEOUT_SEC,
 )
 
-# 분류 — 화면 칩 순서. 이름은 화면이 사전(manager.toolCat.<키>)으로 옮긴다
-CATEGORIES = ("work", "talk", "infra", "command", "etc")
+# 용도 분류 — 화면 칩 순서. 이름은 화면이 사전(manager.toolCat.<키>)으로 옮긴다
+CATEGORIES = ("talk", "docs", "dev", "infra", "data", "command", "etc")
+# 제작 주체 — 사내(회사·팀이 만든 것) · 외부(claude.ai 공식 커넥터·서드파티 MCP·CLI).
+# 누가 만들었는지 확인하지 못한 것은 None 으로 두고 화면에 표시하지 않는다
+INHOUSE = "inhouse"
+EXTERNAL = "external"
 CONNECTED = "connected"
 NEEDS_AUTH = "auth"
 FAILED = "failed"
@@ -37,46 +41,55 @@ UNKNOWN = "unknown"
 AVAILABLE = "available"
 STATUS_ORDER = {CONNECTED: 0, AVAILABLE: 0, NEEDS_AUTH: 1, FAILED: 2, UNKNOWN: 3}
 
-# MCP 서버 이름 → (화면 이름, 분류, 무엇을 하는 데 쓰는지). 설명은 그 서버가 내는 도구로 확인한 것만 적는다.
-# 여기 없는 서버는 이름을 그대로 쓰고 분류는 '기타', 설명은 비워 둔다(화면이 '설명 없음'으로 드러낸다)
+# MCP 서버 이름 → (화면 이름, 용도, 제작 주체, 무엇을 하는 데 쓰는지). 설명은 그 서버가 내는 도구로 확인한 것만 적는다.
+# 여기 없는 서버는 이름을 그대로 쓰고 용도는 '기타', 제작 주체·설명은 비워 둔다(화면이 '설명 없음'으로 드러낸다).
+# athena·apihive 는 사용자 설정에 있지만 누가 무엇으로 만든 것인지 확인하지 못해 표에 넣지 않았다
 KNOWN_MCP = {
-    "claude.ai Atlassian Rovo": ("Jira·Confluence", "work", "Jira 이슈와 Confluence 페이지 조회·작성"),
-    "claude.ai Atlassian MCP": ("Atlassian MCP", "work", "Jira·Confluence 연결 (Rovo 와 별도 커넥터)"),
-    "claude.ai Microsoft 365": ("Microsoft 365", "talk", "팀즈 대화, 아웃룩 메일·일정, SharePoint 조회"),
-    "plugin:discord:discord": ("디스코드", "talk", "매니저 채널로 사용자와 주고받기"),
-    "claude.ai Slack": ("Slack", "talk", "슬랙 채널 읽기·메시지 보내기"),
-    "claude.ai Gmail": ("Gmail", "talk", "지메일 검색·초안"),
-    "claude.ai PlayMCP": ("카카오 PlayMCP", "talk", "카카오톡 나와의 채팅에 메모 보내기"),
-    "claude.ai Google Calendar": ("Google 캘린더", "work", "구글 캘린더 일정 조회"),
-    "claude.ai Google Drive": ("Google 드라이브", "work", "드라이브 파일 찾기·읽기"),
-    "claude.ai Google Docs": ("Google 문서", "work", "구글 문서 읽기·쓰기"),
-    "claude.ai Google Sheets": ("Google 스프레드시트", "work", "구글 시트 읽기·쓰기"),
-    "claude.ai Google Slides": ("Google 프레젠테이션", "work", "구글 슬라이드 읽기·쓰기"),
-    "claude.ai Claude Docs": ("Claude Docs", "work", "Claude 문서 만들기·고치기"),
-    "claude.ai Claude Data": ("Claude Data", "work", "조직 인증 쿼리와 공유 결과 보기"),
+    # 메신저·소통
+    "plugin:discord:discord": ("디스코드", "talk", EXTERNAL, "매니저 채널로 사용자와 주고받기"),
+    "claude.ai Microsoft 365": ("Microsoft 365", "talk", EXTERNAL, "팀즈 대화, 아웃룩 메일·일정, SharePoint 조회"),
+    "claude.ai Slack": ("Slack", "talk", EXTERNAL, "슬랙 채널 읽기·메시지 보내기"),
+    "claude.ai Gmail": ("Gmail", "talk", EXTERNAL, "지메일 검색·초안"),
+    "claude.ai PlayMCP": ("카카오 PlayMCP", "talk", EXTERNAL, "카카오톡 나와의 채팅에 메모 보내기"),
+    "claude.ai Intercom": ("Intercom", "talk", EXTERNAL, "인터콤 고객 대화"),
+    # 업무 문서·협업 (Jira·Confluence·Office·Google·회의록·프로젝트 관리·디자인)
+    "claude.ai Atlassian Rovo": ("Jira·Confluence", "docs", EXTERNAL, "Jira 이슈와 Confluence 페이지 조회·작성"),
+    "claude.ai Atlassian MCP": ("Atlassian MCP", "docs", EXTERNAL, "Jira·Confluence 연결 (Rovo 와 별도 커넥터)"),
+    "claude.ai Google Calendar": ("Google 캘린더", "docs", EXTERNAL, "구글 캘린더 일정 조회"),
+    "claude.ai Google Drive": ("Google 드라이브", "docs", EXTERNAL, "드라이브 파일 찾기·읽기"),
+    "claude.ai Google Docs": ("Google 문서", "docs", EXTERNAL, "구글 문서 읽기·쓰기"),
+    "claude.ai Google Sheets": ("Google 스프레드시트", "docs", EXTERNAL, "구글 시트 읽기·쓰기"),
+    "claude.ai Google Slides": ("Google 프레젠테이션", "docs", EXTERNAL, "구글 슬라이드 읽기·쓰기"),
+    "claude.ai Claude Docs": ("Claude Docs", "docs", EXTERNAL, "Claude 문서 만들기·고치기"),
+    "claude.ai Notion": ("Notion", "docs", EXTERNAL, "노션 페이지 검색·작성"),
+    "claude.ai Box": ("Box", "docs", EXTERNAL, "박스 파일 관리"),
+    "claude.ai Linear": ("Linear", "docs", EXTERNAL, "리니어 이슈 관리"),
+    "claude.ai Asana": ("Asana", "docs", EXTERNAL, "아사나 작업 관리"),
+    "claude.ai monday.com": ("monday.com", "docs", EXTERNAL, "먼데이 보드 관리"),
+    "claude.ai Canva": ("Canva", "docs", EXTERNAL, "캔바 디자인"),
+    "claude.ai Figma": ("Figma", "docs", EXTERNAL, "피그마 디자인 읽기"),
+    "tiro": ("Tiro", "docs", EXTERNAL, "티로 회의 노트·전사 검색"),
+    # 개발
+    "codex": ("Codex", "dev", EXTERNAL, "Codex 에이전트에 작업 맡기기"),
+    "aside": ("Aside", "dev", EXTERNAL, "Aside 브라우저 프로필로 웹 작업 실행"),
+    # 인프라·모니터링
+    "whatap": ("와탭", "infra", EXTERNAL, "와탭 APM 지표·이상 탐지 조회"),
+    "claude.ai Datadog (v1)": ("Datadog", "infra", EXTERNAL, "데이터독 지표·로그 조회"),
+    # 데이터·사내 서비스
     "claude.ai HAI Connector (dev)": (
-        "HAI Connector", "work", "한국일보 사내 데이터 — 비용·GA4·서치콘솔·HMAP·인물사전 조회",
+        "HAI Connector", "data", INHOUSE, "한국일보 사내 데이터 — 비용·GA4·서치콘솔·HMAP·인물사전 조회",
     ),
-    "claude.ai Notion": ("Notion", "work", "노션 페이지 검색·작성"),
-    "claude.ai Linear": ("Linear", "work", "리니어 이슈 관리"),
-    "claude.ai Asana": ("Asana", "work", "아사나 작업 관리"),
-    "claude.ai monday.com": ("monday.com", "work", "먼데이 보드 관리"),
-    "claude.ai Box": ("Box", "work", "박스 파일 관리"),
-    "claude.ai Canva": ("Canva", "work", "캔바 디자인"),
-    "claude.ai Figma": ("Figma", "work", "피그마 디자인 읽기"),
-    "claude.ai HubSpot": ("HubSpot", "work", "허브스팟 CRM"),
-    "claude.ai Intercom": ("Intercom", "talk", "인터콤 고객 대화"),
-    "claude.ai saleforce": ("Salesforce", "work", "세일즈포스 CRM"),
-    "claude.ai Datadog (v1)": ("Datadog", "infra", "데이터독 지표·로그 조회"),
-    "whatap": ("와탭", "infra", "와탭 APM 지표·이상 탐지 조회"),
-    "tiro": ("Tiro", "work", "티로 회의 노트·전사 검색"),
-    "codex": ("Codex", "work", "Codex 에이전트에 작업 맡기기"),
-    "aside": ("Aside", "work", "Aside 브라우저 프로필로 웹 작업 실행"),
+    # HMAP 은 한국일보 사내 분석 서비스(hk-hmap-server). 인증 전이라 낼 도구를 확인하지 못해 설명은 비운다
+    "claude.ai hmap_2_mcp": ("HMAP 2", "data", INHOUSE, None),
+    "claude.ai Claude Data": ("Claude Data", "data", EXTERNAL, "조직 인증 쿼리와 공유 결과 보기"),
+    # 그 밖 — 용도는 알지만 위 분류에 들지 않는 것
+    "claude.ai HubSpot": ("HubSpot", "etc", EXTERNAL, "허브스팟 CRM"),
+    "claude.ai saleforce": ("Salesforce", "etc", EXTERNAL, "세일즈포스 CRM"),
 }
 
-# CLI — (이름, 실행 파일, 분류, 설명, 인증 확인 명령). 확인 명령의 종료 코드만 본다
+# CLI — (이름, 실행 파일, 용도, 설명, 인증 확인 명령). 확인 명령의 종료 코드만 본다. 둘 다 외부 제작
 KNOWN_CLI = (
-    ("GitHub CLI", "gh", "infra", "PR·이슈·저장소 작업 (gh)", ["gh", "auth", "status"]),
+    ("GitHub CLI", "gh", "dev", "PR·이슈·저장소 작업 (gh)", ["gh", "auth", "status"]),
     ("AWS CLI", "aws", "infra", "AWS 리소스 조회 (기본 프로파일로 확인)", ["aws", "sts", "get-caller-identity"]),
 )
 
@@ -181,13 +194,14 @@ def parse_mcp_list(text):
         if not match:
             continue
         raw = match["name"].strip()
-        label, category, desc = KNOWN_MCP.get(raw, (_plain_name(raw), "etc", None))
+        label, category, maker, desc = KNOWN_MCP.get(raw, (_plain_name(raw), "etc", None, None))
         items.append({
             "id": f"mcp:{raw}",
             "kind": "mcp",
             "name": label,
             "source": raw,
             "category": category,
+            "maker": maker,
             "desc": desc,
             "status": mcp_status(match["status"]),
         })
@@ -213,7 +227,7 @@ def _plain_name(raw):
 
 def _unchecked(source, desc):
     return {"id": f"mcp:{source}", "kind": "mcp", "name": source, "source": source,
-            "category": "etc", "desc": desc, "status": UNKNOWN}
+            "category": "etc", "maker": None, "desc": desc, "status": UNKNOWN}
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -228,7 +242,7 @@ def cli_tools(which=None, run=None):
             continue
         items.append({
             "id": f"cli:{binary}", "kind": "cli", "name": name, "source": binary,
-            "category": category, "desc": desc, "status": cli_status(check, run),
+            "category": category, "maker": EXTERNAL, "desc": desc, "status": cli_status(check, run),
         })
     return items
 
@@ -288,7 +302,7 @@ def parse_commands(doc):
                 continue
             seen.add(name)
             current = {"id": f"cmd:{name}", "kind": "command", "name": f"manager.py {name}", "source": name,
-                       "category": "command", "desc": None, "detail": None, "status": AVAILABLE}
+                       "category": "command", "maker": INHOUSE, "desc": None, "detail": None, "status": AVAILABLE}
             items.append(current)
             first = _desc_on(line)
             if first:

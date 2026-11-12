@@ -44,13 +44,15 @@ class McpListTest(unittest.TestCase):
         by_source = {item["source"]: item for item in items}
         self.assertEqual(len(items), 5)
         rovo = by_source["claude.ai Atlassian Rovo"]
-        self.assertEqual((rovo["name"], rovo["category"], rovo["status"]), ("Jira·Confluence", "work", "connected"))
+        self.assertEqual((rovo["name"], rovo["category"], rovo["maker"], rovo["status"]),
+                         ("Jira·Confluence", "docs", "external", "connected"))
         self.assertEqual(by_source["claude.ai Slack"]["status"], "auth")
         self.assertEqual(by_source["plugin:discord:discord"]["name"], "디스코드")
         self.assertEqual(by_source["whatap"]["status"], "failed")
         # 표에 없는 서버는 지어내지 않는다 — 이름 그대로, 설명 없음, 기타
         mystery = by_source["mystery"]
-        self.assertEqual((mystery["name"], mystery["desc"], mystery["category"]), ("mystery", None, "etc"))
+        self.assertEqual((mystery["name"], mystery["desc"], mystery["category"], mystery["maker"]),
+                         ("mystery", None, "etc", None))
         dumped = json.dumps(items, ensure_ascii=False)
         for leak in ("SECRET", "http", "bun run", "npx"):
             self.assertNotIn(leak, dumped)
@@ -62,6 +64,35 @@ class McpListTest(unittest.TestCase):
         [item] = manager_tools.mcp_servers(run=broken)
         self.assertEqual(item["status"], "unknown")
         self.assertIn("읽지 못함", item["desc"])
+
+
+class ClassificationTableTest(unittest.TestCase):
+    """서버 이름별 분류표 — 용도는 칩에 있는 것만, 제작 주체는 사내·외부·모름(None)만"""
+
+    def test_every_entry_uses_known_category_and_maker(self):
+        makers = {manager_tools.INHOUSE, manager_tools.EXTERNAL, None}
+        for source, (_label, category, maker, _desc) in manager_tools.KNOWN_MCP.items():
+            self.assertIn(category, manager_tools.CATEGORIES, source)
+            self.assertIn(maker, makers, source)
+        for _name, _binary, category, _desc, _check in manager_tools.KNOWN_CLI:
+            self.assertIn(category, manager_tools.CATEGORIES)
+
+    def test_inhouse_and_external_examples(self):
+        known = manager_tools.KNOWN_MCP
+        self.assertEqual(known["claude.ai HAI Connector (dev)"][1:3], ("data", "inhouse"))
+        self.assertEqual(known["claude.ai Google Slides"][1:3], ("docs", "external"))
+        self.assertEqual(known["whatap"][1:3], ("infra", "external"))
+        self.assertEqual(known["codex"][1:3], ("dev", "external"))
+        # claude mcp list 가 내는 실제 이름 그대로(밑줄) — 띄어 쓴 키로는 맞지 않아 기타로 빠졌다
+        self.assertEqual(known["claude.ai hmap_2_mcp"][1:3], ("data", "inhouse"))
+        # 누가 만들었는지 확인하지 못한 서버는 표에 없다 — 기타·제작 주체 없음으로 나간다
+        [athena] = manager_tools.parse_mcp_list("athena: https://x/mcp (HTTP) - ✔ Connected")
+        self.assertEqual((athena["category"], athena["maker"]), ("etc", None))
+
+    def test_cli_is_external(self):
+        items = manager_tools.cli_tools(which=lambda _b: True, run=lambda _c: 0)
+        self.assertEqual({item["source"]: (item["category"], item["maker"]) for item in items},
+                         {"gh": ("dev", "external"), "aws": ("infra", "external")})
 
 
 class CliTest(unittest.TestCase):
@@ -98,6 +129,7 @@ class CommandsTest(unittest.TestCase):
         wake = items[0]
         self.assertIn("보낼 곳 판정", wake["detail"], "이어지는 줄은 detail 에 합친다")
         self.assertTrue(all(item["status"] == "available" and item["category"] == "command" for item in items))
+        self.assertTrue(all(item["maker"] == "inhouse" for item in items), "매니저 명령은 사내 제작")
 
     @unittest.skipUnless(os.path.isfile(os.path.expanduser("~/work/manager/manager.py")), "매니저 없음")
     def test_real_manager_has_named_commands(self):
