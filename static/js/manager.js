@@ -3,7 +3,8 @@
 // 부르느라 수 초 걸려, 한 번에 받으면 나머지 두 칸까지 그만큼 늦게 뜬다 (app/services/manager_panel.py)
 import * as api from "./api.js";
 import { language, t } from "./i18n.js";
-import { formatAge } from "./sessions.js";
+import { formatAge, notePart } from "./sessions.js";
+import { linkify } from "./linkify.js";
 
 const PARTS = ["automations", "helpers", "decisions"];
 // 다음 실행까지 남은 시간이 분 단위라 1분마다 다시 받는다. 탭을 떠나면 멈춘다 (main.js)
@@ -64,6 +65,7 @@ async function renderPart(part) {
     : String(section.items.length);
   if (section.error) rows.unshift(note(t("manager.partFailed", { error: section.error }), "mgr-error"));
   else if (!rows.length) rows.push(note(EMPTY[part]()));
+  else if (part === "automations") rows.unshift(automationHead());
   list.replaceChildren(...rows);
 }
 
@@ -93,16 +95,32 @@ function row({ title, sub, aside, asideSub, hint, tone }) {
   return item;
 }
 
+// 자동화는 세 칸 표 — 주기 / 자동화 내용(이름·설명) / 수행 시간(다음 실행·마지막 실행).
+// 같은 주기끼리 눈으로 묶어 읽게 주기를 맨 왼쪽에 둔다
+function automationHead() {
+  const head = el("li", "mgr-row mgr-auto mgr-colhead");
+  head.append(
+    el("span", "", t("manager.colCycle")),
+    el("span", "", t("manager.colWhat")),
+    el("span", "mgr-side", t("manager.colTime"))
+  );
+  return head;
+}
+
 function automationRow(item) {
-  const sub = [cycleText(item.cycle, item.expr), item.desc].filter(Boolean).join(" · ");
-  return row({
-    title: automationName(item),
-    sub,
-    aside: el("span", "mgr-next", nextText(item)),
-    asideSub: lastBadge(item.last),
-    hint: [item.command, item.last?.detail].filter(Boolean).join("\n"),
-    tone: item.off_duty ? "off" : "",
-  });
+  const line = el("li", `mgr-row mgr-auto${item.off_duty ? " off" : ""}`);
+  line.title = [item.desc, item.command, item.last?.detail].filter(Boolean).join("\n");
+  const cycle = el("span", "mgr-cycle", cycleText(item.cycle, item.expr));
+  const main = el("div", "mgr-main");
+  // 설명이 없으면 비워 두지 않고 드러낸다 — 빈 칸은 '설명할 게 없다'로 읽힌다
+  const desc = item.desc
+    ? el("span", "mgr-sub", item.desc)
+    : el("span", "mgr-sub mgr-nodesc", t("manager.noDesc"));
+  main.append(el("span", "mgr-title", automationName(item)), desc);
+  const side = el("div", "mgr-side");
+  side.append(el("span", "mgr-next", nextText(item)), lastBadge(item.last));
+  line.append(cycle, main, side);
+  return line;
 }
 
 function automationName(item) {
@@ -135,14 +153,74 @@ function decisionRow(item) {
     item.since ? t("manager.sinceAgo", { age: formatAge(item.since) }) : "",
     item.held ? t("manager.held") : "",
   ].filter(Boolean);
-  return row({
+  const line = row({
     title: `#${item.id} ${item.title}`,
     sub: item.detail || "",
     aside: chip,
     asideSub: el("span", "mgr-sub", extra.join(" · ")),
-    hint: item.detail || "",
-    tone: item.held ? "off" : "",
+    tone: `mgr-click${item.held ? " off" : ""}`,
   });
+  line.tabIndex = 0;
+  line.addEventListener?.("click", () => openDecision(item));
+  line.addEventListener?.("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDecision(item);
+    }
+  });
+  return line;
+}
+
+// ── 결정 대기 팝업 — 지금까지 한 일 / 결정(확인)할 것 ────────────────────────────
+// 매니저 DB 와 연결 세션의 마지막 답에 기록된 글만 옮긴다. 요약·추천을 화면이 지어내지 않는다
+
+export function decisionSections(item) {
+  const popup = item.popup || {};
+  const confirm = item.state === "confirm";
+  const done = [{ text: popup.detail }];
+  if (popup.plan) {
+    done.push({ label: t("manager.popupPlan", { status: popup.plan_status || "-" }), text: popup.plan });
+  }
+  if (confirm && popup.reason) done.push({ label: t("manager.popupResult"), text: popup.reason });
+  const decide = [{ text: popup.next_step }];
+  if (popup.open_target) decide.push({ label: t("manager.popupOutput"), text: popup.open_target });
+  if (popup.reply_tail) {
+    const head = popup.reply_from === "dashboard_head";
+    decide.push({
+      label: head ? t("manager.popupReplyHead") : t("manager.popupReply"),
+      text: popup.reply_tail,
+      quote: true,
+    });
+  }
+  const sections = [
+    { title: t("manager.popupDone"), parts: done },
+    { title: confirm ? t("manager.popupConfirm") : t("manager.popupDecide"), parts: decide },
+  ];
+  if (popup.source_ref) sections.push({ title: t("manager.popupSource"), parts: [{ text: popup.source_ref }] });
+  return sections;
+}
+
+function openDecision(item) {
+  const dialog = document.getElementById("mgr-decision-modal");
+  const body = document.getElementById("mgr-decision-body");
+  const head = el("div", "dlg-head");
+  head.append(el("p", "dlg-title", `#${item.id} ${item.title}`));
+  const nodes = [head];
+  for (const section of decisionSections(item)) {
+    const box = el("section", "mgr-pop-sec");
+    box.append(el("h3", "mgr-pop-title", section.title));
+    const filled = section.parts.filter((part) => part.text);
+    if (!filled.length) box.append(el("p", "mgr-pop-none", t("manager.popupNone")));
+    for (const part of filled) {
+      if (part.label) box.append(el("p", "mgr-pop-label", part.label));
+      const text = el(part.quote ? "blockquote" : "p", part.quote ? "mgr-pop-quote" : "mgr-pop-text");
+      text.append(...linkify(part.text).map(notePart));
+      box.append(text);
+    }
+    nodes.push(box);
+  }
+  body.replaceChildren(...nodes);
+  if (!dialog.open) dialog.showModal();
 }
 
 function note(text, className = "mgr-empty") {

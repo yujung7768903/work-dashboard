@@ -221,6 +221,92 @@ class AutomationRowsTest(unittest.TestCase):
         self.assertEqual(self._rows(""), [])
 
 
+class DescriptionTest(unittest.TestCase):
+    """crontab 주석에 '— 설명' 이 없으면 실행하는 스크립트 머리에서 읽는다. 둘 다 없으면 None"""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+
+    def _write(self, rel, text):
+        path = os.path.join(self.home, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as handle:
+            handle.write(text)
+        return path
+
+    def _row(self, line):
+        rows = manager_panel.automations(NOW, crontab_text=line + "\n", manager_home=self.home)
+        return rows[0]
+
+    def test_crontab_comment_wins(self):
+        script = self._write("work/a/a.py", '"""스크립트 설명."""\n')
+        row = self._row(f"# 이름 — 주석 설명\n0 4 * * * /usr/bin/python3 {script}")
+        self.assertEqual((row["desc"], row["desc_from"]), ("주석 설명", "crontab"))
+
+    def test_python_docstring_first_paragraph(self):
+        script = self._write(
+            "work/crumble/crumble.py",
+            '"""크럼블 — 메모장의 요청 줄을 처리한다.\n\n10분 크론으로 돈다."""\nimport os\n',
+        )
+        row = self._row(f"*/10 * * * * cd {self.home}/work/crumble && /usr/bin/flock -n x.lock /usr/bin/python3 crumble.py >> c.log 2>&1")
+        self.assertEqual((row["desc"], row["desc_from"]), ("크럼블 — 메모장의 요청 줄을 처리한다.", "script"))
+
+    def test_shell_head_comment_skips_shebang(self):
+        script = self._write("bin/sync.sh", "#!/bin/bash\n# 볼트 동기화: pull 후 push.\nset -u\n")
+        self.assertEqual(self._row(f"*/30 * * * * {script}")["desc"], "볼트 동기화: pull 후 push.")
+
+    def test_long_paragraph_is_cut_at_sentence(self):
+        long = "둘째 문장은 길다 " * 20
+        script = self._write("bin/x.sh", f"#!/bin/bash\n# 첫 문장.\n# {long}.\n")
+        self.assertEqual(self._row(f"0 1 * * * {script}")["desc"], "첫 문장.")
+
+    def test_subcommand_argparse_help(self):
+        script = self._write(
+            "work/dash/dash.py",
+            '"""대시보드 CLI"""\nsub.add_parser("autorun-tick", help="자율 실행 판정 (5분 크론)")\n',
+        )
+        row = self._row(f"*/5 * * * * /usr/bin/python3 {script} autorun-tick >/dev/null 2>&1")
+        self.assertEqual(row["desc"], "자율 실행 판정 (5분 크론)")
+
+    def test_subcommand_docstring_table(self):
+        script = self._write(
+            "work/pcwatch/pcwatch.py",
+            '"""PC 점검.\n\n  fast   (15분) 과점유 프로세스\n  daily  (하루 1회) 디스크\n"""\n',
+        )
+        self.assertEqual(self._row(f"0 12 * * * /usr/bin/python3 {script} daily")["desc"], "(하루 1회) 디스크")
+        # 표에 없는 하위 명령은 머리 첫 문단으로
+        self.assertEqual(self._row(f"0 12 * * * /usr/bin/python3 {script} report")["desc"], "PC 점검.")
+
+    def test_module_run_resolves_against_cd(self):
+        self._write("work/cost/backend/app/collect.py", '"""수집 배치."""\n')
+        row = self._row(f"0 4 * * * cd {self.home}/work/cost/backend && ./.venv/bin/python -m app.collect >> l.log 2>&1")
+        self.assertEqual(row["desc"], "수집 배치.")
+
+    def test_no_description_anywhere_is_none(self):
+        script = self._write("bin/bare.sh", "#!/bin/bash\necho hi\n")
+        row = self._row(f"0 1 * * * {script}")
+        self.assertIsNone(row["desc"])
+        self.assertIsNone(row["desc_from"])
+
+    def test_missing_script_is_none(self):
+        self.assertIsNone(self._row("0 1 * * * /nowhere/gone.py")["desc"])
+
+    def test_head_line_repeating_the_name_is_not_a_description(self):
+        script = self._write("work/jira-autopilot/autopilot.py", '"""Jira 자동화 파일럿.\n\n본문."""\n')
+        row = self._row(f"# Jira 자동화 파일럿\n0 11 * * * /usr/bin/python3 {script} waitcheck")
+        self.assertIsNone(row["desc"])
+
+    def test_sre_check_description_from_free_comment(self):
+        root = os.path.join(self.home, "sre-watch")
+        self._write("sre-watch/run.py", "")
+        self._write("sre-watch/checks/a.sh", "# type: effect\n# goal: 실패율 1% 미만\n# every: 1\n# 훅 24개 제거 효과.\npython3 -\n")
+        rows = manager_panel.automations(
+            NOW, crontab_text=f"30 11 * * * /usr/bin/python3 {root}/run.py run\n", manager_home=self.home
+        )
+        check = next(row for row in rows if row["source"] == "sre-watch")
+        self.assertEqual(check["desc"], "훅 24개 제거 효과.")
+
+
 class DecisionsTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
@@ -229,7 +315,8 @@ class DecisionsTest(unittest.TestCase):
         con = sqlite3.connect(self.db)
         con.execute(
             "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, detail TEXT,"
-            " priority INTEGER, status TEXT, created_at TEXT, updated_at TEXT, hold_until TEXT)"
+            " priority INTEGER, status TEXT, created_at TEXT, updated_at TEXT, hold_until TEXT,"
+            " next_step TEXT, reason TEXT, session_id TEXT)"
         )
         rows = [
             (1, "열린 결정", "decision", "고를 것\n둘째 줄", 2, "open", "2026-11-11T10:00:00", "2026-11-11T10:00:00", None),
@@ -238,7 +325,13 @@ class DecisionsTest(unittest.TestCase):
             (4, "닫힌 결정", "decision", None, 3, "done", "2026-11-10T10:00:00", "2026-11-11T12:00:00", None),
             (5, "미룬 결정", "decision", None, 1, "open", "2026-11-10T10:00:00", "2026-11-10T10:00:00", "2026-11-20T09:00:00"),
         ]
-        con.executemany("INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?)", rows)
+        con.executemany(
+            "INSERT INTO tasks (id, title, kind, detail, priority, status, created_at, updated_at, hold_until)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        con.execute("UPDATE tasks SET next_step='A·B 중 고르기', session_id='sess-1' WHERE id=1")
+        con.execute("UPDATE tasks SET reason='master abc123 반영' WHERE id=3")
         con.commit()
         con.close()
 
@@ -249,6 +342,52 @@ class DecisionsTest(unittest.TestCase):
         self.assertEqual(items[1]["detail"], "고를 것")
         self.assertTrue(items[2]["held"])
         self.assertFalse(items[1]["held"])
+
+    def test_popup_carries_recorded_fields_only(self):
+        items = {item["id"]: item for item in manager_panel.decisions(NOW, manager_home=self.home)}
+        popup = items[1]["popup"]
+        # 목록 줄은 첫 줄만, 팝업은 전문
+        self.assertEqual(popup["detail"], "고를 것\n둘째 줄")
+        self.assertEqual(popup["next_step"], "A·B 중 고르기")
+        self.assertEqual(items[3]["popup"]["reason"], "master abc123 반영")
+        # 없는 칸(plan 등)은 None — 지어내지 않는다
+        self.assertIsNone(popup["plan"])
+        self.assertIsNone(items[5]["popup"]["reply_tail"])
+
+    def test_popup_reply_tail_from_transcript_end(self):
+        root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(root, "proj"))
+        reply = "앞부분 " * 400 + "\n결정: A 를 추천합니다."
+        lines = [
+            {"type": "user", "message": {"content": "해 줘"}},
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": reply}]}},
+            {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash"}]}},
+        ]
+        with open(os.path.join(root, "proj", "sess-1.jsonl"), "w") as handle:
+            handle.write("\n".join(json.dumps(line, ensure_ascii=False) for line in lines) + "\n")
+        from app.services import transcript
+        old_find = transcript.find_path
+        transcript.find_path = lambda sid, root_=None: old_find(sid, root)
+        self.addCleanup(setattr, transcript, "find_path", old_find)
+        item = next(item for item in manager_panel.decisions(NOW, manager_home=self.home) if item["id"] == 1)
+        tail = item["popup"]["reply_tail"]
+        self.assertTrue(tail.endswith("결정: A 를 추천합니다."))
+        self.assertLessEqual(len(tail), manager_panel.REPLY_TAIL_CHARS + 2)
+        self.assertEqual(item["popup"]["reply_from"], "transcript")
+
+    def test_popup_falls_back_to_dashboard_reply_head(self):
+        from app.services import transcript
+        old_find = transcript.find_path
+        transcript.find_path = lambda sid, root_=None: None
+        self.addCleanup(setattr, transcript, "find_path", old_find)
+        con = temp_db()
+        con.execute(
+            "INSERT INTO sessions (claude_session_id, cwd, state, started_at, last_seen_at, last_reply)"
+            " VALUES ('sess-1', '/x', 'active', '2026-11-11T00:00:00', '2026-11-11T00:00:00', '답 앞부분')"
+        )
+        con.commit()
+        item = next(item for item in manager_panel.decisions(NOW, manager_home=self.home, con=con) if item["id"] == 1)
+        self.assertEqual((item["popup"]["reply_tail"], item["popup"]["reply_from"]), ("답 앞부분", "dashboard_head"))
 
     def test_reads_without_writing(self):
         before = os.path.getmtime(self.db)

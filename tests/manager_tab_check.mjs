@@ -5,7 +5,9 @@ import { bootKorean } from "./i18n_boot.mjs";
 
 const node = (tag) => {
   const self = {
-    tag, className: "", textContent: "", title: "", children: [],
+    tag, className: "", textContent: "", title: "", children: [], listeners: {},
+    addEventListener(type, fn) { self.listeners[type] = fn; },
+    showModal() { self.open = true; },
     append(...kids) { self.children.push(...kids); },
     appendChild(kid) { self.children.push(kid); return kid; },
     replaceChildren(...kids) { self.children = kids; },
@@ -15,6 +17,7 @@ const node = (tag) => {
 const elements = {};
 globalThis.document = {
   createElement: node,
+  createTextNode: (text) => ({ textContent: text }),
   getElementById: (id) => (elements[id] ??= node("ul")),
 };
 
@@ -25,7 +28,7 @@ const PAYLOAD = {
     error: null,
     items: [
       {
-        source: "crontab", name: "자율 실행", desc: null, expr: "*/5 * * * *",
+        source: "crontab", name: "자율 실행", desc: "자율 실행 판정 (5분 크론)", desc_from: "script", expr: "*/5 * * * *",
         cycle: { days: { kind: "every" }, time: { kind: "interval", minutes: 5, hours: null } },
         next_at: inMinutes(3), last: { at: agoMinutes(2), status: "ok", detail: null }, command: "dash.py autorun-tick",
       },
@@ -41,7 +44,7 @@ const PAYLOAD = {
         next_at: inMinutes(60 * 15), last: { at: agoMinutes(500), status: "fail", detail: "4%" }, command: "run.py",
       },
       {
-        source: "crontab", name: "skill-prune · tick", expr: "@reboot", cycle: { reboot: true },
+        source: "crontab", name: "skill-prune · tick", desc: null, expr: "@reboot", cycle: { reboot: true },
         next_at: null, last: null, command: "prune.py tick",
       },
     ],
@@ -49,7 +52,20 @@ const PAYLOAD = {
   helpers: { error: "RuntimeError: claude agents 응답 없음", items: [] },
   decisions: {
     error: null,
-    items: [{ id: 87, title: "우선순위 출처", state: "decision", detail: "A 추천", priority: 2, since: agoMinutes(30), held: false }],
+    items: [
+      {
+        id: 87, title: "우선순위 출처", state: "decision", detail: "A 추천", priority: 2, since: agoMinutes(30), held: false,
+        popup: {
+          detail: "todos 에 priority 칸이 없음\n선택지 A·B", next_step: "A 와 B 중 고르기", plan: null,
+          plan_status: null, reason: null, source_ref: null, open_target: "/home/u/x.md",
+          session_id: "s1", reply_tail: "…\nA 를 추천해.", reply_from: "transcript",
+        },
+      },
+      {
+        id: 61, title: "보조 한도", state: "confirm", detail: null, priority: 2, since: agoMinutes(90), held: false,
+        popup: { detail: null, next_step: null, reason: "master 905f617 반영", session_id: null, reply_tail: null },
+      },
+    ],
   },
 };
 globalThis.fetch = async (url) => {
@@ -78,25 +94,57 @@ assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kin
 
 await manager.renderManager();
 
-const rows = elements["mgr-automations"].children;
+const [header, ...rows] = elements["mgr-automations"].children;
+// 세 칸 표: 주기 / 자동화 내용 / 수행 시간 — 머리줄 하나 + 항목마다 한 줄
+assert.deepEqual(header.children.map((cell) => cell.textContent), ["주기", "자동화 내용", "수행 시간"]);
 assert.equal(rows.length, 4, "자동화는 항목마다 한 줄");
-const texts = (row) => {
-  const [main, side] = row.children;
-  return [main.children[0].textContent, main.children[1].textContent, side.children[0].textContent, side.children[1].textContent];
+const cells = (row) => {
+  const [cycle, main, side] = row.children;
+  return [cycle.textContent, main.children[0].textContent, main.children[1].textContent,
+    side.children[0].textContent, side.children[1].textContent];
 };
-assert.deepEqual(texts(rows[0]), ["자율 실행", "5분마다", "3분 후", "성공 2m 전"]);
-assert.deepEqual(texts(rows[1]), ["매니저 주기 점검", "평일 · 8~20시 10분마다", "10분 안", "마지막 알림 14m 전"]);
-assert.equal(texts(rows[2])[0], "SRE 체크 · 훅 차단 실패 1% 미만");
-assert.equal(texts(rows[2])[1], "매일 (11:30)");
-assert.match(rows[2].children[1].children[1].className, /fail/);
-assert.deepEqual(texts(rows[3]).slice(2), ["재부팅 시", "마지막 실행 모름"]);
+// 주기는 맨 왼쪽 칸 — 이름 아래 줄로 내려가지 않는다
+assert.deepEqual(cells(rows[0]), ["5분마다", "자율 실행", "자율 실행 판정 (5분 크론)", "3분 후", "성공 2m 전"]);
+assert.deepEqual(cells(rows[1]), ["평일 · 8~20시 10분마다", "매니저 주기 점검", "설명 없음", "10분 안", "마지막 알림 14m 전"]);
+assert.match(rows[1].children[1].children[1].className, /mgr-nodesc/);
+assert.equal(cells(rows[2])[1], "SRE 체크 · 훅 차단 실패 1% 미만");
+assert.equal(cells(rows[2])[0], "매일 (11:30)");
+assert.match(rows[2].children[2].children[1].className, /fail/);
+assert.deepEqual(cells(rows[3]).slice(0, 1).concat(cells(rows[3]).slice(3)), ["재부팅 시", "재부팅 시", "마지막 실행 모름"]);
 assert.equal(elements["mgr-automations-count"].textContent, "4");
 
 // 보조 세션 칸이 실패해도 그 칸에 사유만 남고 다른 칸은 그려진다
 const helperRows = elements["mgr-helpers"].children;
 assert.equal(helperRows.length, 1);
 assert.match(helperRows[0].textContent, /claude agents 응답 없음/);
-assert.equal(elements["mgr-decisions"].children.length, 1);
-assert.deepEqual(texts(elements["mgr-decisions"].children[0]), ["#87 우선순위 출처", "A 추천", "결정", "30m 전"]);
+const decisionRows = elements["mgr-decisions"].children;
+assert.equal(decisionRows.length, 2);
+const texts = (row) => {
+  const [main, side] = row.children;
+  return [main.children[0].textContent, main.children[1].textContent, side.children[0].textContent, side.children[1].textContent];
+};
+assert.deepEqual(texts(decisionRows[0]), ["#87 우선순위 출처", "A 추천", "결정", "30m 전"]);
+
+// 결정 대기 줄을 누르면 팝업 — 지금까지 한 일 / 결정할 것, 기록된 글만
+decisionRows[0].listeners.click();
+const modal = elements["mgr-decision-modal"];
+assert.equal(modal.open, true);
+const body = elements["mgr-decision-body"].children;
+assert.equal(body[0].children[0].textContent, "#87 우선순위 출처");
+const sectionText = (section) => section.children.map((kid) => kid.textContent || kid.children.map((c) => c.textContent).join("")).join("|");
+assert.equal(body[1].children[0].textContent, "지금까지 한 일");
+assert.match(sectionText(body[1]), /todos 에 priority 칸이 없음/);
+assert.equal(body[2].children[0].textContent, "결정할 것");
+assert.match(sectionText(body[2]), /A 와 B 중 고르기/);
+assert.match(sectionText(body[2]), /연결 세션의 마지막 답 \(끝부분\)/);
+assert.match(sectionText(body[2]), /A 를 추천해/);
+
+// 확인 대기는 '확인할 것', 완료 근거는 한 일 쪽. 비어 있는 칸은 지어내지 않고 '기록 없음'
+const confirmSections = manager.decisionSections(PAYLOAD.decisions.items[1]);
+assert.deepEqual(confirmSections.map((section) => section.title), ["지금까지 한 일", "확인할 것"]);
+decisionRows[1].listeners.click();
+const confirmBody = elements["mgr-decision-body"].children;
+assert.match(sectionText(confirmBody[1]), /완료 근거\|master 905f617 반영/);
+assert.equal(sectionText(confirmBody[2]), "확인할 것|기록 없음");
 
 console.log("ok");

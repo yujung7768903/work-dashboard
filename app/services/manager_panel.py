@@ -56,7 +56,7 @@ def snapshot(part=None, now=None, con=None, **sources):
             now, con=con, **_pick(sources, "crontab_text", "manager_home")
         ),
         "helpers": lambda: helpers(**_pick(sources, "manager_home", "helpers_fn")),
-        "decisions": lambda: decisions(now, **_pick(sources, "manager_home")),
+        "decisions": lambda: decisions(now, con=con, **_pick(sources, "manager_home")),
     }
     return {name: _section(builders[name]) for name in names}
 
@@ -141,8 +141,10 @@ def crontab_entries(text):
             known.setdefault(key, comment)
         else:
             comment, comment_key, attached = None, None, False
+        _, _, rest, _ = _script_of(command)
+        arg = next(iter(_positional(rest)), None)
         entries.append(
-            {"schedule": schedule, "command": command, "comment": label, "key": key, "sub": sub}
+            {"schedule": schedule, "command": command, "comment": label, "key": key, "sub": sub, "arg": arg}
         )
     for entry in entries:
         entry["comment"] = entry["comment"] or known.get(entry["key"])
@@ -195,31 +197,182 @@ def _split_desc(text):
     return parts[0].strip(), (parts[1].strip() if len(parts) > 1 else None)
 
 
+# ── 설명 — crontab 주석에 '— 설명' 이 없으면 실행하는 스크립트에서 읽는다 ─────────────
+# 주석만 보면 주석 없는 줄(resume-limited-jobs·crumble 등)은 이름만 남는다. 설명의 정본은
+# 스크립트 머리(docstring·머리 주석)라 거기서 읽고, 그래도 없으면 None — 화면이 '설명 없음'으로 드러낸다
+
+DESC_MAX = 120  # 한 줄 칸에 들어갈 만큼. 문장 단위로 자르고, 첫 문장이 이보다 길면 그것만
+SCRIPT_READ_MAX = 512 * 1024
+# 1분 폴링마다 스크립트 20여 개를 다시 파싱하지 않게 수정 시각으로 캐시한다
+_script_cache = {}
+HEAD_META = re.compile(r"^(-\*-|shellcheck|vim:|type:|goal:|every:|until:|todo:|manual:)")
+
+
+def describe_entry(entry):
+    """(설명, 출처). 출처는 'crontab'·'script'·None"""
+    if entry["desc"]:
+        return entry["desc"], "crontab"
+    path = script_path(entry["command"])
+    desc = script_description(path, entry.get("arg")) if path else None
+    if desc and not _same_as_name(desc, entry["name"]):
+        return desc, "script"
+    return None, None
+
+
+def _same_as_name(desc, name):
+    # 'Jira 자동화 파일럿.' 처럼 이름을 되풀이할 뿐인 머리 줄은 설명이 아니다
+    return desc.rstrip(". ").strip() in name
+
+
+def script_path(command):
+    """명령이 실행하는 스크립트 파일의 절대 경로. 못 찾으면 None"""
+    cwd, script, _rest, module = _script_of(command)
+    if not script:
+        return None
+    base = os.path.expanduser(cwd) if cwd else None
+    if module:
+        if not base:
+            return None
+        stem = os.path.join(base, *script.split("."))
+        candidates = [stem + ".py", os.path.join(stem, "__main__.py"), os.path.join(stem, "__init__.py")]
+    else:
+        path = os.path.expanduser(script)
+        if not os.path.isabs(path):
+            if not base:
+                return None
+            path = os.path.join(base, path)
+        candidates = [path]
+    return next((path for path in candidates if os.path.isfile(path)), None)
+
+
+def script_description(path, arg=None):
+    """하위 명령(arg)의 설명이 있으면 그것, 없으면 스크립트 머리 설명의 첫 문단"""
+    text, doc = _script_text(path)
+    if text is None:
+        return None
+    if arg:
+        found = _sub_help(text, arg) or _doc_table_line(doc, arg)
+        if found:
+            return _clip(found)
+    paragraph = _first_paragraph(doc)
+    return _clip(paragraph) if paragraph else None
+
+
+def _script_text(path):
+    try:
+        stamp = os.path.getmtime(path)
+    except OSError:
+        return None, None
+    cached = _script_cache.get(path)
+    if cached and cached[0] == stamp:
+        return cached[1], cached[2]
+    try:
+        with open(path, "rb") as handle:
+            text = handle.read(SCRIPT_READ_MAX).decode("utf-8", "replace")
+    except OSError:
+        return None, None
+    doc = head_doc(path, text)
+    _script_cache[path] = (stamp, text, doc)
+    return text, doc
+
+
+def head_doc(path, text):
+    """파이썬이면 모듈 docstring, 아니면(또는 없으면) 맨 위 주석 덩어리. 메타 줄(sre-watch 의 goal: 등)은 뺀다"""
+    first = text.split("\n", 1)[0]
+    if path.endswith(".py") or (first.startswith("#!") and "python" in first):
+        try:
+            doc = ast.get_docstring(ast.parse(text))
+        except (SyntaxError, ValueError):
+            doc = None
+        if doc:
+            return doc
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("#!") and not lines:
+            continue
+        if not line.startswith("#"):
+            if lines or line:
+                break
+            continue
+        body = line.lstrip("#").strip()
+        if HEAD_META.match(body):
+            continue
+        lines.append(body)
+    return "\n".join(lines).strip() or None
+
+
+def _sub_help(text, arg):
+    # argparse 하위 명령의 help= — dash.py autorun-tick 처럼 한 파일이 여러 크론 줄을 맡을 때
+    pattern = r"add_parser\(\s*[\"']" + re.escape(arg) + r"[\"'][^)]*?\bhelp\s*=\s*([\"'])(.+?)\1"
+    match = re.search(pattern, text, re.S)
+    return match.group(2).strip() if match else None
+
+
+def _doc_table_line(doc, arg):
+    # docstring 의 사용법 표 — '  fast   (15분) 과점유…' · 'prune.py tick   크론이 매시 호출…'
+    if not doc:
+        return None
+    pattern = r"^\s*(?:[\w.-]+\.(?:py|sh)\s+)?" + re.escape(arg) + r"\s{2,}(\S.*)$"
+    match = re.search(pattern, doc, re.M)
+    return match.group(1).strip() if match else None
+
+
+def _first_paragraph(doc):
+    if not doc:
+        return None
+    lines = []
+    for line in doc.strip().splitlines():
+        if not line.strip():
+            break
+        lines.append(line.strip())
+    return " ".join(lines) or None
+
+
+def _clip(text):
+    """DESC_MAX 안에 드는 문장까지. 첫 문장부터 넘치면 첫 문장만 (말줄임은 화면이 한다)"""
+    sentences = re.split(r"(?<=\.)\s+", text.strip())
+    kept = sentences[0]
+    for sentence in sentences[1:]:
+        if len(kept) + 1 + len(sentence) > DESC_MAX:
+            break
+        kept = f"{kept} {sentence}"
+    return kept
+
+
+def _script_of(command):
+    """(cd 디렉터리, 스크립트 또는 모듈, 그 뒤 인자들, 모듈인지)"""
+    cwd, tokens = _main_tokens(command)
+    for index, token in enumerate(tokens):
+        if token == "-m" and index + 1 < len(tokens):
+            return cwd, tokens[index + 1], tokens[index + 2:], True
+        if INTERPRETERS.search(token) or token.startswith("-"):
+            continue
+        return cwd, token, tokens[index + 1:], False
+    return cwd, None, [], False
+
+
+def _positional(rest):
+    positional = []
+    for token in rest:
+        if token.startswith("-") or "$" in token:
+            break
+        positional.append(token)
+    return positional
+
+
 def program_of(command):
     """명령에서 (프로그램 이름, 하위 명령). 'cd X &&'·flock·인터프리터·리다이렉트는 걷어낸다.
 
     하위 명령은 스크립트 뒤 첫 인자(tick·report). 인자가 없으면 스크립트·모듈 이름, 옵션이 붙으면
     첫 옵션까지 — 같은 프로그램을 옵션만 달리 부르는 줄을 가르려면 그게 필요하다
     """
-    cwd, tokens = _main_tokens(command)
-    script, rest, module = None, [], False
-    for index, token in enumerate(tokens):
-        if token == "-m" and index + 1 < len(tokens):
-            script, rest, module = tokens[index + 1], tokens[index + 2:], True
-            break
-        if INTERPRETERS.search(token) or token.startswith("-"):
-            continue
-        script, rest = token, tokens[index + 1:]
-        break
+    cwd, script, rest, module = _script_of(command)
     if script is None:
         words = command.split()
         return (words[0] if words else "?"), None
     key = cwd and module and _project_name(os.path.join(cwd, "_"), None) or _project_name(script, cwd)
-    positional = []
-    for token in rest:
-        if token.startswith("-") or "$" in token:
-            break
-        positional.append(token)
+    positional = _positional(rest)
     if positional:
         sub = positional[0]
     else:
@@ -337,10 +490,12 @@ def last_from_log(path):
 
 def _expand(entry, now, con=None):
     """크론 줄 하나 → 화면 줄(들). sre-watch 러너면 그 아래 체크마다 한 줄씩 덧붙인다"""
+    desc, desc_from = describe_entry(entry)
     base = {
         "source": "crontab",
         "name": entry["name"],
-        "desc": entry["desc"],
+        "desc": desc,
+        "desc_from": desc_from,
         "cycle": cron.describe(entry["schedule"]),
         "expr": entry["schedule"],
         "next_at": _iso(cron.next_run(entry["schedule"], now)),
@@ -399,8 +554,12 @@ def sre_watch_checks(root, entry, now):
         if not name.endswith(".sh"):
             continue
         cid = name[:-3]
-        with open(os.path.join(checks_dir, name), encoding="utf-8", errors="replace") as handle:
-            meta = dict(SRE_META.findall(handle.read()))
+        check_path = os.path.join(checks_dir, name)
+        with open(check_path, encoding="utf-8", errors="replace") as handle:
+            body = handle.read()
+        meta = dict(SRE_META.findall(body))
+        # 체크 머리의 메타 아닌 주석 = 무엇을 재는지(어떤 반영의 효과인지)
+        why = _first_paragraph(head_doc(check_path, body))
         until = meta.get("until")
         if until and until < now.date().isoformat():
             continue  # 기한 지난 체크는 러너가 돌리지 않는다
@@ -411,6 +570,8 @@ def sre_watch_checks(root, entry, now):
             {
                 "source": "sre-watch",
                 "name": _sre_name(cid, meta),
+                "desc": _clip(why) if why else None,
+                "desc_from": "script" if why else None,
                 "cycle": {"every_days": every, "manual": manual, "runner": cron.describe(entry["schedule"])},
                 "expr": entry["schedule"],
                 "next_at": None if manual else _iso(_sre_next(entry["schedule"], last, every, now)),
@@ -487,10 +648,13 @@ def manager_check(home, now):
     if not seconds or not hours:
         return None
     on_duty = _on_duty(home)
+    desc = script_description(hook)
     return {
         "source": "manager",
         # 화면 이름은 화면이 언어에 맞춰 단다 (source 로 가른다)
         "name": "manager-check",
+        "desc": desc,
+        "desc_from": "script" if desc else None,
         "cycle": {
             "days": {"kind": "weekdays"},
             "time": {"kind": "interval", "minutes": seconds // 60, "hours": [hours[0], hours[1]]},
@@ -600,43 +764,133 @@ def _run_helpers(home):
 # ── 결정 대기 ────────────────────────────────────────────────────────────────
 
 
-def decisions(now, manager_home=None):
-    """열린 결정(decision)과 사용자 확인 대기(confirm). 읽기 전용 연결로만 읽는다"""
+# 팝업에 그대로 싣는 매니저 DB 칸. 요약·추천을 여기서 지어내지 않는다 — 기록된 것만 보여 준다
+POPUP_FIELDS = ("detail", "next_step", "plan", "plan_status", "reason", "source_ref", "open_target", "session_id")
+# 연결 세션의 마지막 답에서 보여 줄 끝부분. 결정 사항은 보통 답 끝에 있다
+REPLY_TAIL_CHARS = 1500
+# transcript 끝에서 마지막 답을 찾을 때 읽는 양. 도구 결과가 길게 이어진 세션도 대개 이 안에 든다
+REPLY_SCAN_BYTES = 512 * 1024
+
+
+def decisions(now, manager_home=None, con=None):
+    """열린 결정(decision)과 사용자 확인 대기(confirm). 읽기 전용 연결로만 읽는다.
+    con(대시보드 DB)이 있으면 연결 세션의 마지막 답 끝부분을 팝업 재료로 붙인다"""
     home = manager_home or globals()["manager_home"]()
     path = os.path.join(home, "state", "manager.db")
     if not os.path.isfile(path):
         raise FileNotFoundError(f"매니저 DB 가 없음: {path}")
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    con.row_factory = sqlite3.Row
+    manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    manager_con.row_factory = sqlite3.Row
     try:
-        columns = {row["name"] for row in con.execute("PRAGMA table_info(tasks)")}
+        columns = {row["name"] for row in manager_con.execute("PRAGMA table_info(tasks)")}
         wanted = [
             name
-            for name in ("id", "title", "kind", "status", "detail", "priority", "created_at",
-                         "updated_at", "hold_until", "snooze_until", "open_target")
+            for name in ("id", "title", "kind", "status", "priority", "created_at",
+                         "updated_at", "hold_until", "snooze_until") + POPUP_FIELDS
             if name in columns
         ]
-        rows = con.execute(
+        rows = manager_con.execute(
             f"SELECT {', '.join(wanted)} FROM tasks"
             " WHERE (status=? AND kind=?) OR status=?"
             " ORDER BY priority DESC, created_at, id",
             (OPEN_STATUS, DECISION_KIND, CONFIRM_STATUS),
         ).fetchall()
     finally:
-        con.close()
+        manager_con.close()
     stamp = now.isoformat(timespec="seconds")
-    return [
-        {
-            "id": row["id"],
-            "title": row["title"],
-            "state": "confirm" if row["status"] == CONFIRM_STATUS else "decision",
-            "detail": _first_line(row["detail"] if "detail" in row.keys() else None),
-            "priority": row["priority"] if "priority" in row.keys() else None,
-            "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
-            "held": _later(row, ("hold_until", "snooze_until"), stamp),
-        }
-        for row in rows
-    ]
+    replies = _session_replies(con, {_get(row, "session_id") for row in rows} - {None})
+    items = []
+    for row in rows:
+        popup = {name: _get(row, name) for name in POPUP_FIELDS}
+        popup["reply_tail"], popup["reply_from"] = _last_reply(popup["session_id"], replies)
+        items.append(
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "state": "confirm" if row["status"] == CONFIRM_STATUS else "decision",
+                "detail": _first_line(_get(row, "detail")),
+                "priority": _get(row, "priority"),
+                "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
+                "held": _later(row, ("hold_until", "snooze_until"), stamp),
+                "popup": popup,
+            }
+        )
+    return items
+
+
+def _get(row, key):
+    return row[key] if key in row.keys() else None
+
+
+def _last_reply(session_id, replies):
+    """(글, 출처). transcript 의 마지막 답 끝부분이 우선 — 결정 사항은 답 끝에 있다.
+    transcript 를 못 찾으면 대시보드 DB 의 last_reply(답 앞 300자뿐)를 '앞부분'으로"""
+    if not session_id:
+        return None, None
+    text = _transcript_last_reply(session_id)
+    if text:
+        return _tail(text), "transcript"
+    head = replies.get(session_id)
+    return (head, "dashboard_head") if head else (None, None)
+
+
+_reply_cache = {}
+
+
+def _transcript_last_reply(session_id):
+    from app.services import transcript
+
+    path = transcript.find_path(session_id)
+    if not path:
+        return None
+    stamp = os.path.getmtime(path)
+    cached = _reply_cache.get(path)
+    if cached and cached[0] == stamp:
+        return cached[1]
+    found = None
+    # parse_line 은 글을 TRANSCRIPT_MAX_CHARS 로 앞에서 자른다 — 끝이 필요해 블록을 직접 읽는다
+    for line in reversed(transcript.tail(path, REPLY_SCAN_BYTES)):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("type") != "assistant" or entry.get("isSidechain"):
+            continue
+        text = transcript._text((entry.get("message") or {}).get("content"), collapse=False)
+        if text:
+            found = text
+            break
+    _reply_cache[path] = (stamp, found)
+    return found
+
+
+def _session_replies(con, session_ids):
+    """대시보드 DB 의 세션 마지막 답. 대시보드 DB 가 없거나 칸이 없으면 빈 dict"""
+    if con is None or not session_ids:
+        return {}
+    marks = ",".join("?" * len(session_ids))
+    try:
+        rows = con.execute(
+            f"SELECT claude_session_id, last_reply FROM sessions WHERE claude_session_id IN ({marks})",
+            tuple(session_ids),
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    return {row[0]: row[1] for row in rows if row[1]}
+
+
+def _tail(text, limit=REPLY_TAIL_CHARS):
+    """끝 limit 자. 잘리면 줄 경계에서 시작해 앞이 잘렸음을 표시한다"""
+    if not text:
+        return None
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text[-limit:]
+    newline = cut.find("\n")
+    if 0 <= newline < limit // 2:
+        cut = cut[newline + 1:]
+    return "…\n" + cut
 
 
 def _first_line(text, limit=200):

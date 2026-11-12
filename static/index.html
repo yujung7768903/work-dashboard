@@ -473,6 +473,12 @@
     </div>
   </dialog>
 
+  <!-- 매니저 탭 결정 대기 줄을 누르면 연다. 매니저 DB 에 기록된 글만 옮긴다 (static/js/manager.js) -->
+  <dialog id="mgr-decision-modal">
+    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
+    <div id="mgr-decision-body"></div>
+  </dialog>
+
   <!-- 작업 위치를 못 정했을 때만 연다 — 할일 케밥의 "시작" 과 자율 수행 후보의 위치 미정 칩 (static/js/browse.js) -->
   <dialog id="dir-browse-modal">
     <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
