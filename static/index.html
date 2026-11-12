@@ -385,21 +385,25 @@
         </div>
       </dialog>
 
-      <!-- 매니저 탭. 보기 전용 — 켜고 끄는 스위치는 없다 (static/js/manager.js) -->
+      <!-- 매니저 탭. 보기 전용 — 켜고 끄는 스위치는 없다 (static/js/manager.js).
+           보조 세션이 맨 위 — 지금 움직이는 것부터 본다. 칸마다 10줄씩 페이지로 넘긴다 -->
       <section id="tab-manager" class="tab" hidden>
+        <h2 class="ar-head mgr-head"><span data-i18n="manager.helpers"></span>
+          <span class="mgr-count" id="mgr-helpers-count"></span></h2>
+        <ul id="mgr-helpers" class="mgr-list"></ul>
+        <nav class="mgr-pager" id="mgr-helpers-pager" hidden></nav>
+
         <h2 class="ar-head mgr-head"><span data-i18n="manager.automations"></span>
           <span class="mgr-count" id="mgr-automations-count"></span></h2>
         <p class="ar-hint" data-i18n="manager.automationsHint"></p>
         <ul id="mgr-automations" class="mgr-list"></ul>
-
-        <h2 class="ar-head mgr-head"><span data-i18n="manager.helpers"></span>
-          <span class="mgr-count" id="mgr-helpers-count"></span></h2>
-        <ul id="mgr-helpers" class="mgr-list"></ul>
+        <nav class="mgr-pager" id="mgr-automations-pager" hidden></nav>
 
         <h2 class="ar-head mgr-head"><span data-i18n="manager.decisions"></span>
           <span class="mgr-count" id="mgr-decisions-count"></span></h2>
         <p class="ar-hint" data-i18n="manager.decisionsHint"></p>
         <ul id="mgr-decisions" class="mgr-list"></ul>
+        <nav class="mgr-pager" id="mgr-decisions-pager" hidden></nav>
       </section>
 
       <section id="tab-usage" class="tab" hidden>

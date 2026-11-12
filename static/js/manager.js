@@ -6,7 +6,13 @@ import { language, t } from "./i18n.js";
 import { formatAge, notePart } from "./sessions.js";
 import { linkify } from "./linkify.js";
 
-const PARTS = ["automations", "helpers", "decisions"];
+// 화면 순서 — 보조 세션이 맨 위 (static/index.html)
+const PARTS = ["helpers", "automations", "decisions"];
+// 칸마다 한 번에 보이는 줄 수. 넘치면 칸 아래 페이지 넘김으로 본다 — 자동화만 27줄이라 아래 칸이 밀려났다
+export const PAGE_SIZE = 10;
+// 칸마다 지금 보는 페이지(0부터)와 마지막으로 받은 응답. 페이지를 넘길 때는 다시 받지 않는다
+const pages = Object.fromEntries(PARTS.map((part) => [part, 0]));
+const sections = {};
 // 다음 실행까지 남은 시간이 분 단위라 1분마다 다시 받는다. 탭을 떠나면 멈춘다 (main.js)
 const POLL_MS = 60000;
 let timer = null;
@@ -52,21 +58,67 @@ export async function renderManager() {
 }
 
 async function renderPart(part) {
-  const list = document.getElementById(`mgr-${part}`);
   let section;
   try {
     section = (await api.getManager(part))[part];
   } catch (error) {
     section = { items: [], error: error.message };
   }
-  const rows = section.items.map(ROW_BUILDERS[part]);
+  sections[part] = section;
   document.getElementById(`mgr-${part}-count`).textContent = section.error
     ? ""
     : String(section.items.length);
+  drawPart(part);
+}
+
+// 지금 페이지의 줄만 그린다. 폴링으로 줄 수가 줄어 보던 페이지가 사라지면 마지막 페이지로
+function drawPart(part) {
+  const section = sections[part];
+  const list = document.getElementById(`mgr-${part}`);
+  const total = pageCount(section.items.length);
+  pages[part] = Math.min(pages[part], total - 1);
+  const start = pages[part] * PAGE_SIZE;
+  const rows = section.items.slice(start, start + PAGE_SIZE).map(ROW_BUILDERS[part]);
   if (section.error) rows.unshift(note(t("manager.partFailed", { error: section.error }), "mgr-error"));
   else if (!rows.length) rows.push(note(EMPTY[part]()));
   else if (part === "automations") rows.unshift(automationHead());
   list.replaceChildren(...rows);
+  drawPager(part, total);
+}
+
+export function pageCount(length) {
+  return Math.max(1, Math.ceil(length / PAGE_SIZE));
+}
+
+// 이전 · 페이지 번호 · 다음. 한 페이지로 끝나면 숨긴다
+function drawPager(part, total) {
+  const pager = document.getElementById(`mgr-${part}-pager`);
+  pager.hidden = total <= 1;
+  if (pager.hidden) return pager.replaceChildren();
+  const current = pages[part];
+  const go = (index) => {
+    pages[part] = index;
+    drawPart(part);
+  };
+  const buttons = [pagerButton(t("manager.pagePrev"), current === 0, () => go(current - 1))];
+  for (let index = 0; index < total; index += 1) {
+    const number = pagerButton(String(index + 1), false, () => go(index));
+    if (index === current) {
+      number.className += " on";
+      number.setAttribute?.("aria-current", "page");
+    }
+    buttons.push(number);
+  }
+  buttons.push(pagerButton(t("manager.pageNext"), current === total - 1, () => go(current + 1)));
+  pager.replaceChildren(...buttons);
+}
+
+function pagerButton(text, disabled, onClick) {
+  const button = el("button", "mgr-page", text);
+  button.type = "button";
+  button.disabled = disabled;
+  button.addEventListener("click", onClick);
+  return button;
 }
 
 // 키를 문자열 그대로 둔다 — 사전 점검(tests/test_language.py)이 코드에서 키를 찾는다

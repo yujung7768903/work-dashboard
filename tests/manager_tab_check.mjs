@@ -147,4 +147,45 @@ const confirmBody = elements["mgr-decision-body"].children;
 assert.match(sectionText(confirmBody[1]), /완료 근거\|master 905f617 반영/);
 assert.equal(sectionText(confirmBody[2]), "확인할 것|기록 없음");
 
+// 칸마다 10줄씩 페이지로 넘긴다. 칸끼리 페이지가 따로 가고, 폴링으로 다시 그려도 보던 페이지가 남는다
+const autoTemplate = PAYLOAD.automations.items[0];
+PAYLOAD.automations.items = Array.from({ length: 23 }, (_, index) => ({ ...autoTemplate, name: `자동화 ${index + 1}` }));
+PAYLOAD.decisions.items = Array.from({ length: 15 }, (_, index) => ({ ...PAYLOAD.decisions.items[0], id: index + 1 }));
+PAYLOAD.helpers = { error: null, items: [{ name: "보조1 | 일", status: "작업 중", doing: "테스트", percent: 40, moved_at: agoMinutes(1) }] };
+await manager.renderManager();
+const autoList = () => elements["mgr-automations"].children;
+const autoNames = () => autoList().slice(1).map((row) => row.children[1].children[0].textContent);
+const pager = (part) => elements[`mgr-${part}-pager`];
+const labels = (part) => pager(part).children.map((button) => button.textContent);
+assert.equal(elements["mgr-automations-count"].textContent, "23", "개수는 전체");
+assert.equal(autoList()[0].children[0].textContent, "주기", "페이지마다 머리줄");
+assert.equal(autoNames().length, 10);
+assert.equal(autoNames()[0], "자동화 1");
+assert.equal(pager("automations").hidden, false);
+assert.deepEqual(labels("automations"), ["이전", "1", "2", "3", "다음"]);
+assert.equal(pager("automations").children[0].disabled, true, "첫 페이지에서 이전은 못 누른다");
+assert.match(pager("automations").children[1].className, /\bon\b/);
+// 한 페이지로 끝나는 칸은 넘김을 숨긴다
+assert.equal(pager("helpers").hidden, true);
+assert.deepEqual(labels("decisions"), ["이전", "1", "2", "다음"]);
+
+pager("automations").children[3].listeners.click(); // 3쪽
+assert.deepEqual(autoNames(), ["자동화 21", "자동화 22", "자동화 23"]);
+assert.equal(pager("automations").children.at(-1).disabled, true, "마지막 페이지에서 다음은 못 누른다");
+assert.equal(elements["mgr-decisions"].children[0].children[0].children[0].textContent, "#1 우선순위 출처", "다른 칸은 그대로");
+pager("decisions").children.at(-1).listeners.click(); // 결정 다음
+assert.equal(elements["mgr-decisions"].children.length, 5);
+assert.equal(autoNames()[0], "자동화 21", "결정 칸을 넘겨도 자동화 칸은 그대로");
+pager("automations").children[0].listeners.click(); // 이전 → 2쪽
+assert.equal(autoNames()[0], "자동화 11");
+
+// 폴링 재렌더 — 보던 페이지 유지. 줄이 줄어 그 페이지가 사라지면 마지막 페이지로
+pager("automations").children[3].listeners.click();
+await manager.renderManager();
+assert.equal(autoNames()[0], "자동화 21");
+PAYLOAD.automations.items = PAYLOAD.automations.items.slice(0, 12);
+await manager.renderManager();
+assert.deepEqual(autoNames(), ["자동화 11", "자동화 12"]);
+assert.deepEqual(labels("automations"), ["이전", "1", "2", "다음"]);
+
 console.log("ok");
