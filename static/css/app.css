@@ -904,6 +904,33 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-chip.confirm { color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--surface)); }
 .mgr-empty, .mgr-error { padding: var(--sp-12) 0; color: var(--muted); font-size: var(--fs-sm); }
 .mgr-error { color: var(--danger); }
+/* 자동화 표 — 주기 / 자동화 내용 / 수행 시간. 같은 주기끼리 왼쪽 칸에서 줄이 맞는다 */
+/* 주기 칸은 폭의 22% 안에서 6~11rem — 고정 폭이면 휴대폰에서 내용 칸이 50px 로 줄었다 */
+.mgr-auto { display: grid; grid-template-columns: clamp(6rem, 22%, 11rem) minmax(0, 1fr) auto; }
+.mgr-colhead {
+  padding: var(--sp-8) 0 var(--sp-4);
+  color: var(--muted); font-size: var(--fs-micro); font-weight: 600;
+}
+.mgr-cycle { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.mgr-row.off .mgr-cycle { color: var(--muted); }
+.mgr-nodesc { font-style: italic; }
+/* 결정 대기 줄은 누르면 상세 팝업이 뜬다 */
+.mgr-click { cursor: pointer; }
+.mgr-click:hover .mgr-title { color: var(--accent); }
+.mgr-click:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#mgr-decision-body { padding: var(--sp-20); overflow: auto; }
+#mgr-decision-body .dlg-title { padding-right: var(--sp-32); }
+.mgr-pop-sec { margin-top: var(--sp-16); }
+.mgr-pop-title { margin: 0 0 var(--sp-8); font-size: var(--fs-sm); font-weight: 700; }
+.mgr-pop-label { margin: var(--sp-8) 0 var(--sp-4); color: var(--muted); font-size: var(--fs-sm); font-weight: 600; }
+.mgr-pop-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mgr-pop-quote {
+  margin: 0; padding: var(--sp-8) var(--sp-12); max-height: 16rem; overflow: auto;
+  border-left: 3px solid var(--line); background: var(--softer);
+  border-radius: var(--r-ctl); font-size: var(--fs-sm);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.mgr-pop-none { margin: 0; color: var(--muted); font-size: var(--fs-sm); }
 
 /* ── 자율 수행 탭 ────────────────────────────────────────────────────────── */
 /* 스위치와 주기를 한 줄로 — 켜짐 여부와 마지막 tick 을 화면 맨 위에서 한 번에 읽는다 */
@@ -1202,7 +1229,8 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 #session-modal[open],
 #todo-add-modal[open],
 #ws-edit-modal[open],
-#dir-browse-modal[open] {
+#dir-browse-modal[open],
+#mgr-decision-modal[open] {
   position: fixed; inset: 0; margin: auto;
   display: flex; flex-direction: column;
   width: min(620px, calc(100vw - var(--sp-24))); max-height: 80vh; overflow: hidden;
@@ -1211,15 +1239,16 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 }
 /* 팝업이 열린 동안 뒤 화면은 고정. 스크롤은 팝업 본문만 갖는다 */
 html:has(#session-modal[open]), html:has(#todo-add-modal[open]), html:has(#ws-edit-modal[open]),
-html:has(#dir-browse-modal[open]) {
+html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
   overflow: hidden;
 }
 #session-modal::backdrop, #todo-add-modal::backdrop, #ws-edit-modal::backdrop,
-#dir-browse-modal::backdrop {
+#dir-browse-modal::backdrop, #mgr-decision-modal::backdrop {
   background: rgba(0, 23, 51, 0.45);
 }
 /* 닫기 폼은 자리를 차지하지 않는다 (전역 form 마진이 팝업 위에 여백을 만들었음) */
-#session-modal form, #todo-add-modal form, #ws-edit-modal form, #dir-browse-modal form { margin: 0; }
+#session-modal form, #todo-add-modal form, #ws-edit-modal form, #dir-browse-modal form,
+#mgr-decision-modal form { margin: 0; }
 /* 워크스페이스 수정 팝업 본문. 편집 카드의 그림자·여백은 팝업이 대신 갖는다 */
 #ws-edit-body { padding: var(--sp-20); overflow: auto; }
 #ws-edit-body .ws-card { box-shadow: none; padding: 0; }

@@ -384,7 +384,7 @@ function noteBody(value) {
   return body;
 }
 
-function notePart({ type, value }) {
+export function notePart({ type, value }) {
   if (type === "text") return document.createTextNode(value);
   if (type === "url") {
     const link = element("a", "note-link", value);
