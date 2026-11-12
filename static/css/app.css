@@ -937,6 +937,56 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 끝 페이지의 ‹ · › — 자리는 남기고 흐리게. 전역 disabled 색(--line)은 배경에 묻혀 버튼이 없는 것처럼 보였다 */
 .mgr-page:disabled { background: transparent; color: var(--muted); opacity: 0.35; }
 .mgr-page:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 도구 목록 — 휴대폰 '앱 및 서비스 연결하기' 화면처럼. 위에 분류 칩·검색, '연결됨' 줄, 아래 목록.
+   칩은 페이지 넘김과 같은 면 없는 문법: 평소엔 글자만, hover 에 옅은 면, 고른 칩만 액센트 틴트 */
+.mgr-tools-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--sp-8); margin-bottom: var(--sp-8);
+}
+.mgr-cats { display: flex; flex-wrap: wrap; gap: var(--sp-4); min-width: 0; }
+.mgr-cat {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: transparent; color: var(--muted); font-size: var(--fs-sm); white-space: nowrap;
+}
+.mgr-cat:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.mgr-cat.on, .mgr-cat.on:hover:not(:disabled) { background: var(--softer); color: var(--accent); font-weight: 700; }
+.mgr-cat:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mgr-search {
+  display: flex; align-items: center; gap: var(--sp-4); flex: 0 1 14rem; min-width: 8rem;
+  padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  background: var(--surface); box-shadow: var(--shadow-card); color: var(--muted);
+}
+.mgr-search input {
+  flex: 1; min-width: 0; padding: var(--sp-4) 0; border: none; background: transparent;
+  font-size: var(--fs-sm);
+}
+.mgr-search input:focus { box-shadow: none; }
+.mgr-search:focus-within { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+/* '연결됨' 줄 — 연결된 외부 도구의 아이콘 묶음과 개수, 오른쪽 끝에 확인 시각 */
+/* 좁은 폭에서는 확인 시각이 다음 줄로 내려간다 — 한 줄에 우겨 넣으면 말줄임으로 잘렸다 */
+.mgr-connected {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-8);
+  padding: var(--sp-4) 0 var(--sp-8);
+}
+.mgr-connected[hidden] { display: none; }
+.mgr-connected-label { font-weight: 700; white-space: nowrap; }
+.mgr-ico-stack { display: flex; gap: var(--sp-4); min-width: 0; overflow: hidden; }
+.mgr-connected-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.mgr-checked { margin-left: auto; white-space: nowrap; }
+/* 둥근 아이콘 — 상표 이미지 대신 분류 색의 글자 */
+.mgr-ico {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center;
+  border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 700; line-height: 1;
+  --ico: var(--muted);
+  color: var(--ico); background: color-mix(in srgb, var(--ico) 14%, var(--surface));
+}
+.mgr-ico.sm { width: 22px; height: 22px; font-size: var(--fs-micro); }
+.mgr-ico.work { --ico: var(--accent); }
+.mgr-ico.talk { --ico: var(--good); }
+.mgr-ico.infra { --ico: var(--warn); }
+.mgr-ico.command { --ico: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.05em; }
+.mgr-chip.ok { color: var(--good); }
+.mgr-chip.failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--surface)); }
 /* 결정 대기 줄은 누르면 상세 팝업이 뜬다 */
 .mgr-click { cursor: pointer; }
 .mgr-click:hover .mgr-title { color: var(--accent); }

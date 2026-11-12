@@ -410,8 +410,12 @@ class SnapshotTest(unittest.TestCase):
         def broken(_home):
             raise RuntimeError("claude agents 응답 없음")
 
-        payload = manager_panel.snapshot(now=NOW, crontab_text="", manager_home=home, helpers_fn=broken)
+        payload = manager_panel.snapshot(
+            now=NOW, crontab_text="", manager_home=home, helpers_fn=broken, tools_external_fn=lambda: ([], None)
+        )
         self.assertIn("claude agents 응답 없음", payload["helpers"]["error"])
+        # 매니저가 없는 PC 에서도 도구 칸은 외부 연결만으로 뜬다
+        self.assertEqual(payload["tools"], {"items": [], "error": None})
         self.assertIsNone(payload["automations"]["error"])
         self.assertIn("manager.db", payload["decisions"]["error"])
 
