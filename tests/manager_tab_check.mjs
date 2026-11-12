@@ -156,7 +156,8 @@ await manager.renderManager();
 const autoList = () => elements["mgr-automations"].children;
 const autoNames = () => autoList().slice(1).map((row) => row.children[1].children[0].textContent);
 const pager = (part) => elements[`mgr-${part}-pager`];
-const labels = (part) => pager(part).children.map((button) => button.textContent);
+// 이전·다음은 아이콘이라 글자가 없고 이름은 title 에 있다
+const labels = (part) => pager(part).children.map((button) => button.title || button.textContent);
 assert.equal(elements["mgr-automations-count"].textContent, "23", "개수는 전체");
 assert.equal(autoList()[0].children[0].textContent, "주기", "페이지마다 머리줄");
 assert.equal(autoNames().length, 10);
@@ -165,6 +166,8 @@ assert.equal(pager("automations").hidden, false);
 assert.deepEqual(labels("automations"), ["이전", "1", "2", "3", "다음"]);
 assert.equal(pager("automations").children[0].disabled, true, "첫 페이지에서 이전은 못 누른다");
 assert.match(pager("automations").children[1].className, /\bon\b/);
+assert.match(pager("automations").children[0].innerHTML, /<svg/, "이전은 글자 대신 chevron 아이콘");
+assert.equal(pager("automations").children[0].textContent, "", "이전 버튼에 글자가 없다");
 // 한 페이지로 끝나는 칸은 넘김을 숨긴다
 assert.equal(pager("helpers").hidden, true);
 assert.deepEqual(labels("decisions"), ["이전", "1", "2", "다음"]);

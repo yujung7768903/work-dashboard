@@ -447,12 +447,8 @@ export function labelStrip(todo) {
   return strip;
 }
 
-// 사이드바 메뉴와 같은 16 격자 · currentColor 스트로크 아이콘. 펼치면 CSS 로 90도 돌린다.
-// 워크트리 탭의 커밋 토글이 쓴다
-export const CHEVRON_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-  <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor"
-        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>`;
+// 워크트리 탭의 커밋 토글이 쓴다 — 정의는 static/js/icons.js
+export { CHEVRON_SVG } from "./icons.js";
 
 // 위치를 모르는 워크스페이스는 서버가 reason.noCwd 로 막는다. 그때만 작업 디렉토리를
 // 물어 다시 시도한다 — 한 번 성공하면 그 세션이 위치를 기록해 다음부터는 안 물어도 된다

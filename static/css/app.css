@@ -914,19 +914,29 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-cycle { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .mgr-row.off .mgr-cycle { color: var(--muted); }
 .mgr-nodesc { font-style: italic; }
-/* 칸 아래 페이지 넘김 — 이전 · 번호 · 다음. 칸마다 따로 넘어간다 */
+/* 칸 아래 페이지 넘김 — ‹ · 번호 · ›. 칸마다 따로 넘어간다.
+   면 없는 가벼운 형태: 평소엔 글자·아이콘만 있고 hover 에만 옅은 원이 뜬다(.icon-btn 과 같은 문법).
+   지금 페이지만 액센트 틴트 원 — 열 수 아이콘의 .active 와 같은 표시.
+   회색 면 버튼을 줄지어 두면 목록보다 넘김이 먼저 눈에 걸렸다 */
 .mgr-pager {
-  display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-4);
-  margin-top: var(--sp-8);
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: var(--sp-4); margin-top: var(--sp-8);
 }
 .mgr-pager[hidden] { display: none; }
 .mgr-page {
-  min-width: 2rem; padding: var(--sp-4) var(--sp-8);
-  font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+  min-width: var(--icon-box); height: var(--icon-box); padding: 0 var(--sp-4);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-pill); background: transparent; color: var(--muted);
+  font-size: var(--fs-sm); line-height: 1; font-variant-numeric: tabular-nums;
 }
-.mgr-page.on { background: var(--softer); color: var(--accent); font-weight: 700; }
-/* 끝 페이지의 이전·다음 — 전역 disabled 색(--line)은 배경에 묻혀 버튼이 없는 것처럼 보였다 */
-.mgr-page:disabled { background: transparent; color: var(--muted); opacity: 0.5; }
+.mgr-page:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.mgr-page.on, .mgr-page.on:hover:not(:disabled) { background: var(--softer); color: var(--accent); font-weight: 700; }
+/* 화살표는 번호보다 한 단 진하게 — 누를 수 있는 것과 못 누르는 것이 색으로 갈린다 */
+.mgr-arrow { padding: 0; color: var(--fg); }
+.mgr-arrow.prev svg { transform: scaleX(-1); }
+/* 끝 페이지의 ‹ · › — 자리는 남기고 흐리게. 전역 disabled 색(--line)은 배경에 묻혀 버튼이 없는 것처럼 보였다 */
+.mgr-page:disabled { background: transparent; color: var(--muted); opacity: 0.35; }
+.mgr-page:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* 결정 대기 줄은 누르면 상세 팝업이 뜬다 */
 .mgr-click { cursor: pointer; }
 .mgr-click:hover .mgr-title { color: var(--accent); }
