@@ -5,6 +5,7 @@ import * as api from "./api.js";
 import { language, t } from "./i18n.js";
 import { formatAge, notePart } from "./sessions.js";
 import { linkify } from "./linkify.js";
+import { CHEVRON_SVG } from "./icons.js";
 
 // 화면 순서 — 보조 세션이 맨 위 (static/index.html)
 const PARTS = ["helpers", "automations", "decisions"];
@@ -90,7 +91,8 @@ export function pageCount(length) {
   return Math.max(1, Math.ceil(length / PAGE_SIZE));
 }
 
-// 이전 · 페이지 번호 · 다음. 한 페이지로 끝나면 숨긴다
+// ‹ · 페이지 번호 · ›. 한 페이지로 끝나면 숨긴다.
+// 이전·다음은 글자 대신 chevron 아이콘이고 이름은 title·aria-label 로 준다 — 번호와 글자가 섞이면 줄이 들쭉날쭉했다
 function drawPager(part, total) {
   const pager = document.getElementById(`mgr-${part}-pager`);
   pager.hidden = total <= 1;
@@ -100,21 +102,30 @@ function drawPager(part, total) {
     pages[part] = index;
     drawPart(part);
   };
-  const buttons = [pagerButton(t("manager.pagePrev"), current === 0, () => go(current - 1))];
+  const buttons = [arrowButton("prev", t("manager.pagePrev"), current === 0, () => go(current - 1))];
   for (let index = 0; index < total; index += 1) {
-    const number = pagerButton(String(index + 1), false, () => go(index));
+    const number = pagerButton("mgr-page", false, () => go(index));
+    number.textContent = String(index + 1);
     if (index === current) {
       number.className += " on";
       number.setAttribute?.("aria-current", "page");
     }
     buttons.push(number);
   }
-  buttons.push(pagerButton(t("manager.pageNext"), current === total - 1, () => go(current + 1)));
+  buttons.push(arrowButton("next", t("manager.pageNext"), current === total - 1, () => go(current + 1)));
   pager.replaceChildren(...buttons);
 }
 
-function pagerButton(text, disabled, onClick) {
-  const button = el("button", "mgr-page", text);
+function arrowButton(side, label, disabled, onClick) {
+  const button = pagerButton(`mgr-page mgr-arrow ${side}`, disabled, onClick);
+  button.innerHTML = CHEVRON_SVG;
+  button.title = label;
+  button.setAttribute?.("aria-label", label);
+  return button;
+}
+
+function pagerButton(className, disabled, onClick) {
+  const button = el("button", className);
   button.type = "button";
   button.disabled = disabled;
   button.addEventListener("click", onClick);
