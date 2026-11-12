@@ -80,6 +80,10 @@ class CronTest(unittest.TestCase):
                 "days": {"kind": "dom", "values": [5]},
                 "time": {"kind": "at", "times": ["05:00"]},
             },
+            "0 */2 * * *": {
+                "days": {"kind": "every"},
+                "time": {"kind": "interval", "every_hours": 2, "hours": None},
+            },
             "@reboot": {"reboot": True},
             "nope": {"raw": "nope"},
         }
