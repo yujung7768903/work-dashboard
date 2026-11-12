@@ -87,7 +87,7 @@ def describe(expr):
 
     {"reboot": True} 이거나 {"days": {...}, "time": {...}}. 못 읽으면 {"raw": expr}
       days: every · weekdays · dow(values) · dom(values) · custom
-      time: interval(minutes, hours) · hourly(minute, hours) · at(times) · custom
+      time: interval(minutes | every_hours, hours) · hourly(minute, hours) · at(times) · custom
     hours 가 None 이면 하루 종일, 아니면 [시작, 끝] (연속 범위일 때만)
     """
     expr = expr.strip()
@@ -123,6 +123,9 @@ def _describe_time(schedule):
     step = _even_step(minutes)
     if step and (len(hours) == 24 or span):
         return {"kind": "interval", "minutes": step, "hours": span}
+    hour_step = _even_step(hours, 24)
+    if minutes == [0] and hour_step and hour_step > 1:
+        return {"kind": "interval", "every_hours": hour_step, "hours": None}
     if len(minutes) == 1 and len(hours) > 3 and (len(hours) == 24 or span):
         return {"kind": "hourly", "minute": minutes[0], "hours": span}
     times = [f"{hour:02d}:{minute:02d}" for hour in hours for minute in minutes]
@@ -138,12 +141,12 @@ def _span(values):
     return None
 
 
-def _even_step(values):
-    """0 부터 같은 간격으로 60 을 나눠 떨어지게 채운 목록이면 그 간격 (매분이면 1)"""
+def _even_step(values, cycle=60):
+    """0 부터 같은 간격으로 cycle(분 60·시 24)을 나눠 떨어지게 채운 목록이면 그 간격 (빠짐없으면 1)"""
     if len(values) < 2 or values[0] != 0:
         return None
     step = values[1] - values[0]
-    if values == list(range(0, 60, step)) and 60 % step == 0:
+    if values == list(range(0, cycle, step)) and cycle % step == 0:
         return step
     return None
 

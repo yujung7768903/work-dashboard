@@ -257,22 +257,50 @@ function span(seconds) {
 }
 
 // ── 주기 → 사람 말 ────────────────────────────────────────────────────────
+// 한 형식으로만 쓴다 — 칸마다 표기가 다르면 같은 주기끼리 눈으로 묶이지 않는다.
+//   반복형: '10분마다'·'2시간마다'·'매시 07분', 요일·시간 범위는 뒤 괄호 '10분마다 (평일 08~20시)'
+//   시각형: '매일 11:30'·'평일 08:00, 18:00'·'매주 수·목 15:00'·'매월 5일 05:00'
+//   '부팅 시'. 옮기지 못하는 모양만 crontab 원문
 
 export function cycleText(cycle, expr) {
   if (!cycle) return expr || "";
   if (cycle.reboot) return t("manager.onReboot");
   if (cycle.raw) return cycle.raw;
-  if (cycle.every_days != null) {
-    if (cycle.manual) return t("manager.cycleManual");
-    const runner = cycleText(cycle.runner);
-    return cycle.every_days === 1
-      ? t("manager.cycleDailyCheck", { runner })
-      : t("manager.cycleEveryDays", { count: cycle.every_days, runner });
+  if (cycle.every_days != null) return checkCycleText(cycle, expr);
+  return scheduleText(cycle.days, cycle.time) ?? (expr || "");
+}
+
+// SRE 체크 — 러너 크론 시각에 every_days 일마다 돈다. 하루 한 번이면 러너 표기 그대로
+function checkCycleText(cycle, expr) {
+  if (cycle.manual) return t("manager.cycleManual");
+  const runner = cycle.runner;
+  if (cycle.every_days === 1) return cycleText(runner, expr);
+  if (runner?.time?.kind !== "at") return cycleText(runner, expr);
+  return t("manager.cycleEveryDays", { count: cycle.every_days, times: runner.time.times.join(", ") });
+}
+
+function scheduleText(days, time) {
+  const dayWord = daysText(days);
+  if (dayWord === null) return null;
+  switch (time?.kind) {
+    case "at":
+      return `${dayWord || t("manager.daysEvery")} ${time.times.join(", ")}`;
+    case "interval":
+    case "hourly": {
+      const base = repeatText(time);
+      const range = time.hours ? t("manager.hourRange", { from: pad(time.hours[0]), to: pad(time.hours[1]) }) : "";
+      const scope = [dayWord, range].filter(Boolean).join(" ");
+      return scope ? t("manager.cycleScope", { cycle: base, scope }) : base;
+    }
+    default:
+      return null;
   }
-  const days = daysText(cycle.days);
-  const time = timeText(cycle.time);
-  if (days === null || time === null) return expr || "";
-  return days ? `${days} · ${time}` : time;
+}
+
+function repeatText(time) {
+  if (time.kind === "hourly") return t("manager.hourlyAt", { minute: pad(time.minute) });
+  if (time.every_hours) return t("manager.everyHours", { count: time.every_hours });
+  return t("manager.everyMinutes", { count: time.minutes });
 }
 
 function daysText(days) {
@@ -282,7 +310,7 @@ function daysText(days) {
     case "weekdays":
       return t("manager.daysWeekdays");
     case "dow":
-      return t("manager.daysWeekly", { days: days.values.map(weekdayName).join(", ") });
+      return t("manager.daysWeekly", { days: days.values.map(weekdayName).join("·") });
     case "dom":
       return t("manager.daysMonthly", { days: days.values.join(", ") });
     default:
@@ -290,19 +318,8 @@ function daysText(days) {
   }
 }
 
-function timeText(time) {
-  const hours = time?.hours ? t("manager.hourRange", { from: time.hours[0], to: time.hours[1] }) : "";
-  const join = (text) => (hours ? `${hours} ${text}` : text);
-  switch (time?.kind) {
-    case "interval":
-      return join(t("manager.everyMinutes", { count: time.minutes }));
-    case "hourly":
-      return join(t("manager.hourlyAt", { minute: String(time.minute).padStart(2, "0") }));
-    case "at":
-      return time.times.join(", ");
-    default:
-      return null;
-  }
+function pad(value) {
+  return String(value).padStart(2, "0");
 }
 
 // 0=일요일. 2026-11-08 은 일요일이라 그 날짜에 요일 수를 더해 이름을 얻는다

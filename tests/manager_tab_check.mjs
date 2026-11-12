@@ -78,11 +78,11 @@ const manager = await import("../static/js/manager.js");
 
 // 주기 → 사람 말
 const cases = [
-  [{ days: { kind: "weekdays" }, time: { kind: "interval", minutes: 10, hours: [8, 20] } }, "평일 · 8~20시 10분마다"],
+  [{ days: { kind: "weekdays" }, time: { kind: "interval", minutes: 10, hours: [8, 20] } }, "10분마다 (평일 08~20시)"],
   [{ days: { kind: "every" }, time: { kind: "hourly", minute: 7, hours: null } }, "매시 07분"],
-  [{ days: { kind: "dom", values: [5] }, time: { kind: "at", times: ["05:00"] } }, "매월 5일 · 05:00"],
-  [{ days: { kind: "weekdays" }, time: { kind: "at", times: ["08:00", "09:00"] } }, "평일 · 08:00, 09:00"],
-  [{ reboot: true }, "재부팅 시"],
+  [{ days: { kind: "dom", values: [5] }, time: { kind: "at", times: ["05:00"] } }, "매월 5일 05:00"],
+  [{ days: { kind: "weekdays" }, time: { kind: "at", times: ["08:00", "09:00"] } }, "평일 08:00, 09:00"],
+  [{ reboot: true }, "부팅 시"],
   [{ raw: "1 2 3" }, "1 2 3"],
   // 못 옮기는 모양은 원문 표현식으로
   [{ days: { kind: "custom" }, time: { kind: "at", times: ["01:00"] } }, "0 1 * 3 *"],
@@ -90,7 +90,7 @@ const cases = [
 for (const [cycle, expected] of cases) {
   assert.equal(manager.cycleText(cycle, "0 1 * 3 *"), expected);
 }
-assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kind: "at", times: ["15:00"] } }), /^매주 수 · 15:00$/);
+assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kind: "at", times: ["15:00"] } }), /^매주 수 15:00$/);
 
 await manager.renderManager();
 
@@ -105,12 +105,12 @@ const cells = (row) => {
 };
 // 주기는 맨 왼쪽 칸 — 이름 아래 줄로 내려가지 않는다
 assert.deepEqual(cells(rows[0]), ["5분마다", "자율 실행", "자율 실행 판정 (5분 크론)", "3분 후", "성공 2m 전"]);
-assert.deepEqual(cells(rows[1]), ["평일 · 8~20시 10분마다", "매니저 주기 점검", "설명 없음", "10분 안", "마지막 알림 14m 전"]);
+assert.deepEqual(cells(rows[1]), ["10분마다 (평일 08~20시)", "매니저 주기 점검", "설명 없음", "10분 안", "마지막 알림 14m 전"]);
 assert.match(rows[1].children[1].children[1].className, /mgr-nodesc/);
 assert.equal(cells(rows[2])[1], "SRE 체크 · 훅 차단 실패 1% 미만");
-assert.equal(cells(rows[2])[0], "매일 (11:30)");
+assert.equal(cells(rows[2])[0], "매일 11:30");
 assert.match(rows[2].children[2].children[1].className, /fail/);
-assert.deepEqual(cells(rows[3]).slice(0, 1).concat(cells(rows[3]).slice(3)), ["재부팅 시", "재부팅 시", "마지막 실행 모름"]);
+assert.deepEqual(cells(rows[3]).slice(0, 1).concat(cells(rows[3]).slice(3)), ["부팅 시", "부팅 시", "마지막 실행 모름"]);
 assert.equal(elements["mgr-automations-count"].textContent, "4");
 
 // 보조 세션 칸이 실패해도 그 칸에 사유만 남고 다른 칸은 그려진다
