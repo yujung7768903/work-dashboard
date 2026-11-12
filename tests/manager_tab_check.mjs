@@ -53,15 +53,15 @@ const PAYLOAD = {
   tools: {
     error: null,
     items: [
-      { id: "mcp:rovo", kind: "mcp", name: "Jira·Confluence", source: "claude.ai Atlassian Rovo", category: "work",
+      { id: "mcp:rovo", kind: "mcp", name: "Jira·Confluence", source: "claude.ai Atlassian Rovo", category: "docs", maker: "external",
         desc: "Jira 이슈와 Confluence 페이지 조회·작성", status: "connected", checked_at: agoMinutes(5) },
-      { id: "mcp:discord", kind: "mcp", name: "디스코드", source: "plugin:discord:discord", category: "talk",
+      { id: "mcp:discord", kind: "mcp", name: "디스코드", source: "plugin:discord:discord", category: "talk", maker: "external",
         desc: "매니저 채널로 사용자와 주고받기", status: "connected", checked_at: agoMinutes(5) },
-      { id: "cli:aws", kind: "cli", name: "AWS CLI", source: "aws", category: "infra",
+      { id: "cli:aws", kind: "cli", name: "AWS CLI", source: "aws", category: "infra", maker: "external",
         desc: "AWS 리소스 조회", status: "auth", checked_at: agoMinutes(5) },
-      { id: "mcp:x", kind: "mcp", name: "mystery", source: "mystery", category: "etc",
+      { id: "mcp:x", kind: "mcp", name: "mystery", source: "mystery", category: "etc", maker: null,
         desc: null, status: "unknown", checked_at: agoMinutes(5) },
-      { id: "cmd:open", kind: "command", name: "manager.py open", source: "open", category: "command",
+      { id: "cmd:open", kind: "command", name: "manager.py open", source: "open", category: "command", maker: "inhouse",
         desc: "사용자 PC 에 띄운다", detail: "사용자 PC 에 띄운다 — URL 은 기본 브라우저", status: "available", checked_at: null },
     ],
   },
@@ -162,32 +162,34 @@ const confirmBody = elements["mgr-decision-body"].children;
 assert.match(sectionText(confirmBody[1]), /완료 근거\|master 905f617 반영/);
 assert.equal(sectionText(confirmBody[2]), "확인할 것|기록 없음");
 
-// 도구 목록 — 칩(받은 분류만)·'연결됨' 줄·줄마다 아이콘/이름/설명/상태
+// 도구 목록 — 용도 칩(받은 용도만)·'연결됨' 줄(개수만)·줄마다 이름/설명(같은 줄)/용도/제작 주체/상태
 const chipTexts = () => elements["mgr-tools-cats"].children.map((chip) => chip.textContent);
-const toolNames = () => elements["mgr-tools"].children.map((row) => row.children[1]?.children[0].textContent);
-assert.deepEqual(chipTexts(), ["전체", "업무 도구", "소통", "인프라", "매니저 명령", "기타"]);
+const toolNames = () => elements["mgr-tools"].children.map((row) => row.children[0]?.children[0]?.textContent);
+assert.deepEqual(chipTexts(), ["전체", "메신저·소통", "업무 문서", "인프라·모니터링", "매니저 명령", "기타"]);
 assert.match(elements["mgr-tools-cats"].children[0].className, /\bon\b/);
 assert.equal(elements["mgr-tools-count"].textContent, "5");
 const connected = elements["mgr-tools-connected"];
 assert.equal(connected.hidden, false);
-assert.equal(connected.children[0].textContent, "연결됨");
-assert.deepEqual(connected.children[1].children.map((icon) => icon.title), ["Jira·Confluence", "디스코드"], "연결된 외부 도구만");
-assert.equal(connected.children[2].textContent, "2");
-assert.equal(connected.children[3].textContent, "5m 전 확인");
+// 글자 동그라미 아이콘 묶음은 없다 — 라벨·개수·확인 시각만
+assert.deepEqual(connected.children.map((child) => child.textContent), ["연결됨", "2", "5m 전 확인"], "연결된 외부 도구만 센다");
 const toolRows = elements["mgr-tools"].children;
-const toolCells = (row) => [row.children[0].textContent, row.children[1].children[0].textContent,
-  row.children[1].children[1].textContent, row.children[2].textContent];
-assert.deepEqual(toolCells(toolRows[0]), ["J", "Jira·Confluence", "Jira 이슈와 Confluence 페이지 조회·작성", "연결됨"]);
-assert.deepEqual(toolCells(toolRows[2]), ["A", "AWS CLI", "AWS 리소스 조회", "인증 필요"]);
-assert.deepEqual(toolCells(toolRows[3]), ["M", "mystery", "설명 없음", "확인 안 됨"], "확인 못 한 것은 확인 안 됨, 설명은 지어내지 않음");
-assert.deepEqual(toolCells(toolRows[4]), [">_", "manager.py open", "사용자 PC 에 띄운다", "사용 가능"]);
+const toolCells = (row) => [row.children[0].children[0].textContent, row.children[0].children[1].textContent,
+  ...row.children.slice(1).map((child) => child.textContent)];
+assert.deepEqual(toolCells(toolRows[0]), ["Jira·Confluence", "Jira 이슈와 Confluence 페이지 조회·작성", "업무 문서", "외부", "연결됨"]);
+assert.deepEqual(toolCells(toolRows[2]), ["AWS CLI", "AWS 리소스 조회", "인프라·모니터링", "외부", "인증 필요"]);
+assert.deepEqual(toolCells(toolRows[3]), ["mystery", "설명 없음", "기타", "확인 안 됨"],
+  "확인 못 한 것은 확인 안 됨, 설명·제작 주체는 지어내지 않음");
+assert.deepEqual(toolCells(toolRows[4]), ["manager.py open", "사용자 PC 에 띄운다", "매니저 명령", "사내", "사용 가능"]);
 assert.match(toolRows[4].title, /URL 은 기본 브라우저/, "전문은 줄의 title 로");
-assert.match(toolRows[0].children[0].className, /mgr-ico work/);
+assert.equal(toolRows[0].children[0].className, "mgr-tool-main", "이름과 설명이 한 줄 묶음 안에");
+assert.match(toolRows[4].children[2].className, /mgr-maker inhouse/);
+assert.ok(!toolRows.some((row) => /mgr-ico/.test(row.children[0].className)), "글자 원 아이콘 없음");
 // 보기 전용 — 줄에 버튼·클릭 동작이 없다
 assert.equal(Object.keys(toolRows[0].listeners).length, 0);
-// 칩을 누르면 그 분류만, 다시 전체
+// 칩을 누르면 그 용도만 — 이때 줄의 용도 표시는 빠진다. 다시 전체
 elements["mgr-tools-cats"].children[4].listeners.click();
 assert.deepEqual(toolNames(), ["manager.py open"]);
+assert.deepEqual(toolCells(elements["mgr-tools"].children[0]).slice(2), ["사내", "사용 가능"]);
 assert.equal(elements["mgr-tools-count"].textContent, "5", "개수는 전체 그대로");
 elements["mgr-tools-cats"].children[0].listeners.click();
 assert.equal(toolNames().length, 5);
@@ -196,6 +198,9 @@ const search = elements["mgr-tools-search"];
 search.value = "confluence";
 search.listeners.input();
 assert.deepEqual(toolNames(), ["Jira·Confluence"]);
+search.value = "사내";
+search.listeners.input();
+assert.deepEqual(toolNames(), ["manager.py open"], "제작 주체로도 찾는다");
 search.value = "없는도구";
 search.listeners.input();
 assert.equal(elements["mgr-tools"].children[0].textContent, "맞는 도구가 없습니다");

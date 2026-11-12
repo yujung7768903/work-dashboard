@@ -240,17 +240,24 @@ function decisionRow(item) {
 }
 
 // ── 도구 목록 — 휴대폰 '앱 및 서비스 연결하기' 화면처럼 ─────────────────────────
-// 위에 분류 칩·검색, '연결됨' 줄에 연결된 외부 도구 아이콘과 개수, 아래 줄마다 둥근 아이콘·이름·
-// 한 줄 설명·오른쪽 상태. 보기 전용 — 연결 버튼은 없다. 목록·상태는 서버가 실제 설정에서 읽는다
-// (app/services/manager_tools.py). 분류·검색은 받은 목록을 화면에서 거르기만 한다
+// 위에 용도 칩·검색, '연결됨' 줄에 연결된 외부 도구 개수, 아래 줄마다 이름·설명(같은 줄, 좁으면 말줄임)·
+// 제작 주체 배지·오른쪽 상태. 보기 전용 — 연결 버튼은 없다. 목록·용도·제작 주체·상태는 서버가 정한다
+// (app/services/manager_tools.py). 칩·검색은 받은 목록을 화면에서 거르기만 한다
 
-// 칩 순서. 받은 목록에 있는 분류만 칩으로 낸다
+// 용도 칩 순서. 받은 목록에 있는 용도만 칩으로 낸다
 const TOOL_CATEGORIES = {
-  work: () => t("manager.toolCat.work"),
   talk: () => t("manager.toolCat.talk"),
+  docs: () => t("manager.toolCat.docs"),
+  dev: () => t("manager.toolCat.dev"),
   infra: () => t("manager.toolCat.infra"),
+  data: () => t("manager.toolCat.data"),
   command: () => t("manager.toolCat.command"),
   etc: () => t("manager.toolCat.etc"),
+};
+// 제작 주체 배지. 누가 만들었는지 모르는 것(maker 없음)은 배지를 달지 않는다
+const TOOL_MAKERS = {
+  inhouse: () => t("manager.toolMaker.inhouse"),
+  external: () => t("manager.toolMaker.external"),
 };
 // 상태 → (칩 색, 문구). 확인하지 못한 것은 '확인 안 됨' 그대로 드러낸다
 const TOOL_STATUS = {
@@ -260,8 +267,6 @@ const TOOL_STATUS = {
   failed: ["failed", () => t("manager.toolStatus.failed")],
   unknown: ["", () => t("manager.toolStatus.unknown")],
 };
-// '연결됨' 줄에 겹쳐 보이는 아이콘 수. 나머지는 개수로만
-export const CONNECTED_ICONS = 10;
 const toolFilter = { category: "all", query: "" };
 let searchBound = false;
 
@@ -280,7 +285,8 @@ export function filterTools(items, { category, query }) {
   return items.filter((item) => {
     if (category !== "all" && item.category !== category) return false;
     if (!query) return true;
-    return [item.name, item.desc, item.source].some((text) => text && text.toLowerCase().includes(query));
+    const maker = TOOL_MAKERS[item.maker]?.();
+    return [item.name, item.desc, item.source, maker].some((text) => text && text.toLowerCase().includes(query));
   });
 }
 
@@ -303,46 +309,38 @@ function drawToolsChrome(section) {
   return filterTools(section.items, toolFilter);
 }
 
+// '연결됨' 줄 — 연결된 외부 도구 개수와 확인 시각만. 글자 아이콘 묶음은 정보가 없어 뺐다
 function drawConnected(items) {
   const box = document.getElementById("mgr-tools-connected");
   const connected = items.filter((item) => item.kind !== "command" && item.status === "connected");
   box.hidden = !connected.length;
   if (box.hidden) return box.replaceChildren();
-  const stack = el("span", "mgr-ico-stack");
-  stack.append(...connected.slice(0, CONNECTED_ICONS).map((item) => {
-    const icon = toolIcon(item, "mgr-ico sm");
-    icon.title = item.name;
-    return icon;
-  }));
   const checked = items.find((item) => item.checked_at)?.checked_at;
   box.replaceChildren(
     el("span", "mgr-connected-label", t("manager.toolConnected")),
-    stack,
     el("span", "mgr-connected-count", String(connected.length)),
     el("span", "mgr-sub mgr-checked", checked ? t("manager.toolChecked", { age: formatAge(checked) }) : "")
   );
 }
 
-// 둥근 아이콘 — 상표 이미지 대신 분류 색의 글자. 매니저 명령은 모두 같은 터미널 표시
-function toolIcon(item, className = "mgr-ico") {
-  const mark = item.kind === "command" ? ">_" : Array.from(item.name || "?")[0].toUpperCase();
-  const icon = el("span", `${className} ${item.category}`, mark);
-  icon.setAttribute?.("aria-hidden", "true");
-  return icon;
-}
-
+// 한 줄: [이름 설명……] [용도] [제작 주체] [상태]. 용도는 '전체'로 볼 때만 — 칩으로 거르면 모두 같아 군더더기다
 function toolRow(item) {
   const [tone, label] = TOOL_STATUS[item.status] ?? TOOL_STATUS.unknown;
   const line = el("li", "mgr-row mgr-tool");
+  const maker = TOOL_MAKERS[item.maker];
+  const category = TOOL_CATEGORIES[item.category];
   line.title = [item.name, item.detail || item.desc, item.kind === "command" ? "" : item.source]
     .filter(Boolean)
     .join("\n");
-  const main = el("div", "mgr-main");
   const desc = item.desc
-    ? el("span", "mgr-sub", item.desc)
-    : el("span", "mgr-sub mgr-nodesc", t("manager.noDesc"));
+    ? el("span", "mgr-sub mgr-tool-desc", item.desc)
+    : el("span", "mgr-sub mgr-tool-desc mgr-nodesc", t("manager.noDesc"));
+  const main = el("div", "mgr-tool-main");
   main.append(el("span", "mgr-title", item.name), desc);
-  line.append(toolIcon(item), main, el("span", `mgr-chip ${tone}`.trim(), label()));
+  const tags = [];
+  if (toolFilter.category === "all" && category) tags.push(el("span", "mgr-tool-cat", category()));
+  if (maker) tags.push(el("span", `mgr-maker ${item.maker}`, maker()));
+  line.append(main, ...tags, el("span", `mgr-chip ${tone}`.trim(), label()));
   return line;
 }
 
