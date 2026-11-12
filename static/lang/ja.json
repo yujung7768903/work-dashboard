@@ -441,5 +441,7 @@
   "manager.popupSource": "根拠資料",
   "manager.popupReply": "連携セッションの最後の返答 (末尾)",
   "manager.popupReplyHead": "連携セッションの最後の返答 (先頭 300 文字のみ記録)",
-  "manager.popupNone": "記録なし"
+  "manager.popupNone": "記録なし",
+  "manager.pagePrev": "前へ",
+  "manager.pageNext": "次へ"
 }

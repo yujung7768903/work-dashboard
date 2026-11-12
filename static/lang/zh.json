@@ -441,5 +441,7 @@
   "manager.popupSource": "依据资料",
   "manager.popupReply": "关联会话的最后回复 (末尾)",
   "manager.popupReplyHead": "关联会话的最后回复 (仅记录前 300 字)",
-  "manager.popupNone": "无记录"
+  "manager.popupNone": "无记录",
+  "manager.pagePrev": "上一页",
+  "manager.pageNext": "下一页"
 }

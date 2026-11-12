@@ -441,5 +441,7 @@
   "manager.popupSource": "References",
   "manager.popupReply": "Linked session's last reply (end)",
   "manager.popupReplyHead": "Linked session's last reply (only the first 300 characters recorded)",
-  "manager.popupNone": "Not recorded"
+  "manager.popupNone": "Not recorded",
+  "manager.pagePrev": "Prev",
+  "manager.pageNext": "Next"
 }
