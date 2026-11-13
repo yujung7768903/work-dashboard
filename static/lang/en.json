@@ -392,6 +392,8 @@
   "manager.helpers": "Helper sessions",
   "manager.decisions": "Waiting for you",
   "manager.decisionsHint": "Open decisions and results waiting for your confirmation in the manager's list. Click a row to see what has been done and what to decide",
+  "manager.refresh": "Refresh this section",
+  "manager.refreshFailed": "Refresh failed — keeping the current list",
   "manager.partFailed": "Could not read this: {error}",
   "manager.empty.automations": "No automations found",
   "manager.empty.helpers": "No helper sessions running",

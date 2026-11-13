@@ -392,6 +392,8 @@
   "manager.helpers": "보조 세션",
   "manager.decisions": "결정 대기",
   "manager.decisionsHint": "매니저가 들고 있는 열린 결정과 사용자 확인 대기 건. 줄을 누르면 지금까지 한 일과 결정할 것을 봅니다",
+  "manager.refresh": "이 칸 새로고침",
+  "manager.refreshFailed": "새로고침하지 못했습니다 — 보던 목록을 그대로 둡니다",
   "manager.partFailed": "읽지 못했습니다: {error}",
   "manager.empty.automations": "돌고 있는 자동화가 없습니다",
   "manager.empty.helpers": "떠 있는 보조 세션이 없습니다",

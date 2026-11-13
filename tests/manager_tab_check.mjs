@@ -83,8 +83,15 @@ const PAYLOAD = {
     ],
   },
 };
+// 새로고침 검사용 — 부른 칸을 적고, 켜 두면 실패한다
+const fetched = [];
+let failFetch = false;
+let holdFetch = null;
 globalThis.fetch = async (url) => {
   const part = new URL(url, "http://x").searchParams.get("part");
+  fetched.push(part);
+  if (holdFetch) await holdFetch;
+  if (failFetch) throw new Error("서버 응답 없음");
   return { ok: true, status: 200, json: async () => ({ [part]: PAYLOAD[part] }) };
 };
 
@@ -272,5 +279,36 @@ pager("tools").children.at(-1).listeners.click();
 assert.deepEqual(toolNames(), ["명령 11", "명령 12", "명령 13", "명령 14"]);
 elements["mgr-tools-cats"].children[1].listeners.click();
 assert.equal(toolNames()[0], "명령 1");
+
+// 칸 제목 줄 새로고침 — 그 칸만 다시 받는다
+const refresh = elements["mgr-decisions-refresh"];
+assert.match(refresh.innerHTML, /<svg/, "새로고침은 아이콘 버튼");
+PAYLOAD.decisions.items = [{ ...PAYLOAD.decisions.items[0], id: 501, title: "새로 생긴 결정" }];
+fetched.length = 0;
+let release;
+holdFetch = new Promise((resolve) => (release = resolve));
+const pending = refresh.listeners.click();
+assert.equal(refresh.disabled, true, "받는 동안 버튼이 잠긴다(아이콘이 돈다)");
+refresh.listeners.click(); // 받는 중 다시 눌러도 한 번만 부른다
+release();
+holdFetch = null;
+await pending;
+assert.deepEqual(fetched, ["decisions"], "다른 칸은 다시 받지 않는다");
+assert.equal(refresh.disabled, false);
+assert.equal(titleText(elements["mgr-decisions"].children[0].children[0].children[0]), "#501 2/3 새로 생긴 결정");
+assert.equal(elements["mgr-decisions-count"].textContent, "1");
+// 실패하면 보던 목록은 두고 카드 맨 위에 짧은 오류 한 줄 — 전문은 title
+failFetch = true;
+await refresh.listeners.click();
+failFetch = false;
+const [failLine, keptRow] = elements["mgr-decisions"].children;
+assert.equal(failLine.className, "mgr-error");
+assert.equal(failLine.textContent, "새로고침하지 못했습니다 — 보던 목록을 그대로 둡니다");
+assert.match(failLine.title, /서버 응답 없음/);
+assert.equal(titleText(keptRow.children[0].children[0]), "#501 2/3 새로 생긴 결정");
+assert.equal(elements["mgr-decisions-count"].textContent, "1");
+// 다음에 성공하면 오류 줄이 사라진다
+await refresh.listeners.click();
+assert.notEqual(elements["mgr-decisions"].children[0].className, "mgr-error");
 
 console.log("ok");
