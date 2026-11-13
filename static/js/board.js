@@ -11,6 +11,7 @@ import {
   setBoardRefresh,
   startSessionPolling,
 } from "./sessions.js";
+import { priorityBadge as sharedPriorityBadge, priorityText as formatPriority } from "./priority.js";
 import { loadingSpinner } from "./spinner.js";
 import { editCard, focusWorkspace, menuItem } from "./workspace.js";
 
@@ -391,21 +392,13 @@ export function todoElement(todo, { withStatus = true, withLabels = true } = {})
   return row;
 }
 
-// '{이 할일 우선순위}/{열린 할일 중 최고}'. 우선순위를 안 정한 할일은 '-'
+// 모양은 보드·매니저 탭 공용(priority.js). 분모는 보드 전체의 열린 할일 기준
 export function priorityText(todo) {
-  if (todo.priority == null) return "-";
-  return `${todo.priority}/${priorityMax ?? "-"}`;
+  return formatPriority(todo.priority, priorityMax);
 }
 
 export function priorityBadge(todo) {
-  const node = document.createElement("span");
-  node.className = "todo-priority";
-  node.textContent = priorityText(todo);
-  node.title =
-    todo.priority == null
-      ? t("board.priorityNone")
-      : t("board.priorityHint", { priority: todo.priority, max: priorityMax ?? "-" });
-  return node;
+  return sharedPriorityBadge(todo.priority, priorityMax);
 }
 
 // 상태 칩. 누르면 다음 상태로 넘어가는 손잡이라 표시와 조작을 겸한다

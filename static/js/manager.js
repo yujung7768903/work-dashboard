@@ -6,6 +6,7 @@ import { language, t } from "./i18n.js";
 import { formatAge, notePart } from "./sessions.js";
 import { linkify } from "./linkify.js";
 import { CHEVRON_SVG } from "./icons.js";
+import { priorityBadge } from "./priority.js";
 
 // 화면 순서 — 보조 세션이 맨 위 (static/index.html)
 const PARTS = ["helpers", "tools", "automations", "decisions"];
@@ -156,7 +157,8 @@ function row({ title, sub, aside, asideSub, hint, tone }) {
   const item = el("li", `mgr-row${tone ? ` ${tone}` : ""}`);
   if (hint) item.title = hint;
   const main = el("div", "mgr-main");
-  main.append(el("span", "mgr-title", title), el("span", "mgr-sub", sub || ""));
+  // 글자만이면 그대로, 배지를 섞어야 하면 부르는 쪽이 만든 노드를 받는다
+  main.append(typeof title === "string" ? el("span", "mgr-title", title) : title, el("span", "mgr-sub", sub || ""));
   const side = el("div", "mgr-side");
   side.append(aside, asideSub ?? el("span", "mgr-sub", ""));
   item.append(main, side);
@@ -221,8 +223,15 @@ function decisionRow(item) {
     item.since ? t("manager.sinceAgo", { age: formatAge(item.since) }) : "",
     item.held ? t("manager.held") : "",
   ].filter(Boolean);
+  // '#8 2/3 제목' — 번호 오른쪽에 보드 할일 줄과 같은 우선순위 배지. 분모는 매니저 DB 의 열린 할일 중 최고
+  const title = el("span", "mgr-title");
+  title.append(
+    document.createTextNode(`#${item.id}`),
+    priorityBadge(item.priority, item.priority_max),
+    document.createTextNode(item.title)
+  );
   const line = row({
-    title: `#${item.id} ${item.title}`,
+    title,
     sub: item.detail || "",
     aside: chip,
     asideSub: el("span", "mgr-sub", extra.join(" · ")),

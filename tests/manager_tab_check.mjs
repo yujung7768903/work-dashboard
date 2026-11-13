@@ -69,7 +69,7 @@ const PAYLOAD = {
     error: null,
     items: [
       {
-        id: 87, title: "우선순위 출처", state: "decision", detail: "A 추천", priority: 2, since: agoMinutes(30), held: false,
+        id: 87, title: "우선순위 출처", state: "decision", detail: "A 추천", priority: 2, priority_max: 3, since: agoMinutes(30), held: false,
         popup: {
           detail: "todos 에 priority 칸이 없음\n선택지 A·B", next_step: "A 와 B 중 고르기", plan: null,
           plan_status: null, reason: null, source_ref: null, open_target: "/home/u/x.md",
@@ -77,7 +77,7 @@ const PAYLOAD = {
         },
       },
       {
-        id: 61, title: "보조 한도", state: "confirm", detail: null, priority: 2, since: agoMinutes(90), held: false,
+        id: 61, title: "보조 한도", state: "confirm", detail: null, priority: null, priority_max: 3, since: agoMinutes(90), held: false,
         popup: { detail: null, next_step: null, reason: "master 905f617 반영", session_id: null, reply_tail: null },
       },
     ],
@@ -133,12 +133,20 @@ const helperRows = elements["mgr-helpers"].children;
 assert.equal(helperRows.length, 1);
 assert.match(helperRows[0].textContent, /claude agents 응답 없음/);
 const decisionRows = elements["mgr-decisions"].children;
+// 결정 대기 제목 칸은 '#번호'·우선순위 배지·제목 세 조각이다
+const titleText = (title) => (title.children.length ? title.children.map((kid) => kid.textContent).join(" ") : title.textContent);
 assert.equal(decisionRows.length, 2);
 const texts = (row) => {
   const [main, side] = row.children;
-  return [main.children[0].textContent, main.children[1].textContent, side.children[0].textContent, side.children[1].textContent];
+  return [titleText(main.children[0]), main.children[1].textContent, side.children[0].textContent, side.children[1].textContent];
 };
-assert.deepEqual(texts(decisionRows[0]), ["#87 우선순위 출처", "A 추천", "결정", "30m 전"]);
+assert.deepEqual(texts(decisionRows[0]), ["#87 2/3 우선순위 출처", "A 추천", "결정", "30m 전"]);
+// 번호 오른쪽 우선순위는 보드 할일 줄과 같은 배지(.todo-priority)
+const badge = decisionRows[0].children[0].children[0].children[1];
+assert.equal(badge.className, "todo-priority");
+assert.equal(badge.title, "우선순위 2 / 열린 할일 중 최고 3");
+// 우선순위가 없으면 보드처럼 '-'
+assert.equal(texts(decisionRows[1])[0], "#61 - 보조 한도");
 
 // 결정 대기 줄을 누르면 팝업 — 지금까지 한 일 / 결정할 것, 기록된 글만
 decisionRows[0].listeners.click();
@@ -236,7 +244,7 @@ assert.deepEqual(labels("decisions"), ["이전", "1", "2", "다음"]);
 pager("automations").children[3].listeners.click(); // 3쪽
 assert.deepEqual(autoNames(), ["자동화 21", "자동화 22", "자동화 23"]);
 assert.equal(pager("automations").children.at(-1).disabled, true, "마지막 페이지에서 다음은 못 누른다");
-assert.equal(elements["mgr-decisions"].children[0].children[0].children[0].textContent, "#1 우선순위 출처", "다른 칸은 그대로");
+assert.equal(titleText(elements["mgr-decisions"].children[0].children[0].children[0]), "#1 2/3 우선순위 출처", "다른 칸은 그대로");
 pager("decisions").children.at(-1).listeners.click(); // 결정 다음
 assert.equal(elements["mgr-decisions"].children.length, 5);
 assert.equal(autoNames()[0], "자동화 21", "결정 칸을 넘겨도 자동화 칸은 그대로");
