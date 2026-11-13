@@ -5,7 +5,7 @@ import * as api from "./api.js";
 import { language, t } from "./i18n.js";
 import { formatAge, notePart } from "./sessions.js";
 import { linkify } from "./linkify.js";
-import { CHEVRON_SVG } from "./icons.js";
+import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
 import { priorityBadge } from "./priority.js";
 
 // 화면 순서 — 보조 세션이 맨 위 (static/index.html)
@@ -51,6 +51,7 @@ export function stopManagerPolling() {
 
 export async function renderManager() {
   bindToolSearch();
+  bindRefresh();
   // 첫 진입에만 칸마다 '불러오는 중'. 보조 세션 칸은 수 초 걸려 빈 칸이 '없음'으로 읽힌다.
   // 폴링 재렌더 때는 지금 목록을 둔 채 바꾼다 — 1분마다 깜빡이지 않게
   PARTS.forEach((part) => {
@@ -68,6 +69,50 @@ async function renderPart(part) {
     section = { items: [], error: error.message };
   }
   sections[part] = section;
+  showPart(part);
+}
+
+// 칸 제목 줄의 새로고침 — 그 칸만 다시 받는다. 받는 동안 버튼을 잠가 아이콘이 돌고(CSS),
+// 실패하면 보던 목록은 두고 카드 맨 위에 짧은 오류 한 줄. 전문은 그 줄의 title
+let refreshBound = false;
+function bindRefresh() {
+  if (refreshBound) return;
+  refreshBound = true;
+  PARTS.forEach((part) => {
+    const button = document.getElementById(`mgr-${part}-refresh`);
+    button.innerHTML = REFRESH_SVG;
+    button.addEventListener("click", () => refreshPart(part));
+  });
+}
+
+export async function refreshPart(part) {
+  const button = document.getElementById(`mgr-${part}-refresh`);
+  if (button.disabled) return;
+  button.disabled = true;
+  button.setAttribute?.("aria-busy", "true");
+  try {
+    let section;
+    let failure = null;
+    try {
+      section = (await api.getManager(part))[part];
+      failure = section.error;
+    } catch (error) {
+      failure = error.message;
+    }
+    if (failure && sections[part] && !sections[part].error) {
+      sections[part] = { ...sections[part], refreshError: failure };
+    } else {
+      sections[part] = section ?? { items: [], error: failure };
+    }
+    showPart(part);
+  } finally {
+    button.disabled = false;
+    button.setAttribute?.("aria-busy", "false");
+  }
+}
+
+function showPart(part) {
+  const section = sections[part];
   document.getElementById(`mgr-${part}-count`).textContent = section.error
     ? ""
     : String(section.items.length);
@@ -84,6 +129,7 @@ function drawPart(part) {
   const start = pages[part] * PAGE_SIZE;
   const rows = items.slice(start, start + PAGE_SIZE).map(ROW_BUILDERS[part]);
   if (section.error) rows.unshift(note(t("manager.partFailed", { error: section.error }), "mgr-error"));
+  else if (section.refreshError) rows.unshift(refreshFailedNote(section.refreshError));
   else if (!rows.length && section.items.length) rows.push(note(t("manager.toolsNoMatch")));
   else if (!rows.length) rows.push(note(EMPTY[part]()));
   else if (part === "automations") rows.unshift(automationHead());
@@ -403,6 +449,12 @@ function openDecision(item) {
   }
   body.replaceChildren(...nodes);
   if (!dialog.open) dialog.showModal();
+}
+
+function refreshFailedNote(error) {
+  const line = note(t("manager.refreshFailed"), "mgr-error");
+  line.title = error;
+  return line;
 }
 
 function note(text, className = "mgr-empty") {

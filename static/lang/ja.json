@@ -392,6 +392,8 @@
   "manager.helpers": "補助セッション",
   "manager.decisions": "判断待ち",
   "manager.decisionsHint": "マネージャーが抱えている未決の判断と確認待ち。行を押すとこれまでの作業と決めることを表示します",
+  "manager.refresh": "この欄を再読み込み",
+  "manager.refreshFailed": "再読み込みに失敗しました — 表示中の一覧をそのまま残します",
   "manager.partFailed": "読み込めませんでした: {error}",
   "manager.empty.automations": "自動化はありません",
   "manager.empty.helpers": "補助セッションはありません",

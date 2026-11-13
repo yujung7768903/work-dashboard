@@ -867,6 +867,12 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 휴대폰 '예약 작업' 목록처럼 한 판에 줄이 쌓인다. 줄 하나 = 왼쪽 이름·설명, 오른쪽
    다음 실행(또는 상태 칩)·마지막 결과. 보기 전용이라 스위치·케밥이 없다 */
 .mgr-head { display: flex; align-items: center; gap: var(--sp-8); }
+/* 칸만 다시 받는 버튼. 제목 줄 오른쪽 끝, 받는 동안(disabled) 아이콘이 돈다 */
+.mgr-refresh { margin-left: auto; }
+/* 전역 disabled 는 흐리게 죽인다 — 도는 동안은 진행 표시라 강조색으로 또렷하게 */
+.mgr-refresh:disabled { opacity: 1; color: var(--accent); cursor: progress; }
+.mgr-refresh:disabled svg { animation: spin 0.7s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .mgr-refresh:disabled svg { animation-duration: 2.4s; } }
 .mgr-count {
   color: var(--muted); font-size: var(--fs-sm); font-weight: 600;
   font-variant-numeric: tabular-nums;

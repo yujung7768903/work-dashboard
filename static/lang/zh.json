@@ -392,6 +392,8 @@
   "manager.helpers": "辅助会话",
   "manager.decisions": "等待决定",
   "manager.decisionsHint": "管理器持有的待决事项与待确认结果。点击一行可查看已完成的工作和需要决定的事项",
+  "manager.refresh": "刷新此栏",
+  "manager.refreshFailed": "刷新失败 — 保留当前列表",
   "manager.partFailed": "无法读取：{error}",
   "manager.empty.automations": "没有自动化",
   "manager.empty.helpers": "没有运行中的辅助会话",
