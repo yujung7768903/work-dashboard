@@ -347,6 +347,17 @@ class DecisionsTest(unittest.TestCase):
         self.assertTrue(items[2]["held"])
         self.assertFalse(items[1]["held"])
 
+    def test_priority_max_counts_open_tasks_only(self):
+        # 보드의 '2/3' 분모처럼 열린 할일(open·confirm) 중 최고. 닫힌 할일은 아무리 높아도 빼고,
+        # 결정 대기에 안 뜨는 직접 할 일(action)은 센다
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE tasks SET priority=9 WHERE id=4")
+        con.commit()
+        con.close()
+        items = {item["id"]: item for item in manager_panel.decisions(NOW, manager_home=self.home)}
+        self.assertEqual(items[1]["priority"], 2)
+        self.assertEqual({item["priority_max"] for item in items.values()}, {3})
+
     def test_popup_carries_recorded_fields_only(self):
         items = {item["id"]: item for item in manager_panel.decisions(NOW, manager_home=self.home)}
         popup = items[1]["popup"]

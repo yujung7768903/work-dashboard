@@ -887,6 +887,9 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-side { flex: none; align-items: flex-end; text-align: right; }
 .mgr-title, .mgr-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mgr-title { font-weight: 600; }
+/* 결정 대기 '#8 2/3 제목' 의 우선순위 — 보드 할일 줄 배지(.todo-priority)를 그대로 쓰고,
+   굵은 제목 줄 안이라 굵기만 되돌린다. 폭 고정이라 제목 시작점이 줄마다 맞는다 */
+.mgr-title .todo-priority { display: inline-block; margin-left: var(--sp-4); font-weight: normal; }
 .mgr-sub { color: var(--muted); font-size: var(--fs-sm); }
 .mgr-next { font-weight: 600; font-variant-numeric: tabular-nums; }
 .mgr-last.ok { color: var(--good); }

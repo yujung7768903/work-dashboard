@@ -798,6 +798,14 @@ def decisions(now, manager_home=None, con=None):
             " ORDER BY priority DESC, created_at, id",
             (OPEN_STATUS, DECISION_KIND, CONFIRM_STATUS),
         ).fetchall()
+        # 우선순위 '2/3' 의 분모. 보드처럼 열린 할일 전체 기준 — 결정 대기에 안 뜨는 직접 할 일(action)도 센다
+        top = (
+            manager_con.execute(
+                "SELECT MAX(priority) FROM tasks WHERE status IN (?, ?)", (OPEN_STATUS, CONFIRM_STATUS)
+            ).fetchone()[0]
+            if "priority" in columns
+            else None
+        )
     finally:
         manager_con.close()
     stamp = now.isoformat(timespec="seconds")
@@ -813,6 +821,7 @@ def decisions(now, manager_home=None, con=None):
                 "state": "confirm" if row["status"] == CONFIRM_STATUS else "decision",
                 "detail": _first_line(_get(row, "detail")),
                 "priority": _get(row, "priority"),
+                "priority_max": top,
                 "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
                 "held": _later(row, ("hold_until", "snooze_until"), stamp),
                 "popup": popup,
