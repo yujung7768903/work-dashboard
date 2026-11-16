@@ -1,0 +1,303 @@
+/* 트리 메뉴 (static/js/tree.js · tree-map.js). 토큰은 app.css 의 :root 를 쓴다.
+   상태 색 — 눈이 먼저 가야 하는 순서대로 진하다:
+     사람 대기(세션이 답·권한을 기다림) = --danger 테두리·배지. 데이터독 맵이 문제 노드를 빨강으로 띄우는 것과 같은 역할
+     확인 대기(review) = --warn. 사람이 확인만 하면 끝나는 일
+     진행 중(doing)    = --accent. 손이 가고 있는 일
+     할 일(todo)       = 중립 회색
+     완료(done)        = 흐리고 무채색. 신경이 덜 쓰이게 */
+:root {
+  --st-todo: var(--muted);
+  --st-doing: var(--accent);
+  --st-review: var(--warn);
+  --st-done: var(--muted);
+  --st-wait: var(--danger);
+  --on-warn: #1b1d29;          /* 호박색 위 글자. 두 테마 모두 어두운 글자가 읽힌다 */
+  --tm-edge: color-mix(in srgb, var(--muted) 65%, transparent);
+  --tm-dot: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+/* 상태 색은 data-status 하나로 정한다. 카드 규칙에 기본값을 두면 같은 무게라 뒤에 오는
+   카드 규칙이 이겨 진행 중 카드가 회색으로 떨어진다 */
+[data-status="todo"] { --st: var(--st-todo); }
+[data-status="doing"] { --st: var(--st-doing); }
+[data-status="review"] { --st: var(--st-review); }
+[data-status="done"] { --st: var(--st-done); }
+
+/* ── 위쪽 조작 줄 ───────────────────────────────────────────────────────── */
+#tree-controls {
+  display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap;
+  margin-bottom: var(--sp-12); color: var(--muted); font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+/* 보드의 #todo-view 와 같은 알약 전환 — 같은 '보는 방식 고르기' 라 같은 모양 */
+#tree-view { display: flex; gap: var(--sp-4); }
+#tree-view button {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: none; color: var(--muted); font-weight: 600;
+}
+#tree-view button:hover:not(.active) {
+  background-color: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg);
+}
+#tree-view button.active { background: var(--softer); color: var(--accent); }
+#tree-tools { display: flex; gap: var(--sp-4); margin-left: auto; }
+#tree-hide-done[aria-pressed="true"] { background: var(--softer); color: var(--accent); }
+
+/* 목록·경계·패널이 한 줄. 높이는 화면에 맞춰 판(Map)이 아래까지 찬다 */
+#tree-stage {
+  display: flex; height: calc(100vh - 150px); min-height: 440px;
+}
+/* 행 칸 구성은 화면 폭이 아니라 이 칸의 폭으로 고른다 — 패널을 넓히면 목록만 좁아진다 */
+#tree-list-pane { flex: 1 1 auto; min-width: 0; overflow: auto; container-type: inline-size; }
+#tree-map { flex: 1 1 auto; min-width: 0; }
+#tree-list-pane[hidden], #tree-map[hidden], #tree-panel[hidden], #tree-splitter[hidden] { display: none; }
+
+/* ── List ─────────────────────────────────────────────────────────────── */
+.tree-block {
+  background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
+  margin-bottom: var(--sp-8); overflow: hidden;
+}
+/* 열: 펼치기 · 이름 · 카테고리 · 진행률 · 상태별 개수 · 사람 대기.
+   행마다 따로 그리드라 이름 말고는 전부 고정 폭이어야 행끼리 칸이 맞는다 */
+.tree-row {
+  --cat: #aab0c4;
+  position: relative; display: grid; align-items: center; gap: var(--sp-12);
+  grid-template-columns: var(--icon-box) minmax(140px, 1fr) 88px 150px 280px 88px;
+  padding: var(--sp-12) var(--sp-16) var(--sp-12) var(--sp-12); cursor: pointer;
+}
+.tree-row::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--cat);
+}
+.tree-row:hover { background: color-mix(in srgb, var(--fg) 3%, transparent); }
+.tree-row.active { background: var(--softer); }
+.tree-row[data-status="done"] { opacity: 0.55; }
+.tree-row-name { min-width: 0; }
+.tree-row-title {
+  display: block; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tree-row-cat {
+  color: var(--muted); font-size: var(--fs-sm);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tree-row-progress { display: flex; align-items: center; gap: var(--sp-8); }
+.tree-row-progress .tm-bar { flex: 1; }
+.tree-row-counts { display: flex; gap: var(--sp-4); min-width: 0; overflow: hidden; }
+.tree-row-flag { display: flex; justify-content: flex-end; }
+.tree-expand svg { transition: transform 0.12s; }
+.tree-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+/* 상태 칩. 0 건은 아예 안 그려 남은 칩만 눈에 들어온다 */
+.tree-count, .tree-kid-status, .tm-count {
+  padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 600; line-height: var(--lh-body); white-space: nowrap;
+  color: var(--st); background: color-mix(in srgb, var(--st) 14%, var(--surface));
+}
+.tree-count[data-status="done"], .tree-kid[data-status="done"] .tree-kid-status {
+  color: var(--muted); background: color-mix(in srgb, var(--fg) 5%, var(--surface));
+}
+
+/* 펼친 줄. 2단계는 한 칸 더 들여 위계를 보인다 */
+.tree-kids { list-style: none; margin: 0; padding: 0 var(--sp-16) var(--sp-8) var(--sp-40); }
+.tree-kids .tree-kids { padding: 0; }
+.tree-kid {
+  display: flex; align-items: center; gap: var(--sp-8); width: 100%;
+  padding: var(--sp-4) var(--sp-8);
+  padding-left: calc(var(--sp-8) + var(--sp-24) * (var(--depth) - 1));
+  background: none; text-align: left; font-weight: 400;
+}
+.tree-kid:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.tree-kid.active { background: var(--softer); }
+.tree-kid[data-status="done"] { opacity: 0.55; }
+.tree-kid-id, .tree-kid-num, .tm-id, .tm-num {
+  color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.tree-kid-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-empty { color: var(--muted); padding: var(--sp-24) var(--sp-16); margin: 0; }
+
+/* ── 오른쪽 패널 ──────────────────────────────────────────────────────── */
+/* 경계. 가운데 세로 선 하나에 손잡이 점을 얹어 '끌 수 있다' 가 보이게 한다 */
+#tree-splitter {
+  flex: none; width: var(--sp-16); position: relative; cursor: col-resize; touch-action: none;
+}
+#tree-splitter::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+  transform: translateX(-50%); background: var(--line); transition: background 0.12s;
+}
+#tree-splitter::after {
+  content: ""; position: absolute; top: 50%; left: 50%; width: 6px; height: 32px;
+  transform: translate(-50%, -50%); border-radius: var(--r-pill);
+  background: var(--surface); box-shadow: var(--shadow-card);
+}
+#tree-splitter:hover::before, #tree-splitter.dragging::before,
+#tree-splitter:focus-visible::before { background: var(--accent); }
+#tree-panel {
+  flex: none; width: var(--tree-panel-w, 55%); min-width: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
+}
+.tree-panel-head {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-12) var(--sp-12) var(--sp-12) var(--sp-16); border-bottom: 1px solid var(--line);
+}
+.tree-panel-head h2 {
+  margin: 0; font-size: var(--fs-body); font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#tree-panel-close { margin-left: auto; }
+#tree-panel-map { flex: 1; min-height: 0; }
+#tree-panel-map .tm-viewport { border-radius: 0; box-shadow: none; }
+
+/* ── Map ──────────────────────────────────────────────────────────────── */
+.tm-host { position: relative; }
+/* 점 격자 판. 격자 크기·위치는 tree-map.js 가 이동·확대에 맞춰 바꾼다 */
+.tm-viewport {
+  position: relative; width: 100%; height: 100%; overflow: hidden;
+  border-radius: var(--r-card); box-shadow: var(--shadow-card);
+  background-color: color-mix(in srgb, var(--fg) 2%, var(--bg));
+  background-image: radial-gradient(circle, var(--tm-dot) 1px, transparent 1.2px);
+  cursor: grab; touch-action: none; user-select: none;
+}
+.tm-viewport.tm-dragging { cursor: grabbing; }
+.tm-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.tm-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.tm-cards { position: absolute; inset: 0; }
+
+/* 곡선과 양끝 연결점 (참고 이미지의 노드 포트) */
+.tm-edge path { fill: none; stroke: var(--tm-edge); stroke-width: 1.5; }
+.tm-edge circle { fill: var(--surface); stroke: var(--tm-edge); stroke-width: 1.5; }
+.tm-edge-done { opacity: 0.35; }
+.tm-edge-path path, .tm-edge-path circle { stroke: var(--accent); stroke-width: 2; }
+.tm-edge-path { opacity: 1; }
+
+/* 트리 구획. 카드보다 아래 깔리고 판의 점 격자는 그대로 비친다 */
+.tm-lane {
+  position: absolute; border-radius: var(--r-card); pointer-events: none;
+  background: color-mix(in srgb, var(--fg) 2.5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.tm-lane-name {
+  position: absolute; left: var(--sp-16); top: var(--sp-8);
+  font-size: var(--fs-sm); font-weight: 700; color: var(--muted);
+}
+.tm-lane-name::before {
+  content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: var(--sp-8); background: var(--cat, var(--muted));
+}
+
+/* 카드. 크기는 tree-layout.js 의 CARD_W·CARD_H 로 JS 가 박는다 — 배치가 그 값을 전제로 한다 */
+.tm-card {
+  position: absolute; display: flex; flex-direction: column; gap: var(--sp-4);
+  padding: var(--sp-12) var(--sp-12) var(--sp-12) var(--sp-16);
+  background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
+  overflow: hidden; cursor: default; user-select: text;
+}
+/* 왼쪽 상태 막대. 카드 테두리 대신 막대 하나로 상태를 읽게 한다 */
+.tm-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--st);
+}
+.tm-card[data-status="todo"]::before { background: var(--line); }
+.tm-card[data-status="review"] { background: color-mix(in srgb, var(--st-review) 7%, var(--surface)); }
+.tm-card[data-status="done"] { opacity: 0.5; filter: grayscale(1); box-shadow: none; }
+.tm-card[data-status="done"]::before { background: var(--line); }
+/* 사람 대기는 상태와 겹쳐 붙는다 — 진행 중이면서 권한을 기다리는 카드가 흔하다 */
+.tm-card[data-waiting] { box-shadow: 0 0 0 2px var(--st-wait), var(--shadow-card); }
+.tm-card.tm-focus { box-shadow: 0 0 0 3px var(--accent), var(--shadow-pop); }
+/* 강조하면서도 사람 대기는 가려지면 안 된다 — 빨간 테두리 바깥에 강조 테두리를 두른다 */
+.tm-card.tm-focus[data-waiting] {
+  box-shadow: 0 0 0 2px var(--st-wait), 0 0 0 5px var(--accent), var(--shadow-pop);
+}
+.tm-card.tm-on-path:not(.tm-focus) { box-shadow: 0 0 0 1px var(--accent), var(--shadow-card); }
+
+.tm-root {
+  --st: var(--cat, var(--muted));
+  background: color-mix(in srgb, var(--cat, var(--muted)) 7%, var(--surface));
+}
+.tm-root[data-status="done"]::before { background: var(--line); }
+.tm-cat {
+  color: var(--cat, var(--muted)); font-size: var(--fs-sm); font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+:where([data-theme="dark"]) .tm-cat { filter: brightness(1.4); }
+
+.tm-head { display: flex; align-items: center; gap: var(--sp-8); min-height: var(--icon-box); }
+.tm-title {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  padding: 0; background: none; color: var(--fg); text-align: left;
+  font-size: var(--fs-body); font-weight: 600; line-height: var(--lh-heading);
+}
+.tm-root .tm-title { font-weight: 700; }
+.tm-card .tm-title:hover:not(:disabled) { background: none; color: var(--accent); }
+button.tm-title { cursor: pointer; }
+.tm-foot { display: flex; align-items: center; gap: var(--sp-8); margin-top: auto; }
+.tm-spacer { flex: 1; }
+
+/* 상태 고르기. 칩처럼 보이는 select — 누르면 네 상태가 뜬다 */
+.tm-card .tm-status {
+  padding: 0 var(--sp-20) 0 var(--sp-8); border: none; border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 600; line-height: var(--lh-body);
+  color: var(--st); background-color: color-mix(in srgb, var(--st) 14%, var(--surface));
+  background-position: right var(--sp-8) center; background-size: 8px 6px; cursor: pointer;
+}
+.tm-card .tm-status:disabled { cursor: default; }
+.tm-card[data-status="done"] .tm-status { color: var(--muted); }
+
+.tm-waiting {
+  margin-left: auto; padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 600; line-height: var(--lh-body); white-space: nowrap;
+  color: #fff; background: var(--st-wait);
+}
+.tm-flag {
+  padding: 0 var(--sp-8); border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 600;
+  color: var(--st-review); background: color-mix(in srgb, var(--st-review) 14%, var(--surface));
+}
+
+.tm-progress { flex: 1; display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
+.tm-bar {
+  height: 4px; border-radius: var(--r-pill); overflow: hidden; min-width: 32px;
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+}
+.tm-progress .tm-bar { flex: 1; }
+.tm-bar i { display: block; height: 100%; background: var(--good); border-radius: inherit; }
+.tm-counts { display: flex; gap: var(--sp-4); }
+
+/* 확인 대기 카드의 완료 버튼. 상태 색을 채워 '이것만 누르면 끝' 이 보이게 한다 */
+.tm-card .tm-complete {
+  padding: var(--sp-2) var(--sp-12); border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 700; line-height: var(--lh-heading);
+  color: var(--on-warn); background: var(--st-review);
+}
+.tm-card .tm-complete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--st-review) 85%, var(--fg));
+}
+.tm-add-form { margin-top: auto; }
+.tm-add-form input { width: 100%; padding: var(--sp-4) var(--sp-8); font-size: var(--fs-sm); }
+
+/* 확대·축소·맞춤. 판 오른쪽 아래에 떠 있다 */
+.tm-zoom {
+  position: absolute; right: var(--sp-12); bottom: var(--sp-12);
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill);
+  background: var(--surface); box-shadow: var(--shadow-pop); cursor: default;
+}
+.tm-zoom-value {
+  min-width: 40px; text-align: center; font-size: var(--fs-sm); color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 목록 칸이 좁아지면(패널을 넓혔을 때) 카테고리·상태별 개수를 빼고 이름·진행률·사람 대기만 */
+@container (max-width: 760px) {
+  .tree-row { grid-template-columns: var(--icon-box) minmax(0, 1fr) 120px 88px; }
+  .tree-row-cat, .tree-row-counts { display: none; }
+}
+@container (max-width: 440px) {
+  .tree-row { grid-template-columns: var(--icon-box) minmax(0, 1fr) 88px; }
+  .tree-row-flag { display: none; }
+}
+
+/* 좁은 화면: 목록 위, 패널 아래로 쌓는다. 끌 경계는 의미가 없어 감춘다 */
+@media (max-width: 900px) {
+  #tree-stage { flex-direction: column; height: auto; }
+  #tree-list-pane { overflow: visible; }
+  #tree-splitter { display: none; }
+  #tree-panel { width: 100%; height: 70vh; margin-top: var(--sp-12); }
+  #tree-map { height: 70vh; }
+}

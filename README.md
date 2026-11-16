@@ -143,6 +143,7 @@ started inside a worktree.
 | Tab | What it holds |
 | --- | --- |
 | Board | The whole tree, the next todo and running sessions (polled every 2s) |
+| Tree | Each workspace as a tree of todos nested to any depth — List and Map views |
 | Autorun | The on/off switch, the candidate queue and the runs, grouped by state |
 | Workspaces | Creating a workspace and editing its background, purpose, goal and considerations |
 | Settings | Categories and labels |
@@ -163,6 +164,18 @@ stops its server. That sub-tab groups worktrees by workspace or by project;
 the project view also lists worktrees no workspace claims. Cards lay out in
 one or two columns (the status view is always four), and the left rail
 collapses to icons.
+
+The tree tab draws one tree per workspace: the workspace is the root and todos
+hang under parent todos to any depth. **List** shows one row per tree —
+progress and counts by status — and expands two levels; clicking a row (or an
+expanded todo) opens that tree as a map in a right-hand panel whose width you
+drag at the boundary. **Map** puts every tree in progress on one pannable,
+zoomable canvas, root on the left and children flowing right. Colors carry the
+state: in progress is the accent blue, review (work done, waiting for your
+check) is amber, todo is neutral and done is faded grey; a card whose session
+is waiting for your reply or permission gets a red ring. From a card you change
+the status, add a sub-todo, or — on a review card — mark it done. A tree counts
+as complete when every todo in it is done; nothing is stored for that.
 
 Clicking a todo row or a session row opens the same dialog with three tabs:
 
@@ -185,12 +198,19 @@ python3 dash.py next                                 # the single next todo
 python3 dash.py show <workspace-id|JIRA-1>           # workspace detail
 python3 dash.py add-category <name>
 python3 dash.py add-workspace <category> <name> [--background ...] [--jira KEY]
-python3 dash.py add-todo <title> [--workspace ID] [--note ...] [--precondition ...]
+python3 dash.py add-todo <title> [--workspace ID | --parent TODO-ID] [--note ...] [--precondition ...]
+python3 dash.py set-parent <todo-id> <parent-todo-id|none>
 python3 dash.py move-todo <todo-id> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <status>
+python3 dash.py set-status <todo|workspace> <id> <status>   # todo: todo·doing·review·done
 python3 dash.py reorder <categories|workspaces|todos> <ids...>
 python3 dash.py done-today [--date YYYY-MM-DD]
 ```
+
+A parent must be a todo in the same workspace, and a todo can never sit under
+itself or its own sub-todo. With `--parent` the workspace comes from the
+parent. Moving a todo to another workspace carries its sub-todos along;
+deleting a todo lifts its sub-todos one level. `review` means the work is done
+and only your check remains — it stays open, but `next` and autorun skip it.
 
 ### Sessions
 
@@ -553,6 +573,10 @@ that it runs "every 10 minutes" would be a lie.
   than `inactive`.
 - A category switched off is skipped whole. Its list link stays, so switching it
   back on does not create a second list.
+- Only todos directly under a workspace are exported — Google nests one level.
+  A todo that already had a Google task and is moved under a parent todo has
+  that task removed and its link cleared; it goes back up if it returns to the
+  workspace root. `review` is exported as not completed.
 
 ### Deletion
 
@@ -602,7 +626,7 @@ the six default categories once. All `*_at` columns are ISO 8601 UTC text.
 | --- | --- |
 | `categories` | Top-level grouping. Does not affect priority. `google_list_id` links the Google list, `gtasks_enabled` is the per-category sync switch (off by default) |
 | `workspaces` | A branch- or Jira-sized piece of work, with background, purpose, goal and considerations. `google_task_id` links the top-level Google task |
-| `todos` | A todo. May belong to a workspace, or hang directly off a category. `google_task_id` links the Google subtask |
+| `todos` | A todo. May belong to a workspace, or hang directly off a category. `parent_id` points at the parent todo in the same workspace (NULL = directly under the workspace). `google_task_id` links the Google subtask |
 | `labels`, `todo_labels` | Labels describe a todo's nature; a todo can carry several |
 | `sessions` | Claude Code sessions, registered and updated by the hooks |
 | `session_todos` | Which todo a session claimed. A session's workspace is derived from here |

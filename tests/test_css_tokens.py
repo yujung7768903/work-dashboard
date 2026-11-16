@@ -43,13 +43,13 @@ def referenced_scale(name):
 
 class CssTokenTest(unittest.TestCase):
     def test_no_raw_px_in_spacing_and_type(self):
-        for name in ("app.css", "usage.css"):
+        for name in ("app.css", "usage.css", "tree.css"):
             with self.subTest(name):
                 self.assertEqual(raw_px(name), [])
 
     def test_every_referenced_token_is_defined(self):
         defined = declared_scale("app.css")
-        used = referenced_scale("app.css") | referenced_scale("usage.css")
+        used = referenced_scale("app.css") | referenced_scale("usage.css") | referenced_scale("tree.css")
         self.assertEqual(sorted(used - defined), [])
 
     def test_spacing_scale_stays_on_grid(self):

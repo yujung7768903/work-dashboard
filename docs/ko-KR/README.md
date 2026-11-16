@@ -127,6 +127,7 @@ cd work-dashboard
 | 탭 | 내용 |
 | --- | --- |
 | 보드 | 전체 트리, 다음에 할 일, 돌고 있는 세션(2초 폴링) |
+| 트리 | 워크스페이스마다 깊이 제한 없는 할일 트리 — 목록·맵 두 보기 |
 | 자율 수행 | ON/OFF 스위치, 후보 목록, 상태별로 묶인 실행 목록 |
 | 워크스페이스 | 워크스페이스 생성과 배경·목적·목표·고려사항 편집 |
 | 설정 | 카테고리와 라벨 |
@@ -142,6 +143,16 @@ cd work-dashboard
 워크스페이스별·프로젝트별로 묶어 볼 수 있고, 프로젝트별 보기는 어느 워크스페이스에도
 안 걸린 워크트리까지 보여준다. 카드는 1열·2열로 배치할 수 있고(상태별은 컬럼 넷 고정),
 좌측 레일은 아이콘만 남게 접힌다.
+
+트리 탭은 워크스페이스 하나를 트리 하나로 그린다 — 워크스페이스가 루트이고 할일은 상위
+할일 아래로 깊이 제한 없이 매달린다. **목록**은 트리 1개가 1행(진행률·상태별 개수)이고
+2단계까지 펼친다. 행(또는 펼친 할일)을 누르면 오른쪽 패널에 그 트리가 맵으로 열리고,
+목록과 패널 사이 경계를 끌어 패널 폭을 정한다. **맵**은 진행 중인 트리 전부를 이동·확대되는
+한 판에 왼쪽 루트에서 오른쪽 자식으로 그린다. 색이 상태다 — 진행 중은 액센트 파랑,
+확인 대기(작업은 끝났고 사람 확인만 남음)는 호박색, 할 일은 중립, 완료는 옅은 회색이고,
+연결된 세션이 답·권한을 기다리면 카드에 빨간 테두리가 붙는다. 카드에서 상태를 바꾸고
+하위 할일을 추가하며, 확인 대기 카드는 완료 처리 버튼으로 바로 닫는다. 트리 완료는 저장하지
+않고 그 트리의 할일이 전부 done 인지로 계산한다.
 
 할일 줄과 세션 줄은 같은 팝업을 열고, 팝업은 탭 세 개다.
 
@@ -164,12 +175,18 @@ python3 dash.py next                                 # 다음에 할 일 1건
 python3 dash.py show <워크스페이스id|JIRA-1>           # 워크스페이스 상세
 python3 dash.py add-category <이름>
 python3 dash.py add-workspace <카테고리> <이름> [--background ...] [--jira KEY]
-python3 dash.py add-todo <제목> [--workspace ID] [--note ...] [--precondition ...]
+python3 dash.py add-todo <제목> [--workspace ID | --parent 할일id] [--note ...] [--precondition ...]
+python3 dash.py set-parent <할일id> <상위할일id|none>
 python3 dash.py move-todo <할일id> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <상태>
+python3 dash.py set-status <todo|workspace> <id> <상태>   # 할일: todo·doing·review·done
 python3 dash.py reorder <categories|workspaces|todos> <ids...>
 python3 dash.py done-today [--date YYYY-MM-DD]
 ```
+
+상위 할일은 같은 워크스페이스의 할일이어야 하고, 자기 자신이나 자기 하위를 상위로 둘 수
+없다. `--parent` 를 주면 워크스페이스는 상위 할일의 것을 따른다. 다른 워크스페이스로 옮기면
+하위 할일이 따라가고, 할일을 지우면 그 하위는 한 단계 위로 올라간다. `review` 는 작업은
+끝났고 확인만 남은 상태다 — 열린 할일로 남지만 `next`·자율 수행 후보에서는 빠진다.
 
 ### 세션
 
@@ -470,6 +487,9 @@ python3 dash.py gtasks-sync
   내려온다. 워크스페이스도 마찬가지로 `inactive` 가 아니라 `active` 로 돌아온다.
 - 카테고리 스위치를 끄면 그 카테고리는 통째로 건너뛴다. 목록 링크는 남으므로 다시 켜도
   목록이 새로 생기지 않는다.
+- 워크스페이스 바로 아래 할일만 내보낸다 — 구글은 한 단계만 중첩된다. 이미 구글에 올라간
+  할일을 상위 할일 아래로 옮기면 구글 쪽 태스크를 지우고 링크를 끊는다. 다시 워크스페이스
+  바로 아래로 오면 새로 올라간다. `review` 는 미완료로 내보낸다.
 
 ### 삭제
 
@@ -516,7 +536,7 @@ sqlite 를 웹 서버·CLI·훅이 직접 연다. 중재하는 프로세스는 �
 | --- | --- |
 | `categories` | 최상위 그룹핑. 우선순위에는 관여하지 않는다. `google_list_id` 가 구글 목록을, `gtasks_enabled` 가 카테고리별 동기화 on/off(기본 꺼짐)를 담는다 |
 | `workspaces` | 브랜치·Jira 단위 작업. 배경·목적·목표·고려사항을 보관. `google_task_id` 로 구글 최상위 태스크와 이어진다 |
-| `todos` | 할일. 워크스페이스에 속하거나 카테고리 직속일 수 있다. `google_task_id` 로 구글 하위 태스크와 이어진다 |
+| `todos` | 할일. 워크스페이스에 속하거나 카테고리 직속일 수 있다. `parent_id` 는 같은 워크스페이스의 상위 할일(NULL 이면 워크스페이스 바로 아래). `google_task_id` 로 구글 하위 태스크와 이어진다 |
 | `labels`, `todo_labels` | 라벨은 할일의 성격이라 한 할일에 여럿 붙는다 |
 | `sessions` | Claude Code 세션. 훅이 등록·갱신한다 |
 | `session_todos` | 세션이 잡은 할일. 세션의 워크스페이스는 여기서 파생한다 |

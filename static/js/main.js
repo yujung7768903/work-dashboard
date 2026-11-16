@@ -5,6 +5,7 @@ import { renderBoard, renderShared } from "./board.js";
 import { t } from "./i18n.js";
 import { startManagerPolling, stopManagerPolling } from "./manager.js";
 import { renderSettings } from "./settings.js";
+import { renderTreeTab } from "./tree.js";
 import { renderUsage } from "./usage.js";
 import { renderWorkspaceTab } from "./workspace.js";
 import { renderWorktrees } from "./worktrees.js";
@@ -32,6 +33,7 @@ export function renderBoardTab() {
 
 const RENDERERS = {
   board: renderBoardTab,
+  tree: renderTreeTab,
   workspace: renderWorkspaceTab,
   settings: renderSettings,
   usage: renderUsage,
@@ -45,6 +47,7 @@ const DEFAULT_TAB = "usage";
 // 상단 바 제목. 레일 메뉴 라벨과 같은 말을 쓴다
 const TITLES = {
   board: t("nav.board"),
+  tree: t("nav.tree"),
   workspace: t("nav.workspace"),
   settings: t("nav.settings"),
   usage: t("nav.usage"),

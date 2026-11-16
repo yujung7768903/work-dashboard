@@ -7,6 +7,7 @@
   <title>Work Dashboard</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/usage.css">
+  <link rel="stylesheet" href="/css/tree.css">
   <!-- 밝기는 첫 칠 전에 정해야 한다 — 모듈(boot.js)을 기다리면 어두운 화면이 흰색으로
        번쩍인다. 고른 값이 없으면 기기 설정을 따른다 (static/js/theme.js 와 같은 규칙) -->
   <script>
@@ -57,6 +58,15 @@
             <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
                   fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button data-tab="tree" data-i18n="nav.tree" data-i18n-title="nav.tree">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <rect x="1.8" y="6.2" width="3.6" height="3.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="10.6" y="2.2" width="3.6" height="3.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="10.6" y="10.2" width="3.6" height="3.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M5.4 8c2.6 0 2.4-4 5.2-4M5.4 8c2.6 0 2.4 4 5.2 4" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </button>
         <button data-tab="autorun" data-i18n="nav.autorun" data-i18n-title="nav.autorun">
@@ -251,6 +261,55 @@
             </div>
           </div>
           <div id="worktree-list"></div>
+        </div>
+      </section>
+
+      <!-- 트리 메뉴 (static/js/tree.js). 목록·맵 전환, 완료 숨기기, 다시 받기가 한 줄.
+           목록에서 행을 누르면 오른쪽 패널이 열리고, 둘 사이 경계를 끌어 패널 폭을 정한다 -->
+      <section id="tab-tree" class="tab" hidden>
+        <div id="tree-controls">
+          <div id="tree-view">
+            <button type="button" class="active" data-view="list" data-i18n="tree.viewList"></button>
+            <button type="button" data-view="map" data-i18n="tree.viewMap"></button>
+          </div>
+          <span id="tree-summary"></span>
+          <div id="tree-tools">
+            <button type="button" class="icon-btn" id="tree-hide-done" aria-pressed="true"
+                    data-i18n-title="tree.hideDone" data-i18n-aria-label="tree.hideDone">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M5.6 8.2 7.3 9.9l3.1-3.5" fill="none" stroke="currentColor"
+                      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M3 13 13 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" id="tree-refresh"
+                    data-i18n-title="tree.refresh" data-i18n-aria-label="tree.refresh">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.8v2.6h-2.6" fill="none" stroke="currentColor"
+                      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="tree-stage">
+          <div id="tree-list-pane"><div id="tree-list"></div></div>
+          <div id="tree-splitter" role="separator" aria-orientation="vertical" tabindex="0"
+               data-i18n-title="tree.resizePanel" data-i18n-aria-label="tree.resizePanel" hidden></div>
+          <aside id="tree-panel" hidden>
+            <header class="tree-panel-head">
+              <h2 id="tree-panel-title"></h2>
+              <button type="button" class="icon-btn" id="tree-panel-close"
+                      data-i18n-title="common.close" data-i18n-aria-label="common.close">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor"
+                        stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </header>
+            <div id="tree-panel-map" class="tm-host"></div>
+          </aside>
+          <div id="tree-map" class="tm-host" hidden></div>
         </div>
       </section>
 

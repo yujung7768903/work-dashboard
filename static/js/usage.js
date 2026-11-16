@@ -71,7 +71,12 @@ const FIXED_HOLIDAYS = new Set([
   "01-01", "03-01", "05-05", "06-06", "08-15", "10-03", "10-09", "12-25",
 ]);
 const WEEKEND_DAYS = new Set([0, 6]);
-const STATUS_LABEL = { todo: t("usage.statusTodo"), doing: t("usage.statusDoing"), done: t("common.done") };
+const STATUS_LABEL = {
+  todo: t("usage.statusTodo"),
+  doing: t("usage.statusDoing"),
+  review: t("tree.statusReview"),
+  done: t("common.done"),
+};
 
 let timer = null;
 // 전체보기로 펼친 상태. 모듈 변수라 60초 폴링이 다시 그려도 접히지 않는다

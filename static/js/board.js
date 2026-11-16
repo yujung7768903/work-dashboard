@@ -15,7 +15,8 @@ import { priorityBadge as sharedPriorityBadge, priorityText as formatPriority } 
 import { loadingSpinner } from "./spinner.js";
 import { editCard, focusWorkspace, menuItem } from "./workspace.js";
 
-const STATUS_CYCLE = { todo: "doing", doing: "done", done: "todo" };
+// 확인 대기(review)는 사람이 확인하면 끝이라 다음은 완료다. 순환 자체(todo→doing→done)는 그대로 둔다
+const STATUS_CYCLE = { todo: "doing", doing: "done", review: "done", done: "todo" };
 const GROUP_BY_WORKSPACE = "workspace";
 const GROUP_BY_CATEGORY = "category";
 const UNASSIGNED_KIND = "unassigned";
