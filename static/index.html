@@ -601,10 +601,17 @@
     </div>
   </dialog>
 
-  <!-- 매니저 탭 결정 대기·완료 확인 대기 줄을 누르면 연다. 매니저 DB 에 기록된 글만 옮긴다 (static/js/manager.js) -->
+  <!-- 매니저 탭 보조 세션·결정 대기·완료 확인 대기 줄을 누르면 연다 (static/js/manager.js).
+       상세 = 그 일 자체(사용자 요청 + 매니저 DB 에 기록된 글), 트리 = 그 일이 붙은 카드의 트리를 트리 메뉴와 같은 맵으로 -->
   <dialog id="mgr-decision-modal">
     <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
+    <div id="mgr-decision-head"></div>
+    <nav id="mgr-pop-tabs" class="subtabs">
+      <button type="button" data-tab="detail" class="active" data-i18n="manager.popupTabDetail"></button>
+      <button type="button" data-tab="tree" data-i18n="manager.popupTabTree"></button>
+    </nav>
     <div id="mgr-decision-body"></div>
+    <div id="mgr-decision-tree" class="tm-host" hidden></div>
   </dialog>
 
   <!-- 작업 위치를 못 정했을 때만 연다 — 할일 케밥의 "시작" 과 자율 수행 후보의 위치 미정 칩 (static/js/browse.js) -->

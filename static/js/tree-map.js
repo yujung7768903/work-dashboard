@@ -54,6 +54,9 @@ export function createTreeMap(host, options = {}) {
   let hideDone = false;
   // 방금 완료로 바꾼 카드. 완료 숨김이어도 이 화면을 보는 동안은 흐려진 채 남는다
   const keep = new Set();
+  // 강조할 카드는 끝났어도 숨기지 않는다 — 매니저 팝업이 가리키는 카드가 사라지면 연관을 못 본다
+  const keepFocus = () => options.focusId != null && keep.add(options.focusId);
+  keepFocus();
   let layout = null;
 
   attachPanZoom();
@@ -92,16 +95,23 @@ export function createTreeMap(host, options = {}) {
     return { x, y, k };
   }
 
+  // 강조 카드로 갈 때는 루트에서 그 카드까지의 길과 그 카드의 바로 아래 자식을 한 화면에 담는다 —
+  // 카드만 가운데 두면 어느 가지의 일인지(루트·부모)가 화면 밖으로 나간다
   function focusView() {
     const card = layout.cards.find((item) => item.kind === "todo" && item.data.id === options.focusId);
     if (!card) return fitView();
+    const frame = layout.cards.filter((item) => item.parent === card);
+    for (let step = card; step; step = step.parent) frame.push(step);
+    const left = Math.min(...frame.map((item) => item.x));
+    const top = Math.min(...frame.map((item) => item.y));
+    const right = Math.max(...frame.map((item) => item.x + CARD_W));
+    const bottom = Math.max(...frame.map((item) => item.y + CARD_H));
     const { width, height } = viewportSize();
-    const k = 1;
-    return {
-      x: width / 2 - (card.x + CARD_W / 2) * k,
-      y: height / 2 - (card.y + CARD_H / 2) * k,
-      k,
-    };
+    const k = clamp(Math.min((width - PAD * 2) / (right - left), (height - PAD * 2) / (bottom - top), 1), MIN_FIT, 1);
+    // 다 안 들어가면 강조 카드가 화면 가운데에 오게 한다
+    const centerX = (right - left) * k <= width - PAD * 2 ? (left + right) / 2 : card.x + CARD_W / 2;
+    const centerY = (bottom - top) * k <= height - PAD * 2 ? (top + bottom) / 2 : card.y + CARD_H / 2;
+    return { x: width / 2 - centerX * k, y: height / 2 - centerY * k, k };
   }
 
   function viewportSize() {
@@ -363,6 +373,7 @@ export function createTreeMap(host, options = {}) {
     resetView() {
       view = null;
       keep.clear();
+      keepFocus();
     },
   };
 }

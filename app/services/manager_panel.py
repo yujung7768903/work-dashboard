@@ -23,7 +23,7 @@ from app.constants import (
     MANAGER_HOME_ENV,
     MANAGER_HELPERS_TIMEOUT_SEC,
 )
-from app.services import cron, manager_tools
+from app.services import cron, manager_links, manager_tools
 
 PARTS = ("automations", "helpers", "tools", "decisions", "confirms")
 STATUS_OK = "ok"
@@ -55,7 +55,7 @@ def snapshot(part=None, now=None, con=None, **sources):
         "automations": lambda: automations(
             now, con=con, **_pick(sources, "crontab_text", "manager_home")
         ),
-        "helpers": lambda: helpers(**_pick(sources, "manager_home", "helpers_fn")),
+        "helpers": lambda: helpers(con=con, **_pick(sources, "manager_home", "helpers_fn")),
         "tools": lambda: manager_tools.tools(
             sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
         ),
@@ -728,18 +728,24 @@ def _last_wake(home):
 # ── 보조 세션 ────────────────────────────────────────────────────────────────
 
 
-def helpers(manager_home=None, helpers_fn=None):
-    """manager.py 보조 --json 을 그대로 옮긴다. 상태·진행률 판정은 매니저 몫이다"""
+def helpers(manager_home=None, helpers_fn=None, con=None):
+    """manager.py 보조 --json 을 그대로 옮긴다. 상태·진행률 판정은 매니저 몫이다.
+    con(대시보드 DB)이 있으면 그 세션이 붙잡은 트리 카드와 첫 요청을 붙인다 — 줄을 카드 기준으로 보이고
+    팝업 '상세'·'트리' 탭을 채우는 재료다"""
     home = manager_home or globals()["manager_home"]()
     rows = (helpers_fn or _run_helpers)(home)
+    linked = manager_links.cards(con, [row.get("session_id") for row in rows])
     return [
         {
+            "session_id": row.get("session_id"),
             "name": row.get("name"),
             "status": row.get("status"),
             "percent": row.get("percent"),
             "percent_at": row.get("percent_at"),
             "doing": row.get("doing"),
             "moved_at": row.get("moved_at"),
+            "card": linked.get(row.get("session_id")),
+            "request": manager_links.first_request(row.get("session_id"), home),
         }
         for row in rows
     ]
@@ -769,7 +775,9 @@ def _run_helpers(home):
 
 
 # 팝업에 그대로 싣는 매니저 DB 칸. 요약·추천을 여기서 지어내지 않는다 — 기록된 것만 보여 준다
-POPUP_FIELDS = ("detail", "next_step", "plan", "plan_status", "reason", "source_ref", "open_target", "session_id")
+POPUP_FIELDS = (
+    "detail", "next_step", "plan", "plan_status", "reason", "source", "source_ref", "open_target", "session_id",
+)
 # 연결 세션의 마지막 답에서 보여 줄 끝부분. 결정 사항은 보통 답 끝에 있다
 REPLY_TAIL_CHARS = 1500
 # transcript 끝에서 마지막 답을 찾을 때 읽는 양. 도구 결과가 길게 이어진 세션도 대개 이 안에 든다
@@ -818,12 +826,16 @@ def _tasks(now, where, params, manager_home, con):
     finally:
         manager_con.close()
     stamp = now.isoformat(timespec="seconds")
-    replies = _session_replies(con, {_get(row, "session_id") for row in rows} - {None})
+    session_ids = {_get(row, "session_id") for row in rows} - {None}
+    replies = _session_replies(con, session_ids)
+    linked = manager_links.cards(con, session_ids)
     items = []
     for row in rows:
         popup = {name: _get(row, name) for name in POPUP_FIELDS}
         popup["reply_tail"], popup["reply_from"] = _last_reply(popup["session_id"], replies)
         popup["session_name"] = _session_name(popup["session_id"])
+        # 그 일을 시작한 사람의 첫 요청. 세션 없이 들어온 할일(Jira·메일 훑기)은 출처를 대신 보인다
+        popup["request"] = manager_links.first_request(popup["session_id"], home)
         items.append(
             {
                 "id": row["id"],
@@ -834,6 +846,7 @@ def _tasks(now, where, params, manager_home, con):
                 "priority_max": top,
                 "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
                 "held": _later(row, ("hold_until", "snooze_until"), stamp),
+                "card": linked.get(popup["session_id"]),
                 "popup": popup,
             }
         )

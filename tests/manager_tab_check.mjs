@@ -82,7 +82,9 @@ const PAYLOAD = {
           detail: "todos 에 priority 칸이 없음\n선택지 A·B", next_step: "A 와 B 중 고르기", plan: null,
           plan_status: null, reason: null, source_ref: null, open_target: "/home/u/x.md",
           session_id: "s1", reply_tail: "…\nA 를 추천해.", reply_from: "transcript",
+          request: { status: "ok", text: "우선순위 칸을 정해 줘.\n보드와 같은 표기로." },
         },
+        card: null,
       },
     ],
   },
@@ -91,7 +93,10 @@ const PAYLOAD = {
     items: [
       {
         id: 61, title: "보조 한도", state: "confirm", detail: null, priority: null, priority_max: 3, since: agoMinutes(90), held: false,
-        popup: { detail: null, next_step: null, reason: "master 905f617 반영", session_id: null, reply_tail: null },
+        popup: {
+          detail: null, next_step: null, reason: "master 905f617 반영", session_id: null, reply_tail: null,
+          source: "jira", source_ref: "PFD-6350", request: { status: "no_session" },
+        },
       },
       {
         id: 62, title: "블로그 글 반영", state: "confirm", detail: "초안 반영", priority: 2, priority_max: 3, since: agoMinutes(5), held: false,
@@ -99,7 +104,12 @@ const PAYLOAD = {
           detail: "초안 반영\n표 너비 수정", next_step: "문체 확인", plan: null, plan_status: null,
           reason: "PR #12 머지", source_ref: null, open_target: "https://github.com/x/y/pull/12",
           session_id: "abcdef12-3456", session_name: "보조2 | 블로그", reply_tail: "…\n끝났어.", reply_from: "transcript",
+          // 보조 세션의 spawn 지시문 — 길어서 접혀야 한다
+          request: { status: "ok", text: Array.from({ length: 14 }, (_, i) => `${i + 1}. 지시 줄`).join("\n") },
         },
+        // 이 일이 붙어 있는 트리 카드. 줄 제목이 이 카드 기준이 된다
+        card: { todo_id: 355, title: "트리 메뉴 추가", status: "doing", workspace_id: 3,
+          workspace_name: "작업 대시보드", category_color: "#4a5ae8" },
       },
     ],
   },
@@ -184,7 +194,7 @@ const titleText = (title) => (title.children.length ? title.children.map((kid) =
 assert.equal(decisionRows.length, 1, "결정 대기 칸에는 열린 결정만 — 확인 대기는 옆 칸");
 const texts = (row) => {
   const [main, side] = row.children;
-  return [titleText(main.children[0]), main.children[1].textContent, side.children[0].textContent, side.children[1].textContent];
+  return [titleText(main.children[0]), titleText(main.children[1]), side.children[0].textContent, side.children[1].textContent];
 };
 assert.deepEqual(texts(decisionRows[0]), ["#87 2/3 우선순위 출처", "A 추천", "결정", "30m 전"]);
 // 번호 오른쪽 우선순위는 보드 할일 줄과 같은 배지(.todo-priority)
@@ -192,13 +202,18 @@ const badge = decisionRows[0].children[0].children[0].children[1];
 assert.equal(badge.className, "todo-priority");
 assert.equal(badge.title, "우선순위 2 / 열린 할일 중 최고 3");
 
-// 결정 대기 줄을 누르면 팝업 — 지금까지 한 일 / 결정할 것, 기록된 글만
+// 결정 대기 줄을 누르면 팝업 — 제목·상세|트리 탭, 상세는 사용자 요청 / 지금까지 한 일 / 결정할 것, 기록된 글만
 decisionRows[0].listeners.click();
 const modal = elements["mgr-decision-modal"];
 assert.equal(modal.open, true);
+const headTitle = () => elements["mgr-decision-head"].children[0].children[0].textContent;
+assert.equal(headTitle(), "#87 우선순위 출처");
 const body = elements["mgr-decision-body"].children;
-assert.equal(body[0].children[0].textContent, "#87 우선순위 출처");
-const sectionText = (section) => section.children.map((kid) => kid.textContent || kid.children.map((c) => c.textContent).join("")).join("|");
+const sectionText = (section) => section.children.map((kid) => kid.textContent || kid.children.map((c) => c.textContent || c.children?.map((g) => g.textContent).join("")).join("")).join("|");
+// 사용자 요청 — 그 일을 시작한 첫 지시 전문, 줄바꿈 그대로
+assert.equal(body[0].children[0].textContent, "사용자 요청");
+assert.equal(sectionText(body[0]), "사용자 요청|우선순위 칸을 정해 줘.\n보드와 같은 표기로.");
+assert.doesNotMatch(body[0].children[1].className, /folded/, "짧은 요청은 접지 않는다");
 assert.equal(body[1].children[0].textContent, "지금까지 한 일");
 assert.match(sectionText(body[1]), /todos 에 priority 칸이 없음/);
 assert.equal(body[2].children[0].textContent, "결정할 것");
@@ -209,18 +224,41 @@ assert.match(sectionText(body[2]), /A 를 추천해/);
 // 결정에도 연결 세션 칸 — 이름이 없으면 세션 id 앞 8자리. 마지막 답은 결정할 것 쪽에만
 assert.equal(body[3].children[0].textContent, "연결 세션");
 assert.equal(sectionText(body[3]), "연결 세션|s1");
+// 붙은 카드가 없는 일 — 트리 탭은 '연결된 트리 없음', 트리 탭에서만 팝업이 넓어진다
+const openTab = (tab) => elements["mgr-pop-tabs"].listeners.click({ target: { closest: () => ({ dataset: { tab } }) } });
+openTab("tree");
+assert.equal(elements["mgr-decision-body"].hidden, true);
+assert.equal(elements["mgr-decision-tree"].hidden, false);
+assert.equal(elements["mgr-decision-tree"].children[0].textContent, "연결된 트리 없음");
+assert.match(modal.className, /\bwide\b/);
+openTab("detail");
+assert.equal(elements["mgr-decision-body"].hidden, false);
+assert.doesNotMatch(modal.className, /\bwide\b/);
 
 // 완료 확인 대기 — 결정 대기와 같은 줄 모양, 같은 팝업. 우선순위가 없으면 보드처럼 '-'
 const confirmRows = elements["mgr-confirms"].children;
 assert.equal(elements["mgr-confirms-count"].textContent, "2");
 assert.deepEqual(texts(confirmRows[0]), ["#61 - 보조 한도", "", "확인 대기", "1h 전"]);
-assert.deepEqual(texts(confirmRows[1]), ["#62 2/3 블로그 글 반영", "초안 반영", "확인 대기", "5m 전"]);
-// 팝업: 끝낸 내용 / 작업 사항 / 다음 단계 / 산출물(있을 때만) / 연결 세션(이름·마지막 답)
+// 트리 카드에 붙은 일은 줄 제목이 카드 기준 — 트리 칩 + 카드 번호·제목. 확인할 일은 아랫줄로
+assert.deepEqual(texts(confirmRows[1]), ["작업 대시보드 #355 트리 메뉴 추가", "#62 2/3 블로그 글 반영", "확인 대기", "5m 전"]);
+const treeChip = confirmRows[1].children[0].children[0].children[0];
+assert.equal(treeChip.className, "mgr-tree-chip");
+assert.equal(treeChip.title, "트리: 작업 대시보드");
+// 팝업: 사용자 요청 / 끝낸 내용 / 작업 사항 / 다음 단계 / 산출물(있을 때만) / 연결 세션(이름·마지막 답)
 confirmRows[1].listeners.click();
+assert.equal(headTitle(), "#62 블로그 글 반영");
 const confirmBody = elements["mgr-decision-body"].children;
-assert.equal(confirmBody[0].children[0].textContent, "#62 블로그 글 반영");
-assert.deepEqual(confirmBody.slice(1).map((section) => section.children[0].textContent),
-  ["끝낸 내용", "작업 사항", "다음 단계", "산출물", "연결 세션"]);
+assert.deepEqual(confirmBody.map((section) => section.children[0].textContent),
+  ["사용자 요청", "끝낸 내용", "작업 사항", "다음 단계", "산출물", "연결 세션"]);
+// 긴 요청은 접혀 있고 '전체 보기' 로 펼친다 — 전문은 그대로 들어 있다
+const requestBox = confirmBody[0].children[1];
+assert.match(requestBox.className, /\bfolded\b/);
+assert.match(sectionText(confirmBody[0]), /1\. 지시 줄\n2\. 지시 줄[\s\S]*14\. 지시 줄/);
+const toggle = requestBox.children[1];
+assert.equal(toggle.textContent, "전체 보기");
+toggle.listeners.click();
+assert.doesNotMatch(requestBox.className, /\bfolded\b/);
+assert.equal(toggle.textContent, "접기");
 assert.equal(sectionText(confirmBody[1]), "끝낸 내용|PR #12 머지");
 assert.match(sectionText(confirmBody[2]), /표 너비 수정/);
 assert.equal(sectionText(confirmBody[3]), "다음 단계|문체 확인");
@@ -229,10 +267,14 @@ const outputLink = confirmBody[4].children[1].children[0];
 assert.equal(outputLink.href, "https://github.com/x/y/pull/12");
 assert.equal(outputLink.target, "_blank");
 assert.match(sectionText(confirmBody[5]), /^연결 세션\|보조2 \| 블로그\|연결 세션의 마지막 답 \(끝부분\)\|…\n끝났어\.$/);
-// 비어 있는 칸은 지어내지 않고 '기록 없음', 산출물·연결 세션은 없으면 칸째 뺀다
+// 비어 있는 칸은 지어내지 않고 '기록 없음', 산출물·연결 세션은 없으면 칸째 뺀다.
+// 세션 없이 들어온 일은 사용자 요청 자리에 '세션 없음' 과 출처
 confirmRows[0].listeners.click();
 const bareBody = elements["mgr-decision-body"].children;
-assert.deepEqual(bareBody.slice(1).map(sectionText), ["끝낸 내용|master 905f617 반영", "작업 사항|기록 없음", "다음 단계|기록 없음"]);
+assert.deepEqual(bareBody.map(sectionText), [
+  "사용자 요청|세션 없음출처: jira · PFD-6350",
+  "끝낸 내용|master 905f617 반영", "작업 사항|기록 없음", "다음 단계|기록 없음", "근거 자료|PFD-6350",
+]);
 
 // 도구 목록 — 용도 칩(받은 용도만)·'연결됨' 줄(개수만)·줄마다 이름/설명(같은 줄)/용도/제작 주체/상태
 const chipTexts = () => elements["mgr-tools-cats"].children.map((chip) => chip.textContent);

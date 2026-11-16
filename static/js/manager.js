@@ -8,6 +8,7 @@ import { formatAge, notePart } from "./sessions.js";
 import { linkify } from "./linkify.js";
 import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
 import { priorityBadge } from "./priority.js";
+import { createTreeMap } from "./tree-map.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
 const SUBTABS = {
@@ -247,7 +248,10 @@ function row({ title, sub, aside, asideSub, hint, tone }) {
   if (hint) item.title = hint;
   const main = el("div", "mgr-main");
   // 글자만이면 그대로, 배지를 섞어야 하면 부르는 쪽이 만든 노드를 받는다
-  main.append(typeof title === "string" ? el("span", "mgr-title", title) : title, el("span", "mgr-sub", sub || ""));
+  main.append(
+    typeof title === "string" ? el("span", "mgr-title", title) : title,
+    sub && typeof sub === "object" ? sub : el("span", "mgr-sub", sub || "")
+  );
   const side = el("div", "mgr-side");
   side.append(aside, asideSub ?? el("span", "mgr-sub", ""));
   item.append(main, side);
@@ -293,12 +297,39 @@ function helperRow(item) {
   const status = el("span", `mgr-chip ${tone}`, label());
   const moved = item.moved_at ? t("manager.movedAgo", { age: formatAge(item.moved_at) }) : "";
   const percent = item.percent == null ? t("manager.noProgress") : `${item.percent}%`;
-  return row({
-    title: item.name,
+  // 붙잡은 카드가 있으면 카드 기준(트리 + 카드 제목). 없으면 지금처럼 세션 이름
+  const line = row({
+    title: item.card ? cardTitle(item.card) : item.name,
     sub: item.doing || t("common.unknown"),
     aside: status,
     asideSub: el("span", "mgr-sub", [percent, moved].filter(Boolean).join(" · ")),
+    hint: item.name,
+    tone: "mgr-click",
   });
+  return clickable(line, () => openWork(helperWork(item)));
+}
+
+// 줄 제목을 카드 기준으로 — 어느 트리(워크스페이스)인지 칩 하나, 그 뒤 카드 번호·제목
+function cardTitle(card) {
+  const title = el("span", "mgr-title mgr-card-title");
+  const name = card.workspace_name ?? t("common.unassigned");
+  const tree = el("span", "mgr-tree-chip", name);
+  if (card.category_color) tree.style?.setProperty("--cat", card.category_color);
+  tree.title = t("manager.cardTree", { tree: name });
+  title.append(tree, document.createTextNode(`#${card.todo_id} ${card.title}`));
+  return title;
+}
+
+function clickable(line, open) {
+  line.tabIndex = 0;
+  line.addEventListener?.("click", open);
+  line.addEventListener?.("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
+  return line;
 }
 
 function decisionRow(item) {
@@ -319,22 +350,16 @@ function decisionRow(item) {
     priorityBadge(item.priority, item.priority_max),
     document.createTextNode(item.title)
   );
+  // 붙어 있는 카드가 있으면 제목 줄은 카드(트리 + 카드 제목), 결정·확인할 것은 아랫줄로 내린다
+  if (item.card) title.className = "mgr-sub";
   const line = row({
-    title,
-    sub: item.detail || "",
+    title: item.card ? cardTitle(item.card) : title,
+    sub: item.card ? title : item.detail || "",
     aside: chip,
     asideSub: el("span", "mgr-sub", extra.join(" · ")),
     tone: `mgr-click${item.held ? " off" : ""}`,
   });
-  line.tabIndex = 0;
-  line.addEventListener?.("click", () => openDecision(item));
-  line.addEventListener?.("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openDecision(item);
-    }
-  });
-  return line;
+  return clickable(line, () => openDecision(item));
 }
 
 // ── 도구 목록 — 휴대폰 '앱 및 서비스 연결하기' 화면처럼 ─────────────────────────
@@ -496,26 +521,151 @@ function replyPart(popup) {
 }
 
 function openDecision(item) {
+  openWork({
+    title: `#${item.id} ${item.title}`,
+    request: item.popup?.request,
+    source: item.popup,
+    sections: decisionSections(item),
+    card: item.card,
+  });
+}
+
+// 보조 세션 줄 — 상세는 사용자 요청 / 지금 하는 일 / 연결 세션
+function helperWork(item) {
+  const percent = item.percent == null ? t("manager.noProgress") : `${item.percent}%`;
+  return {
+    title: item.card ? `#${item.card.todo_id} ${item.card.title}` : item.name,
+    request: item.request,
+    sections: [
+      { title: t("manager.popupDoing"), parts: [{ text: [item.doing, percent].filter(Boolean).join(" · ") }] },
+      { title: t("manager.popupSession"), parts: [{ text: item.name }] },
+    ],
+    card: item.card,
+  };
+}
+
+// ── 팝업: 상세 · 트리 ─────────────────────────────────────────────────────────
+// 상세는 그 일 자체(사용자 요청 + 기록된 글), 트리는 그 일이 붙은 카드의 트리를 트리 메뉴와 같은 맵으로
+// 그리고 그 카드를 강조한다. 맵은 트리 탭을 열 때 그린다 — 숨긴 칸에서 그리면 크기를 0 으로 잰다
+const POP_DETAIL = "detail";
+const POP_TREE = "tree";
+let openedWork = null;
+
+function openWork(work) {
+  openedWork = work;
   const dialog = document.getElementById("mgr-decision-modal");
-  const body = document.getElementById("mgr-decision-body");
   const head = el("div", "dlg-head");
-  head.append(el("p", "dlg-title", `#${item.id} ${item.title}`));
-  const nodes = [head];
-  for (const section of decisionSections(item)) {
-    const box = el("section", "mgr-pop-sec");
-    box.append(el("h3", "mgr-pop-title", section.title));
-    const filled = section.parts.filter((part) => part.text);
-    if (!filled.length) box.append(el("p", "mgr-pop-none", t("manager.popupNone")));
-    for (const part of filled) {
-      if (part.label) box.append(el("p", "mgr-pop-label", part.label));
-      const text = el(part.quote ? "blockquote" : "p", part.quote ? "mgr-pop-quote" : "mgr-pop-text");
-      text.append(...linkify(part.text).map(notePart));
+  head.append(el("p", "dlg-title", work.title));
+  document.getElementById("mgr-decision-head").replaceChildren(head);
+  const sections = [requestSection(work), ...work.sections];
+  document.getElementById("mgr-decision-body").replaceChildren(...sections.map(sectionBox));
+  const tree = document.getElementById("mgr-decision-tree");
+  tree.replaceChildren();
+  delete tree.dataset?.drawn;
+  bindPopupTabs();
+  showPopupTab(POP_DETAIL);
+  if (!dialog.open) dialog.showModal();
+}
+
+function sectionBox(section) {
+  const box = el("section", "mgr-pop-sec");
+  box.append(el("h3", "mgr-pop-title", section.title));
+  if (section.node) {
+    box.append(section.node);
+    return box;
+  }
+  const filled = section.parts.filter((part) => part.text);
+  if (!filled.length) box.append(el("p", "mgr-pop-none", t("manager.popupNone")));
+  for (const part of filled) {
+    if (part.label) box.append(el("p", "mgr-pop-label", part.label));
+    const text = el(part.quote ? "blockquote" : "p", part.quote ? "mgr-pop-quote" : "mgr-pop-text");
+    text.append(...linkify(part.text).map(notePart));
+    box.append(text);
+  }
+  return box;
+}
+
+// 사용자 요청 — 그 일을 하는 세션이 맨 처음 받은 지시 전문(줄바꿈 그대로). 길면 접어 두고 펼친다
+const REQUEST_FOLD_CHARS = 600;
+const REQUEST_FOLD_LINES = 10;
+
+function requestSection(work) {
+  const request = work.request || {};
+  const box = el("div", "mgr-request");
+  if (request.status === "ok") {
+    const text = el("p", "mgr-pop-text mgr-request-text");
+    text.append(...linkify(request.text).map(notePart));
+    box.append(text);
+    const lines = request.text.split("\n").length;
+    if (request.text.length > REQUEST_FOLD_CHARS || lines > REQUEST_FOLD_LINES) {
+      box.classList.toggle("folded", true);
+      const toggle = el("button", "mgr-request-toggle", t("manager.requestMore"));
+      toggle.type = "button";
+      toggle.addEventListener("click", () => {
+        const fold = !box.className.split(" ").includes("folded");
+        box.classList.toggle("folded", fold);
+        toggle.textContent = fold ? t("manager.requestMore") : t("manager.requestLess");
+      });
+      box.append(toggle);
+    }
+  } else if (request.status === "not_found") {
+    box.append(el("p", "mgr-pop-none", t("manager.requestNotFound")));
+  } else if (request.status === "empty") {
+    box.append(el("p", "mgr-pop-none", t("manager.requestEmpty")));
+  } else {
+    // 세션 없이 들어온 일(Jira·메일 훑기) — 무엇에서 왔는지를 대신 보인다
+    box.append(el("p", "mgr-pop-none", t("manager.requestNoSession")));
+    const from = [work.source?.source, work.source?.source_ref].filter(Boolean).join(" · ");
+    if (from) {
+      const text = el("p", "mgr-pop-text");
+      text.append(...linkify(t("manager.requestSource", { source: from })).map(notePart));
       box.append(text);
     }
-    nodes.push(box);
   }
-  body.replaceChildren(...nodes);
-  if (!dialog.open) dialog.showModal();
+  return { title: t("manager.popupRequest"), node: box };
+}
+
+let popupBound = false;
+function bindPopupTabs() {
+  if (popupBound) return;
+  popupBound = true;
+  document.getElementById("mgr-pop-tabs").addEventListener("click", (event) => {
+    const tab = event.target.closest?.("button")?.dataset.tab;
+    if (tab) showPopupTab(tab);
+  });
+}
+
+function showPopupTab(tab) {
+  const dialog = document.getElementById("mgr-decision-modal");
+  document.querySelectorAll?.("#mgr-pop-tabs button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === tab);
+  });
+  document.getElementById("mgr-decision-body").hidden = tab !== POP_DETAIL;
+  document.getElementById("mgr-decision-tree").hidden = tab !== POP_TREE;
+  // 맵은 넓어야 읽힌다 — 트리 탭에서만 팝업을 넓힌다
+  dialog.classList.toggle("wide", tab === POP_TREE);
+  if (tab === POP_TREE) drawPopupTree(openedWork);
+}
+
+async function drawPopupTree(work) {
+  const host = document.getElementById("mgr-decision-tree");
+  const card = work?.card;
+  if (!card?.workspace_id) {
+    host.replaceChildren(el("p", "mgr-pop-none mgr-no-tree", t("manager.noTree")));
+    return;
+  }
+  if (host.dataset.drawn === String(card.todo_id)) return;
+  host.dataset.drawn = String(card.todo_id);
+  const map = createTreeMap(host, {
+    focusId: card.todo_id,
+    onChange: async () => map.render(await treeOf(card.workspace_id), { hideDone: true }),
+  });
+  map.render(await treeOf(card.workspace_id), { hideDone: true });
+}
+
+async function treeOf(workspaceId) {
+  const { trees } = await api.getTodoTrees();
+  return trees.filter((tree) => tree.workspace.id === workspaceId);
 }
 
 function refreshFailedNote(error) {

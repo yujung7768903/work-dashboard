@@ -502,5 +502,17 @@
   "error.parentNeedsWorkspace": "Only todos in a workspace can have a parent todo",
   "error.parentOtherWorkspace": "The parent todo must be in the same workspace",
   "error.parentCycle": "A todo cannot be its own parent or sit under its own sub-todo",
-  "error.parentInvalid": "Specify the parent by todo number"
+  "error.parentInvalid": "Specify the parent by todo number",
+  "manager.popupTabDetail": "Details",
+  "manager.popupTabTree": "Tree",
+  "manager.popupRequest": "User request",
+  "manager.popupDoing": "Current work",
+  "manager.requestNoSession": "No session",
+  "manager.requestSource": "Source: {source}",
+  "manager.requestNotFound": "The session transcript could not be found",
+  "manager.requestEmpty": "No first request was found in the session transcript",
+  "manager.requestMore": "Show all",
+  "manager.requestLess": "Collapse",
+  "manager.noTree": "No linked tree",
+  "manager.cardTree": "Tree: {tree}"
 }

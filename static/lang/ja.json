@@ -502,5 +502,17 @@
   "error.parentNeedsWorkspace": "ワークスペースに属するタスクだけが上位タスクを持てます",
   "error.parentOtherWorkspace": "上位タスクは同じワークスペースのタスクである必要があります",
   "error.parentCycle": "自分自身や下位タスクを上位に指定することはできません",
-  "error.parentInvalid": "上位タスクはタスク番号で指定してください"
+  "error.parentInvalid": "上位タスクはタスク番号で指定してください",
+  "manager.popupTabDetail": "詳細",
+  "manager.popupTabTree": "ツリー",
+  "manager.popupRequest": "ユーザーの依頼",
+  "manager.popupDoing": "現在の作業",
+  "manager.requestNoSession": "セッションなし",
+  "manager.requestSource": "出典: {source}",
+  "manager.requestNotFound": "セッション記録（transcript）が見つかりません",
+  "manager.requestEmpty": "セッション記録に最初の依頼が見つかりません",
+  "manager.requestMore": "すべて表示",
+  "manager.requestLess": "折りたたむ",
+  "manager.noTree": "リンクされたツリーなし",
+  "manager.cardTree": "ツリー: {tree}"
 }

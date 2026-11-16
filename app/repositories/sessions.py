@@ -298,6 +298,26 @@ def waiting_by_todo(con):
     return found
 
 
+def current_cards(con, claude_session_ids):
+    """세션 id → 그 세션이 지금 붙잡은 할일(가장 최근 연결)과 그 트리(워크스페이스).
+    매니저 탭 줄을 트리 카드에 잇는 데 쓴다. 연결된 할일이 없는 세션은 빠진다"""
+    if not claude_session_ids:
+        return {}
+    marks = ",".join("?" * len(claude_session_ids))
+    rows = con.execute(
+        f"""SELECT s.claude_session_id AS session_id, t.id AS todo_id, t.title AS title,
+                   t.status AS status, t.workspace_id AS workspace_id,
+                   w.name AS workspace_name, c.color AS category_color
+            FROM sessions s
+            JOIN todos t ON t.id = (SELECT t.id {LATEST_LINKED})
+            LEFT JOIN workspaces w ON w.id = t.workspace_id
+            LEFT JOIN categories c ON c.id = COALESCE(w.category_id, t.category_id)
+            WHERE s.claude_session_id IN ({marks})""",
+        tuple(claude_session_ids),
+    )
+    return {row["session_id"]: {key: row[key] for key in row.keys() if key != "session_id"} for row in rows}
+
+
 def cwds_by_workspace(con, workspace_id):
     """그 워크스페이스에서 돌았던 작업 위치. 최근 순.
     워크스페이스에는 저장소 경로가 없어 워크트리 뷰가 여기서 저장소를 유추한다"""

@@ -502,5 +502,17 @@
   "error.parentNeedsWorkspace": "워크스페이스에 속한 할일만 상위 할일을 가질 수 있습니다",
   "error.parentOtherWorkspace": "상위 할일은 같은 워크스페이스의 할일이어야 합니다",
   "error.parentCycle": "자기 자신이나 하위 할일을 상위로 지정할 수 없습니다",
-  "error.parentInvalid": "상위 할일은 할일 번호로 지정해 주세요"
+  "error.parentInvalid": "상위 할일은 할일 번호로 지정해 주세요",
+  "manager.popupTabDetail": "상세",
+  "manager.popupTabTree": "트리",
+  "manager.popupRequest": "사용자 요청",
+  "manager.popupDoing": "지금 하는 일",
+  "manager.requestNoSession": "세션 없음",
+  "manager.requestSource": "출처: {source}",
+  "manager.requestNotFound": "세션 기록(transcript)을 찾지 못했습니다",
+  "manager.requestEmpty": "세션 기록에서 첫 요청을 찾지 못했습니다",
+  "manager.requestMore": "전체 보기",
+  "manager.requestLess": "접기",
+  "manager.noTree": "연결된 트리 없음",
+  "manager.cardTree": "트리: {tree}"
 }
