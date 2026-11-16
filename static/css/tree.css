@@ -85,8 +85,9 @@
 .tree-expand svg { transition: transform 0.12s; }
 .tree-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
 
-/* 상태 칩. 0 건은 아예 안 그려 남은 칩만 눈에 들어온다 */
-.tree-count, .tree-kid-status, .tm-count {
+/* 상태 칩. 0 건은 아예 안 그려 남은 칩만 눈에 들어온다.
+   .tm-state 는 트리 없이 혼자 서는 카드(soloCard)의 상태 — 바꿀 수 없어 고르기 대신 칩이다 */
+.tree-count, .tree-kid-status, .tm-count, .tm-state {
   padding: 0 var(--sp-8); border-radius: var(--r-pill);
   font-size: var(--fs-sm); font-weight: 600; line-height: var(--lh-body); white-space: nowrap;
   color: var(--st); background: color-mix(in srgb, var(--st) 14%, var(--surface));

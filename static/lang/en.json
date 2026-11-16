@@ -513,6 +513,7 @@
   "manager.requestEmpty": "No first request was found in the session transcript",
   "manager.requestMore": "Show all",
   "manager.requestLess": "Collapse",
-  "manager.noTree": "No linked tree",
+  "manager.soloUnlinked": "This work isn't linked to a dashboard todo",
+  "manager.soloNoWorkspace": "This todo has no workspace, so there is no tree",
   "manager.cardTree": "Tree: {tree}"
 }

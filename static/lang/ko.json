@@ -513,6 +513,7 @@
   "manager.requestEmpty": "세션 기록에서 첫 요청을 찾지 못했습니다",
   "manager.requestMore": "전체 보기",
   "manager.requestLess": "접기",
-  "manager.noTree": "연결된 트리 없음",
+  "manager.soloUnlinked": "대시보드 할일과 연결되지 않은 일입니다",
+  "manager.soloNoWorkspace": "워크스페이스가 없는 할일이라 트리가 없습니다",
   "manager.cardTree": "트리: {tree}"
 }

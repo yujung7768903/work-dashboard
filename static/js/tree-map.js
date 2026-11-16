@@ -378,6 +378,38 @@ export function createTreeMap(host, options = {}) {
   };
 }
 
+// ── 트리 없이 혼자 서는 카드 ──────────────────────────────────────────────
+// 매니저 탭 팝업에서 그 일이 트리에 붙어 있지 않을 때 쓴다. 트리 카드와 같은 크기·클래스·상태 색·
+// 대기 표시라 같은 일로 읽힌다. 상태는 대시보드 할일이 아니라 바꿀 수 없어 고르기 대신 칩으로 둔다
+//   status: 상태 색을 정하는 todo·doing·review·done 중 하나. label: 칩 글자(없으면 그 상태 이름)
+//   waiting: permission·input — 그 일을 하는 세션이 사람을 기다릴 때. onOpen: 있으면 제목을 눌러 연다
+export function soloCard({ id = null, title, status, label, waiting = null, onOpen = null }) {
+  const card = element("div", "tm-card tm-solo");
+  card.dataset.status = status;
+  if (waiting) card.dataset.waiting = waiting;
+  card.style.width = `${CARD_W}px`;
+  card.style.height = `${CARD_H}px`;
+  const head = element("div", "tm-head");
+  head.appendChild(element("span", "tm-state", label ?? STATUS_LABEL[status]));
+  if (id != null) head.appendChild(element("span", "tm-id", `#${id}`));
+  if (waiting) {
+    const badge = waitingBadge(WAITING_LABEL[waiting] ?? waiting);
+    badge.title = t("tree.waitingHint");
+    head.appendChild(badge);
+  }
+  const name = element(onOpen ? "button" : "div", "tm-title", title);
+  name.title = onOpen ? `${title} — ${t("tree.openDetail")}` : title;
+  if (onOpen) {
+    name.type = "button";
+    name.addEventListener("click", onOpen);
+  }
+  // 꼬리 줄은 비워 둔다 — 높이를 트리 카드와 맞춰 제목이 같은 자리에 온다
+  const foot = element("div", "tm-foot");
+  foot.appendChild(element("span", "tm-spacer"));
+  card.append(head, name, foot);
+  return card;
+}
+
 // ── 작은 조각 ─────────────────────────────────────────────────────────────
 
 function progress({ done, total }) {

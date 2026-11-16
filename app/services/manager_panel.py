@@ -734,7 +734,9 @@ def helpers(manager_home=None, helpers_fn=None, con=None):
     팝업 '상세'·'트리' 탭을 채우는 재료다"""
     home = manager_home or globals()["manager_home"]()
     rows = (helpers_fn or _run_helpers)(home)
-    linked = manager_links.cards(con, [row.get("session_id") for row in rows])
+    session_ids = [row.get("session_id") for row in rows]
+    linked = manager_links.cards(con, session_ids)
+    waits = manager_links.waiting(con, session_ids)
     return [
         {
             "session_id": row.get("session_id"),
@@ -745,6 +747,7 @@ def helpers(manager_home=None, helpers_fn=None, con=None):
             "doing": row.get("doing"),
             "moved_at": row.get("moved_at"),
             "card": linked.get(row.get("session_id")),
+            "waiting": waits.get(row.get("session_id")),
             "request": manager_links.first_request(row.get("session_id"), home),
         }
         for row in rows
@@ -829,6 +832,7 @@ def _tasks(now, where, params, manager_home, con):
     session_ids = {_get(row, "session_id") for row in rows} - {None}
     replies = _session_replies(con, session_ids)
     linked = manager_links.cards(con, session_ids)
+    waits = manager_links.waiting(con, session_ids)
     items = []
     for row in rows:
         popup = {name: _get(row, name) for name in POPUP_FIELDS}
@@ -847,6 +851,7 @@ def _tasks(now, where, params, manager_home, con):
                 "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
                 "held": _later(row, ("hold_until", "snooze_until"), stamp),
                 "card": linked.get(popup["session_id"]),
+                "waiting": waits.get(popup["session_id"]),
                 "popup": popup,
             }
         )
