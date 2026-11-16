@@ -41,6 +41,7 @@ from app.services import (
     session_message,
     session_name,
     session_todo,
+    todo_tree,
     usage,
     worktrees,
 )
@@ -119,6 +120,9 @@ def route(con, method, path, query, body):
 def _route_get(con, head, item_id, query):
     if head == "tree":
         return board.tree(con, _single(query, "group_by", board.GROUP_BY_WORKSPACE))
+    if head == "todo-trees":
+        # '트리' 메뉴. 보드의 tree(카테고리>워크스페이스>할일 묶음)와 달리 할일 상하 관계째 준다
+        return todo_tree.forest(con)
     if head == "next":
         return planning.next_todo(con)
     if head == "done-today":
@@ -181,6 +185,7 @@ def _route_post(con, head, body):
             workspace_id=body.get("workspace_id"),
             note=body.get("note"),
             precondition=body.get("precondition"),
+            parent_id=body.get("parent_id"),
         )
     if head == "todo-start":
         if not body.get("id"):

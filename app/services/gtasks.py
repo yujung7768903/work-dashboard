@@ -17,6 +17,9 @@
   지우고, **완료된 것은 그대로 둔다** — 구글 앱의 '완료된 항목 삭제' 한 번으로 완료
   기록이 통째로 사라지면 안 되기 때문이다
 - 목록(카테고리)은 여기서 만들지 않는다. gtasks_setup 이 켤 때 한 번 맞춘다
+- 할일 트리에서 상위 할일이 있는 할일(워크스페이스 바로 아래가 아닌 것)은 내보내지 않는다.
+  구글은 한 단계만 중첩되므로 둘 자리가 없다. 예전에 내보냈다가 하위로 들어간 할일은
+  구글에서 내리고 링크를 끊는다 — 다시 워크스페이스 바로 아래로 오면 새로 올라간다
 
 구글 태스크에는 웹훅이 없어 이 함수를 주기적으로 부르는 것 말고는 방법이 없다
 """
@@ -117,9 +120,11 @@ def _sync_list(con, client, category, previous, seen, report, dry_run):
     list_id = category["google_list_id"]
     remote = {task["id"]: task for task in client.tasks(list_id)}
     spaces = _scoped_workspaces(con, category["id"])
-    todos = _scoped_todos(con, category["id"])
+    members = todo_repo.list_by_category(con, category["id"])
+    todos = _scoped_todos(members)
     linked_space = {s["google_task_id"]: s for s in spaces if s["google_task_id"]}
     linked_todo = {t["google_task_id"]: t for t in todos if t["google_task_id"]}
+    nested = {t["google_task_id"]: t for t in _nested_linked(members)}
 
     seen.update(remote)
     dropped = set()
@@ -135,6 +140,12 @@ def _sync_list(con, client, category, previous, seen, report, dry_run):
         todo = linked_todo.get(task_id)
         if todo:
             _merge_todo(con, client, list_id, todo, task, report, dry_run)
+            continue
+        if task_id in nested:
+            # 짝은 있지만 하위로 들어가 더는 내보내지 않는 할일. 지난 회차를 봤는지와
+            # 무관하게 먼저 거른다 — 안 거르면 처음 보는 태스크로 읽혀 로컬에 한 벌 더 생긴다
+            _retract_nested(con, client, list_id, nested[task_id], task, seen, dropped,
+                            report, dry_run)
             continue
         if task_id in previous:
             # 지난 회차엔 짝이 있었는데 사라졌다 = 대시보드에서 지운 것
@@ -380,6 +391,18 @@ def _drop_remote(con, client, list_id, task, remote, linked_todo, seen, dropped,
         client.delete(list_id, task["id"])
 
 
+def _retract_nested(con, client, list_id, todo, task, seen, dropped, report, dry_run):
+    """하위로 들어간 할일의 구글 짝을 내린다. 링크도 끊는다 — 다시 워크스페이스 바로
+    아래로 올라오면 _push_todo 가 처음 올리는 것으로 보고 새로 만든다"""
+    report["deleted_remote"].append(f"#{todo['id']} {todo['title']}")
+    seen.discard(task["id"])
+    dropped.add(task["id"])
+    if dry_run:
+        return
+    client.delete(list_id, task["id"])
+    todo_repo.set_google_link(con, todo["id"], None)
+
+
 # ── 범위와 본문 ──────────────────────────────────────────────────────────────
 
 
@@ -393,11 +416,22 @@ def _scoped_workspaces(con, category_id):
     ]
 
 
-def _scoped_todos(con, category_id):
+def _scoped_todos(members):
+    """워크스페이스 바로 아래(상위 할일 없음)만. 미완료 전부 + 이미 붙어 있는 완료분"""
     return [
         todo
-        for todo in todo_repo.list_by_category(con, category_id)
-        if todo["status"] != STATUS_DONE or todo["google_task_id"]
+        for todo in members
+        if todo.get("parent_id") is None
+        and (todo["status"] != STATUS_DONE or todo["google_task_id"])
+    ]
+
+
+def _nested_linked(members):
+    """하위로 들어갔는데 구글 짝이 남아 있는 할일. 내보낼 범위 밖이라 짝을 내려야 한다"""
+    return [
+        todo
+        for todo in members
+        if todo.get("parent_id") is not None and todo["google_task_id"]
     ]
 
 

@@ -203,6 +203,7 @@ def connect(path=None):
     _add_workspace_cwd_column(con)
     _add_todo_cwd_column(con)
     _add_todo_priority_column(con)
+    _add_todo_parent_column(con)
     _add_gtasks_columns(con)
     _rename_paused_status(con)
     _drop_session_workspace_column(con)
@@ -407,6 +408,20 @@ def _add_todo_priority_column(con):
     columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
     if "priority" not in columns:
         con.execute("ALTER TABLE todos ADD COLUMN priority INTEGER")
+    con.commit()
+
+
+def _add_todo_parent_column(con):
+    """할일 트리의 상위 할일. NULL 이면 워크스페이스 바로 아래다.
+
+    워크스페이스 하나가 트리 하나(루트)이고, 깊이는 이 자기 참조로 제한 없이 내려간다.
+    기존 행은 그대로 NULL 이라 옮길 데이터가 없다 — 보드·세션 연결·구글 태스크는
+    지금처럼 workspace_id 만 보고 돌아간다. 같은 워크스페이스·순환 금지는
+    app/repositories/todos.py 가 저장 전에 막는다
+    """
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    if "parent_id" not in columns:
+        con.execute("ALTER TABLE todos ADD COLUMN parent_id INTEGER REFERENCES todos(id)")
     con.commit()
 
 

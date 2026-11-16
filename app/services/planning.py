@@ -1,7 +1,12 @@
 """다음에 할 일 선정과 완료분 집계"""
 from datetime import datetime, timedelta, timezone
 
-from app.constants import STATUS_DOING, STATUS_DONE, UNASSIGNED_LABEL, WORKSPACE_ACTIVE
+from app.constants import (
+    STATUS_DOING,
+    UNASSIGNED_LABEL,
+    WORKABLE_STATUSES,
+    WORKSPACE_ACTIVE,
+)
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 
@@ -62,7 +67,7 @@ def _open_sorted(con, workspace_id, workspace_name, keep):
     todos = [
         todo
         for todo in todo_repo.list_by_workspace(con, workspace_id)
-        if todo["status"] != STATUS_DONE and (keep is None or keep(todo))
+        if todo["status"] in WORKABLE_STATUSES and (keep is None or keep(todo))
     ]
     return [
         {**todo, "workspace_id": workspace_id, "workspace_name": workspace_name}
@@ -88,11 +93,12 @@ def done_on(con, date_text=None):
 
 
 def _first_open(todos, claimed=(), keep=None):
-    """미완료 중 doing 우선, 그 다음 sort_order. 남이 잡은 것과 keep 이 뺀 것은 제외"""
+    """미완료 중 doing 우선, 그 다음 sort_order. 남이 잡은 것과 keep 이 뺀 것은 제외.
+    확인 대기(review)는 손댈 일이 아니라 사람이 볼 일이라 후보가 아니다"""
     open_todos = [
         todo
         for todo in todos
-        if todo["status"] != STATUS_DONE
+        if todo["status"] in WORKABLE_STATUSES
         and todo["id"] not in claimed
         and (keep is None or keep(todo))
     ]
