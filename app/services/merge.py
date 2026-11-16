@@ -5,6 +5,11 @@ LLM 이 매번 손으로 조립하던 순서 — 상태 확인 → 대상 브랜
 뒤에 돌린다(이미 늦음). 대상 브랜치를 먼저 들여서 테스트하면 병합 결과와 같은 트리이므로
 병합 뒤 테스트가 필요 없다.
 
+그 전제는 테스트하는 동안 대상 브랜치가 그대로일 때만 선다. 다른 세션이 그 사이 병합하면
+바뀐 대상 브랜치를 다시 들여 다시 테스트한다. 그래도 남는 틈(확인과 병합 사이)에서 충돌하면
+메인 체크아웃을 병합 전으로 되돌린다 — 메인 체크아웃은 여러 세션이 같이 쓰고, 워크트리에
+갇힌 세션은 거기서 git 을 못 해 병합 중 상태로 남기면 사람이 풀어야 한다(11-16).
+
 push 는 하지 않는다 — 원격 반영은 사람 몫이다.
 """
 import os
@@ -26,6 +31,9 @@ RAN_TESTS = re.compile(r"Ran (\d+) tests?")
 CONFLICT_MARKER = "<<<<<<< "
 # 실패 로그는 꼬리만. 전문을 올리면 중단 사유가 묻힌다
 TAIL_LINES = 15
+# 테스트하는 사이 대상 브랜치가 바뀌면 다시 들여 다시 테스트하는 횟수. 다른 세션들이 쉬지 않고
+# 병합하면 끝없이 돌 수 있어 상한을 둔다 — 넘으면 대상 브랜치를 건드리지 않고 멈춘다
+MERGE_CATCH_UP_LIMIT = 3
 
 
 def merge(con, claude_session_id, worktree=None, message=None, test=None, no_test=False):
@@ -56,11 +64,9 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
         ("메인 체크아웃", main_root),
     ]
     for label, path in checks:
-        # 추적 중인 변경만 본다. 미추적 파일은 병합이 건드리지 않고, 잔여물(빈 sqlite,
-        # 워크트리 디렉토리)로 병합이 영구히 막히면 그게 더 큰 문제다
-        dirty = _git_out(path, "status", "--porcelain", "--untracked-files=no")
+        dirty = _dirty(label, path)
         if dirty:
-            return _aborted(steps, f"{label} — 커밋 안 된 변경이 있음. 먼저 정리할 것:\n{dirty}")
+            return _aborted(steps, dirty)
 
     ahead = _subjects(root, f"{target}..HEAD")
     if not ahead:
@@ -68,34 +74,23 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
 
     if resuming:
         step, aborted = _resume(root, target)
-        steps.append(step)
-        if aborted:
-            return _aborted(steps, aborted)
     else:
-        behind = _subjects(root, f"HEAD..{target}")
-        if behind:
-            ok, _ = _git(root, "merge", target, "--no-edit")
-            if not ok:
-                return _aborted(steps, _conflict_reason(root, target))
-            steps.append((f"{target} 들이기", f"{len(behind)}개 커밋"))
-        else:
-            steps.append((f"{target} 들이기", "이미 최신"))
+        step, aborted = _pull(root, target, f"{target} 들이기", "{count}개 커밋")
+    steps.append(step)
+    if aborted:
+        return _aborted(steps, aborted)
 
     command = _test_command(root, test, no_test)
-    if command:
-        ok, out = _run_test(root, command)
-        if not ok:
-            steps.append(("테스트", f"{command} — 실패"))
-            return _aborted(steps, f"테스트가 실패해 {target} 에 병합하지 않음:\n{_tail(out)}")
-        steps.append(("테스트", f"{command} — {_test_summary(out)}"))
-    else:
-        steps.append(("테스트", _skip_reason(no_test)))
+    aborted = _test_until_current(root, target, command, no_test, steps)
+    if aborted:
+        return _aborted(steps, aborted)
 
     subject = message or _default_message(ahead)
-    ok, out = _git(main_root, "merge", "--no-ff", branch, "-m", f"merge: {subject}")
-    if not ok:
-        return _aborted(steps, f"{target} 병합 실패:\n{_tail(out)}")
-    steps.append(("병합", _git_out(main_root, "log", "--oneline", "-1")))
+    step, aborted = _land(main_root, branch, target, f"merge: {subject}")
+    if step:
+        steps.append(step)
+    if aborted:
+        return _aborted(steps, aborted)
 
     try:
         released = release.finish(con, claude_session_id, worktree=root)
@@ -114,6 +109,105 @@ def merge(con, claude_session_id, worktree=None, message=None, test=None, no_tes
 
 def _aborted(steps, reason):
     return {"steps": steps, "aborted": reason, "branch": "", "target": "", "release": None}
+
+
+def _dirty(label, path):
+    """커밋 안 된 변경이 있으면 중단 사유.
+
+    추적 중인 변경만 본다. 미추적 파일은 병합이 건드리지 않고, 잔여물(빈 sqlite,
+    워크트리 디렉토리)로 병합이 영구히 막히면 그게 더 큰 문제다
+    """
+    dirty = _git_out(path, "status", "--porcelain", "--untracked-files=no")
+    return f"{label} — 커밋 안 된 변경이 있음. 먼저 정리할 것:\n{dirty}" if dirty else ""
+
+
+def _pull(root, target, label, done):
+    """대상 브랜치를 워크트리로 들인다. (단계, 중단사유) 를 돌려준다.
+
+    충돌이면 워크트리를 병합 중으로 둔다 — 그 워크트리를 쓰는 세션이 해결하고 다시 실행하면
+    이어받는다. done 은 들인 커밋 수를 {count} 로 받는 문구
+    """
+    behind = _subjects(root, f"HEAD..{target}")
+    if not behind:
+        return (label, "이미 최신"), ""
+    ok, _ = _git(root, "merge", target, "--no-edit")
+    if not ok:
+        return (label, "충돌"), _conflict_reason(root, target)
+    return (label, done.format(count=len(behind))), ""
+
+
+def _test_until_current(root, target, command, no_test, steps):
+    """테스트하고, 그 사이 대상 브랜치가 바뀌었으면 다시 들여 다시 테스트한다. 중단사유를 돌려준다.
+
+    테스트한 트리가 병합할 트리여야 병합 뒤 테스트가 필요 없다. 바뀐 대상 브랜치에 그대로
+    병합하면 아무도 테스트하지 않은 조합이 들어가고, 같은 파일을 고쳤으면 메인 체크아웃에서
+    충돌한다 — 워크트리에서 충돌하게 해야 그 세션이 스스로 해결할 수 있다
+    """
+    for attempt in range(1 + MERGE_CATCH_UP_LIMIT):
+        if attempt:
+            step, aborted = _pull(
+                root, target, f"{target} 다시 들이기", "테스트하는 사이 바뀐 {count}개 커밋"
+            )
+            steps.append(step)
+            if aborted:
+                return aborted
+        aborted = _test(root, target, command, no_test, steps)
+        if aborted:
+            return aborted
+        if not _subjects(root, f"HEAD..{target}"):
+            return ""
+    return (
+        f"테스트하는 사이 {target} 가 계속 바뀌어 {MERGE_CATCH_UP_LIMIT}번 다시 들이고 테스트했지만"
+        f" 따라잡지 못함 — {target} 는 건드리지 않음. 잠시 뒤 같은 명령을 다시 실행할 것"
+    )
+
+
+def _test(root, target, command, no_test, steps):
+    if not command:
+        steps.append(("테스트", _skip_reason(no_test)))
+        return ""
+    ok, out = _run_test(root, command)
+    if not ok:
+        steps.append(("테스트", f"{command} — 실패"))
+        return f"테스트가 실패해 {target} 에 병합하지 않음:\n{_tail(out)}"
+    steps.append(("테스트", f"{command} — {_test_summary(out)}"))
+    return ""
+
+
+def _land(main_root, branch, target, message):
+    """메인 체크아웃에서 병합. (단계, 중단사유) — 단계가 None 이면 병합을 시도하지 않았다.
+
+    충돌하면 병합 전으로 되돌린다. 마지막 확인과 병합 사이에 다른 세션이 대상 브랜치에
+    병합한 것이고, 다시 실행하면 그 변경을 워크트리로 들여 다시 테스트한다
+    """
+    # 테스트하는 사이 다른 세션이 메인 체크아웃을 고쳤을 수 있다. 커밋 안 된 변경 위에서
+    # 충돌하면 merge --abort 가 그 변경을 되살리지 못할 수 있어 아예 병합하지 않는다
+    dirty = _dirty("메인 체크아웃", main_root)
+    if dirty:
+        return None, dirty
+    mine = _git_out(main_root, "rev-parse", branch)
+    ok, out = _git(main_root, "merge", "--no-ff", branch, "-m", message)
+    if ok:
+        return ("병합", _git_out(main_root, "log", "--oneline", "-1")), ""
+    if _git_out(main_root, "rev-parse", "-q", "--verify", "MERGE_HEAD") != mine:
+        # 잠금·덮어쓸 미추적 파일 등으로 병합을 시작도 못 했다. 그때 보이는 병합 상태는
+        # 다른 세션의 것이라 되돌리면 그 세션의 병합을 날린다
+        return ("병합", "실패"), f"{target} 병합 실패 — 메인 체크아웃은 건드리지 않음:\n{_tail(out)}"
+    conflicts = "\n".join(_unresolved(main_root) or ["(충돌 파일을 읽지 못함)"])
+    _, revert_out = _git(main_root, "merge", "--abort")
+    # 종료 코드가 아니라 남은 상태로 판정한다 — 되돌려졌는지가 다른 세션에 중요한 사실이다
+    if _merge_in_progress(main_root) or _unresolved(main_root):
+        return ("병합", "충돌 — 되돌리기 실패"), (
+            f"{target} 병합이 충돌했고 되돌리기(git merge --abort)도 실패함 — 메인 체크아웃"
+            f" {main_root} 가 병합 중 상태로 남아 다른 세션의 병합도 막힌다."
+            f" 사람이 `git -C {main_root} merge --abort` 로 풀어야 함:\n{_tail(revert_out)}\n"
+            f"충돌 파일:\n{conflicts}"
+        )
+    return ("병합", "충돌 — 메인 체크아웃 되돌림"), (
+        f"{target} 병합이 충돌해 메인 체크아웃을 병합 전으로 되돌림 — 마지막 확인 직후 다른 세션이"
+        f" {target} 에 병합한 것. 같은 명령을 다시 실행하면 바뀐 {target} 를 워크트리로 들여"
+        f" 다시 테스트한다. 충돌 파일:\n{conflicts}"
+    )
 
 
 def _resume(root, target):
