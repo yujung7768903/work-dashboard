@@ -207,7 +207,8 @@ class EvidenceExtractTest(unittest.TestCase):
         )
 
     def test_lookalikes_are_ignored(self):
-        self.assertEqual(evidence.extract("UTF-8 · KT-7 · L293 · SHA-256 · HK #35 · KT #41 · PR #32"), [])
+        self.assertEqual(evidence.extract("UTF-8 · KT-1차 · L293 · SHA-256 · HK #35 · KT #41 · PR #32"), [])
+        self.assertEqual(evidence.extract("fix/KT-1530-status-conflicts"), ["jira:KT-1530"])
 
     def test_urls(self):
         self.assertEqual(evidence.url_of("jira:PFD-1"), "https://hankookilbo.atlassian.net/browse/PFD-1")

@@ -6,7 +6,7 @@
 - Confluence: confluence:7233175648   (pages/ 뒤 숫자 또는 pageId=)
 - PR:         pr:hkilbo/hk-herb-server#27
 
-Jira 키는 모양만으로는 'UTF-8'·'KT-7' 같은 오탐이 많아 회사 프로젝트 접두사(JIRA_PROJECTS)만 받고,
+Jira 키는 모양만으로는 'UTF-8'·'SHA-256' 같은 오탐이 많아 회사 프로젝트 접두사(JIRA_PROJECTS)만 받고,
 브라우즈 URL 로 적힌 것은 접두사와 관계없이 받는다. 'HK #35' 처럼 레포를 줄여 적은 PR 은 어느 레포인지
 코드가 확정할 수 없어 잇지 않는다
 """
@@ -16,7 +16,9 @@ from app.constants import ATLASSIAN_BASE, GITHUB_BASE, JIRA_PROJECTS, KNOWN_REPO
 
 JIRA, CONFLUENCE, PR = "jira", "confluence", "pr"
 JIRA_URL = re.compile(r"atlassian\.net/browse/([A-Z][A-Z0-9]{1,9}-\d+)")
-JIRA_KEY = re.compile(r"(?<![A-Za-z0-9-])(" + "|".join(JIRA_PROJECTS) + r")-(\d+)(?![A-Za-z0-9])")
+# 앞뒤 경계는 \w(한글 포함) — 'KT-1차' 처럼 글자가 바로 붙으면 키가 아니다. 브랜치 이름처럼
+# 'KT-1530-status' 로 이어지는 것은 키다
+JIRA_KEY = re.compile(r"(?<![\w-])(" + "|".join(JIRA_PROJECTS) + r")-(\d+)(?!\w)(?!-\d)")
 CONFLUENCE_URL = re.compile(r"atlassian\.net/wiki/(?:spaces/[^/\s]+/pages/|[^\s]*?[?&]pageId=)(\d+)")
 PR_URL = re.compile(r"github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)")
 PR_SLUG = re.compile(r"(?<![\w./-])([\w.-]+)/([\w.-]+)#(\d+)\b")

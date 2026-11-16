@@ -336,9 +336,10 @@ CONTEXT_TITLE_MSG = "맥락 제목을 입력해 주세요"
 SHARED_DOC_MAX_TODOS = 6
 
 # 근거 문서 키 추출. Jira 키는 모양만 보면 'UTF-8'·'KT-7' 같은 오탐이 많아 이 회사에서 쓰는
-# 프로젝트 접두사만 받는다(11-16 실데이터 기준). 브라우즈 URL 로 적힌 키는 접두사와 관계없이 받는다
+# 프로젝트 접두사만 받는다(11-16 Jira 조회로 확인: PFD 플랫폼개발부문 · YAIW 미디어전략부문 · KT 코리아타임스).
+# 브라우즈 URL 로 적힌 키는 접두사와 관계없이 받는다
 ATLASSIAN_BASE = "https://hankookilbo.atlassian.net"
-JIRA_PROJECTS = ("PFD", "YAIW")
+JIRA_PROJECTS = ("PFD", "YAIW", "KT")
 GITHUB_BASE = "https://github.com"
 # 'muni PR #69' 처럼 레포 이름만 적은 PR. 조직이 빠져 있어 여기 있는 레포만 받는다.
 # 'HK #35' 같은 축약은 레포를 확정할 수 없어 자동으로 잇지 않는다

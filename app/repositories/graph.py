@@ -465,7 +465,8 @@ def _refresh_shared_for(con, ident):
         if len(members) > SHARED_DOC_MAX_TODOS:
             continue
         for other in members - {ident}:
-            wanted.setdefault(other, ref)
+            if other not in wanted and not _linked_otherwise(con, ident, other):
+                wanted[other] = ref
     current = {
         (row["dst_id"] if row["src_id"] == ident else row["src_id"]): row
         for row in con.execute(
@@ -479,7 +480,7 @@ def _refresh_shared_for(con, ident):
             if other not in wanted and row["state"] != EDGE_REJECTED:
                 con.execute("DELETE FROM edges WHERE id=?", (row["id"],))
     for other, ref in wanted.items():
-        if other in current or _linked_otherwise(con, ident, other):
+        if other in current:
             continue
         add_edge(
             con,
@@ -520,14 +521,18 @@ def _doc_partners(con, ident):
 
 
 def _linked_otherwise(con, a, b):
-    """상위·선행으로 이미 이어진 쌍이면 관련은 군더더기다 — 관련은 '위 어느 것도 아닌' 경우만"""
+    """상위·선행으로 이미 이어진 쌍이면 관련은 군더더기다 — 관련은 '위 어느 것도 아닌' 경우만.
+    상위는 바로 이은 것뿐 아니라 줄기로 닿는 조상·자손도 이미 이어진 것으로 본다"""
     row = con.execute(
         f"""SELECT 1 FROM edges WHERE relation IN (?,?) AND state <> ?
             AND src_kind = ? AND dst_kind = ?
             AND ((src_id = ? AND dst_id = ?) OR (src_id = ? AND dst_id = ?)) LIMIT 1""",
         (REL_PARENT, REL_PRECEDES, EDGE_REJECTED, NODE_TODO, NODE_TODO, a, b, b, a),
     ).fetchone()
-    return row is not None
+    if row is not None:
+        return True
+    first, second = (NODE_TODO, a), (NODE_TODO, b)
+    return reaches(con, REL_PARENT, first, second) or reaches(con, REL_PARENT, second, first)
 
 
 # ── 내부 ────────────────────────────────────────────────────────────────
