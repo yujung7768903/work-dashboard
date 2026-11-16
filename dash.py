@@ -33,6 +33,7 @@ from app.constants import (
     STATUS_DONE,
     UNASSIGNED_LABEL,
 )
+from app import evidence as evidence_refs
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
@@ -53,6 +54,7 @@ from app.services import (
     release,
     session_link,
     session_name,
+    session_results,
     spawn_link,
     stale_judge,
     usage,
@@ -203,6 +205,15 @@ def _build_parser():
     add_context.add_argument("--category", default=None, help="워크스페이스가 없을 때 카테고리 이름")
     add_context.add_argument("--note", default=None)
     add_context.set_defaults(handler=_cmd_add_context)
+
+    collect = sub.add_parser(
+        "collect-results",
+        help="세션 결과물(Confluence·Jira·PR·아티팩트·사이트·파일)을 transcript 에서 다시 뽑아 결과 관계로 잇기",
+    )
+    collect.add_argument("--session", default=None, help="이 세션만 (기본: 대시보드가 아는 세션 전부)")
+    collect.add_argument("--dry-run", action="store_true", dest="dry_run", help="DB 를 안 바꾸고 뽑힌 것만 보기")
+    collect.add_argument("--verbose", action="store_true", help="결과마다 한 줄")
+    collect.set_defaults(handler=_cmd_collect_results)
 
     edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건·우선순위 수정")
     edit_todo.add_argument("todo_id", type=int)
@@ -556,10 +567,13 @@ LINK_BASES = {
     "목적": BASIS_PURPOSE, "purpose": BASIS_PURPOSE,
     "배경": BASIS_BACKGROUND, "background": BASIS_BACKGROUND,
 }
-NODE_HELP = "할일 12 · 맥락 ctx:3 · 세션 session:<id> · 문서 jira:PFD-1 / confluence:123 / pr:<조직>/<레포>#4"
+NODE_HELP = (
+    "할일 12 · 맥락 ctx:3 · 세션 session:<id> · 문서 jira:PFD-1 / confluence:123 / pr:<조직>/<레포>#4"
+    " / artifact:<id> / site:<주소> / file:<절대경로>"
+)
 CONTEXT_PREFIX = "ctx:"
 SESSION_PREFIX = "session:"
-DOC_PREFIXES = ("jira", "confluence", "pr")
+DOC_PREFIXES = evidence_refs.DOC_KINDS
 
 
 def parse_node(text):
@@ -587,6 +601,26 @@ def _cmd_link(con, args):
         state=EDGE_PROPOSED if args.proposed else EDGE_CONFIRMED,
     )
     print(_edge_line(edge))
+
+
+def _cmd_collect_results(con, args):
+    """백필·재수집. 세션마다 지난번 읽은 곳 뒤만 읽으므로 다시 돌려도 겹치지 않는다"""
+    sessions = [args.session] if args.session else None
+    found = session_results.backfill(con, dry_run=args.dry_run, sessions=sessions)
+    kinds, unique = {}, set()
+    for claude_session_id, rows in found.items():
+        for row in rows:
+            unique.add((claude_session_id, row["ref"]))
+            if args.verbose:
+                print(f"{claude_session_id[:8]} {row['at']} {row['action']} {row['ref']} {row.get('title') or ''}")
+    for _, ref in unique:
+        kind = evidence_refs.kind_of(ref)
+        kinds[kind] = kinds.get(kind, 0) + 1
+    label = "뽑힘(DB 안 바꿈)" if args.dry_run else "이었음"
+    print(f"세션 {len(found)}개에서 결과 {len(unique)}건 {label}")
+    for kind in evidence_refs.DOC_KINDS:
+        if kinds.get(kind):
+            print(f"  {kind}: {kinds[kind]}")
 
 
 def _cmd_edges(con, args):
@@ -620,6 +654,7 @@ def _edge_line(edge):
     """한 줄 표기. 관계·기준은 한국어 이름으로"""
     relation = {value: key for key, value in LINK_RELATIONS.items() if not key.isascii()}
     relation["performs"] = "수행"
+    relation["result"] = "결과"
     basis = {value: key for key, value in LINK_BASES.items() if not key.isascii()}
     head = f"[{edge['id']}]" if edge.get("id") else "[수행]"
     kind = relation.get(edge["relation"], edge["relation"])

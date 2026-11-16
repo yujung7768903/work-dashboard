@@ -39,6 +39,8 @@ export const getTodoTrees = () => request("GET", "/todo-trees");
 // 할일 관계 그래프. 제안 확인·거절은 state 만 바꾼다
 export const getProposals = () => request("GET", "/graph-proposals");
 export const updateEdge = (id, fields) => request("PATCH", `/edges/${id}`, fields);
+// 결과물 파일 카드. 경로가 아니라 결과물 노드 id 만 보낸다 — 서버가 DB 에서 경로를 꺼내 탐색기로 연다
+export const openResultFolder = (id) => request("POST", "/result-folder", { id });
 export const getNext = () => request("GET", "/next");
 export const getCategories = () => request("GET", "/categories");
 export const getWorkspaces = () => request("GET", "/workspaces");

@@ -196,6 +196,15 @@ CREATE TABLE IF NOT EXISTS session_origins(
     title TEXT,
     created_at TEXT NOT NULL
 );
+-- 세션 결과물 수집이 transcript 를 어디까지 읽었는지. 훅은 턴마다 새로 붙은 꼬리만 읽는다 —
+-- 수십 MB transcript 를 매 턴 처음부터 읽으면 훅 시간 제한을 넘는다. 서브에이전트 transcript 도
+-- 파일마다 한 행이고 결과는 부모 세션(claude_session_id) 몫이다
+CREATE TABLE IF NOT EXISTS transcript_scans(
+    path TEXT PRIMARY KEY,
+    claude_session_id TEXT NOT NULL,
+    offset INTEGER NOT NULL DEFAULT 0,
+    scanned_at TEXT NOT NULL
+);
 -- ⑤ 구글 태스크 연동. autorun_state 와 같은 이유로 단일 행. 문제가 생겨도 enabled 를
 -- 건드리지 않고 last_error 만 채운다 — 끄고 켜는 것은 사람의 판단이다
 CREATE TABLE IF NOT EXISTS gtasks_state(

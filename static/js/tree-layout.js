@@ -17,18 +17,25 @@ export const TREE_GAP = 64;
 export const LANE_HEAD = 32;
 export const LANE_PAD = 16;
 const DONE = "done";
+// 할일 하나 밑에 펼쳐 두는 결과물 카드 수. 넘으면 나머지를 '+N 더' 카드 한 장으로 접는다 —
+// 한 세션이 문서 수십 건을 만들면 그 할일 가지가 판 높이를 다 먹는다. 누르면 그 할일만 다 펼친다
+export const RESULT_SHOW = 3;
+export const RESULT = "result";
+export const MORE = "more";
 
 /**
  * trees: /api/todo-trees 의 trees. 반환은 그릴 카드(좌표 포함)·연결선·전체 크기.
  * hideDone 이면 끝난 가지를 뺀다. keep 은 숨김에서 빼 줄 할일 id —
- * 방금 완료로 바꾼 카드가 눌린 자리에서 바로 사라지지 않고 흐려진 채 남게 한다
+ * 방금 완료로 바꾼 카드가 눌린 자리에서 바로 사라지지 않고 흐려진 채 남게 한다.
+ * 할일의 results(세션 결과물)는 그 할일 오른쪽 열에 하위 할일 다음으로 잎 카드가 된다.
+ * openResults 는 결과물을 접지 않고 다 펼칠 할일 key
  */
-export function layoutForest(trees, { hideDone = false, keep = new Set() } = {}) {
+export function layoutForest(trees, { hideDone = false, keep = new Set(), openResults = new Set() } = {}) {
   const cards = [];
   const edges = [];
   const lanes = [];
   const state = { cursor: LANE_HEAD, depth: 0 };
-  const options = { hideDone, keep };
+  const options = { hideDone, keep, openResults };
   let drawn = 0;
   for (const tree of trees) {
     if (hideDone && tree.complete && !hasKept(tree.children, keep)) continue;
@@ -83,18 +90,30 @@ function place(item, depth, parent, state, options, cards, edges) {
   };
   cards.push(card);
   state.depth = Math.max(state.depth, depth);
-  const kids = item.data.children.filter((child) => isVisible(child, options));
+  const kids = [
+    ...item.data.children.filter((child) => isVisible(child, options)).map((child) => ({ kind: child.kind ?? "todo", data: child })),
+    ...resultItems(item.data, options),
+  ];
   if (!kids.length) {
     card.y = state.cursor;
     state.cursor += CARD_H + ROW_GAP;
     return card;
   }
   const placed = kids.map((child) =>
-    place({ kind: child.kind ?? "todo", tree: item.tree, data: child }, depth + 1, card, state, options, cards, edges)
+    place({ kind: child.kind, tree: item.tree, data: child.data }, depth + 1, card, state, options, cards, edges)
   );
   card.y = (placed[0].y + placed[placed.length - 1].y) / 2;
   placed.forEach((child) => edges.push({ from: card, to: child }));
   return card;
+}
+
+/** 할일 밑에 놓을 결과물 카드. 많으면 앞(서버가 최근 것부터 준다) RESULT_SHOW 장 + '+N 더' 한 장 */
+export function resultItems(node, { openResults = new Set() } = {}) {
+  const results = node.results ?? [];
+  const items = results.map((result) => ({ kind: RESULT, data: result }));
+  if (results.length <= RESULT_SHOW + 1 || openResults.has(node.key)) return items;
+  const more = { key: `${node.key}-more`, owner: node.key, count: results.length - RESULT_SHOW, children: [] };
+  return [...items.slice(0, RESULT_SHOW), { kind: MORE, data: more }];
 }
 
 function hasKept(nodes, keep) {

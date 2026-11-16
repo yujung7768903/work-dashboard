@@ -295,11 +295,12 @@ TOOLS_CLI_TIMEOUT_SEC = 15
 NODE_TODO, NODE_CONTEXT, NODE_DOC, NODE_SESSION = "todo", "context", "doc", "session"
 NODE_KINDS = (NODE_TODO, NODE_CONTEXT, NODE_DOC, NODE_SESSION)
 # 상위(parent)는 왜, 선행(precedes)은 언제. 근거(evidence)는 할일 → 문서, 수행(performs)은 세션 → 할일,
-# 관련(related)은 위 어느 것도 아니지만 같은 질문을 다루는 둘 — 방향이 없어 작은 쪽을 출발로 둔다
-REL_PARENT, REL_PRECEDES, REL_EVIDENCE, REL_PERFORMS, REL_RELATED = (
-    "parent", "precedes", "evidence", "performs", "related",
+# 관련(related)은 위 어느 것도 아니지만 같은 질문을 다루는 둘 — 방향이 없어 작은 쪽을 출발로 둔다.
+# 결과(result)는 세션 → 문서 — 그 세션이 만들거나 고친 것. 근거와 같은 문서 노드를 가리킬 수 있다
+REL_PARENT, REL_PRECEDES, REL_EVIDENCE, REL_PERFORMS, REL_RELATED, REL_RESULT = (
+    "parent", "precedes", "evidence", "performs", "related", "result",
 )
-RELATIONS = (REL_PARENT, REL_PRECEDES, REL_EVIDENCE, REL_PERFORMS, REL_RELATED)
+RELATIONS = (REL_PARENT, REL_PRECEDES, REL_EVIDENCE, REL_PERFORMS, REL_RELATED, REL_RESULT)
 # 순환을 막는 관계. 상위가 고리면 루트에서 닿지 않는 가지가 생기고, 선행이 고리면 아무것도 먼저 못 한다
 ACYCLIC_RELATIONS = (REL_PARENT, REL_PRECEDES)
 # 관계마다 허용하는 (출발, 도착) 종류. 맥락은 워크스페이스 아래 루트라 누구의 하위도 아니다.
@@ -309,6 +310,7 @@ RELATION_KINDS = {
     REL_PRECEDES: ((NODE_TODO,), (NODE_TODO,)),
     REL_EVIDENCE: ((NODE_TODO, NODE_CONTEXT), (NODE_DOC,)),
     REL_RELATED: ((NODE_TODO, NODE_CONTEXT), (NODE_TODO, NODE_CONTEXT)),
+    REL_RESULT: ((NODE_SESSION,), (NODE_DOC,)),
 }
 # 상위의 기준 셋. 계기 = A 가 없었다면 B 를 이 시점에 시작했을까, 목적 = B 가 끝나면 A 완료에 직접
 # 기여하나, 배경 = B 를 설명하려면 A 를 알아야 하나(가장 가까운 하나에만)
@@ -324,11 +326,12 @@ BY_NOTE = "auto:note"
 BY_SHARED_DOC = "auto:shared-doc"
 BY_REBUILD = "rebuild"
 BY_SPAWN = "spawn"
+BY_TRANSCRIPT = "auto:transcript"  # 세션 transcript 의 쓰기 호출·완료 보고에서 뽑은 결과
 EDGE_CYCLE_MSG = "이 연결을 저장하면 순환이 생깁니다"
 EDGE_KIND_MSG = "이 관계로 이을 수 없는 종류입니다"
 EDGE_SELF_MSG = "자기 자신과는 이을 수 없습니다"
 EDGE_BASIS_MSG = "상위 연결은 기준(계기·목적·배경)을 골라야 합니다"
-EDGE_RELATION_MSG = "관계는 상위·선행·근거·관련 중 하나여야 합니다"
+EDGE_RELATION_MSG = "관계는 상위·선행·근거·관련·결과 중 하나여야 합니다"
 EDGE_STATE_MSG = "연결 상태는 확정·제안·거절 중 하나여야 합니다"
 CONTEXT_TITLE_MSG = "맥락 제목을 입력해 주세요"
 # 관련 자동 연결은 같은 문서를 공유하는 할일 쌍마다 만든다. 이보다 많은 할일이 같은 문서를 가리키면
@@ -363,3 +366,28 @@ KNOWN_REPOS = {
     "hk-article-client": "hkilbo",
     "kt-herb-client": "hkilbo",
 }
+
+# ── 세션 결과물 ──────────────────────────────────────────────────────────
+# 세션이 만들거나 고친 것을 세션 transcript 의 쓰기 호출과 완료 보고(--open)에서 뽑아 결과 관계로 잇는다.
+# 읽기만 한 문서는 결과가 아니다 — 아래 도구 이름은 쓰기 호출만 담는다.
+# MCP 서버 이름이 연결 방식마다 달라(Atlassian_Rovo·Atlassian_MCP·Atlassian) 도구 이름 끝부분으로 고른다
+RESULT_CONFLUENCE_CREATE = ("createConfluencePage", "createConfluenceContent")
+RESULT_CONFLUENCE_UPDATE = ("updateConfluencePage", "updateConfluenceContent")
+RESULT_JIRA_CREATE = ("createJiraIssue",)
+RESULT_JIRA_EDIT = ("editJiraIssue", "transitionJiraIssue")
+RESULT_JIRA_COMMENT = ("addCommentToJiraIssue", "addOrEditJiraIssueComment")
+# 결과 하나에 붙는 동작 이름. 같은 세션이 같은 문서를 여러 번 고치면 한 관계에 모아 적는다
+RESULT_ACTIONS = ("생성", "수정", "댓글", "발행", "보고")
+# Write 로 새로 만든 파일 중 결과가 아닌 자리 — 에이전트의 작업 폴더·메모리·설정과 임시 폴더.
+# 숨김 폴더(.config·.claude 등)가 낀 경로도 설정이라 뺀다. 레포 안 파일은 커밋·PR 로 보이므로 뺀다
+RESULT_FILE_SKIP_DIRS = (os.path.expanduser("~/.claude"), "/tmp")
+# 경로 중간에 끼면 결과가 아닌 폴더 이름 — Windows 앱 데이터(도구 설치 스크립트가 여기 생긴다)
+RESULT_FILE_SKIP_PARTS = ("AppData", "node_modules", "__pycache__")
+# 로컬 미리보기 주소는 배포된 사이트가 아니다 — 서버를 내리면 열리지 않는다
+RESULT_LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "[::1]")
+# 훅(Stop·SessionEnd) 한 번에 transcript 하나에서 읽을 최대 바이트. 훅 시간 제한(2초) 안에 끝나야 한다 —
+# 못 다 읽은 나머지는 다음 턴 훅이 이어 읽는다. 백필은 제한 없이 읽는다
+RESULT_HOOK_MAX_BYTES = 4 * 1024 * 1024
+# 결과를 아직 못 받은 쓰기 호출이 이만큼 안쪽(파일 끝 기준)에 있으면 그 줄부터 다시 읽도록 오프셋을 멈춘다.
+# 더 멀리 있는 것은 중단된 호출로 보고 버린다 — 멈춘 오프셋이 매 턴 같은 구간을 다시 읽게 하면 안 된다
+RESULT_PENDING_HOLD_BYTES = 256 * 1024

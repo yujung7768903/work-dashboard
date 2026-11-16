@@ -3,8 +3,9 @@
 // 배치(좌표 계산)는 tree-layout.js 가 맡고 여기는 그리기·조작만 한다
 import * as api from "./api.js";
 import { t } from "./i18n.js";
+import { resultLogo, resultView } from "./result-card.js";
 import { openDetail } from "./sessions.js";
-import { CARD_H, CARD_W, LANE_PAD, layoutForest, pathKeys } from "./tree-layout.js";
+import { CARD_H, CARD_W, LANE_PAD, MORE, RESULT, layoutForest, pathKeys } from "./tree-layout.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DONE = "done";
@@ -21,6 +22,9 @@ const DOC_CHIPS = 2;
 const COL_BEND = 48;
 const PILL_GAP = 90; // 제안 알약과 하위 카드 사이(선을 따라)
 const PILL_STEP = 0.01;
+// 결과물 카드 꼬리의 '누르면 무엇이 되나' 아이콘 — 새 탭으로 나가는 화살표, 탐색기 폴더
+const GO_EXTERNAL = "M9 3.5h3.5V7M12.5 3.5L7.5 8.5M11 9.5v3H3.5V5h3";
+const GO_FOLDER = "M2.5 4.5h4l1.5 1.5h5.5v6h-11z";
 // 화살촉 marker id 는 문서 전체에서 하나여야 한다 — 판이 여럿(트리 맵·패널·매니저 팝업)이라 판마다 붙인다
 let mapSeq = 0;
 // 카드의 상태 고르기. 순서가 곧 일이 흘러가는 순서다
@@ -73,6 +77,8 @@ export function createTreeMap(host, options = {}) {
   // 강조할 카드는 끝났어도 숨기지 않는다 — 매니저 팝업이 가리키는 카드가 사라지면 연관을 못 본다
   const keepFocus = () => options.focusId != null && keep.add(options.focusId);
   keepFocus();
+  // '+N 더' 를 눌러 결과물을 다 펼친 할일 key. 이 판을 보는 동안만 기억한다
+  const openResults = new Set();
   let layout = null;
 
   attachPanZoom();
@@ -82,7 +88,7 @@ export function createTreeMap(host, options = {}) {
     lastTrees = trees;
     lastLinks = links;
     hideDone = hide;
-    layout = layoutForest(trees, { hideDone, keep });
+    layout = layoutForest(trees, { hideDone, keep, openResults });
     world.style.width = `${layout.width}px`;
     world.style.height = `${layout.height}px`;
     edgeLayer.setAttribute("width", layout.width);
@@ -216,7 +222,10 @@ export function createTreeMap(host, options = {}) {
     const { x1, y1, x2, y2, d } = sideCurve(edge.from, edge.to);
     const group = document.createElementNS(SVG_NS, "g");
     group.classList.add("tm-edge");
-    if (edge.to.data.status === DONE) group.classList.add("tm-edge-done");
+    const output = edge.to.kind === RESULT || edge.to.kind === MORE;
+    // 결과물 선은 상하 관계가 아니라 '이 일이 낸 것' 이라 옅게. 끝난 할일의 결과물은 할일을 따라 흐린다
+    if (output) group.classList.add("tm-edge-result");
+    if ((output ? edge.from : edge.to).data.status === DONE) group.classList.add("tm-edge-done");
     if (onPath.has(edge.to.key)) group.classList.add("tm-edge-path");
     if (primaryLink(edge.to)?.state === PROPOSED) group.classList.add("tm-edge-proposed");
     const path = document.createElementNS(SVG_NS, "path");
@@ -376,7 +385,16 @@ export function createTreeMap(host, options = {}) {
 
   function cardElement(card, onPath) {
     const node =
-      card.kind === "root" ? rootCard(card.tree) : card.kind === CONTEXT ? contextCard(card.data) : todoCard(card.data);
+      card.kind === "root"
+        ? rootCard(card.tree)
+        : card.kind === CONTEXT
+          ? contextCard(card.data)
+          : card.kind === RESULT
+            ? resultCard(card.data)
+            : card.kind === MORE
+              ? moreCard(card.data)
+              : todoCard(card.data);
+    if ((card.kind === RESULT || card.kind === MORE) && card.parent?.data.status === DONE) node.dataset.ownerDone = "";
     node.style.left = `${card.x}px`;
     node.style.top = `${card.y}px`;
     node.style.width = `${CARD_W}px`;
@@ -441,6 +459,54 @@ export function createTreeMap(host, options = {}) {
     if (todo.status === REVIEW && !todo.autorun_locked) foot.appendChild(completeButton(todo));
     foot.appendChild(addButton(card, foot, { parent_id: todo.id }));
     card.append(head, title, metaLine(todo, true), foot);
+    return card;
+  }
+
+  // 세션 결과물 — 그 할일을 맡은 세션이 만들거나 고친 문서·PR·아티팩트·사이트·파일.
+  // 왼쪽 위 배지 자리에 종류 로고, 제목을 누르면 새 탭으로 열거나(파일은) 담긴 폴더를 탐색기로 연다
+  function resultCard(result) {
+    const view = resultView(result);
+    const card = element("div", "tm-card tm-result");
+    card.dataset.kind = view.kind;
+    if (view.missing) card.dataset.missing = "";
+    const head = element("div", "tm-head");
+    head.appendChild(cornerBadge({ logo: view.kind, text: view.kindLabel, className: "tm-result-badge" }));
+    if (view.actions) head.appendChild(element("span", "tm-result-action", view.actions));
+    const title = view.href ? element("a", "tm-title", view.title) : element("button", "tm-title", view.title);
+    title.title = view.tip;
+    if (view.href) {
+      title.href = view.href;
+      title.target = "_blank";
+      title.rel = "noopener noreferrer";
+    } else {
+      title.type = "button";
+      title.disabled = view.missing;
+      title.addEventListener("click", () => api.openResultFolder(view.folder).catch(() => {}));
+    }
+    const meta = element("div", "tm-meta");
+    if (view.sub) {
+      const sub = element("span", "tm-result-sub", view.sub);
+      sub.title = view.sub;
+      meta.appendChild(sub);
+    }
+    const foot = element("div", "tm-foot");
+    const go = glyph(view.href ? GO_EXTERNAL : GO_FOLDER);
+    go.classList.add("tm-result-go");
+    foot.append(element("span", "tm-spacer"), go);
+    card.append(head, title, meta, foot);
+    return card;
+  }
+
+  // 접힌 결과물. 누르면 그 할일의 결과물을 이 판에서 다 펼친다
+  function moreCard(more) {
+    const card = element("div", "tm-card tm-result tm-result-more");
+    const button = element("button", "tm-title", t("tree.resultMore", { count: more.count }));
+    button.type = "button";
+    button.addEventListener("click", () => {
+      openResults.add(more.owner);
+      render(lastTrees);
+    });
+    card.appendChild(button);
     return card;
   }
 
@@ -554,7 +620,7 @@ export function soloCard({ id = null, title, status, label, waiting = null, onOp
   card.style.width = `${CARD_W}px`;
   card.style.height = `${CARD_H}px`;
   const head = element("div", "tm-head");
-  head.appendChild(element("span", "tm-state", label ?? STATUS_LABEL[status]));
+  head.appendChild(cornerBadge({ text: label ?? STATUS_LABEL[status], className: "tm-state" }));
   if (id != null) head.appendChild(element("span", "tm-id", `#${id}`));
   if (waiting) {
     const badge = waitingBadge(WAITING_LABEL[waiting] ?? waiting);
@@ -572,6 +638,22 @@ export function soloCard({ id = null, title, status, label, waiting = null, onOp
   foot.appendChild(element("span", "tm-spacer"));
   card.append(head, name, element("div", "tm-meta"), foot);
   return card;
+}
+
+// ── 카드 왼쪽 위 배지 자리 ─────────────────────────────────────────────────
+// 혼자 서는 카드의 상태 칩('결정 대기' 등)과 결과물 카드의 종류 로고가 같은 자리를 나눠 쓴다.
+// 자리(.tm-corner)는 하나고 안에 무엇을 담을지만 다르다 — 결정 대기 선택지처럼 이 자리에 들어올 것이
+// 늘어도 머리 줄 배치를 다시 짜지 않고 여기에 갈래만 더한다
+//   logo: 결과물 종류(confluence·jira·pr·artifact·site·file) — 있으면 글자 앞에 로고
+//   text: 칩 글자 · className: 칩 모양(tm-state 상태 칩, tm-result-badge 결과물 배지)
+export function cornerBadge({ logo = null, text = "", className = "" }) {
+  // 로고가 없으면 글자만 — 칩 하나가 곧 글자다(예전 상태 칩과 같은 마크업)
+  const badge = element("span", `tm-corner ${className}`.trim(), logo ? null : text);
+  if (logo) {
+    badge.appendChild(resultLogo(logo));
+    if (text) badge.appendChild(element("span", "tm-corner-text", text));
+  }
+  return badge;
 }
 
 // ── 관계 줄 ───────────────────────────────────────────────────────────────

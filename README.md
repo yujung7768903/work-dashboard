@@ -190,6 +190,23 @@ or permission gets a red ring. From a card you change the status, add a
 sub-todo, or — on a review card — mark it done. A tree counts as complete when
 every todo in it is done; nothing is stored for that.
 
+To the right of each todo hang **result** cards — what the sessions working on
+it created or changed: Confluence pages they created or edited, Jira issues they
+created, edited or commented on, PRs they opened, artifacts they published,
+sites and files they named as the deliverable in a completion report
+(`manager.py 퇴근-보조 --open` or `ask --open`), and new files they wrote
+outside any code repository (and outside `~/.claude`, `/tmp` and hidden
+folders). Reading a document never counts: results come only from successful
+write calls in the session transcript, and a page that is already linked as
+evidence gets the result link on the same node. The badge in the top-left corner
+— the same slot a standalone card uses for its state — shows the kind's logo
+(inline SVG, no external favicons). Clicking opens the page in a new tab, or,
+for a file, its folder in the file manager; that endpoint takes only the id of
+a registered result file, never a path. A result attaches to the todo its
+session held at the time; a todo with more than four shows the latest three and
+a "N more" card. Results of a session that never claimed a todo stay in the
+graph but have no place in the tree.
+
 Clicking a todo row or a session row opens the same dialog with three tabs:
 
 | Dialog tab | What it holds |
@@ -217,6 +234,7 @@ python3 dash.py link <parent|precedes|evidence|related> <from> <to> [--basis tri
 python3 dash.py edges <node>                         # 12 · ctx:3 · session:<id> · jira:PFD-1
 python3 dash.py edge <confirm|reject|rm> <edge-id>
 python3 dash.py add-context <title> [--workspace ID | --category NAME] [--note ...]
+python3 dash.py collect-results [--session ID] [--dry-run] [--verbose]   # backfill session results from transcripts
 python3 dash.py move-todo <todo-id> --workspace <id|none>
 python3 dash.py set-status <todo|workspace> <id> <status>   # todo: todo·doing·review·done
 python3 dash.py reorder <categories|workspaces|todos> <ids...>
@@ -311,7 +329,7 @@ blocking is the point.
 
 | Hook | Event | What it does |
 | --- | --- | --- |
-| `hooks/dash_hook.py` | `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | Registers sessions, tracks their state, and injects the context block above |
+| `hooks/dash_hook.py` | `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | Registers sessions, tracks their state, and injects the context block above. On `Stop` and `SessionEnd` it reads the new tail of the session transcript for results |
 | `hooks/worktree_serve.py` | `Stop` | If you changed a worktree but nothing is serving it, blocks and hands over a free port (9081–9139) |
 | `hooks/worktree_guard.py` | `PreToolUse` (`Write`, `Edit`, `NotebookEdit`) | Blocks source edits in the main checkout under `~/work/`. `ALLOW_MAIN_CHECKOUT=1` bypasses |
 | `hooks/commit_scope_guard.py` | `PreToolUse` (`Bash`) | Blocks pathspec-less `git add -A` and `git commit -a`. `ALLOW_BROAD_COMMIT=1` bypasses |
@@ -650,6 +668,7 @@ the six default categories once. All `*_at` columns are ISO 8601 UTC text.
 | `sessions` | Claude Code sessions, registered and updated by the hooks |
 | `session_todos` | Which todo a session claimed. A session's workspace is derived from here |
 | `worktrees` | Worktree history, kept after the directory is merged away or deleted |
+| `transcript_scans` | How far result collection has read each transcript (subagent transcripts included), so a hook reads only the new tail |
 | `usage_samples` | Rate-limit and token samples behind the usage view |
 | `autorun_state`, `autorun_runs` | Autonomous-run settings and the log of runs |
 | `gtasks_state` | Google Tasks settings — `enabled`, `last_sync_at`, `last_error`. A single row, for the same reason as `autorun_state` |
