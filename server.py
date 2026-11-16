@@ -41,6 +41,7 @@ from app.services import (
     autorun,
     board,
     browse,
+    decision_answer,
     gtasks,
     gtasks_setup,
     manager_panel,
@@ -62,7 +63,8 @@ STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
 API_PREFIX = "/api/"
 NONE_LITERAL = "none"
-LOCAL_ONLY_HEAD = "session-message"
+# 이 PC 에서 온 요청만 받는 POST. 둘 다 도구가 달린 에이전트 세션에 글을 넣는다
+LOCAL_ONLY_HEADS = ("session-message", "decision-answer")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -173,6 +175,14 @@ def _route_get(con, head, item_id, query):
         return settings_repo.payload(con)
     if head == "browse":
         return browse.list_dir(_single(query, "path", None))
+    if head == "decisions":
+        # 결정 답하기. 한 건(답 보낸 뒤 폴링)이거나 할일 상세에 붙은 결정들
+        if item_id:
+            return decision_answer.show(item_id)
+        todo_id = _single(query, "todo_id", None)
+        if not todo_id:
+            raise Validation("todo_id 가 필요함")
+        return decision_answer.for_todo(con, int(todo_id))
     if head == "manager":
         # 칸(part)마다 따로 부른다 — 보조 세션 목록은 수 초 걸려 다른 칸을 붙잡으면 안 된다
         try:
@@ -253,6 +263,11 @@ def _route_post(con, head, body):
     if head == "session-message":
         # 세션 탭의 입력칸. 살아 있는 세션이면 소켓으로, 끝났으면 --resume 으로 넣는다
         return session_message.send(con, body.get("session_id"), body.get("text"))
+    if head == "decision-answer":
+        # 할일 상세·매니저 탭 결정 팝업의 선택지·의견. 원 세션 전달은 뒤에서 돌고 화면은 decisions/<id> 를 폴링한다
+        if not body.get("id"):
+            raise Validation("id 가 필요함")
+        return decision_answer.start(int(body["id"]), body.get("choice"), body.get("feedback"))
     if head == "worktrees":
         repo, branch, action = body.get("repo"), body.get("branch"), body.get("action")
         # 서버 조작(띄우기·다시 띄우기·내리기)은 할일·세션을 건드리지 않아 con 을 받지 않는다
@@ -392,7 +407,8 @@ def _reorder(con, body):
 def guard_origin(method, path, client_host):
     """세션 입력은 이 PC 에서 온 요청만. --lan 화면은 인증이 없는데, 이 엔드포인트는
     도구가 달린 에이전트에 프롬프트를 넣는 힘이 있다"""
-    if method == "POST" and path == f"{API_PREFIX}{LOCAL_ONLY_HEAD}" and not is_loopback(client_host):
+    local_only = {f"{API_PREFIX}{head}" for head in LOCAL_ONLY_HEADS}
+    if method == "POST" and path in local_only and not is_loopback(client_host):
         raise Validation("세션 입력은 이 PC 에서만 보낼 수 있습니다")
 
 

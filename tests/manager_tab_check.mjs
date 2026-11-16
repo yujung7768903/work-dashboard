@@ -120,7 +120,18 @@ const PAYLOAD = {
 const fetched = [];
 let failFetch = false;
 let holdFetch = null;
+// 결정 팝업의 '답하기' 칸이 열 때 받는 한 건 — 선택지·추천·답 상태는 줄에 없다
+const DECISION_ONE = {
+  id: 87, title: "우선순위 출처", status: "open", options: [
+    { key: "A", label: "칸 추가", desc: "todos 에 priority 칸" }, { key: "B", label: "note 에 적기", desc: "스키마 그대로" },
+  ], recommend: "A", answer_state: "unanswered", answer: null, answer_choice: null, job: null,
+};
+const decisionFetched = [];
 globalThis.fetch = async (url) => {
+  if (url.startsWith("/api/decisions/")) {
+    decisionFetched.push(url);
+    return { ok: true, status: 200, json: async () => DECISION_ONE };
+  }
   const part = new URL(url, "http://x").searchParams.get("part");
   fetched.push(part);
   if (holdFetch) await holdFetch;
@@ -223,9 +234,23 @@ assert.match(sectionText(body[2]), /A 와 B 중 고르기/);
 assert.match(sectionText(body[2]), /연결 세션의 마지막 답 \(끝부분\)/);
 assert.match(sectionText(body[2]), /A 를 추천해/);
 
+// 결정할 것 바로 아래 '답하기' — 열 때 한 건을 받아 선택지 버튼·의견 입력칸을 그린다. 팝업 머리·섹션이 이미
+// 제목·배경을 보이므로 상자는 답하기 부분만(테두리 없이)
+assert.equal(body[3].children[0].textContent, "답하기");
+assert.deepEqual(decisionFetched, ["/api/decisions/87"]);
+for (let i = 0; !body[3].children[1].children[0]?.className.startsWith("dec-card") && i < 50; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+const answerCard = body[3].children[1].children[0];
+assert.equal(answerCard.className, "dec-card bare", "답을 기다리는 결정, 팝업 안이라 테두리 없이");
+const answerBox = answerCard.children.at(-1);
+const answerChoices = answerBox.children[0].children.map((li) => li.children[0]);
+assert.deepEqual(answerChoices.map((button) => button.children[1].children.map((kid) => kid.textContent).join("")),
+  ["A 칸 추가추천", "B note 에 적기"]);
+assert.equal(answerBox.children[1].tag, "textarea");
 // 결정에도 연결 세션 칸 — 이름이 없으면 세션 id 앞 8자리. 마지막 답은 결정할 것 쪽에만
-assert.equal(body[3].children[0].textContent, "연결 세션");
-assert.equal(sectionText(body[3]), "연결 세션|s1");
+assert.equal(body[4].children[0].textContent, "연결 세션");
+assert.equal(sectionText(body[4]), "연결 세션|s1");
 // 붙은 카드가 없는 일 — 트리 탭은 안내 글만 두지 않고 그 일 하나를 트리 카드 모양으로 그린다.
 // 카드 아래에 '연결되지 않은 일' 안내. 카드 한 장이라 팝업은 넓히지 않는다
 const openTab = (tab) => elements["mgr-pop-tabs"].listeners.click({ target: { closest: () => ({ dataset: { tab } }) } });

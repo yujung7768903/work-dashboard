@@ -84,7 +84,8 @@ assert.equal(body.children.length, 4, `팝업이 안 그려졌다: ${body.textCo
 const [, overview] = body.children;
 const block = overview.children[0];
 // 제목 / History / 착수 조건 / note 라벨 / note 본문
-const conditions = block.children[2];
+// 제목 아래 결정 칸(붙은 결정이 있을 때만 보인다)이 끼어 순서로는 못 찾는다 — 라벨로 찾는다
+const conditions = block.children.find((child) => child.children?.[0]?.textContent === "착수 조건");
 assert.equal(conditions.children[0].textContent, "착수 조건");
 
 const rows = conditions.children[1].children;

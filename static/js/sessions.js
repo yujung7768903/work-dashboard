@@ -2,6 +2,7 @@
 import * as api from "./api.js";
 import { t } from "./i18n.js";
 import { linkify } from "./linkify.js";
+import { decisionCard } from "./decision-answer.js";
 
 const POLL_INTERVAL_MS = 2000;
 const WORKING = "working";
@@ -219,8 +220,56 @@ export function rawTitleMark() {
 
 function todoBlock(todo) {
   const block = element("div", "dlg-section");
+  // 결정 칸은 팝업을 여는 동안 한 번 받아 둔다 — 수정했다 돌아와도 같은 칸(입력 중인 의견 포함)을 다시 끼운다
+  block.decisionSlot = element("div", "dlg-decisions");
+  block.decisionSlot.hidden = true;
   fillTodoBlock(block, todo);
+  loadDecisions(block.decisionSlot, todo.id);
   return block;
+}
+
+// 그 할일에 붙은 결정 — 사용자 답을 기다리는 것과 이미 답한 것(다시 답할 수 있다). 매니저 CLI 를 거쳐 와서
+// 개요와 따로 받는다: 늦거나 실패해도 개요는 먼저 뜬다. 붙은 결정이 없거나 매니저가 없는 PC 면 칸을 숨긴 채 둔다.
+// 제목 바로 아래에 둔다 — 이 할일에서 사람이 지금 해야 할 일이 그것이다
+function loadDecisions(slot, todoId) {
+  api
+    .getTodoDecisions(todoId)
+    .then((payload) => fillDecisions(slot, payload?.items))
+    .catch((error) => {
+      slot.hidden = false;
+      slot.replaceChildren(element("p", "muted", t("decision.loadFailed", { error: error.message })));
+    });
+}
+
+function fillDecisions(slot, items) {
+  const list = Array.isArray(items) ? items : [];
+  slot.hidden = !list.length;
+  if (!list.length) {
+    slot.replaceChildren();
+    return;
+  }
+  const options = {
+    alive: () => document.getElementById("session-modal").open,
+    renderText: (text) => linkify(text).map(notePart),
+  };
+  const waiting = list.filter((item) => item.status === "open");
+  const answered = list.filter((item) => item.status !== "open");
+  const parts = [];
+  if (waiting.length) {
+    const label = element("p", "label", t("decision.waitingTitle"));
+    label.append(element("span", "dlg-badge open", String(waiting.length)));
+    parts.push(label, ...waiting.map((item) => decisionCard(item, options)));
+  }
+  if (answered.length) {
+    // 답한 결정은 접어 둔다 — 다시 답할 때나 전달 결과를 볼 때만 편다
+    const fold = element("details", "dec-done");
+    fold.append(
+      element("summary", null, t("decision.answeredTitle", { count: answered.length })),
+      ...answered.map((item) => decisionCard(item, options))
+    );
+    parts.push(fold);
+  }
+  slot.replaceChildren(...parts);
 }
 
 // 보기와 수정이 같은 자리를 번갈아 쓴다 — 고치려고 팝업을 닫고 다시 열지 않게
@@ -231,6 +280,7 @@ function fillTodoBlock(block, todo) {
   title.append(editButton(block, todo));
   block.replaceChildren(
     title,
+    ...(block.decisionSlot ? [block.decisionSlot] : []),
     historySection(events(todo, TIME_FIELDS)),
     conditionSection(todo),
     // 하위 할일은 보드 카드에서 펼쳐 보므로 여기서는 안 그린다

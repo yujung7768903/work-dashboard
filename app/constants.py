@@ -282,6 +282,10 @@ MANAGER_HOME_ENV = "WORK_DASHBOARD_MANAGER_HOME"
 MANAGER_HOME_DEFAULT = os.path.expanduser("~/work/manager")
 # manager.py 보조 는 claude agents --json 을 부른다(수 초). 그보다 넉넉히
 MANAGER_HELPERS_TIMEOUT_SEC = 45
+# 결정에 화면에서 답하기(app/services/decision_answer.py). task list·show 는 DB 만 읽어 1초 안에 끝난다
+MANAGER_TASK_TIMEOUT_SEC = 15
+# answer-ui 는 죽은 원 세션을 되살려 도착을 기다리느라 최대 90초 걸린다(매니저 answer-ui --help). 그보다 넉넉히
+MANAGER_ANSWER_TIMEOUT_SEC = 180
 # 매니저 탭 도구 목록. claude mcp list 는 stdio 서버(디스코드 봇 포함)를 실제로 띄워 보므로 한 시간에 한 번만
 TOOLS_CACHE_SEC = 3600
 TOOLS_MCP_TIMEOUT_SEC = 90
