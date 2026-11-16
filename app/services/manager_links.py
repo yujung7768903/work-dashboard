@@ -19,7 +19,7 @@ from app.services import transcript
 # manager spawn.py 가 지시 끝에 붙이는 문단 상수 (spawn.with_self_stop). 문구를 여기 베끼지 않고
 # 매니저 코드에서 읽는다 — 매니저가 문구를 고쳐도 따라간다
 SPAWN_FILE = "spawn.py"
-SPAWN_SUFFIXES = ("PROGRESS", "OPEN_RESULT", "DECISION", "BLOCKED", "SELF_STOP", "MANAGER_WORK")
+SPAWN_SUFFIXES = ("PROGRESS", "OPEN_RESULT", "DECISION", "BLOCKED", "DASH_TODO", "SELF_STOP", "MANAGER_WORK")
 # 문단 머리 몇 자로 알아본다. 예전에 붙은 지시는 문구 끝이 지금과 조금 다를 수 있다
 SUFFIX_HEAD_CHARS = 16
 PARAGRAPH = "\n\n"

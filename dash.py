@@ -53,6 +53,7 @@ from app.services import (
     release,
     session_link,
     session_name,
+    spawn_link,
     stale_judge,
     usage,
 )
@@ -711,6 +712,12 @@ def _cmd_classify(con, args):
         con, args.session, category_name=args.category, workspace_id=args.workspace
     )
     print(f"분류됨: category={updated['category_id']}")
+    # 매니저 spawn 이 임시 자리에 만들어 둔 이 세션의 할일은 분류한 곳으로 따라간다
+    moved = spawn_link.follow_classification(
+        con, updated["claude_session_id"], updated["category_id"], args.workspace
+    )
+    if moved:
+        print("spawn 할일을 분류한 곳으로 옮김: " + ", ".join(f"#{todo_id}" for todo_id in moved))
     if args.workspace is None:
         return
     print(_link_candidates(con, args.workspace, args.session))

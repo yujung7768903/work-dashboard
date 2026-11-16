@@ -51,6 +51,7 @@ from app.services import (
     session_message,
     session_name,
     session_todo,
+    spawn_link,
     todo_tree,
     usage,
     worktrees,
@@ -321,6 +322,10 @@ def _route_patch(con, head, item_id, body):
             item_id,
             category_id=body.get("category_id"),
             workspace_id=body.get("workspace_id"),
+        )
+        # 매니저 spawn 이 임시 자리에 만들어 둔 할일은 분류한 곳으로 따라간다
+        spawn_link.follow_classification(
+            con, session["claude_session_id"], session["category_id"], body.get("workspace_id")
         )
         # 워크스페이스로 분류한 세션은 할일을 만들어 붙이거나, 이미 붙은 할일을 옮긴다.
         # 카테고리만이면 None. 세션이 그 워크스페이스에 속한다는 사실은 할일 연결로만
