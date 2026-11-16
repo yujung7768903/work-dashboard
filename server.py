@@ -50,6 +50,7 @@ from app.services import (
     session_link,
     session_message,
     session_name,
+    session_results,
     session_todo,
     spawn_link,
     todo_tree,
@@ -242,6 +243,10 @@ def _route_post(con, head, body):
     if head == "open-path":
         # note 에 적힌 경로를 눌렀을 때. 탐색기는 서버가 도는 컴퓨터에서 열린다
         return browse.reveal(body.get("path"))
+    if head == "result-folder":
+        # 결과물 파일 카드. 경로를 받지 않고 결과물로 등록된 노드 id 만 받아 DB 에서 경로를 꺼낸다 —
+        # 이 서버가 아무 경로나 여는 통로가 되지 않게(open-path 와 다른 점)
+        return session_results.open_folder(con, body.get("id"))
     if head == "precondition-check":
         # 돌릴 명령은 저장된 조건 문장에서 서버가 읽는다 — 화면은 몇 번째 항목인지만 보낸다
         return precondition.check(con, body.get("todo_id"), body.get("index"))

@@ -7,6 +7,9 @@ import {
   COL_GAP,
   LANE_HEAD,
   LANE_PAD,
+  MORE,
+  RESULT,
+  RESULT_SHOW,
   ROW_GAP,
   isVisible,
   layoutForest,
@@ -81,6 +84,37 @@ const FINISHED = tree(2, [todo(21, "done")], true);
   assert.equal(layout.cards.length, 1);
   assert.equal(layout.height, LANE_HEAD + CARD_H + LANE_PAD);
   assert.equal(layoutForest([]).width, 0);
+}
+
+{
+  // 세션 결과물: 할일 오른쪽 열에 하위 할일 다음 잎으로. 많으면 RESULT_SHOW 장 + '+N 더' 한 장, 펼치면 다
+  const result = (id) => ({ key: `r${id}-t31`, kind: RESULT, doc_kind: "pr", children: [] });
+  const owner = { ...todo(31, "doing", [todo(32, "todo")]), key: "t31", results: [1, 2, 3, 4, 5, 6].map(result) };
+  const work = tree(4, [owner]);
+  const layout = layoutForest([work]);
+  const at = (key) => layout.cards.find((card) => card.key === key);
+  const kids = layout.cards.filter((card) => card.parent?.key === "t31").map((card) => [card.kind, card.key]);
+  assert.deepEqual(kids, [
+    ["todo", "t32"],
+    [RESULT, "r1-t31"],
+    [RESULT, "r2-t31"],
+    [RESULT, "r3-t31"],
+    [MORE, "t31-more"],
+  ]);
+  assert.equal(RESULT_SHOW, 3);
+  assert.equal(at("t31-more").data.count, 3);
+  assert.equal(at("r1-t31").x, at("t32").x, "결과물은 하위 할일과 같은 열");
+  assert.ok(layout.edges.some((edge) => edge.from.key === "t31" && edge.to.key === "t31-more"));
+  const opened = layoutForest([work], { openResults: new Set(["t31"]) });
+  assert.equal(opened.cards.filter((card) => card.kind === RESULT).length, 6);
+  assert.ok(!opened.cards.some((card) => card.kind === MORE));
+  // 넷이면 접지 않는다 — '+1 더' 한 장이 카드 한 장과 같은 자리를 먹는다
+  const four = layoutForest([tree(5, [{ ...owner, results: owner.results.slice(0, 4) }])]);
+  assert.equal(four.cards.filter((card) => card.kind === RESULT).length, 4);
+  // 끝난 할일을 숨기면 그 결과물도 같이 빠지고, 결과물이 끝난 할일을 붙잡지 않는다
+  const doneOwner = { ...todo(41, "done"), key: "t41", results: [result(9)] };
+  const hidden = layoutForest([tree(6, [doneOwner, todo(42, "todo")])], { hideDone: true });
+  assert.ok(!hidden.cards.some((card) => card.key === "t41" || card.kind === RESULT));
 }
 
 console.log("tree layout ok");

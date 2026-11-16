@@ -16,6 +16,7 @@ from app.constants import (
     BY_PARENT_COLUMN,
     BY_SHARED_DOC,
     BY_SPAWN,
+    BY_TRANSCRIPT,
     BY_USER,
     CONTEXT_TITLE_MSG,
     EDGE_BASIS_MSG,
@@ -37,7 +38,9 @@ from app.constants import (
     REL_PARENT,
     REL_PRECEDES,
     REL_RELATED,
+    REL_RESULT,
     RELATION_KINDS,
+    RESULT_ACTIONS,
     SHARED_DOC_MAX_TODOS,
 )
 from app.db import now, transaction
@@ -118,15 +121,16 @@ def delete_context(con, context_id):
         con.execute("DELETE FROM graph_nodes WHERE id=?", (current["id"],))
 
 
-def ensure_doc(con, ref, title=None):
-    """근거 문서 노드. 처음 보는 문서면 만들고, 제목을 주면 비어 있는 제목만 채운다"""
+def ensure_doc(con, ref, title=None, url=None, created_by=BY_USER):
+    """근거·결과 문서 노드. 처음 보는 문서면 만들고, 제목을 주면 비어 있는(라벨뿐인) 제목만 채운다.
+    주소는 받은 것(아티팩트 발행 결과의 원래 주소 등)을 먼저 쓰고, 없으면 키로 만든다"""
     stamp = now()
+    url = url or evidence_refs.url_of(ref)
     with transaction(con):
         con.execute(
             "INSERT OR IGNORE INTO graph_nodes(kind, ref, title, url, created_by, created_at,"
             " updated_at) VALUES(?,?,?,?,?,?,?)",
-            (NODE_DOC, ref, title or evidence_refs.label_of(ref), evidence_refs.url_of(ref), BY_USER,
-             stamp, stamp),
+            (NODE_DOC, ref, title or evidence_refs.label_of(ref), url, created_by, stamp, stamp),
         )
         if title:
             con.execute(
@@ -451,6 +455,75 @@ def apply_origin(con, claude_session_id, todo_id):
     return made
 
 
+def add_result(con, claude_session_id, ref, action, at, title=None, url=None):
+    """세션 → 문서 결과 하나. 같은 문서가 근거로 이미 있으면 그 노드에 결과 관계만 더한다(키가 같다).
+    같은 세션이 같은 문서를 여러 번 만지면 한 관계에 동작을 모으고(생성·수정), 시각은 처음 것을 둔다 —
+    트리가 그 시각으로 '그때 세션이 맡던 할일' 을 고른다. 대시보드가 모르는 세션이면 None"""
+    known = con.execute(
+        "SELECT 1 FROM sessions WHERE claude_session_id=?", (claude_session_id,)
+    ).fetchone()
+    if not known or not evidence_refs.is_doc_ref(ref):
+        return None
+    ensure_doc(con, ref, title=title, url=url, created_by=BY_TRANSCRIPT)
+    src, dst = (NODE_SESSION, claude_session_id), (NODE_DOC, ref)
+    existing = _find(con, src, dst, REL_RESULT)
+    stamp = now()
+    with transaction(con):
+        if existing is None:
+            con.execute(
+                "INSERT INTO edges(src_kind, src_id, dst_kind, dst_id, relation, basis, evidence,"
+                " state, created_by, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (*src, *dst, REL_RESULT, None, action, EDGE_CONFIRMED, BY_TRANSCRIPT, at or stamp, stamp),
+            )
+        else:
+            actions = merge_actions(existing["evidence"], action)
+            first = min(filter(None, (existing["created_at"], at))) if at else existing["created_at"]
+            if actions != existing["evidence"] or first != existing["created_at"]:
+                con.execute(
+                    "UPDATE edges SET evidence=?, created_at=?, updated_at=? WHERE id=?",
+                    (actions, first, stamp, existing["id"]),
+                )
+    return _find(con, src, dst, REL_RESULT)
+
+
+def results(con):
+    """결과 관계 전부와 그 문서 노드. 거절한 것은 뺀다. [{edge…, node_id, title, url}]"""
+    rows = con.execute(
+        """SELECT e.*, n.id AS node_id, n.title AS doc_title, n.url AS doc_url
+           FROM edges e JOIN graph_nodes n ON n.kind = ? AND n.ref = e.dst_id
+           WHERE e.relation = ? AND e.state <> ? ORDER BY e.created_at, e.id""",
+        (NODE_DOC, REL_RESULT, EDGE_REJECTED),
+    )
+    return [dict(row) for row in rows]
+
+
+def result_file(con, node_id):
+    """폴더 열기가 받을 수 있는 유일한 대상 — 결과 관계가 걸린 파일 노드. 아니면 NotFound.
+    요청의 경로를 믿지 않고 노드 id 로만 DB 에서 경로를 꺼낸다(로컬 서버가 임의 경로를 여는 통로가 되지 않게)"""
+    try:
+        ident = int(node_id)
+    except (TypeError, ValueError):
+        raise Validation("노드 번호가 필요합니다")
+    row = con.execute(
+        """SELECT n.* FROM graph_nodes n
+           WHERE n.id = ? AND n.kind = ? AND n.ref LIKE ?
+             AND EXISTS (SELECT 1 FROM edges e WHERE e.relation = ? AND e.dst_kind = ?
+                         AND e.dst_id = n.ref AND e.state <> ?)""",
+        (ident, NODE_DOC, f"{evidence_refs.FILE}:%", REL_RESULT, NODE_DOC, EDGE_REJECTED),
+    ).fetchone()
+    if not row:
+        raise NotFound("결과물로 등록된 파일이 아닙니다")
+    return dict(row)
+
+
+def merge_actions(current, action):
+    """'생성' + '수정' → '생성·수정'. 순서는 RESULT_ACTIONS 를 따른다(언제 했든 같은 글자).
+    둘 다 이미 합친 글자('생성·수정')여도 된다 — 트리가 세션 여럿의 결과를 한 카드로 모을 때"""
+    have = set(filter(None, f"{current or ''}·{action or ''}".split("·")))
+    ordered = [name for name in RESULT_ACTIONS if name in have]
+    return "·".join(ordered + sorted(have - set(RESULT_ACTIONS)))
+
+
 def refresh_shared_related(con, todo_id):
     """같은 근거 문서를 가리키는 할일끼리 관련(자동)으로 잇는다. 그 할일과 문서를 공유하는 할일들까지
     다시 계산한다 — 문서 하나에 할일이 늘어 묶음(SHARED_DOC_MAX_TODOS 초과)이 되면 그 쌍들은 걷는다"""
@@ -596,8 +669,8 @@ def _require_node(con, node):
             "SELECT 1 FROM sessions WHERE claude_session_id=?", (ident,)
         ).fetchone()
     else:
-        # 문서는 처음 이을 때 만든다(ensure_doc). 키 모양만 본다
-        row = True if evidence_refs.url_of(ident) else None
+        # 문서는 처음 이을 때 만든다(ensure_doc). 키 모양만 본다 — 파일은 열 주소가 없어도 문서다
+        row = True if evidence_refs.is_doc_ref(ident) else None
     if not row:
         raise NotFound(f"연결할 대상을 찾을 수 없습니다: {kind} {ident}")
 

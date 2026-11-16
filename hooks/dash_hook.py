@@ -7,10 +7,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.constants import STATE_ENDED, STATE_IDLE, STATE_WORKING  # noqa: E402
+from app.constants import RESULT_HOOK_MAX_BYTES, STATE_ENDED, STATE_IDLE, STATE_WORKING  # noqa: E402
 from app.db import connect  # noqa: E402
 from app.repositories import sessions as session_repo  # noqa: E402
-from app.services import autorun, session_link  # noqa: E402
+from app.services import autorun, session_link, session_results  # noqa: E402
 
 EXIT_OK = 0
 GIT_BRANCH_TIMEOUT_SEC = 1
@@ -72,12 +72,24 @@ def _on_stop(con, session_id, payload):
     if cwd:
         session_repo.register(con, session_id, cwd=cwd, git_branch=_current_branch(cwd))
     session_repo.set_state(con, session_id, STATE_IDLE)
+    _collect_results(con, session_id)
     return ""
 
 
 def _on_session_end(con, session_id, payload):
     session_repo.set_state(con, session_id, STATE_ENDED)
+    _collect_results(con, session_id)
     return ""
+
+
+def _collect_results(con, session_id):
+    """이번 턴에 새로 붙은 transcript 꼬리에서 결과물(만들거나 고친 문서·PR·아티팩트·파일)을 잇는다.
+    상태 기록 뒤에 부른다 — 수집이 실패하거나 시간 제한에 걸려도 상태는 이미 남아 있다.
+    한 번에 읽는 양을 묶어 두고 나머지는 다음 턴이 이어 읽는다"""
+    try:
+        session_results.collect(con, session_id, max_bytes=RESULT_HOOK_MAX_BYTES)
+    except Exception:
+        pass
 
 
 def _current_branch(cwd):

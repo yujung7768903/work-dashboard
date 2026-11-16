@@ -7,6 +7,7 @@
 """
 import os
 import platform
+import shutil
 import subprocess
 import sys
 
@@ -17,6 +18,9 @@ DARWIN = "darwin"
 WSL = "wsl"
 LINUX = "linux"
 REVEAL_TIMEOUT_SEC = 10
+# 백그라운드로 뜬 서버(start.sh·restart.sh 를 세션·크론이 부른 경우)는 Windows PATH 를 물려받지 못해
+# 'explorer.exe' 이름만으로는 못 찾는다(11-16 9080 에서 확인) — PATH 에 없으면 이 자리를 쓴다
+WINDOWS_EXPLORER = "/mnt/c/Windows/explorer.exe"
 
 
 def list_dir(path=None):
@@ -93,11 +97,19 @@ def reveal_command(target, system=None):
     if system == WSL:
         windows_path = _windows_path(target)
         # 폴더는 그냥 열고, 파일은 /select 로 골라 준다
+        explorer = _explorer()
         if os.path.isfile(target):
-            return ["explorer.exe", f"/select,{windows_path}"]
-        return ["explorer.exe", windows_path]
+            return [explorer, f"/select,{windows_path}"]
+        return [explorer, windows_path]
     # 그 밖의 리눅스: 파일 하나를 지목하는 표준 방법이 없어 담긴 폴더를 연다
     return ["xdg-open", target if os.path.isdir(target) else os.path.dirname(target)]
+
+
+def _explorer():
+    found = shutil.which("explorer.exe")
+    if found:
+        return found
+    return WINDOWS_EXPLORER if os.path.exists(WINDOWS_EXPLORER) else "explorer.exe"
 
 
 def _windows_path(target):

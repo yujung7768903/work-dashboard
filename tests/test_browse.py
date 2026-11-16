@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from app.errors import Validation
 from app.services import browse
@@ -99,11 +100,18 @@ class RevealTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which("wslpath"), "wslpath 없음 (WSL 아님)")
     def test_wsl_selects_a_file_and_opens_a_folder(self):
         file_command = browse.reveal_command(self.file, browse.WSL)
-        self.assertEqual(file_command[0], "explorer.exe")
+        self.assertEqual(os.path.basename(file_command[0]), "explorer.exe")
         self.assertTrue(file_command[1].startswith("/select,"), file_command)
         folder_command = browse.reveal_command(self.root, browse.WSL)
-        self.assertEqual(folder_command[0], "explorer.exe")
+        self.assertEqual(os.path.basename(folder_command[0]), "explorer.exe")
         self.assertFalse(folder_command[1].startswith("/select,"), folder_command)
+
+    @unittest.skipUnless(os.path.exists(browse.WINDOWS_EXPLORER), "Windows 탐색기 없음 (WSL 아님)")
+    def test_wsl_finds_explorer_without_windows_path(self):
+        """백그라운드 서버는 PATH 에 /mnt/c/Windows 가 없다 — 이름만 넘기면 [Errno 2] 로 실패했다"""
+        with mock.patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}):
+            command = browse.reveal_command(self.root, browse.WSL)
+        self.assertEqual(command[0], browse.WINDOWS_EXPLORER)
 
     def test_rejects_a_path_that_does_not_exist(self):
         with self.assertRaises(Validation):

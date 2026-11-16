@@ -162,6 +162,17 @@ cd work-dashboard
 하위 할일을 추가하며, 확인 대기 카드는 완료 처리 버튼으로 바로 닫는다. 트리 완료는 저장하지
 않고 그 트리의 할일이 전부 done 인지로 계산한다.
 
+할일 오른쪽에는 **결과물** 카드가 붙는다 — 그 할일을 맡은 세션이 만들거나 고친 것이다. 세션이
+만들거나 고친 Confluence 페이지, 만들거나 고치거나 댓글 단 Jira 이슈, 만든 PR, 발행한 아티팩트,
+완료 보고(`manager.py 퇴근-보조 --open`·`ask --open`)에 산출물로 남긴 사이트·파일, 코드 레포 밖에
+새로 만든 파일(`~/.claude`·`/tmp`·숨김 폴더는 뺀다)이다. 읽기만 한 문서는 결과가 아니다 —
+세션 transcript 의 성공한 쓰기 호출에서만 뽑고, 이미 근거로 올라 있는 문서면 같은 노드에 결과
+관계만 더한다. 카드 왼쪽 위 배지(혼자 서는 카드의 상태 칩과 같은 자리)에 종류 로고가 있고(인라인
+SVG, 외부 파비콘을 불러오지 않는다), 누르면 새 탭으로 열거나 파일이면 담긴 폴더를 탐색기로 연다.
+폴더 열기는 결과물로 등록된 파일 노드 id 만 받고 경로는 받지 않는다. 결과는 그 세션이 그때 맡던
+할일에 붙고, 넷을 넘으면 최근 셋과 'N개 더' 카드로 접는다. 할일을 안 맡은 세션의 결과는 관계로만
+남고 트리에는 자리가 없다.
+
 할일 줄과 세션 줄은 같은 팝업을 열고, 팝업은 탭 세 개다.
 
 | 팝업 탭 | 내용 |
@@ -189,6 +200,7 @@ python3 dash.py link <상위|선행|근거|관련> <앞> <뒤> [--basis 계기|�
 python3 dash.py edges <노드>                          # 12 · ctx:3 · session:<id> · jira:PFD-1
 python3 dash.py edge <confirm|reject|rm> <연결id>
 python3 dash.py add-context <제목> [--workspace ID | --category 이름] [--note ...]
+python3 dash.py collect-results [--session ID] [--dry-run] [--verbose]   # transcript 에서 세션 결과물 다시 뽑기(백필)
 python3 dash.py move-todo <할일id> --workspace <id|none>
 python3 dash.py set-status <todo|workspace> <id> <상태>   # 할일: todo·doing·review·done
 python3 dash.py reorder <categories|workspaces|todos> <ids...>
@@ -278,7 +290,7 @@ python3 dash.py autorun-finish               # 완료 — 검토 대기로
 
 | 훅 | 이벤트 | 하는 일 |
 | --- | --- | --- |
-| `hooks/dash_hook.py` | `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | 세션 등록·상태 추적과 위 컨텍스트 블록 주입 |
+| `hooks/dash_hook.py` | `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | 세션 등록·상태 추적과 위 컨텍스트 블록 주입. `Stop`·`SessionEnd` 에서 transcript 에 새로 붙은 꼬리를 읽어 결과물을 모은다 |
 | `hooks/worktree_serve.py` | `Stop` | 고친 워크트리에 서비스 중인 서버가 없으면 막고 빈 포트(9081–9139)를 건네준다 |
 | `hooks/worktree_guard.py` | `PreToolUse` (`Write`·`Edit`·`NotebookEdit`) | `~/work/` 메인 체크아웃의 소스 편집을 막는다. `ALLOW_MAIN_CHECKOUT=1` 로 우회 |
 | `hooks/commit_scope_guard.py` | `PreToolUse` (`Bash`) | pathspec 없는 `git add -A`·`git commit -a` 를 막는다. `ALLOW_BROAD_COMMIT=1` 로 우회 |
@@ -555,6 +567,7 @@ sqlite 를 웹 서버·CLI·훅이 직접 연다. 중재하는 프로세스는 �
 | `sessions` | Claude Code 세션. 훅이 등록·갱신한다 |
 | `session_todos` | 세션이 잡은 할일. 세션의 워크스페이스는 여기서 파생한다 |
 | `worktrees` | 워크트리 이력. 병합·삭제로 디렉토리가 사라져도 남는다 |
+| `transcript_scans` | 결과물 수집이 transcript(서브에이전트 포함)를 어디까지 읽었는지. 훅이 새 꼬리만 읽게 한다 |
 | `usage_samples` | 사용량 화면이 쓰는 한도·토큰 샘플 |
 | `autorun_state`, `autorun_runs` | 자율 실행 설정과 실행 기록 |
 | `gtasks_state` | 구글 태스크 연동 설정 — `enabled`, `last_sync_at`, `last_error`. `autorun_state` 와 같은 이유로 단일 행 |

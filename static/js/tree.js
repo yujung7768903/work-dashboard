@@ -7,7 +7,8 @@
 // 보드(카테고리>워크스페이스>할일)는 그대로 두고 같은 데이터를 다른 눈으로 본다
 import * as api from "./api.js";
 import { t } from "./i18n.js";
-import { createTreeMap, metaLine, parentLabel, proposalLabel, STATUS_LABEL, STATUS_ORDER } from "./tree-map.js";
+import { resultView } from "./result-card.js";
+import { cornerBadge, createTreeMap, metaLine, parentLabel, proposalLabel, STATUS_LABEL, STATUS_ORDER } from "./tree-map.js";
 import { isVisible } from "./tree-layout.js";
 
 const VIEW_KEY = "tree-view";
@@ -206,14 +207,16 @@ function kidsOf(node) {
 }
 
 // 펼친 줄. 깊이 제한 없이 줄마다 펼친다. 상위가 둘인 할일은 두 상위 밑에 다 나온다 — 그 줄에서
-// 지금 매달린 상위를 뺀 나머지를 '다른 상위 N개' 로 알린다. 이 줄의 연결이 제안이면 점선 + 확인·거절
-function kidsList(tree, nodes, depth, parentKey, path) {
+// 지금 매달린 상위를 뺀 나머지를 '다른 상위 N개' 로 알린다. 이 줄의 연결이 제안이면 점선 + 확인·거절.
+// results 는 바로 위 할일의 세션 결과물 — 하위 할일 다음에 줄로 붙는다(맵과 달리 접지 않는다)
+function kidsList(tree, nodes, depth, parentKey, path, results = []) {
   const list = element("ul", "tree-kids");
   nodes
     .filter((node) => isVisible(node, { hideDone }))
     .forEach((node) => {
       const here = `${path}>${node.key}`;
       const kids = kidsOf(node).filter((kid) => isVisible(kid, { hideDone }));
+      const outputs = node.results ?? [];
       const via = parentKey ? node.parents.find((parent) => parent.key === parentKey) : null;
       // 주 상위가 아닌 자리(다른 상위 밑)는 같은 가지가 두 번 펼쳐지지 않게 처음엔 닫아 둔다
       const fresh = via && !via.primary ? false : depth < OPEN_DEPTH;
@@ -222,13 +225,47 @@ function kidsList(tree, nodes, depth, parentKey, path) {
       const row = element("div", "tree-kid-row");
       row.style.setProperty("--depth", depth);
       if (via?.state === PROPOSED) row.classList.add("proposed");
-      row.append(kidToggle(here, open, kids.length), kidLine(node, parentKey));
+      row.append(kidToggle(here, open, kids.length + outputs.length), kidLine(node, parentKey));
       if (via?.state === PROPOSED) row.appendChild(decideBox(via));
       item.appendChild(row);
-      if (open && kids.length) item.appendChild(kidsList(tree, kids, depth + 1, node.key, here));
+      if (open && kids.length + outputs.length) {
+        item.appendChild(kidsList(tree, kids, depth + 1, node.key, here, outputs));
+      }
       list.appendChild(item);
     });
+  results.forEach((result) => list.appendChild(resultRow(result, depth)));
   return list;
+}
+
+// 결과물 한 줄 — 배지(로고 + 종류) · 제목 · 동작. 누르면 새 탭으로 열거나(파일은) 담긴 폴더를 연다
+function resultRow(result, depth) {
+  const view = resultView(result);
+  const item = element("li");
+  const row = element("div", "tree-kid-row");
+  row.style.setProperty("--depth", depth);
+  const spacer = element("span", "icon-btn tree-kid-toggle");
+  spacer.setAttribute("aria-hidden", "true");
+  const line = view.href ? element("a", "tree-result") : element("button", "tree-result");
+  line.dataset.kind = view.kind;
+  line.title = view.tip;
+  if (view.href) {
+    line.href = view.href;
+    line.target = "_blank";
+    line.rel = "noopener noreferrer";
+  } else {
+    line.type = "button";
+    line.disabled = view.missing;
+    if (view.missing) line.dataset.missing = "";
+    line.addEventListener("click", () => api.openResultFolder(view.folder).catch(() => {}));
+  }
+  line.append(
+    cornerBadge({ logo: view.kind, text: view.kindLabel, className: "tm-result-badge" }),
+    element("span", "tree-result-title", view.line)
+  );
+  if (view.actions) line.appendChild(element("span", "tm-result-action", view.actions));
+  row.append(spacer, line);
+  item.appendChild(row);
+  return item;
 }
 
 function kidLine(node, parentKey) {

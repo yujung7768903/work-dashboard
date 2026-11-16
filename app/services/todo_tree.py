@@ -7,7 +7,12 @@
 
 진행률은 상위마다 하위 전부를 센다 — 상위가 둘인 할일은 두 상위의 진행률에 다 들어간다. 같은 상위 아래로
 두 길로 닿아도 한 번만 센다. 트리(워크스페이스) 완료는 그 트리 할일이 전부 done 일 때다(저장하지 않는다)
+
+세션 결과물(세션이 만들거나 고친 Confluence·Jira·PR·아티팩트·사이트·파일)은 그 세션이 맡던 할일의 results 로
+내려 화면이 그 할일 오른쪽에 잎 카드로 그린다. 진행률·상태 개수에는 세지 않는다 — 할일이 아니다
 """
+import os
+
 from app import evidence as evidence_refs
 from app.constants import (
     EDGE_PROPOSED,
@@ -44,6 +49,7 @@ def forest(con):
     nodes = _load_nodes(con)
     links = _load_links(con, nodes)
     _attach(nodes, links)
+    _attach_results(con, nodes)
     trees = []
     for workspace in workspace_repo.list_all(con):
         members = [node for node in nodes.values() if node["workspace_id"] == workspace["id"]]
@@ -118,7 +124,8 @@ def _load_nodes(con):
         }
         nodes[node["key"]] = node
     for node in nodes.values():
-        node.update(parents=[], docs=[], after=[], before=[], related=[], children=[], extra_children=[])
+        node.update(parents=[], docs=[], after=[], before=[], related=[], children=[], extra_children=[],
+                    results=[])
     return nodes
 
 
@@ -214,6 +221,66 @@ def _break_primary_cycles(nodes):
                 break
             seen.add(step["key"])
             step = primary_of(step["key"])
+
+
+def _attach_results(con, nodes):
+    """세션 결과물(세션 → 문서 결과 관계)을 그 세션이 그때 맡던 할일 카드 밑에 붙인다.
+    세션이 할일을 여럿 맡았으면 결과 시각 직전에 이은 할일, 그보다 앞선 연결이 없으면 처음 이은 할일.
+    할일을 안 맡은 세션의 결과는 트리에 자리가 없어 그리지 않는다(관계는 DB 에 남는다).
+    같은 할일 밑 같은 문서는 세션이 달라도 카드 하나로 모으고 동작을 합친다"""
+    performed = {}
+    for row in con.execute(
+        "SELECT s.claude_session_id AS sid, st.todo_id, st.created_at FROM session_todos st"
+        " JOIN sessions s ON s.id = st.session_id ORDER BY st.created_at, st.todo_id"
+    ):
+        performed.setdefault(row["sid"], []).append((row["created_at"], row["todo_id"]))
+    for result in graph_repo.results(con):
+        todo_id = _todo_at(performed.get(result["src_id"]), result["created_at"])
+        node = nodes.get(key_of(NODE_TODO, todo_id)) if todo_id is not None else None
+        if node is None:
+            continue
+        same = next((item for item in node["results"] if item["ref"] == result["dst_id"]), None)
+        if same is not None:
+            same["actions"] = graph_repo.merge_actions(same["actions"], result["evidence"])
+            continue
+        node["results"].append(_result_card(result, todo_id))
+    # 최근 것이 위 — 화면이 많으면 앞 몇 장만 펼치고 나머지는 접는다
+    for node in nodes.values():
+        node["results"].sort(key=lambda item: item["at"] or "", reverse=True)
+
+
+def _todo_at(links, at):
+    if not links:
+        return None
+    before = [todo_id for linked_at, todo_id in links if linked_at <= (at or "")]
+    return before[-1] if before else links[0][1]
+
+
+def _result_card(result, todo_id):
+    ref = result["dst_id"]
+    kind, _, key = ref.partition(":")
+    label = evidence_refs.label_of(ref)
+    title = result["doc_title"]
+    if title in (label, key):
+        title = None  # 라벨뿐인 제목은 화면이 라벨을 쓴다
+    card = {
+        # 같은 문서가 다른 할일 밑에도 붙을 수 있어 할일까지 넣어야 판 위에서 하나로 갈린다
+        "key": f"r{result['node_id']}-t{todo_id}",
+        "kind": "result",
+        "node_id": result["node_id"],
+        "ref": ref,
+        "doc_kind": kind,
+        "label": label,
+        "title": title,
+        "url": result["doc_url"] or evidence_refs.url_of(ref),
+        "actions": result["evidence"],
+        "at": result["created_at"],
+        "children": [],
+    }
+    if kind == evidence_refs.FILE:
+        card["path"] = key
+        card["missing"] = not os.path.exists(key)
+    return card
 
 
 # ── 트리 조립 ───────────────────────────────────────────────────────────
