@@ -18,6 +18,7 @@ from app.constants import (
 from app.db import now, transaction
 from app.errors import NotFound, Validation
 from app.repositories import categories as category_repo
+from app.repositories import graph as graph_repo
 from app.repositories import workspaces as workspace_repo
 
 TABLE = "sessions"
@@ -193,24 +194,32 @@ def link_todo(con, claude_session_id, todo_id, claim=True, status=None):
     target = _validated_link_status(status)
     stamp = now()
     with transaction(con):
-        con.execute(
+        cursor = con.execute(
             "INSERT OR IGNORE INTO session_todos(session_id, todo_id, created_at)"
             " VALUES(?,?,?)",
             (session["id"], todo_id, stamp),
         )
-        if not claim:
-            return
-        if target == STATUS_DONE:
-            con.execute(
-                "UPDATE todos SET status=?, completed_at=?, updated_at=? WHERE id=?",
-                (STATUS_DONE, stamp, stamp, todo_id),
-            )
-        else:
-            # 확인 대기(review)도 되살린다 — 확인 중에 다시 손대러 들어온 세션이다
-            con.execute(
-                "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status IN (?,?)",
-                (STATUS_DOING, stamp, todo_id, STATUS_TODO, STATUS_REVIEW),
-            )
+        fresh = cursor.rowcount > 0
+        if claim:
+            _claim(con, todo_id, target, stamp)
+    # 매니저가 띄운 세션이면 출처 세션의 할일을 이 할일의 상위(계기)로 제안한다 — 처음 잡을 때만
+    if fresh:
+        graph_repo.apply_origin(con, claude_session_id, todo_id)
+
+
+def _claim(con, todo_id, target, stamp):
+    """연결하며 할일 상태를 정한다. 트랜잭션은 부르는 쪽"""
+    if target == STATUS_DONE:
+        con.execute(
+            "UPDATE todos SET status=?, completed_at=?, updated_at=? WHERE id=?",
+            (STATUS_DONE, stamp, stamp, todo_id),
+        )
+    else:
+        # 확인 대기(review)도 되살린다 — 확인 중에 다시 손대러 들어온 세션이다
+        con.execute(
+            "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status IN (?,?)",
+            (STATUS_DOING, stamp, todo_id, STATUS_TODO, STATUS_REVIEW),
+        )
 
 
 def _validated_link_status(status):

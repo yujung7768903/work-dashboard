@@ -286,3 +286,72 @@ MANAGER_HELPERS_TIMEOUT_SEC = 45
 TOOLS_CACHE_SEC = 3600
 TOOLS_MCP_TIMEOUT_SEC = 90
 TOOLS_CLI_TIMEOUT_SEC = 15
+
+# ── 할일 관계 그래프 ─────────────────────────────────────────────────────
+# 노드는 (종류, id) 쌍. 할일·세션은 제 테이블이 있고, 맥락·근거 문서는 graph_nodes 에 있다.
+# id 는 모두 글자로 다룬다 — 세션 id 는 UUID, 문서 id 는 'jira:PFD-6350' 같은 정규화 키라서다.
+# 관계는 edges 한 곳에 둔다. 수행만 예외 — session_todos 를 그대로 쓰고 graph_edges 뷰로 합친다
+# (두 곳에 적으면 세션 연결·해제 경로마다 맞춰야 하고, 어긋나면 어느 쪽이 맞는지 모른다)
+NODE_TODO, NODE_CONTEXT, NODE_DOC, NODE_SESSION = "todo", "context", "doc", "session"
+NODE_KINDS = (NODE_TODO, NODE_CONTEXT, NODE_DOC, NODE_SESSION)
+# 상위(parent)는 왜, 선행(precedes)은 언제. 근거(evidence)는 할일 → 문서, 수행(performs)은 세션 → 할일,
+# 관련(related)은 위 어느 것도 아니지만 같은 질문을 다루는 둘 — 방향이 없어 작은 쪽을 출발로 둔다
+REL_PARENT, REL_PRECEDES, REL_EVIDENCE, REL_PERFORMS, REL_RELATED = (
+    "parent", "precedes", "evidence", "performs", "related",
+)
+RELATIONS = (REL_PARENT, REL_PRECEDES, REL_EVIDENCE, REL_PERFORMS, REL_RELATED)
+# 순환을 막는 관계. 상위가 고리면 루트에서 닿지 않는 가지가 생기고, 선행이 고리면 아무것도 먼저 못 한다
+ACYCLIC_RELATIONS = (REL_PARENT, REL_PRECEDES)
+# 관계마다 허용하는 (출발, 도착) 종류. 맥락은 워크스페이스 아래 루트라 누구의 하위도 아니다.
+# 수행은 session_todos 가 정본이라 여기 없다 — edges 에 직접 쓰지 않는다
+RELATION_KINDS = {
+    REL_PARENT: ((NODE_TODO, NODE_CONTEXT), (NODE_TODO,)),
+    REL_PRECEDES: ((NODE_TODO,), (NODE_TODO,)),
+    REL_EVIDENCE: ((NODE_TODO, NODE_CONTEXT), (NODE_DOC,)),
+    REL_RELATED: ((NODE_TODO, NODE_CONTEXT), (NODE_TODO, NODE_CONTEXT)),
+}
+# 상위의 기준 셋. 계기 = A 가 없었다면 B 를 이 시점에 시작했을까, 목적 = B 가 끝나면 A 완료에 직접
+# 기여하나, 배경 = B 를 설명하려면 A 를 알아야 하나(가장 가까운 하나에만)
+BASIS_TRIGGER, BASIS_PURPOSE, BASIS_BACKGROUND = "trigger", "purpose", "background"
+PARENT_BASES = (BASIS_TRIGGER, BASIS_PURPOSE, BASIS_BACKGROUND)
+# rejected 는 지우지 않고 남긴다 — 자동 제안이 같은 연결을 다시 만들지 않게 하려는 것이다
+EDGE_CONFIRMED, EDGE_PROPOSED, EDGE_REJECTED = "confirmed", "proposed", "rejected"
+EDGE_STATES = (EDGE_CONFIRMED, EDGE_PROPOSED, EDGE_REJECTED)
+# 만든 주체. 자동 추출은 출처별로 나눠 둔다 — note 에서 키가 빠지면 note 출처 연결만 걷어낸다
+BY_USER = "user"
+BY_PARENT_COLUMN = "parent_id"  # todos.parent_id 와 짝을 이루는 연결. 이 열을 바꾸면 따라 바뀐다
+BY_NOTE = "auto:note"
+BY_SHARED_DOC = "auto:shared-doc"
+BY_REBUILD = "rebuild"
+BY_SPAWN = "spawn"
+EDGE_CYCLE_MSG = "이 연결을 저장하면 순환이 생깁니다"
+EDGE_KIND_MSG = "이 관계로 이을 수 없는 종류입니다"
+EDGE_SELF_MSG = "자기 자신과는 이을 수 없습니다"
+EDGE_BASIS_MSG = "상위 연결은 기준(계기·목적·배경)을 골라야 합니다"
+EDGE_RELATION_MSG = "관계는 상위·선행·근거·관련 중 하나여야 합니다"
+EDGE_STATE_MSG = "연결 상태는 확정·제안·거절 중 하나여야 합니다"
+CONTEXT_TITLE_MSG = "맥락 제목을 입력해 주세요"
+# 관련 자동 연결은 같은 문서를 공유하는 할일 쌍마다 만든다. 이보다 많은 할일이 같은 문서를 가리키면
+# 그 문서는 묶음(에픽·정기배포 페이지)이라 쌍을 다 만들면 선만 늘어난다 — 문서 노드로만 잇는다
+SHARED_DOC_MAX_TODOS = 6
+
+# 근거 문서 키 추출. Jira 키는 모양만 보면 'UTF-8'·'KT-7' 같은 오탐이 많아 이 회사에서 쓰는
+# 프로젝트 접두사만 받는다(11-16 실데이터 기준). 브라우즈 URL 로 적힌 키는 접두사와 관계없이 받는다
+ATLASSIAN_BASE = "https://hankookilbo.atlassian.net"
+JIRA_PROJECTS = ("PFD", "YAIW")
+GITHUB_BASE = "https://github.com"
+# 'muni PR #69' 처럼 레포 이름만 적은 PR. 조직이 빠져 있어 여기 있는 레포만 받는다.
+# 'HK #35' 같은 축약은 레포를 확정할 수 없어 자동으로 잇지 않는다
+KNOWN_REPOS = {
+    "hk-herb-server": "hkilbo",
+    "kt-cms-server": "hkilbo",
+    "muni": "hkilbo",
+    "hk-vms-server": "hkilbo",
+    "hk-library-server": "hkilbo",
+    "hk-herb-engine": "hkilbo",
+    "hk-techblog-client": "hkilbo",
+    "herb-library-client": "hkilbo",
+    "hk-appshell-client": "hkilbo",
+    "hk-article-client": "hkilbo",
+    "kt-herb-client": "hkilbo",
+}

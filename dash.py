@@ -7,6 +7,20 @@ import sys
 from datetime import datetime
 
 from app.constants import (
+    BASIS_BACKGROUND,
+    BASIS_PURPOSE,
+    BASIS_TRIGGER,
+    EDGE_CONFIRMED,
+    EDGE_PROPOSED,
+    EDGE_REJECTED,
+    NODE_CONTEXT,
+    NODE_DOC,
+    NODE_SESSION,
+    NODE_TODO,
+    REL_EVIDENCE,
+    REL_PARENT,
+    REL_PRECEDES,
+    REL_RELATED,
     GTASKS_CLIENT_ID_ENV,
     GTASKS_CLIENT_SECRET_ENV,
     HISTORY_DAY_CHOICES,
@@ -22,6 +36,7 @@ from app.constants import (
 from app.db import connect
 from app.errors import DomainError, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
+from app.repositories import graph as graph_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import settings as settings_repo
@@ -159,6 +174,34 @@ def _build_parser():
     set_parent.add_argument("todo_id", type=int)
     set_parent.add_argument("parent", help="상위 할일 id 또는 none")
     set_parent.set_defaults(handler=_cmd_set_parent)
+
+    link = sub.add_parser(
+        "link",
+        help="관계 잇기. 상위: 앞이 상위·뒤가 하위 / 선행: 앞을 먼저 끝내야 뒤를 함 / 근거: 할일 → 문서 / 관련",
+    )
+    link.add_argument("relation", choices=sorted(LINK_RELATIONS), help="상위·선행·근거·관련 (parent·precedes·evidence·related)")
+    link.add_argument("source", help=NODE_HELP)
+    link.add_argument("target", help=NODE_HELP)
+    link.add_argument("--basis", choices=sorted(LINK_BASES), help="상위일 때 기준: 계기·목적·배경")
+    link.add_argument("--evidence", default=None, help="근거 문장 — 왜 이 연결인지 원문 한 줄")
+    link.add_argument("--proposed", action="store_true", help="확정이 아니라 제안으로 — 사람이 화면에서 확인·거절")
+    link.set_defaults(handler=_cmd_link)
+
+    edges = sub.add_parser("edges", help="그 노드에 닿은 관계 보기 (수행 포함)")
+    edges.add_argument("node", help=NODE_HELP)
+    edges.set_defaults(handler=_cmd_edges)
+
+    edge_state = sub.add_parser("edge", help="연결 확인·거절·삭제")
+    edge_state.add_argument("action", choices=("confirm", "reject", "rm"))
+    edge_state.add_argument("edge_id", type=int)
+    edge_state.set_defaults(handler=_cmd_edge)
+
+    add_context = sub.add_parser("add-context", help="맥락(할일은 아니지만 배경이 되는 묶음) 추가 — 워크스페이스 아래 루트")
+    add_context.add_argument("title")
+    add_context.add_argument("--workspace", type=int, default=None)
+    add_context.add_argument("--category", default=None, help="워크스페이스가 없을 때 카테고리 이름")
+    add_context.add_argument("--note", default=None)
+    add_context.set_defaults(handler=_cmd_add_context)
 
     edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건·우선순위 수정")
     edit_todo.add_argument("todo_id", type=int)
@@ -498,6 +541,94 @@ def _cmd_set_parent(con, args):
     updated = todo_repo.update(con, args.todo_id, parent_id=parent_id)
     scope = f"#{updated['parent_id']}" if updated["parent_id"] else "워크스페이스 바로 아래"
     print(f"{updated['id']}. {updated['title']} → {scope}")
+
+
+# CLI 는 한국어·영어 관계 이름을 다 받는다. 저장은 영어 코드
+LINK_RELATIONS = {
+    "상위": REL_PARENT, "parent": REL_PARENT,
+    "선행": REL_PRECEDES, "precedes": REL_PRECEDES,
+    "근거": REL_EVIDENCE, "evidence": REL_EVIDENCE,
+    "관련": REL_RELATED, "related": REL_RELATED,
+}
+LINK_BASES = {
+    "계기": BASIS_TRIGGER, "trigger": BASIS_TRIGGER,
+    "목적": BASIS_PURPOSE, "purpose": BASIS_PURPOSE,
+    "배경": BASIS_BACKGROUND, "background": BASIS_BACKGROUND,
+}
+NODE_HELP = "할일 12 · 맥락 ctx:3 · 세션 session:<id> · 문서 jira:PFD-1 / confluence:123 / pr:<조직>/<레포>#4"
+CONTEXT_PREFIX = "ctx:"
+SESSION_PREFIX = "session:"
+DOC_PREFIXES = ("jira", "confluence", "pr")
+
+
+def parse_node(text):
+    """CLI 노드 표기 → (종류, id). 숫자(#12 도)는 할일"""
+    value = (text or "").strip()
+    if value.lstrip("#").isdigit():
+        return (NODE_TODO, value.lstrip("#"))
+    if value.startswith(CONTEXT_PREFIX):
+        return (NODE_CONTEXT, value[len(CONTEXT_PREFIX):])
+    if value.startswith(SESSION_PREFIX):
+        return (NODE_SESSION, value[len(SESSION_PREFIX):])
+    if value.partition(":")[0] in DOC_PREFIXES:
+        return (NODE_DOC, value)
+    raise Validation(f"노드 표기를 알 수 없습니다: {value} ({NODE_HELP})")
+
+
+def _cmd_link(con, args):
+    edge = graph_repo.add_edge(
+        con,
+        parse_node(args.source),
+        parse_node(args.target),
+        LINK_RELATIONS[args.relation],
+        basis=LINK_BASES.get(args.basis) if args.basis else None,
+        evidence=args.evidence,
+        state=EDGE_PROPOSED if args.proposed else EDGE_CONFIRMED,
+    )
+    print(_edge_line(edge))
+
+
+def _cmd_edges(con, args):
+    rows = graph_repo.edges_of(con, parse_node(args.node), include_performs=True)
+    if not rows:
+        print("연결 없음")
+    for edge in rows:
+        print(_edge_line(edge))
+
+
+def _cmd_edge(con, args):
+    if args.action == "rm":
+        graph_repo.delete_edge(con, args.edge_id)
+        print(f"연결 {args.edge_id} 삭제")
+        return
+    state = EDGE_CONFIRMED if args.action == "confirm" else EDGE_REJECTED
+    print(_edge_line(graph_repo.set_state(con, args.edge_id, state)))
+
+
+def _cmd_add_context(con, args):
+    category_id = None
+    if args.category:
+        category_id = category_repo.get_by_name(con, args.category)["id"]
+    context = graph_repo.create_context(
+        con, args.title, workspace_id=args.workspace, category_id=category_id, note=args.note
+    )
+    print(f"{CONTEXT_PREFIX}{context['id']} {context['title']}")
+
+
+def _edge_line(edge):
+    """한 줄 표기. 관계·기준은 한국어 이름으로"""
+    relation = {value: key for key, value in LINK_RELATIONS.items() if not key.isascii()}
+    relation["performs"] = "수행"
+    basis = {value: key for key, value in LINK_BASES.items() if not key.isascii()}
+    head = f"[{edge['id']}]" if edge.get("id") else "[수행]"
+    kind = relation.get(edge["relation"], edge["relation"])
+    if edge.get("basis") in basis:
+        kind += f"({basis[edge['basis']]})"
+    text = (
+        f"{head} {edge['src_kind']}:{edge['src_id']} -{kind}-> "
+        f"{edge['dst_kind']}:{edge['dst_id']} [{edge['state']}·{edge['created_by']}]"
+    )
+    return f"{text} {edge['evidence']}" if edge.get("evidence") else text
 
 
 def _cmd_edit_todo(con, args):

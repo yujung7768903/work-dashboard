@@ -9,7 +9,16 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from app.constants import ALLOWED_STATIC_SUFFIXES, DEFAULT_HOST, DEFAULT_PORT
+from app.constants import (
+    ALLOWED_STATIC_SUFFIXES,
+    BASIS_BACKGROUND,
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    EDGE_CONFIRMED,
+    NODE_CONTEXT,
+    NODE_TODO,
+    REL_PARENT,
+)
 from app.db import connect
 from app.errors import (
     Conflict,
@@ -21,6 +30,7 @@ from app.errors import (
 )
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
+from app.repositories import graph as graph_repo
 from app.repositories import gtasks_state
 from app.repositories import labels as label_repo
 from app.repositories import todos as todo_repo
@@ -123,6 +133,9 @@ def _route_get(con, head, item_id, query):
     if head == "todo-trees":
         # '트리' 메뉴. 보드의 tree(카테고리>워크스페이스>할일 묶음)와 달리 할일 상하 관계째 준다
         return todo_tree.forest(con)
+    if head == "graph-proposals":
+        # 트리 메뉴의 제안 칸. 사람이 확인·거절할 연결만
+        return todo_tree.proposals(con)
     if head == "next":
         return planning.next_todo(con)
     if head == "done-today":
@@ -178,14 +191,46 @@ def _route_post(con, head, body):
             con, body.get("category_id"), body.get("name"), **extra
         )
     if head == "todos":
-        return todo_repo.create(
+        context_id = body.get("context_id")
+        workspace_id = body.get("workspace_id")
+        if context_id is not None and workspace_id is None and body.get("category_id") is None:
+            # 맥락 카드의 + — 할일은 그 맥락의 워크스페이스(없으면 카테고리)에 생긴다
+            context = graph_repo.get_context(con, context_id)
+            workspace_id = context["workspace_id"]
+            body = {**body, "category_id": context["category_id"]}
+        created = todo_repo.create(
             con,
             body.get("title"),
             category_id=body.get("category_id"),
-            workspace_id=body.get("workspace_id"),
+            workspace_id=workspace_id,
             note=body.get("note"),
             precondition=body.get("precondition"),
             parent_id=body.get("parent_id"),
+        )
+        if context_id is not None:
+            graph_repo.add_edge(
+                con, (NODE_CONTEXT, context_id), (NODE_TODO, created["id"]), REL_PARENT,
+                basis=BASIS_BACKGROUND, evidence="맥락 카드에서 바로 추가",
+            )
+        return created
+    if head == "edges":
+        # 트리 화면·CLI 에서 사람이 잇는 연결. 자동 연결은 저장소가 따로 만든다
+        return graph_repo.add_edge(
+            con,
+            (body.get("src_kind"), body.get("src_id")),
+            (body.get("dst_kind"), body.get("dst_id")),
+            body.get("relation"),
+            basis=body.get("basis"),
+            evidence=body.get("evidence"),
+            state=body.get("state") or EDGE_CONFIRMED,
+        )
+    if head == "contexts":
+        return graph_repo.create_context(
+            con,
+            body.get("title"),
+            workspace_id=body.get("workspace_id"),
+            category_id=body.get("category_id"),
+            note=body.get("note"),
         )
     if head == "todo-start":
         if not body.get("id"):
@@ -257,6 +302,13 @@ def _route_patch(con, head, item_id, body):
         if "title" in body:
             session_name.sync_todo_later(con, updated)
         return updated
+    if head == "edges":
+        # 제안 확인·거절은 state 만, 기준·근거 문장 고치기는 basis·evidence
+        if "state" in body:
+            return graph_repo.set_state(con, item_id, body["state"])
+        return graph_repo.update_edge(con, item_id, body.get("basis"), body.get("evidence"))
+    if head == "contexts":
+        return graph_repo.update_context(con, item_id, **body)
     if head == "autorun-runs":
         # 검토 대기 → 완료. 사람의 확인은 클릭 한 번이라 넘길 필드가 없다
         return autorun.confirm_run(con, item_id)
@@ -290,6 +342,8 @@ def _route_delete(con, head, item_id, query):
         "labels": lambda con, item_id: label_repo.delete(con, item_id, force),
         "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
+        "edges": graph_repo.delete_edge,
+        "contexts": graph_repo.delete_context,
     }
     if head not in deleters:
         raise UnknownEndpoint("알 수 없는 엔드포인트")

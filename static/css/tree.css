@@ -302,3 +302,111 @@ button.tm-title { cursor: pointer; }
   #tree-panel { width: 100%; height: 70vh; margin-top: var(--sp-12); }
   #tree-map { height: 70vh; }
 }
+
+/* ── 관계 그래프 ──────────────────────────────────────────────────────────
+   관계 종류는 색 하나로 가르지 않는다 — 모양과 글자가 먼저다.
+     상위(주)      실선 곡선 + 포트, 좌→우
+     다른 상위     같은 실선 곡선, 옅게 (같은 '상위' 라 모양을 바꾸지 않는다)
+     선행          위아래로 잇는 긴 점선 + 화살촉, --soft (상태 색 warn·danger·good 은 쓰지 않는다)
+     제안          어느 관계든 짧은 점선 + 가운데 '제안 · 기준' 알약과 확인·거절
+     관련          선 없이 카드의 '관련 N' 칩 — 맵에 다 그으면 선이 판을 덮는다
+   맥락 카드는 상태가 없어 --soft 막대로 할일과 갈라 보인다 */
+[data-status="context"] { --st: var(--soft); }
+
+.tm-edge-other path { stroke: var(--tm-edge); opacity: 0.75; }
+.tm-edge-precedes path { stroke: var(--soft); stroke-width: 1.5; stroke-dasharray: 8 4; }
+.tm-arrow { fill: var(--soft); }
+.tm-edge-proposed path { stroke-dasharray: 2 4; }
+.tm-edge-proposed circle { stroke-dasharray: 2 2; }
+
+/* 제안 알약. 선 한가운데에 떠서 판을 끌어도 같이 움직인다 */
+.tm-proposal {
+  position: absolute; transform: translate(-50%, -50%); z-index: 1;
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-8); border-radius: var(--r-pill);
+  background: var(--surface); box-shadow: var(--shadow-pop); white-space: nowrap; cursor: default;
+}
+.tm-proposal-label { font-size: var(--fs-sm); font-weight: 600; color: var(--fg); }
+.tm-proposal .icon-btn { width: var(--icon-box); height: var(--icon-box); color: var(--muted); }
+.tm-proposal .tm-accept:hover:not(:disabled) { color: var(--good); }
+.tm-proposal .tm-reject:hover:not(:disabled) { color: var(--danger); }
+
+.tm-context { background: color-mix(in srgb, var(--soft) 7%, var(--surface)); }
+.tm-kind {
+  padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 700; line-height: var(--lh-body);
+  color: var(--fg); background: color-mix(in srgb, var(--soft) 22%, var(--surface));
+}
+
+/* 관계 줄 — 근거 문서 링크, 다른 상위·먼저·관련 칩. 한 줄이고 넘치면 자른다(전부는 칩 제목에) */
+.tm-meta {
+  display: flex; align-items: center; gap: var(--sp-4); min-width: 0; overflow: hidden;
+  min-height: calc(var(--fs-sm) * var(--lh-body)); white-space: nowrap;
+}
+.tm-doc, .tm-chip {
+  flex: none; padding: 0 var(--sp-8); border-radius: var(--r-ctl);
+  font-size: var(--fs-sm); line-height: var(--lh-body); white-space: nowrap;
+}
+.tm-doc {
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+  color: var(--fg); text-decoration: none; font-weight: 600;
+  background: color-mix(in srgb, var(--fg) 6%, var(--surface));
+}
+.tm-doc:hover { color: var(--accent); text-decoration: underline; }
+.tm-chip { color: var(--muted); background: color-mix(in srgb, var(--fg) 4%, var(--surface)); }
+/* 먼저 끝나야 하는 일이 남았다는 칩. 선행 화살표와 같은 --soft 를 왼쪽 막대로만 둔다 */
+.tm-chip-after { color: var(--fg); box-shadow: inset 2px 0 0 var(--soft); }
+
+/* ── 목록의 관계 표시 ─────────────────────────────────────────────────── */
+/* 줄마다 펼치기가 생겨 들여쓰기는 줄 묶음(row)이 맡는다 */
+.tree-kid-row {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding-left: calc(var(--sp-24) * (var(--depth) - 1));
+}
+.tree-kid-row .tree-kid { flex: 1; min-width: 0; padding-left: var(--sp-8); }
+.tree-kid-toggle { flex: none; }
+.tree-kid .tm-meta { flex: 0 1 auto; max-width: 45%; }
+.tree-kid[data-kind="context"] .tree-kid-title { font-weight: 700; }
+/* 이 자리의 상위 연결이 제안이면 줄을 점선으로 두른다 — 맵의 점선과 같은 뜻 */
+.tree-kid-row.proposed .tree-kid {
+  outline: 1px dashed var(--muted); outline-offset: -1px; border-radius: var(--r-ctl);
+}
+.tree-decide { flex: none; display: flex; align-items: center; gap: var(--sp-4); }
+.tree-decide-label { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+.tree-decide-btn {
+  padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 600; line-height: var(--lh-body);
+}
+.tree-accept { color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface)); }
+.tree-reject { color: var(--muted); background: color-mix(in srgb, var(--fg) 5%, var(--surface)); }
+
+/* 제안 모음 버튼은 보기 전환과 같은 알약 — 눌린 동안 목록 위에 모음이 열린다 */
+#tree-proposals-toggle {
+  padding: var(--sp-4) var(--sp-12); border-radius: var(--r-pill);
+  background: none; color: var(--muted); font-weight: 600;
+}
+#tree-proposals-toggle[aria-pressed="true"] { background: var(--softer); color: var(--accent); }
+#tree-proposals-toggle:disabled { opacity: 0.5; cursor: default; }
+#tree-proposals {
+  background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
+  margin-bottom: var(--sp-8); padding: var(--sp-8) var(--sp-12);
+}
+#tree-proposals[hidden] { display: none; }
+.tree-proposal-list { list-style: none; margin: 0; padding: 0; }
+/* 열: 무엇(제안 · 관계 · 기준) · 어느 둘 · 근거 문장 · 확인 · 거절 */
+.tree-proposal {
+  display: grid; align-items: center; gap: var(--sp-8);
+  grid-template-columns: 128px minmax(0, 1.3fr) minmax(0, 1fr) auto auto;
+  padding: var(--sp-4) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
+}
+.tree-proposal:last-child { border-bottom: none; }
+.tree-proposal-kind { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-proposal-pair { display: flex; gap: var(--sp-4); min-width: 0; white-space: nowrap; overflow: hidden; }
+.tree-proposal-node { overflow: hidden; text-overflow: ellipsis; }
+.tree-proposal-arrow { flex: none; color: var(--muted); }
+.tree-proposal-why { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 760px) {
+  .tree-proposal { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .tree-proposal-kind, .tree-proposal-why { display: none; }
+  .tree-kid .tm-meta { display: none; }
+}

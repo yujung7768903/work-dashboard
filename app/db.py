@@ -142,6 +142,60 @@ CREATE TABLE IF NOT EXISTS stale_judgments(
     reason TEXT,
     applied INTEGER NOT NULL DEFAULT 0
 );
+-- 할일 관계 그래프(속성 그래프). 노드는 (종류, id) 쌍이다 — todo 는 todos.id, session 은
+-- sessions.claude_session_id, context 는 graph_nodes.id, doc 은 graph_nodes.ref('jira:PFD-6350').
+-- 그래프 DB 로 옮길 때는 graph_nodes·todos·sessions 를 노드로, graph_edges 뷰를 관계로 그대로 내보낸다
+CREATE TABLE IF NOT EXISTS graph_nodes(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    ref TEXT,
+    title TEXT NOT NULL,
+    url TEXT,
+    note TEXT,
+    workspace_id INTEGER REFERENCES workspaces(id),
+    category_id INTEGER REFERENCES categories(id),
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(kind, ref)
+);
+-- 관계 하나 = 행 하나. basis 는 상위 연결의 기준(trigger·purpose·background), evidence 는 근거 문장.
+-- state 가 rejected 인 행은 지우지 않는다 — 자동 제안이 같은 연결을 되살리지 않게 막는 기록이다
+CREATE TABLE IF NOT EXISTS edges(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    src_kind TEXT NOT NULL,
+    src_id TEXT NOT NULL,
+    dst_kind TEXT NOT NULL,
+    dst_id TEXT NOT NULL,
+    relation TEXT NOT NULL,
+    basis TEXT,
+    evidence TEXT,
+    state TEXT NOT NULL DEFAULT 'confirmed',
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(src_kind, src_id, dst_kind, dst_id, relation)
+);
+CREATE INDEX IF NOT EXISTS edges_by_dst ON edges(dst_kind, dst_id, relation);
+CREATE INDEX IF NOT EXISTS edges_by_src ON edges(src_kind, src_id, relation);
+-- 수행(세션 → 할일)은 session_todos 가 정본이다. 두 곳에 적지 않고 뷰로 합쳐 한 그래프로 본다
+CREATE VIEW IF NOT EXISTS graph_edges AS
+    SELECT id, src_kind, src_id, dst_kind, dst_id, relation, basis, evidence, state,
+           created_by, created_at, updated_at
+    FROM edges
+    UNION ALL
+    SELECT NULL, 'session', s.claude_session_id, 'todo', CAST(st.todo_id AS TEXT), 'performs',
+           NULL, NULL, 'confirmed', 'session', st.created_at, st.created_at
+    FROM session_todos st JOIN sessions s ON s.id = st.session_id;
+-- 매니저 spawn 이 띄운 세션이 어디서 왔는지. 띄우는 순간에는 그 세션의 할일이 아직 없을 수 있어
+-- 출처만 적어 두고, 세션이 할일을 잡으면(link_todo) 출처 세션의 할일을 상위 제안으로 잇는다
+CREATE TABLE IF NOT EXISTS session_origins(
+    claude_session_id TEXT PRIMARY KEY,
+    origin_session_id TEXT,
+    manager_task_id INTEGER,
+    title TEXT,
+    created_at TEXT NOT NULL
+);
 -- ⑤ 구글 태스크 연동. autorun_state 와 같은 이유로 단일 행. 문제가 생겨도 enabled 를
 -- 건드리지 않고 last_error 만 채운다 — 끄고 켜는 것은 사람의 판단이다
 CREATE TABLE IF NOT EXISTS gtasks_state(
@@ -208,6 +262,7 @@ def connect(path=None):
     _rename_paused_status(con)
     _drop_session_workspace_column(con)
     _drop_subtasks_table(con)
+    _migrate_parent_edges(con)
     _seed_categories(con)
     return con
 
@@ -423,6 +478,30 @@ def _add_todo_parent_column(con):
     if "parent_id" not in columns:
         con.execute("ALTER TABLE todos ADD COLUMN parent_id INTEGER REFERENCES todos(id)")
     con.commit()
+
+
+PARENT_EDGES_FLAG = "parent_edges_migrated"
+
+
+def _migrate_parent_edges(con):
+    """todos.parent_id 를 상위 연결(edges)로 한 번 옮긴다. 열은 지우지 않는다 — 이 코드를 되돌려도
+    옛 트리가 그대로 열리게. 그 뒤로는 parent_id 를 바꾸는 쪽(todos 저장소)이 연결을 같이 맞춘다"""
+    if meta_get(con, PARENT_EDGES_FLAG):
+        return
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    if "parent_id" not in columns:
+        return
+    stamp = now()
+    with transaction(con):
+        con.execute(
+            "INSERT OR IGNORE INTO edges(src_kind, src_id, dst_kind, dst_id, relation, basis,"
+            " evidence, state, created_by, created_at, updated_at)"
+            " SELECT 'todo', CAST(parent_id AS TEXT), 'todo', CAST(id AS TEXT), 'parent',"
+            " 'background', '기존 상위 할일(parent_id)에서 옮김', 'confirmed', 'parent_id', ?, ?"
+            " FROM todos WHERE parent_id IS NOT NULL",
+            (stamp, stamp),
+        )
+    meta_set(con, PARENT_EDGES_FLAG, stamp)
 
 
 def _add_category_style_columns(con):

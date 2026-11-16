@@ -2,6 +2,7 @@
 // 나머지는 그리는지 본다. 하위 탭(작업·설정)은 보이는 탭의 칸만 받는다. 실행: node tests/manager_tab_check.mjs (tests/test_manager_tab.py 가 부른다)
 import assert from "node:assert/strict";
 import { bootKorean } from "./i18n_boot.mjs";
+import { CARD_H } from "../static/js/tree-layout.js";
 
 const node = (tag) => {
   const self = {
@@ -243,7 +244,7 @@ let one = solo();
 assert.equal(one.board.className, "tm-viewport mgr-solo", "맵과 같은 점 격자 판");
 assert.equal(one.card.className, "tm-card tm-solo", "트리 카드와 같은 카드 클래스");
 assert.equal(one.card.style.width, "248px", "트리 카드와 같은 크기");
-assert.equal(one.card.style.height, "116px");
+assert.equal(one.card.style.height, `${CARD_H}px`);
 // 결정은 바탕이 진행 중, 사람을 기다린다는 것은 트리 카드와 같은 대기 표시(답 대기)
 assert.equal(one.card.dataset.status, "doing");
 assert.equal(one.card.dataset.waiting, "input");
