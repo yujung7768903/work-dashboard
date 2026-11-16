@@ -1590,6 +1590,57 @@ html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
 .compose .session-status.ok { color: var(--good); }
 .compose .session-status.info { color: var(--muted); }
 
+/* 결정 답하기 (static/js/decision-answer.js) — 할일 상세 개요의 제목 아래, 매니저 탭 결정 팝업의 '답하기'.
+   색은 새로 만들지 않고 이미 쓰는 뜻을 따른다: 사람을 기다리는 것은 경고색(매니저 탭 '결정' 칩·세션 탭
+   선택창 '열림' 배지와 같은 색), 추천은 강조색, 이미 보낸 답은 완료색. 선택지는 세션 탭 선택창(.choice)과
+   같은 모양이다 — 같은 '라벨 + 설명' 선택지를 두 가지 모양으로 읽게 하지 않는다 */
+.dlg-decisions { margin: var(--sp-12) 0 var(--sp-4); }
+.dlg-decisions .dlg-badge.open {
+  min-width: 0; margin-left: var(--sp-8);
+  background: color-mix(in srgb, var(--warn) 18%, var(--surface)); color: var(--warn);
+}
+/* 답을 기다리는 결정은 왼쪽 띠로 개요의 다른 블록(History·착수 조건)과 갈린다. 답한 결정은 띠를 지운다 */
+.dec-card {
+  margin-top: var(--sp-8); padding: var(--sp-12);
+  border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: var(--r-ctl);
+  background: var(--surface);
+}
+.dec-card.answered { border-left-color: var(--line); }
+/* 매니저 팝업 — 팝업 섹션이 이미 상자 역할을 한다. 테두리를 또 두르면 상자 안의 상자가 된다 */
+.dec-card.bare { margin: 0; padding: 0; border: none; background: none; }
+.dec-head { display: flex; align-items: flex-start; gap: var(--sp-8); margin: 0 0 var(--sp-8); }
+.dec-head .dec-title { flex: 1; min-width: 0; font-weight: 600; line-height: var(--lh-heading); overflow-wrap: anywhere; }
+.dec-head .dec-title.muted { color: var(--muted); font-size: var(--fs-sm); font-weight: 400; }
+/* 칩은 제목 첫 줄에 붙는다(제목이 두 줄이 돼도 위). 칩 높이(약 18px)가 제목 줄 높이(17px)와 같아 여백 없이 중심이 맞는다 */
+.dec-head .mgr-chip { flex: none; }
+.dec-text { margin: 0 0 var(--sp-8); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dec-label { display: block; color: var(--muted); font-size: var(--fs-sm); font-weight: 600; }
+.dec-context.folded .dec-text {
+  display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+}
+.dec-more { margin: calc(-1 * var(--sp-4)) 0 var(--sp-8); padding: 0; border: none; background: none; color: var(--accent); font-size: var(--fs-sm); }
+.dec-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.dec-tag {
+  display: inline-block; margin-left: var(--sp-8); padding: 0 var(--sp-4); border-radius: var(--r-ctl);
+  font-size: var(--fs-micro); font-weight: 600; line-height: var(--lh-body); vertical-align: 1px;
+}
+.dec-tag.rec { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
+.dec-tag.picked { background: color-mix(in srgb, var(--good) 14%, var(--surface)); color: var(--good); }
+.dec-answer textarea { display: block; width: 100%; min-height: 56px; margin-top: var(--sp-8); resize: vertical; }
+.dec-answer .hint { margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-sm); }
+/* 전역 disabled 색(--line)은 면과 거의 같아 글자가 통째로 사라진다. 고르기 전의 보내기, 넘기는 동안의 선택지도
+   무엇인지는 읽혀야 한다 — 흐리게만 한다 (button.busy 와 같은 이유) */
+.dec-answer .dec-send:disabled { color: var(--muted); }
+.dec-answer .choice:disabled { color: var(--fg); opacity: 0.6; }
+/* 보낼 답 미리보기가 길면 버튼을 밀지 않고 접힌다 */
+.dec-answer .compose-actions .how { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dec-sent, .dec-note, .dec-status { margin: var(--sp-8) 0 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.dec-note, .dec-status { color: var(--muted); }
+.dec-note.danger, .dec-status.danger { color: var(--danger); }
+.dec-status:empty { display: none; }
+.dec-done { margin-top: var(--sp-12); }
+.dec-done > summary { color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
+
 /* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음.
    레일이 208px 을 먹으므로 2컬럼 기준을 그만큼 올렸다 */
 @media (min-width: 1240px) {

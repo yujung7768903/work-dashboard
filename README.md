@@ -454,6 +454,21 @@ it queues behind the current work. A session that has ended is relaunched with
 the text as a message from another session, so it confirms before irreversible
 actions such as commits or pushes.
 
+### Answering a decision from the dialog
+
+A decision the manager holds shows up under the title of the todo its session
+currently holds, in the overview tab: option buttons (key, label, description,
+a *Recommended* tag) and a comment box. A decision whose session holds no todo
+is answered from the decision popup on the manager tab instead. Clicking an
+option only selects it; **Send answer** posts `{id, choice, feedback}` to
+`POST /api/decision-answer`, which runs `manager.py answer-ui` in the background
+with list arguments (no shell) and returns at once — waking a finished session
+and waiting for the answer to arrive can take up to 90 seconds. The dialog then
+polls `GET /api/decisions/<id>` and shows the manager's `answer_state` in words
+(delivered, handed to the manager, delivery unconfirmed, no original session).
+Like session input, answers are accepted from this PC only. Answered decisions
+stay folded below and can be answered again.
+
 ### Session names follow todo titles
 
 A session linked to a todo is named `#<id> | <title>`, the same name autonomous

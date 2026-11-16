@@ -9,6 +9,7 @@ import { linkify } from "./linkify.js";
 import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
 import { priorityBadge } from "./priority.js";
 import { createTreeMap, soloCard } from "./tree-map.js";
+import { decisionLoader } from "./decision-answer.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
 const SUBTABS = {
@@ -520,12 +521,21 @@ function replyPart(popup) {
   };
 }
 
+// 열린 결정은 '결정할 것' 바로 아래에서 답한다 — 선택지·답 상태는 줄에 없어 팝업을 열 때 한 건을 받는다
+// (app/services/decision_answer.py). 할일에 붙은 결정도 여기서 답할 수 있다 — 같은 상자가 할일 상세에도 있다
+const ANSWER_AT = 2;
+
 function openDecision(item) {
+  const sections = decisionSections(item);
+  if (item.state !== "confirm") {
+    const alive = () => document.getElementById("mgr-decision-modal").open;
+    sections.splice(ANSWER_AT, 0, { title: t("decision.answerTitle"), node: decisionLoader(item.id, { alive }) });
+  }
   openWork({
     title: `#${item.id} ${item.title}`,
     request: item.popup?.request,
     source: item.popup,
-    sections: decisionSections(item),
+    sections,
     card: item.card,
     solo: decisionSolo(item),
   });

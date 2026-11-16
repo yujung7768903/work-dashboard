@@ -78,6 +78,13 @@ export const checkPrecondition = (todoId, index) =>
 // 세션 탭의 입력칸. 서버가 살아 있는 세션이면 소켓으로, 끝났으면 --resume 으로 넣는다
 export const sendSessionMessage = (sessionId, text) =>
   request("POST", "/session-message", { session_id: sessionId, text });
+// 결정 답하기. 할일 상세에 붙은 결정들 · 한 건(답 보낸 뒤 폴링) · 보내기.
+// 원 세션 전달은 서버 뒤에서 돈다(최대 90초) — 보내기는 바로 돌아오고 화면이 한 건을 폴링한다.
+// 실패는 상자 안 상태 줄에 보이므로 alert 를 띄우지 않는다
+export const getTodoDecisions = (todoId) => request("GET", `/decisions?todo_id=${todoId}`);
+export const getDecision = (id) => request("GET", `/decisions/${id}`);
+export const answerDecision = (id, choice, feedback) =>
+  request("POST", "/decision-answer", { id, choice, feedback }, { silent: true });
 export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });
