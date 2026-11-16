@@ -4,11 +4,11 @@
 // 나머지 칸까지 그만큼 늦게 뜬다 (app/services/manager_panel.py). 보이는 하위 탭의 칸만 받고 폴링한다
 import * as api from "./api.js";
 import { language, t } from "./i18n.js";
-import { formatAge, notePart } from "./sessions.js";
+import { formatAge, notePart, openDetail } from "./sessions.js";
 import { linkify } from "./linkify.js";
 import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
 import { priorityBadge } from "./priority.js";
-import { createTreeMap } from "./tree-map.js";
+import { createTreeMap, soloCard } from "./tree-map.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
 const SUBTABS = {
@@ -527,6 +527,7 @@ function openDecision(item) {
     source: item.popup,
     sections: decisionSections(item),
     card: item.card,
+    solo: decisionSolo(item),
   });
 }
 
@@ -541,7 +542,57 @@ function helperWork(item) {
       { title: t("manager.popupSession"), parts: [{ text: item.name }] },
     ],
     card: item.card,
+    solo: helperSolo(item),
   };
+}
+
+// ── 트리 없는 일의 카드 한 장 ─────────────────────────────────────────────────
+// 트리 탭에서 그 일이 트리에 붙어 있지 않으면 그 일 하나를 트리 카드와 같은 모양으로 그린다.
+// 상태 색은 트리 카드 규칙(static/css/tree.css)을 따른다: 작업 중 = 진행 중, 쉼 = 할 일,
+// 완료 확인 대기 = 확인 대기. 결정을 기다리는 일은 바탕이 진행 중이고, 사람을 기다린다는 것은
+// 대기 표시가 말한다 — 트리 카드의 '진행 중 + 답 대기' 와 같은 모양.
+// 대기 종류는 그 세션의 대시보드 대기 신호(item.waiting, 트리 카드와 같은 신호)를 먼저 쓴다 —
+// 권한을 기다리는 세션은 '권한 대기' 로 보여야 한다
+const HELPER_TREE_STATUS = { "작업 중": "doing", "결정 대기": "doing", 쉼: "todo" };
+const DECISION_WAIT = "input";
+
+function helperSolo(item) {
+  const [, label] = HELPER_STATUS[item.status] ?? ["idle", () => item.status || "-"];
+  return {
+    title: item.name,
+    status: HELPER_TREE_STATUS[item.status] ?? "todo",
+    label: label(),
+    waiting: item.waiting ?? (item.status === "결정 대기" ? DECISION_WAIT : null),
+  };
+}
+
+function decisionSolo(item) {
+  const confirm = item.state === "confirm";
+  return {
+    id: item.id,
+    title: item.title,
+    status: confirm ? "review" : "doing",
+    label: confirm ? t("manager.stateConfirm") : t("manager.stateDecision"),
+    waiting: item.waiting ?? (confirm ? null : DECISION_WAIT),
+  };
+}
+
+// 붙은 할일이 있는데 워크스페이스가 없으면 트리가 없다 — 그 할일을 카드로 그리고 제목으로 상세를 연다.
+// 붙은 할일이 아예 없으면 줄에 보이는 제목(세션 이름·매니저 할일 제목)과 그 일의 상태로 그린다
+function drawSolo(host, work) {
+  const card = work.card;
+  const solo = card
+    ? {
+        id: card.todo_id,
+        title: card.title,
+        status: card.status,
+        waiting: work.solo?.waiting ?? null,
+        onOpen: () => openDetail({ todo: { id: card.todo_id } }),
+      }
+    : work.solo;
+  const board = el("div", "tm-viewport mgr-solo");
+  board.append(soloCard(solo), el("p", "mgr-solo-note", card ? t("manager.soloNoWorkspace") : t("manager.soloUnlinked")));
+  host.replaceChildren(board);
 }
 
 // ── 팝업: 상세 · 트리 ─────────────────────────────────────────────────────────
@@ -642,16 +693,21 @@ function showPopupTab(tab) {
   });
   document.getElementById("mgr-decision-body").hidden = tab !== POP_DETAIL;
   document.getElementById("mgr-decision-tree").hidden = tab !== POP_TREE;
-  // 맵은 넓어야 읽힌다 — 트리 탭에서만 팝업을 넓힌다
-  dialog.classList.toggle("wide", tab === POP_TREE);
+  // 맵은 넓어야 읽힌다 — 트리 탭에서만 팝업을 넓힌다. 트리 없이 카드 한 장이면 넓힐 까닭이 없다
+  dialog.classList.toggle("wide", tab === POP_TREE && hasTree(openedWork));
   if (tab === POP_TREE) drawPopupTree(openedWork);
+}
+
+function hasTree(work) {
+  return Boolean(work?.card?.workspace_id);
 }
 
 async function drawPopupTree(work) {
   const host = document.getElementById("mgr-decision-tree");
   const card = work?.card;
-  if (!card?.workspace_id) {
-    host.replaceChildren(el("p", "mgr-pop-none mgr-no-tree", t("manager.noTree")));
+  host.classList.toggle("solo", !hasTree(work));
+  if (!hasTree(work)) {
+    drawSolo(host, work);
     return;
   }
   if (host.dataset.drawn === String(card.todo_id)) return;

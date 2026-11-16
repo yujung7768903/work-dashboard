@@ -1021,7 +1021,21 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 #mgr-decision-modal.wide[open] { width: min(1120px, calc(100vw - var(--sp-24))); max-height: 88vh; }
 /* 높이는 고정 — 팝업은 내용 높이라 flex 로 늘리면 바탕이 0 이 되어 맵이 접힌다 */
 #mgr-decision-tree { flex: none; height: 66vh; padding: var(--sp-12) var(--sp-20) var(--sp-20); }
-.mgr-no-tree { padding-top: var(--sp-8); }
+/* 트리 없는 일 — 카드 한 장과 짧은 안내. 맵과 같은 점 격자 판이지만 끌·확대할 게 없어 높이는 내용만큼이고
+   팝업도 넓히지 않는다. 격자 크기는 맵이면 tree-map.js 가 확대에 맞춰 박는 값이라 여기서 100% 크기로 준다 */
+#mgr-decision-tree.solo { height: auto; }
+.mgr-solo {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-12);
+  min-height: 240px; padding: var(--sp-24) var(--sp-16);
+  background-size: 20px 20px; cursor: default; touch-action: auto; user-select: text;
+}
+.mgr-solo .tm-card { position: relative; flex: none; }
+/* 안내 뒤에 판 바탕색을 깐다 — 점 격자가 글자를 지나가면 글자가 지저분해 보였다 */
+.mgr-solo-note {
+  margin: 0; padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  color: var(--muted); font-size: var(--fs-sm); text-align: center;
+  background: color-mix(in srgb, var(--fg) 2%, var(--bg));
+}
 /* 사용자 요청. 긴 지시는 접어 두고 아래가 흐려지게 해 더 있다는 것을 보인다 */
 .mgr-request.folded .mgr-request-text {
   max-height: 12rem; overflow: hidden;

@@ -6,6 +6,7 @@ import { bootKorean } from "./i18n_boot.mjs";
 const node = (tag) => {
   const self = {
     tag, className: "", textContent: "", title: "", children: [], listeners: {}, hidden: false,
+    dataset: {}, style: { setProperty() {} },
     classList: {
       toggle(name, on) {
         const names = new Set(self.className.split(" ").filter(Boolean));
@@ -224,13 +225,33 @@ assert.match(sectionText(body[2]), /A 를 추천해/);
 // 결정에도 연결 세션 칸 — 이름이 없으면 세션 id 앞 8자리. 마지막 답은 결정할 것 쪽에만
 assert.equal(body[3].children[0].textContent, "연결 세션");
 assert.equal(sectionText(body[3]), "연결 세션|s1");
-// 붙은 카드가 없는 일 — 트리 탭은 '연결된 트리 없음', 트리 탭에서만 팝업이 넓어진다
+// 붙은 카드가 없는 일 — 트리 탭은 안내 글만 두지 않고 그 일 하나를 트리 카드 모양으로 그린다.
+// 카드 아래에 '연결되지 않은 일' 안내. 카드 한 장이라 팝업은 넓히지 않는다
 const openTab = (tab) => elements["mgr-pop-tabs"].listeners.click({ target: { closest: () => ({ dataset: { tab } }) } });
+// 트리 탭 판 = [카드, 안내]. 카드 = [머리(상태 칩·번호·대기 배지), 제목, 꼬리]
+const solo = () => {
+  const board = elements["mgr-decision-tree"].children[0];
+  const [card, noteLine] = board.children;
+  const [head, title, foot] = card.children;
+  return { board, card, head: head.children.map((kid) => kid.textContent), title, foot, note: noteLine.textContent };
+};
 openTab("tree");
 assert.equal(elements["mgr-decision-body"].hidden, true);
 assert.equal(elements["mgr-decision-tree"].hidden, false);
-assert.equal(elements["mgr-decision-tree"].children[0].textContent, "연결된 트리 없음");
-assert.match(modal.className, /\bwide\b/);
+assert.match(elements["mgr-decision-tree"].className, /\bsolo\b/);
+let one = solo();
+assert.equal(one.board.className, "tm-viewport mgr-solo", "맵과 같은 점 격자 판");
+assert.equal(one.card.className, "tm-card tm-solo", "트리 카드와 같은 카드 클래스");
+assert.equal(one.card.style.width, "248px", "트리 카드와 같은 크기");
+assert.equal(one.card.style.height, "116px");
+// 결정은 바탕이 진행 중, 사람을 기다린다는 것은 트리 카드와 같은 대기 표시(답 대기)
+assert.equal(one.card.dataset.status, "doing");
+assert.equal(one.card.dataset.waiting, "input");
+assert.deepEqual(one.head, ["결정", "#87", "답 대기"]);
+assert.equal(one.title.tag, "div", "대시보드 할일이 아니라 열 상세가 없다");
+assert.equal(one.title.textContent, "우선순위 출처", "줄에 보이는 제목");
+assert.equal(one.note, "대시보드 할일과 연결되지 않은 일입니다");
+assert.doesNotMatch(modal.className, /\bwide\b/);
 openTab("detail");
 assert.equal(elements["mgr-decision-body"].hidden, false);
 assert.doesNotMatch(modal.className, /\bwide\b/);
@@ -275,6 +296,35 @@ assert.deepEqual(bareBody.map(sectionText), [
   "사용자 요청|세션 없음출처: jira · PFD-6350",
   "끝낸 내용|master 905f617 반영", "작업 사항|기록 없음", "다음 단계|기록 없음", "근거 자료|PFD-6350",
 ]);
+// 완료 확인 대기의 단독 카드 — 트리 카드의 확인 대기 색, 기다리는 세션이 없으면 대기 표시 없음
+openTab("tree");
+one = solo();
+assert.equal(one.card.dataset.status, "review");
+assert.equal(one.card.dataset.waiting, undefined);
+assert.deepEqual(one.head, ["확인 대기", "#61"]);
+assert.equal(one.title.textContent, "보조 한도");
+openTab("detail");
+
+// 붙은 할일은 있는데 워크스페이스가 없으면 트리가 없다 — 그 할일을 카드로, 제목을 누르면 할일 상세
+const loose = {
+  ...PAYLOAD.decisions.items[0], id: 88, title: "미분류 결정", waiting: "permission",
+  card: { todo_id: 90, title: "미분류 할일", status: "review", workspace_id: null, workspace_name: null },
+};
+const savedDecisions = PAYLOAD.decisions.items;
+PAYLOAD.decisions.items = [loose];
+await manager.refreshPart("decisions");
+elements["mgr-decisions"].children[0].listeners.click();
+openTab("tree");
+one = solo();
+assert.equal(one.card.dataset.status, "review", "할일 상태 그대로");
+assert.equal(one.card.dataset.waiting, "permission", "세션이 권한을 기다리면 권한 대기가 이긴다");
+assert.deepEqual(one.head, ["확인 대기", "#90", "권한 대기"]);
+assert.equal(one.title.tag, "button");
+assert.equal(one.title.textContent, "미분류 할일");
+assert.equal(one.note, "워크스페이스가 없는 할일이라 트리가 없습니다");
+openTab("detail");
+PAYLOAD.decisions.items = savedDecisions;
+await manager.refreshPart("decisions");
 
 // 도구 목록 — 용도 칩(받은 용도만)·'연결됨' 줄(개수만)·줄마다 이름/설명(같은 줄)/용도/제작 주체/상태
 const chipTexts = () => elements["mgr-tools-cats"].children.map((chip) => chip.textContent);
@@ -326,7 +376,14 @@ assert.equal(toolNames().length, 5);
 const autoTemplate = PAYLOAD.automations.items[0];
 PAYLOAD.automations.items = Array.from({ length: 23 }, (_, index) => ({ ...autoTemplate, name: `자동화 ${index + 1}` }));
 PAYLOAD.decisions.items = Array.from({ length: 15 }, (_, index) => ({ ...PAYLOAD.decisions.items[0], id: index + 1 }));
-PAYLOAD.helpers = { error: null, items: [{ name: "보조1 | 일", status: "작업 중", doing: "테스트", percent: 40, moved_at: agoMinutes(1) }] };
+PAYLOAD.helpers = {
+  error: null,
+  items: [
+    { name: "보조1 | 일", status: "작업 중", doing: "테스트", percent: 40, moved_at: agoMinutes(1), waiting: "permission" },
+    { name: "보조2 | 결정", status: "결정 대기", doing: "결정 요청", percent: 70, moved_at: agoMinutes(3), waiting: null },
+    { name: "보조3 | 쉼", status: "쉼", doing: null, percent: null, moved_at: null, waiting: null },
+  ],
+};
 // 지금은 설정 탭 — 폴링은 그 탭 칸만 받는다. 작업 탭 칸은 탭을 오갈 때 받는다(숨은 판도 그린 것은 남는다)
 fetched.length = 0;
 await manager.renderManager();
@@ -350,6 +407,30 @@ assert.match(pager("automations").children[0].innerHTML, /<svg/, "이전은 글�
 assert.equal(pager("automations").children[0].textContent, "", "이전 버튼에 글자가 없다");
 // 한 페이지로 끝나는 칸은 넘김을 숨긴다
 assert.equal(pager("helpers").hidden, true);
+
+// 카드 없는 보조 세션 — 트리 탭에 세션 이름 카드 한 장. 상태 색은 트리 카드 규칙으로 옮긴다
+// (작업 중 = 진행 중, 결정 대기 = 진행 중 + 답 대기, 쉼 = 할 일). 세션이 권한을 기다리면 권한 대기
+const helperSolo = (index) => {
+  elements["mgr-helpers"].children[index].listeners.click();
+  openTab("tree");
+  const parts = solo();
+  openTab("detail");
+  return parts;
+};
+one = helperSolo(0);
+assert.equal(one.title.textContent, "보조1 | 일");
+assert.equal(one.card.dataset.status, "doing");
+assert.equal(one.card.dataset.waiting, "permission");
+assert.deepEqual(one.head, ["작업 중", "권한 대기"]);
+one = helperSolo(1);
+assert.equal(one.card.dataset.status, "doing");
+assert.equal(one.card.dataset.waiting, "input");
+assert.deepEqual(one.head, ["결정 대기", "답 대기"]);
+one = helperSolo(2);
+assert.equal(one.card.dataset.status, "todo");
+assert.equal(one.card.dataset.waiting, undefined);
+assert.deepEqual(one.head, ["쉼"]);
+assert.equal(one.note, "대시보드 할일과 연결되지 않은 일입니다");
 assert.deepEqual(labels("decisions"), ["이전", "1", "2", "다음"]);
 
 pager("automations").children[3].listeners.click(); // 3쪽

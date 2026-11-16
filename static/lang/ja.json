@@ -513,6 +513,7 @@
   "manager.requestEmpty": "セッション記録に最初の依頼が見つかりません",
   "manager.requestMore": "すべて表示",
   "manager.requestLess": "折りたたむ",
-  "manager.noTree": "リンクされたツリーなし",
+  "manager.soloUnlinked": "ダッシュボードのタスクとリンクされていない作業です",
+  "manager.soloNoWorkspace": "ワークスペースのないタスクのため、ツリーはありません",
   "manager.cardTree": "ツリー: {tree}"
 }

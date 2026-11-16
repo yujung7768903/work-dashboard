@@ -49,6 +49,14 @@ def cards(con, session_ids):
     return session_repo.current_cards(con, [sid for sid in session_ids if sid])
 
 
+def waiting(con, session_ids):
+    """세션 id → 사람 대기 종류(permission·input). 트리 카드의 대기 표시와 같은 신호(대시보드 sessions.waiting).
+    대기 중이 아니거나 대시보드 DB 가 없으면 그 세션은 빠진다"""
+    if con is None:
+        return {}
+    return session_repo.waiting_by_session(con, session_ids)
+
+
 def first_request(session_id, manager_home=None, root=None):
     """{"status": ok|no_session|not_found|empty, "text": 전문(ok 일 때)}"""
     if not session_id:

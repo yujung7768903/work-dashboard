@@ -513,6 +513,7 @@
   "manager.requestEmpty": "会话记录中未找到首个请求",
   "manager.requestMore": "显示全部",
   "manager.requestLess": "收起",
-  "manager.noTree": "没有关联的树",
+  "manager.soloUnlinked": "此工作未关联到看板待办",
+  "manager.soloNoWorkspace": "此待办没有工作区，因此没有树",
   "manager.cardTree": "树：{tree}"
 }

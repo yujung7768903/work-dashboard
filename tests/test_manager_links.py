@@ -112,6 +112,51 @@ class CardTest(LinkFixture):
         self.assertEqual((card["todo_id"], card["title"]), (self.todo["id"], "트리 메뉴"))
         self.assertEqual((card["workspace_id"], card["workspace_name"]), (self.space["id"], "작업 대시보드"))
 
+    def test_waiting_is_the_sessions_dashboard_signal(self):
+        # 트리 카드의 대기 표시와 같은 신호(sessions.waiting). 끝난 세션·대기 아닌 세션은 빠진다
+        session_repo.set_waiting(self.con, "helper", "permission")
+        session_repo.set_waiting(self.con, "loose", "input")
+        session_repo.register(self.con, "gone", cwd="/tmp")
+        session_repo.set_waiting(self.con, "gone", "input")
+        session_repo.set_state(self.con, "gone", session_repo.STATE_ENDED)
+        session_repo.register(self.con, "busy", cwd="/tmp")
+        found = manager_links.waiting(self.con, ["helper", "loose", "gone", "busy", "ghost", None])
+        self.assertEqual(found, {"helper": "permission", "loose": "input"})
+        self.assertEqual(manager_links.waiting(None, ["helper"]), {})
+        self.assertEqual(manager_links.waiting(self.con, []), {})
+
+    def test_rows_carry_waiting_even_without_card(self):
+        # 카드 없는 줄도 트리 탭에 카드 한 장으로 그리므로 대기 신호가 실려야 한다
+        session_repo.set_waiting(self.con, "loose", "input")
+        rows = [
+            {"session_id": "loose", "name": "보조3 | 결정", "status": "결정 대기"},
+            {"session_id": "helper", "name": "보조2 | 트리", "status": "작업 중"},
+        ]
+        helpers = manager_panel.snapshot(
+            "helpers", now=NOW, con=self.con, manager_home=self.home, helpers_fn=lambda _home: rows
+        )["helpers"]["items"]
+        self.assertEqual([(item["card"], item["waiting"]) for item in helpers][0], (None, "input"))
+        self.assertIsNone(helpers[1]["waiting"])
+
+        os.makedirs(os.path.join(self.home, "state"))
+        db = sqlite3.connect(os.path.join(self.home, "state", "manager.db"))
+        db.execute(
+            "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, status TEXT, priority INTEGER,"
+            " created_at TEXT, updated_at TEXT, session_id TEXT)"
+        )
+        db.executemany(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)",
+            [
+                (1, "결정", "decision", "open", 1, "2026-11-16T01:00:00Z", "2026-11-16T01:00:00Z", "loose"),
+                (2, "세션 없는 결정", "decision", "open", 1, "2026-11-16T01:00:00Z", "2026-11-16T01:00:00Z", None),
+            ],
+        )
+        db.commit()
+        db.close()
+        items = {item["id"]: item for item in manager_panel.decisions(NOW, manager_home=self.home, con=self.con)}
+        self.assertEqual(items[1]["waiting"], "input")
+        self.assertIsNone(items[2]["waiting"])
+
     def test_helpers_and_tasks_carry_card_and_request(self):
         write_transcript(self.root, "helper", [{"type": "user", "message": {"content": DIRECTIVE + SUFFIX}}])
         rows = [{"session_id": "helper", "name": "보조2 | 트리", "status": "작업 중", "percent": 65,

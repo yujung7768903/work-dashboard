@@ -277,6 +277,22 @@ def last_activity_by_todo(con):
     return {row["todo_id"]: row["seen"] for row in rows}
 
 
+def waiting_by_session(con, claude_session_ids):
+    """세션 id → 그 세션이 사람을 기다리는 종류(permission·input). 끝난 세션·대기 아닌 세션은 빠진다.
+    waiting_by_todo 와 같은 신호다 — 매니저 탭 줄이 트리 카드 없이 혼자 그려질 때도 트리 카드와
+    같은 대기 표시를 붙이려고 할일 대신 세션으로 묶는다"""
+    ids = [sid for sid in claude_session_ids if sid]
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    rows = con.execute(
+        f"""SELECT claude_session_id, waiting FROM sessions
+            WHERE claude_session_id IN ({marks}) AND waiting IS NOT NULL AND state <> ?""",
+        (*ids, STATE_ENDED),
+    )
+    return {row["claude_session_id"]: row["waiting"] for row in rows}
+
+
 def waiting_by_todo(con):
     """할일마다 그 할일을 지금 붙잡은 세션이 사람을 기다리는지(permission·input).
 
