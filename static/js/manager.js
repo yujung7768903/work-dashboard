@@ -714,14 +714,15 @@ async function drawPopupTree(work) {
   host.dataset.drawn = String(card.todo_id);
   const map = createTreeMap(host, {
     focusId: card.todo_id,
-    onChange: async () => map.render(await treeOf(card.workspace_id), { hideDone: true }),
+    onChange: async () => drawTreeOf(map, card.workspace_id),
   });
-  map.render(await treeOf(card.workspace_id), { hideDone: true });
+  await drawTreeOf(map, card.workspace_id);
 }
 
-async function treeOf(workspaceId) {
-  const { trees } = await api.getTodoTrees();
-  return trees.filter((tree) => tree.workspace.id === workspaceId);
+// 그 카드의 트리 하나. 다른 상위·선행 선(links)은 양 끝이 이 판에 있는 것만 그려진다
+async function drawTreeOf(map, workspaceId) {
+  const { trees, links } = await api.getTodoTrees();
+  map.render(trees.filter((tree) => tree.workspace.id === workspaceId), { hideDone: true, links });
 }
 
 function refreshFailedNote(error) {

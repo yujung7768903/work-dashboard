@@ -20,6 +20,7 @@ from app.db import now, transaction
 from app.errors import NotFound, Validation
 from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
+from app.repositories import graph as graph_repo
 from app.repositories import labels as label_repo
 from app.repositories import workspaces as workspace_repo
 
@@ -73,6 +74,8 @@ def create(
                 stamp,
             ),
         )
+        graph_repo.sync_parent_column(con, cursor.lastrowid, None, parent_id)
+    graph_repo.sync_text_evidence(con, cursor.lastrowid, cleaned, note)
     return get(con, cursor.lastrowid)
 
 
@@ -125,6 +128,14 @@ def update(con, todo_id, **fields):
             tuple(assignments.values()) + (todo_id,),
         )
         _carry_descendants(con, followers, assignments)
+        if "parent_id" in assignments:
+            graph_repo.sync_parent_column(
+                con, todo_id, current["parent_id"], assignments["parent_id"]
+            )
+    # 근거 문서는 제목·note 에서 뽑는다 — 둘 중 하나가 바뀌면 다시 맞춘다
+    if {"title", "note"} & set(assignments):
+        updated = get(con, todo_id)
+        graph_repo.sync_text_evidence(con, todo_id, updated["title"], updated["note"])
     return get(con, todo_id)
 
 
@@ -147,13 +158,24 @@ def delete(con, todo_id):
     지웠다고 그 아래 가지가 통째로 사라지면 되돌릴 방법이 없다
     """
     current = get(con, todo_id)
+    partners = graph_repo.shared_doc_partners(con, todo_id)
     with transaction(con):
+        # 관계 그래프에서도 하위를 한 단계 올리고 그 할일에 닿은 연결을 걷는다
+        graph_repo.drop_todo(con, todo_id)
         con.execute(
             "UPDATE todos SET parent_id=? WHERE parent_id=?",
             (current["parent_id"], todo_id),
         )
+        if current["parent_id"] is not None:
+            for child in con.execute(
+                "SELECT id FROM todos WHERE parent_id=?", (current["parent_id"],)
+            ).fetchall():
+                graph_repo.sync_parent_column(con, child["id"], None, current["parent_id"])
         con.execute("DELETE FROM todo_labels WHERE todo_id=?", (todo_id,))
         con.execute("DELETE FROM todos WHERE id=?", (todo_id,))
+    # 같은 문서를 공유하던 할일끼리의 관련은 그 할일이 빠져 묶음 크기가 바뀌었을 수 있다
+    for partner in partners:
+        graph_repo.refresh_shared_related(con, partner)
 
 
 def reorder(con, ids, workspace_id):

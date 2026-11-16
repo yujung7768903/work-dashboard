@@ -165,17 +165,30 @@ the project view also lists worktrees no workspace claims. Cards lay out in
 one or two columns (the status view is always four), and the left rail
 collapses to icons.
 
-The tree tab draws one tree per workspace: the workspace is the root and todos
-hang under parent todos to any depth. **List** shows one row per tree —
-progress and counts by status — and expands two levels; clicking a row (or an
-expanded todo) opens that tree as a map in a right-hand panel whose width you
-drag at the boundary. **Map** puts every tree in progress on one pannable,
-zoomable canvas, root on the left and children flowing right. Colors carry the
-state: in progress is the accent blue, review (work done, waiting for your
-check) is amber, todo is neutral and done is faded grey; a card whose session
-is waiting for your reply or permission gets a red ring. From a card you change
-the status, add a sub-todo, or — on a review card — mark it done. A tree counts
-as complete when every todo in it is done; nothing is stored for that.
+The tree tab draws one tree per workspace (todos with no workspace share an
+"Unassigned" tree). Todos and *contexts* — background bundles that are not
+todos themselves — hang under each other through a relation graph stored in
+`edges`: **parent** (why it exists: trigger, purpose or background; a todo may
+have several), **precedes** (what has to finish first), **evidence** (Jira
+issues, Confluence pages and PRs, extracted from the title and note
+automatically) and **related**. Sessions link in as **performs**. Each link keeps
+its basis and the sentence it rests on, and is either confirmed or a
+suggestion; suggestions show dashed with accept/reject buttons, and a
+Suggestions button lists them all. Parent and precedes links that would form a
+cycle are refused on save.
+
+**List** shows one row per tree — progress and counts by status — and expands
+to any depth, one row at a time; a todo with two parents appears under both,
+marked "N other parents", and progress counts it under each. Clicking a row
+opens its tree as a map in a right-hand panel whose width you drag at the
+boundary. **Map** puts every tree in progress on one pannable, zoomable canvas:
+each card is drawn once under its main parent, other parents get extra curves
+and precedes links get dashed arrows. Colors carry the state: in progress is the
+accent blue, review (work done, waiting for your check) is amber, todo is
+neutral and done is faded grey; a card whose session is waiting for your reply
+or permission gets a red ring. From a card you change the status, add a
+sub-todo, or — on a review card — mark it done. A tree counts as complete when
+every todo in it is done; nothing is stored for that.
 
 Clicking a todo row or a session row opens the same dialog with three tabs:
 
@@ -200,13 +213,19 @@ python3 dash.py add-category <name>
 python3 dash.py add-workspace <category> <name> [--background ...] [--jira KEY]
 python3 dash.py add-todo <title> [--workspace ID | --parent TODO-ID] [--note ...] [--precondition ...]
 python3 dash.py set-parent <todo-id> <parent-todo-id|none>
+python3 dash.py link <parent|precedes|evidence|related> <from> <to> [--basis trigger|purpose|background] [--evidence ...] [--proposed]
+python3 dash.py edges <node>                         # 12 · ctx:3 · session:<id> · jira:PFD-1
+python3 dash.py edge <confirm|reject|rm> <edge-id>
+python3 dash.py add-context <title> [--workspace ID | --category NAME] [--note ...]
 python3 dash.py move-todo <todo-id> --workspace <id|none>
 python3 dash.py set-status <todo|workspace> <id> <status>   # todo: todo·doing·review·done
 python3 dash.py reorder <categories|workspaces|todos> <ids...>
 python3 dash.py done-today [--date YYYY-MM-DD]
 ```
 
-A parent must be a todo in the same workspace, and a todo can never sit under
+`set-parent` keeps the old single parent column (same workspace only) and mirrors
+it into the graph; `link` adds any relation, across workspaces too (Korean
+names 상위·선행·근거·관련 and 계기·목적·배경 work as well). A parent must be a todo in the same workspace, and a todo can never sit under
 itself or its own sub-todo. With `--parent` the workspace comes from the
 parent. Moving a todo to another workspace carries its sub-todos along;
 deleting a todo lifts its sub-todos one level. `review` means the work is done

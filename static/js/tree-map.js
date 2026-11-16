@@ -9,6 +9,20 @@ import { CARD_H, CARD_W, LANE_PAD, layoutForest, pathKeys } from "./tree-layout.
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DONE = "done";
 const REVIEW = "review";
+const CONTEXT = "context";
+const PROPOSED = "proposed";
+const CONFIRMED = "confirmed";
+const REJECTED = "rejected";
+const PARENT = "parent";
+const PRECEDES = "precedes";
+// 카드 관계 줄에 근거 문서를 몇 개까지 펼치는지. 나머지는 +N 으로 줄이고 제목에 다 적는다
+const DOC_CHIPS = 2;
+// 다른 트리의 상위처럼 대상이 왼쪽·같은 열에 있어도 곡선이 카드 밖으로 빠졌다 들어오게 하는 최소 휨
+const COL_BEND = 48;
+const PILL_GAP = 90; // 제안 알약과 하위 카드 사이(선을 따라)
+const PILL_STEP = 0.01;
+// 화살촉 marker id 는 문서 전체에서 하나여야 한다 — 판이 여럿(트리 맵·패널·매니저 팝업)이라 판마다 붙인다
+let mapSeq = 0;
 // 카드의 상태 고르기. 순서가 곧 일이 흘러가는 순서다
 export const STATUS_ORDER = ["todo", "doing", REVIEW, DONE];
 export const STATUS_LABEL = {
@@ -51,6 +65,8 @@ export function createTreeMap(host, options = {}) {
 
   let view = null; // { x, y, k } — 처음 그릴 때 정해지고 그 뒤로는 다시 그려도 유지된다
   let lastTrees = [];
+  let lastLinks = [];
+  const arrowId = `tm-arrow-${(mapSeq += 1)}`;
   let hideDone = false;
   // 방금 완료로 바꾼 카드. 완료 숨김이어도 이 화면을 보는 동안은 흐려진 채 남는다
   const keep = new Set();
@@ -61,8 +77,10 @@ export function createTreeMap(host, options = {}) {
 
   attachPanZoom();
 
-  function render(trees, { hideDone: hide = hideDone } = {}) {
+  // links: /api/todo-trees 의 links — 주 상위 밖의 상위·선행을 선으로 더 긋는다. 안 주면 지난 것을 쓴다
+  function render(trees, { hideDone: hide = hideDone, links = lastLinks } = {}) {
     lastTrees = trees;
+    lastLinks = links;
     hideDone = hide;
     layout = layoutForest(trees, { hideDone, keep });
     world.style.width = `${layout.width}px`;
@@ -70,10 +88,16 @@ export function createTreeMap(host, options = {}) {
     edgeLayer.setAttribute("width", layout.width);
     edgeLayer.setAttribute("height", layout.height);
     const onPath = options.focusId != null ? pathKeys(layout, options.focusId) : new Set();
-    edgeLayer.replaceChildren(...layout.edges.map((edge) => edgeElement(edge, onPath)));
+    const extra = extraLinks(links);
+    edgeLayer.replaceChildren(
+      arrowDefs(),
+      ...layout.edges.map((edge) => edgeElement(edge, onPath)),
+      ...extra.map(linkElement)
+    );
     cardLayer.replaceChildren(
       ...layout.lanes.map(laneElement),
-      ...layout.cards.map((card) => cardElement(card, onPath))
+      ...layout.cards.map((card) => cardElement(card, onPath)),
+      ...proposalPills(extra)
     );
     if (!view) view = options.focusId != null ? focusView() : fitView();
     applyView();
@@ -186,21 +210,143 @@ export function createTreeMap(host, options = {}) {
 
   // ── 연결선 ──────────────────────────────────────────────────────────────
 
-  // 부모 오른쪽 가운데 → 자식 왼쪽 가운데. 두 끝에서 수평으로 나가는 곡선이라 열이 깊어도 겹치지 않는다
+  // 부모 오른쪽 가운데 → 자식 왼쪽 가운데. 두 끝에서 수평으로 나가는 곡선이라 열이 깊어도 겹치지 않는다.
+  // 주 상위 연결이 제안이면 점선 — 확인·거절 알약은 proposalPills 가 얹는다
   function edgeElement(edge, onPath) {
-    const x1 = edge.from.x + CARD_W;
-    const y1 = edge.from.y + CARD_H / 2;
-    const x2 = edge.to.x;
-    const y2 = edge.to.y + CARD_H / 2;
-    const bend = (x2 - x1) / 2;
+    const { x1, y1, x2, y2, d } = sideCurve(edge.from, edge.to);
     const group = document.createElementNS(SVG_NS, "g");
     group.classList.add("tm-edge");
     if (edge.to.data.status === DONE) group.classList.add("tm-edge-done");
     if (onPath.has(edge.to.key)) group.classList.add("tm-edge-path");
+    if (primaryLink(edge.to)?.state === PROPOSED) group.classList.add("tm-edge-proposed");
     const path = document.createElementNS(SVG_NS, "path");
-    path.setAttribute("d", `M${x1} ${y1} C${x1 + bend} ${y1} ${x2 - bend} ${y2} ${x2} ${y2}`);
+    path.setAttribute("d", d);
     group.append(path, port(x1, y1), port(x2, y2));
     return group;
+  }
+
+  // 양옆으로 나가 들어오는 곡선. 대상이 왼쪽에 있어도(다른 트리의 상위) 끝은 늘 수평으로 붙는다
+  function sideCurve(from, to) {
+    const x1 = from.x + CARD_W;
+    const y1 = from.y + CARD_H / 2;
+    const x2 = to.x;
+    const y2 = to.y + CARD_H / 2;
+    const bend = Math.max(COL_BEND, Math.abs(x2 - x1) / 2);
+    const controls = [x1 + bend, y1, x2 - bend, y2];
+    return { x1, y1, x2, y2, controls, d: `M${x1} ${y1} C${controls.join(" ")} ${x2} ${y2}` };
+  }
+
+  // 선행은 위아래로 잇는 화살표다 — 상위 곡선(좌우)과 방향부터 달라 색을 못 봐도 갈린다
+  function verticalCurve(from, to) {
+    const down = to.y >= from.y;
+    const x1 = from.x + CARD_W / 2;
+    const y1 = down ? from.y + CARD_H : from.y;
+    const x2 = to.x + CARD_W / 2;
+    const y2 = down ? to.y : to.y + CARD_H;
+    const bend = Math.max(COL_BEND / 2, Math.abs(y2 - y1) / 2) * (down ? 1 : -1);
+    const controls = [x1, y1 + bend, x2, y2 - bend];
+    return { x1, y1, x2, y2, controls, d: `M${x1} ${y1} C${controls.join(" ")} ${x2} ${y2}` };
+  }
+
+  // 알약 자리. 선 가운데가 아니라 하위(도착) 끝에서 선을 따라 PILL_GAP 만큼 거슬러 간 곳 — 다른 트리에서
+  // 길게 오는 선이면 가운데가 화면 밖이라, 확인할 카드 옆에서 바로 보이게 한다. 짧은 선이면 가운데
+  function pillPoint({ x1, y1, x2, y2, controls: [c1x, c1y, c2x, c2y] }) {
+    const at = (t) => {
+      const u = 1 - t;
+      const mix = (a, b, c, d) => u ** 3 * a + 3 * u ** 2 * t * b + 3 * u * t ** 2 * c + t ** 3 * d;
+      return [mix(x1, c1x, c2x, x2), mix(y1, c1y, c2y, y2)];
+    };
+    for (let t = 1; t > 0.5; t -= PILL_STEP) {
+      const [x, y] = at(t);
+      if (Math.hypot(x - x2, y - y2) >= PILL_GAP) return [x, y];
+    }
+    return at(0.5);
+  }
+
+  // 그릴 수 있는 추가 연결 — 다른 상위와 선행. 양 끝 카드가 다 판에 있을 때만
+  function extraLinks(links) {
+    return (links || [])
+      .filter((link) => (link.relation === PARENT && !link.primary) || link.relation === PRECEDES)
+      .map((link) => ({ link, from: layout.byKey.get(link.from), to: layout.byKey.get(link.to) }))
+      .filter((item) => item.from && item.to);
+  }
+
+  function linkElement({ link, from, to }) {
+    const precedes = link.relation === PRECEDES;
+    const { d } = precedes ? verticalCurve(from, to) : sideCurve(from, to);
+    const group = document.createElementNS(SVG_NS, "g");
+    group.classList.add("tm-edge", precedes ? "tm-edge-precedes" : "tm-edge-other");
+    if (link.state === PROPOSED) group.classList.add("tm-edge-proposed");
+    if (to.data.status === DONE && from.data.status === DONE) group.classList.add("tm-edge-done");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    if (precedes) path.setAttribute("marker-end", `url(#${arrowId})`);
+    group.appendChild(path);
+    return group;
+  }
+
+  function arrowDefs() {
+    const defs = document.createElementNS(SVG_NS, "defs");
+    const marker = document.createElementNS(SVG_NS, "marker");
+    marker.setAttribute("id", arrowId);
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("refX", "9");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("markerWidth", "8");
+    marker.setAttribute("markerHeight", "8");
+    marker.setAttribute("orient", "auto-start-reverse");
+    const tip = document.createElementNS(SVG_NS, "path");
+    tip.setAttribute("d", "M0 0L10 5L0 10z");
+    tip.classList.add("tm-arrow");
+    marker.appendChild(tip);
+    defs.appendChild(marker);
+    return defs;
+  }
+
+  // 제안 연결마다 선 한가운데에 '제안 · 기준' 알약과 확인·거절 버튼. 근거 문장은 알약 제목(툴팁)
+  function proposalPills(extra) {
+    const pills = [];
+    layout.edges.forEach((edge) => {
+      const link = primaryLink(edge.to);
+      if (link?.state !== PROPOSED) return;
+      const at = pillPoint(sideCurve(edge.from, edge.to));
+      pills.push(proposalPill({ id: link.edge_id, relation: PARENT, basis: link.basis, evidence: link.evidence }, at));
+    });
+    extra.forEach(({ link, from, to }) => {
+      if (link.state !== PROPOSED) return;
+      pills.push(proposalPill(link, pillPoint(link.relation === PRECEDES ? verticalCurve(from, to) : sideCurve(from, to))));
+    });
+    return pills;
+  }
+
+  function proposalPill(link, [x, y]) {
+    const pill = element("div", "tm-proposal");
+    pill.style.left = `${x}px`;
+    pill.style.top = `${y}px`;
+    const label = element("span", "tm-proposal-label", proposalLabel(link));
+    pill.title = link.evidence ? `${proposalLabel(link)} — ${link.evidence}` : proposalLabel(link);
+    pill.append(
+      label,
+      decideButton("tm-accept", t("tree.accept"), "M3.5 8.5l3 3 6-7", link.id, CONFIRMED),
+      decideButton("tm-reject", t("tree.reject"), "M4.5 4.5l7 7M11.5 4.5l-7 7", link.id, REJECTED)
+    );
+    return pill;
+  }
+
+  function decideButton(className, label, d, edgeId, state) {
+    const button = iconButton(className, label, d, async () => {
+      button.disabled = true;
+      try {
+        await api.updateEdge(edgeId, { state });
+      } finally {
+        await refresh();
+      }
+    });
+    return button;
+  }
+
+  function primaryLink(card) {
+    return card.data.parents?.find((parent) => parent.primary) ?? null;
   }
 
   function port(cx, cy) {
@@ -222,14 +368,15 @@ export function createTreeMap(host, options = {}) {
     node.style.width = `${layout.width + LANE_PAD * 2}px`;
     node.style.height = `${lane.bottom - lane.top}px`;
     if (lane.tree.workspace.category_color) node.style.setProperty("--cat", lane.tree.workspace.category_color);
-    node.appendChild(element("span", "tm-lane-name", lane.tree.workspace.name));
+    node.appendChild(element("span", "tm-lane-name", lane.tree.workspace.name ?? t("common.unassigned")));
     return node;
   }
 
   // ── 카드 ────────────────────────────────────────────────────────────────
 
   function cardElement(card, onPath) {
-    const node = card.kind === "root" ? rootCard(card.tree) : todoCard(card.data);
+    const node =
+      card.kind === "root" ? rootCard(card.tree) : card.kind === CONTEXT ? contextCard(card.data) : todoCard(card.data);
     node.style.left = `${card.x}px`;
     node.style.top = `${card.y}px`;
     node.style.width = `${CARD_W}px`;
@@ -247,11 +394,28 @@ export function createTreeMap(host, options = {}) {
     const head = element("div", "tm-head");
     head.append(element("span", "tm-cat", tree.workspace.category_name ?? t("common.unassigned")));
     if (tree.waiting) head.appendChild(waitingBadge(t("tree.treeWaiting", { count: tree.waiting })));
-    const title = element("div", "tm-title", tree.workspace.name);
-    title.title = tree.workspace.name;
+    const name = tree.workspace.name ?? t("common.unassigned");
+    const title = element("div", "tm-title", name);
+    title.title = name;
     const foot = element("div", "tm-foot");
-    foot.append(progress(tree.progress), countsLine(tree.counts), addButton(card, foot, { workspace_id: tree.workspace.id }));
-    card.append(head, title, foot);
+    foot.append(progress(tree.progress), countsLine(tree.counts));
+    // 미분류 트리는 워크스페이스가 없어 여기서 바로 만들 할일의 소속을 정할 수 없다
+    if (tree.workspace.id != null) foot.appendChild(addButton(card, foot, { workspace_id: tree.workspace.id }));
+    card.append(head, title, element("div", "tm-meta"), foot);
+    return card;
+  }
+
+  // 맥락 = 할일이 아니라 배경 묶음. 상태를 고르지 않고, 아래 할일 진행률과 + 만 있다
+  function contextCard(node) {
+    const card = element("div", "tm-card tm-context");
+    card.dataset.status = node.status;
+    const head = element("div", "tm-head");
+    head.appendChild(element("span", "tm-kind", t("tree.context")));
+    const title = element("div", "tm-title", node.title);
+    title.title = node.note ? `${node.title}\n\n${node.note}` : node.title;
+    const foot = element("div", "tm-foot");
+    foot.append(progress(node.progress), addButton(card, foot, { context_id: node.id }));
+    card.append(head, title, metaLine(node, false), foot);
     return card;
   }
 
@@ -276,7 +440,7 @@ export function createTreeMap(host, options = {}) {
     else foot.appendChild(element("span", "tm-spacer"));
     if (todo.status === REVIEW && !todo.autorun_locked) foot.appendChild(completeButton(todo));
     foot.appendChild(addButton(card, foot, { parent_id: todo.id }));
-    card.append(head, title, foot);
+    card.append(head, title, metaLine(todo, true), foot);
     return card;
   }
 
@@ -406,8 +570,88 @@ export function soloCard({ id = null, title, status, label, waiting = null, onOp
   // 꼬리 줄은 비워 둔다 — 높이를 트리 카드와 맞춰 제목이 같은 자리에 온다
   const foot = element("div", "tm-foot");
   foot.appendChild(element("span", "tm-spacer"));
-  card.append(head, name, foot);
+  card.append(head, name, element("div", "tm-meta"), foot);
   return card;
+}
+
+// ── 관계 줄 ───────────────────────────────────────────────────────────────
+// 카드(맵)와 목록 줄이 같이 쓴다. 근거 문서는 눌러서 여는 링크, 나머지는 글자 칩이고 자세한 것은 제목(툴팁)에.
+// 색 하나로만 구분하지 않는다 — 칩마다 '먼저'·'다른 상위' 같은 글자가 먼저 읽힌다
+//   shownUnder: 목록에서 지금 이 줄이 매달린 상위 key. 그 상위를 뺀 나머지를 '다른 상위' 로 센다
+export function metaLine(node, withLinks = true, { shownUnder = null } = {}) {
+  const line = element("div", "tm-meta");
+  docChips(node.docs ?? []).forEach((chip) => line.appendChild(chip));
+  if (!withLinks) return line;
+  const others = (node.parents ?? []).filter((parent) =>
+    shownUnder != null ? parent.key !== shownUnder : !parent.primary
+  );
+  if (others.length) {
+    const chip = element("span", "tm-chip", t("tree.otherParents", { count: others.length }));
+    chip.title = others.map((parent) => `${parentLabel(parent)} ${parent.title}`).join("\n");
+    line.appendChild(chip);
+  }
+  const waitingFor = (node.after ?? []).filter((item) => item.status !== DONE);
+  if (waitingFor.length) {
+    const text =
+      waitingFor.length === 1 ? t("tree.afterOne", { id: waitingFor[0].id }) : t("tree.afterMany", { count: waitingFor.length });
+    const chip = element("span", "tm-chip tm-chip-after", text);
+    chip.title = waitingFor.map((item) => `#${item.id} ${item.title}`).join("\n");
+    line.appendChild(chip);
+  }
+  if (node.related?.length) {
+    const chip = element("span", "tm-chip", t("tree.related", { count: node.related.length }));
+    chip.title = node.related
+      .map((item) => `${item.state === PROPOSED ? `${t("tree.proposed")} · ` : ""}${item.title}${item.evidence ? ` — ${item.evidence}` : ""}`)
+      .join("\n");
+    line.appendChild(chip);
+  }
+  return line;
+}
+
+function docChips(docs) {
+  const shown = docs.slice(0, DOC_CHIPS).map((doc) => {
+    // Jira·PR 은 키가 곧 이름이고, Confluence 는 페이지 번호보다 제목이 읽힌다
+    const text = doc.kind === "confluence" && doc.title && doc.title !== doc.label ? doc.title : doc.label;
+    const link = element("a", "tm-doc", text);
+    link.href = doc.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.title = [doc.title && doc.title !== doc.label ? doc.title : null, doc.url].filter(Boolean).join("\n");
+    link.addEventListener("pointerdown", (event) => event.stopPropagation());
+    link.addEventListener("click", (event) => event.stopPropagation());
+    return link;
+  });
+  if (docs.length > DOC_CHIPS) {
+    const more = element("span", "tm-chip", `+${docs.length - DOC_CHIPS}`);
+    more.title = docs.slice(DOC_CHIPS).map((doc) => doc.label).join("\n");
+    shown.push(more);
+  }
+  return shown;
+}
+
+// 상위 연결 하나를 사람 말로 — '제안 · 계기' 처럼 상태와 기준
+// 사전 키를 글자로 조립하지 않는다 — 안 쓰는 키 검사(tests/test_language.py)가 t("…") 호출에서 키를 찾는다
+const BASIS_LABEL = {
+  trigger: () => t("tree.basis.trigger"),
+  purpose: () => t("tree.basis.purpose"),
+  background: () => t("tree.basis.background"),
+};
+const RELATION_LABEL = {
+  parent: () => t("tree.relation.parent"),
+  precedes: () => t("tree.relation.precedes"),
+  related: () => t("tree.relation.related"),
+  evidence: () => t("tree.relation.evidence"),
+};
+
+export function parentLabel(parent) {
+  const basis = BASIS_LABEL[parent.basis]?.() ?? "";
+  return parent.state === PROPOSED ? `${t("tree.proposed")} · ${basis}` : basis;
+}
+
+export function proposalLabel(link) {
+  const relation = RELATION_LABEL[link.relation]?.() ?? link.relation;
+  const basis = link.relation === PARENT && BASIS_LABEL[link.basis] ? ` · ${BASIS_LABEL[link.basis]()}` : "";
+  return `${t("tree.proposed")} · ${relation}${basis}`;
 }
 
 // ── 작은 조각 ─────────────────────────────────────────────────────────────
