@@ -12,6 +12,7 @@ from app.constants import (
     STATE_WORKING,
     STATUS_DOING,
     STATUS_DONE,
+    STATUS_REVIEW,
     STATUS_TODO,
 )
 from app.db import now, transaction
@@ -182,7 +183,7 @@ def link_todo(con, claude_session_id, todo_id, claim=True, status=None):
     뒤늦게 연결하는 것이면 done 을 넘긴다 — 무엇이 끝난 것인지는 작업 내용을 본
     쪽만 알 수 있으므로 여기서 추측하지 않고 받은 값을 쓴다.
 
-    doing 은 status=todo 인 것만 바꾼다. 이미 done 인 할일이 연결만으로 되살아나면 안 된다.
+    doing 은 status=todo·review 인 것만 바꾼다. 이미 done 인 할일이 연결만으로 되살아나면 안 된다.
 
     claim=False 는 끝난 히스토리 세션을 소급 연결할 때 쓴다 — 그건 착수 선언이 아니라
     기록이므로 상태를 건드리면 안 된다 (온보딩이 추정해 넣은 상태가 뒤집힌다)
@@ -205,9 +206,10 @@ def link_todo(con, claude_session_id, todo_id, claim=True, status=None):
                 (STATUS_DONE, stamp, stamp, todo_id),
             )
         else:
+            # 확인 대기(review)도 되살린다 — 확인 중에 다시 손대러 들어온 세션이다
             con.execute(
-                "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status=?",
-                (STATUS_DOING, stamp, todo_id, STATUS_TODO),
+                "UPDATE todos SET status=?, updated_at=? WHERE id=? AND status IN (?,?)",
+                (STATUS_DOING, stamp, todo_id, STATUS_TODO, STATUS_REVIEW),
             )
 
 
@@ -273,6 +275,47 @@ def last_activity_by_todo(con):
             GROUP BY st.todo_id"""
     )
     return {row["todo_id"]: row["seen"] for row in rows}
+
+
+def waiting_by_todo(con):
+    """할일마다 그 할일을 지금 붙잡은 세션이 사람을 기다리는지(permission·input).
+
+    세션의 현재 할일은 가장 최근에 연결된 하나다(LATEST_LINKED) — 예전에 거쳐 간
+    할일에까지 대기 표시가 붙으면 어느 카드를 봐야 할지 흐려진다. 한 할일을 여러
+    세션이 기다리면 권한 대기가 이긴다 — 권한은 답을 줄 때까지 세션이 멈춰 있다
+    """
+    rows = con.execute(
+        f"""SELECT s.waiting AS waiting, (SELECT t.id {LATEST_LINKED}) AS todo_id
+            FROM sessions s WHERE s.waiting IS NOT NULL AND s.state <> ?""",
+        (STATE_ENDED,),
+    )
+    found = {}
+    for row in rows:
+        if row["todo_id"] is None:
+            continue
+        if found.get(row["todo_id"]) != "permission":
+            found[row["todo_id"]] = row["waiting"]
+    return found
+
+
+def current_cards(con, claude_session_ids):
+    """세션 id → 그 세션이 지금 붙잡은 할일(가장 최근 연결)과 그 트리(워크스페이스).
+    매니저 탭 줄을 트리 카드에 잇는 데 쓴다. 연결된 할일이 없는 세션은 빠진다"""
+    if not claude_session_ids:
+        return {}
+    marks = ",".join("?" * len(claude_session_ids))
+    rows = con.execute(
+        f"""SELECT s.claude_session_id AS session_id, t.id AS todo_id, t.title AS title,
+                   t.status AS status, t.workspace_id AS workspace_id,
+                   w.name AS workspace_name, c.color AS category_color
+            FROM sessions s
+            JOIN todos t ON t.id = (SELECT t.id {LATEST_LINKED})
+            LEFT JOIN workspaces w ON w.id = t.workspace_id
+            LEFT JOIN categories c ON c.id = COALESCE(w.category_id, t.category_id)
+            WHERE s.claude_session_id IN ({marks})""",
+        tuple(claude_session_ids),
+    )
+    return {row["session_id"]: {key: row[key] for key in row.keys() if key != "session_id"} for row in rows}
 
 
 def cwds_by_workspace(con, workspace_id):

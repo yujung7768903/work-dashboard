@@ -34,6 +34,8 @@ async function request(method, path, body, { silent } = {}) {
 }
 
 export const getTree = (groupBy) => request("GET", `/tree?group_by=${groupBy}`);
+// 트리 메뉴. 워크스페이스마다 할일 상하 관계째 (보드의 getTree 는 묶음만 준다)
+export const getTodoTrees = () => request("GET", "/todo-trees");
 export const getNext = () => request("GET", "/next");
 export const getCategories = () => request("GET", "/categories");
 export const getWorkspaces = () => request("GET", "/workspaces");

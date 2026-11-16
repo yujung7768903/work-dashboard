@@ -905,6 +905,8 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 결정 대기 '#8 2/3 제목' 의 우선순위 — 보드 할일 줄 배지(.todo-priority)를 그대로 쓰고,
    굵은 제목 줄 안이라 굵기만 되돌린다. 폭 고정이라 제목 시작점이 줄마다 맞는다 */
 .mgr-title .todo-priority { display: inline-block; margin-left: var(--sp-4); font-weight: normal; }
+/* 카드 기준 줄에서는 결정 제목이 아랫줄로 내려온다 — 번호·배지·제목 사이 띄움을 같이 준다 */
+.mgr-sub .todo-priority { display: inline-block; margin: 0 var(--sp-4); }
 .mgr-sub { color: var(--muted); font-size: var(--fs-sm); }
 .mgr-next { font-weight: 600; font-variant-numeric: tabular-nums; }
 .mgr-last.ok { color: var(--good); }
@@ -1008,8 +1010,38 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-click { cursor: pointer; }
 .mgr-click:hover .mgr-title { color: var(--accent); }
 .mgr-click:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#mgr-decision-body { padding: var(--sp-20); overflow: auto; }
-#mgr-decision-body .dlg-title { padding-right: var(--sp-32); }
+#mgr-decision-body { padding: 0 var(--sp-20) var(--sp-20); overflow: auto; }
+/* 팝업 제목 · 상세|트리 탭 · 본문. 제목과 탭은 본문이 길어도 위에 남는다 */
+#mgr-decision-head { padding: var(--sp-20) var(--sp-20) 0; }
+#mgr-decision-head .dlg-head { margin-bottom: var(--sp-4); }
+#mgr-pop-tabs { margin: 0 var(--sp-20); flex: none; }
+#mgr-pop-tabs button { padding: var(--sp-8) var(--sp-12); }
+#mgr-decision-body[hidden], #mgr-decision-tree[hidden] { display: none; }
+/* 트리 탭은 맵을 그리므로 팝업을 넓히고 높이를 준다 */
+#mgr-decision-modal.wide[open] { width: min(1120px, calc(100vw - var(--sp-24))); max-height: 88vh; }
+/* 높이는 고정 — 팝업은 내용 높이라 flex 로 늘리면 바탕이 0 이 되어 맵이 접힌다 */
+#mgr-decision-tree { flex: none; height: 66vh; padding: var(--sp-12) var(--sp-20) var(--sp-20); }
+.mgr-no-tree { padding-top: var(--sp-8); }
+/* 사용자 요청. 긴 지시는 접어 두고 아래가 흐려지게 해 더 있다는 것을 보인다 */
+.mgr-request.folded .mgr-request-text {
+  max-height: 12rem; overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 65%, transparent);
+}
+.mgr-request-toggle {
+  margin-top: var(--sp-4); padding: var(--sp-2) var(--sp-8);
+  background: none; color: var(--accent); font-size: var(--fs-sm); font-weight: 600;
+}
+/* 줄 제목을 카드 기준으로 보일 때 앞에 붙는 트리(워크스페이스) 칩 */
+.mgr-tree-chip {
+  --cat: var(--muted);
+  display: inline-flex; align-items: center; gap: var(--sp-4);
+  margin-right: var(--sp-8); padding: 0 var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-sm); font-weight: 600; color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.mgr-tree-chip::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--cat);
+}
 .mgr-pop-sec { margin-top: var(--sp-16); }
 .mgr-pop-title { margin: 0 0 var(--sp-8); font-size: var(--fs-sm); font-weight: 700; }
 .mgr-pop-label { margin: var(--sp-8) 0 var(--sp-4); color: var(--muted); font-size: var(--fs-sm); font-weight: 600; }

@@ -33,9 +33,13 @@ CATEGORY_PALETTE = (
 )
 COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
 
-TODO_STATUSES = ("todo", "doing", "done")
+# review(확인 대기) = 작업은 끝났고 사람의 확인만 남은 것. done 이 아니므로 보드 진행률·
+# 구글 태스크에서는 열린 할일로 남고, 할 일이 아니므로 다음 할일·자율 수행 후보에서는 빠진다
+TODO_STATUSES = ("todo", "doing", "review", "done")
 WORKSPACE_STATUSES = ("active", "inactive", "done")
-STATUS_TODO, STATUS_DOING, STATUS_DONE = TODO_STATUSES
+STATUS_TODO, STATUS_DOING, STATUS_REVIEW, STATUS_DONE = TODO_STATUSES
+# 손을 대야 하는(착수할 수 있는) 상태. review 는 손이 아니라 눈이 남은 것이라 뺀다
+WORKABLE_STATUSES = (STATUS_TODO, STATUS_DOING)
 WORKSPACE_ACTIVE = WORKSPACE_STATUSES[0]
 
 ALLOWED_STATIC_SUFFIXES = (".html", ".css", ".js", ".json")  # .json 은 화면 문구 사전
@@ -46,6 +50,11 @@ FIRST_SORT_ORDER = 1
 # 분류 대상 누락: 할일 생성·세션 분류 세 곳
 SCOPE_REQUIRED_MSG = "카테고리나 워크스페이스 중 하나를 선택해 주세요"
 PRIORITY_INVALID_MSG = "우선순위는 1 이상 정수로 입력해 주세요"
+# 트리(상위 할일). 화면 alert 와 CLI 가 같은 문장을 쓴다
+PARENT_NEEDS_WORKSPACE_MSG = "워크스페이스에 속한 할일만 상위 할일을 가질 수 있습니다"
+PARENT_OTHER_WORKSPACE_MSG = "상위 할일은 같은 워크스페이스의 할일이어야 합니다"
+PARENT_CYCLE_MSG = "자기 자신이나 하위 할일을 상위로 지정할 수 없습니다"
+PARENT_INVALID_MSG = "상위 할일은 할일 번호로 지정해 주세요"
 
 # 세션이 띄운 하위 프로세스에 실려오는 자기 세션 id. 훅 stdin 의 session_id 와 같은 값이라
 # CLI 가 이걸로 자기 세션을 안다 — 모델이 주입 블록의 UUID 를 옮겨 적지 않아도 된다

@@ -479,7 +479,9 @@ class SnapshotTest(unittest.TestCase):
         payload = manager_panel.snapshot("helpers", now=NOW, helpers_fn=lambda _home: rows)
         item = payload["helpers"]["items"][0]
         self.assertEqual((item["doing"], item["percent"]), ("판정 중", 40))
-        self.assertNotIn("session_id", item)
+        # 세션 id 는 트리 카드·첫 요청을 찾는 열쇠라 함께 싣는다. 대시보드 DB 가 없으면 카드는 없다
+        self.assertEqual(item["session_id"], "s")
+        self.assertIsNone(item["card"])
 
     def test_route_rejects_unknown_part(self):
         with self.assertRaises(Validation):

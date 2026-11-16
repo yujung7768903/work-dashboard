@@ -140,12 +140,25 @@ def _build_parser():
     _add_session_arg(add_todo, required=False, note="이 세션이 붙은 워크스페이스에 추가.")
     add_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
     add_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
+    add_todo.add_argument(
+        "--parent",
+        type=int,
+        default=None,
+        help="상위 할일 id. 워크스페이스는 상위 할일의 것을 따른다",
+    )
     add_todo.set_defaults(handler=_cmd_add_todo)
 
     move_todo = sub.add_parser("move-todo")
     move_todo.add_argument("todo_id", type=int)
     move_todo.add_argument("--workspace", required=True, help="워크스페이스 id 또는 none")
     move_todo.set_defaults(handler=_cmd_move_todo)
+
+    set_parent = sub.add_parser(
+        "set-parent", help="상위 할일 변경 (같은 워크스페이스만, none 이면 워크스페이스 바로 아래)"
+    )
+    set_parent.add_argument("todo_id", type=int)
+    set_parent.add_argument("parent", help="상위 할일 id 또는 none")
+    set_parent.set_defaults(handler=_cmd_set_parent)
 
     edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건·우선순위 수정")
     edit_todo.add_argument("todo_id", type=int)
@@ -440,7 +453,9 @@ def _cmd_add_todo(con, args):
         category_repo.get_by_name(con, args.category)["id"] if args.category else None
     )
     workspace_id = int(args.workspace) if args.workspace else None
-    if args.session and workspace_id is None and category_id is None:
+    # 상위 할일을 주면 워크스페이스는 그쪽에서 정해진다 — 세션 범위로 덮으면 서로 어긋난다
+    no_scope = workspace_id is None and category_id is None and args.parent is None
+    if args.session and no_scope:
         workspace_id, category_id = _scope_from_session(con, args.session)
     created = todo_repo.create(
         con,
@@ -449,8 +464,10 @@ def _cmd_add_todo(con, args):
         workspace_id=workspace_id,
         note=args.note,
         precondition=args.precondition,
+        parent_id=args.parent,
     )
-    print(f"{created['id']}. {created['title']}")
+    parent = f" (상위 #{created['parent_id']})" if created["parent_id"] else ""
+    print(f"{created['id']}. {created['title']}{parent}")
     print(
         f"지금 이 세션이 착수하는 작업이면 link-todo {created['id']} 로 연결한다."
         " 나중에 할 후속 할일이면 연결하지 않는다 — 착수하는 세션이 연결한다."
@@ -474,6 +491,13 @@ def _cmd_move_todo(con, args):
         else UNASSIGNED_LABEL
     )
     print(f"{moved['title']} → {scope}")
+
+
+def _cmd_set_parent(con, args):
+    parent_id = None if args.parent == NONE_LITERAL else args.parent
+    updated = todo_repo.update(con, args.todo_id, parent_id=parent_id)
+    scope = f"#{updated['parent_id']}" if updated["parent_id"] else "워크스페이스 바로 아래"
+    print(f"{updated['id']}. {updated['title']} → {scope}")
 
 
 def _cmd_edit_todo(con, args):

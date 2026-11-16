@@ -2,6 +2,10 @@
 from app import ordering
 from app.constants import (
     AUTO_TODO_NOTE_RAW_TITLE,
+    PARENT_CYCLE_MSG,
+    PARENT_INVALID_MSG,
+    PARENT_NEEDS_WORKSPACE_MSG,
+    PARENT_OTHER_WORKSPACE_MSG,
     PRIORITY_INVALID_MSG,
     REVIEW_LOCKED_MSG,
     SCOPE_REQUIRED_MSG,
@@ -22,26 +26,44 @@ from app.repositories import workspaces as workspace_repo
 TABLE = "todos"
 # cwd = 워크스페이스가 없는 할일의 작업 위치. 소속이 있으면 workspaces.cwd 가 그 역할이다
 EDITABLE_FIELDS = (
-    "title", "note", "precondition", "status", "workspace_id", "cwd", "priority"
+    "title", "note", "precondition", "status", "workspace_id", "cwd", "priority",
+    "parent_id",
 )
 LABEL_FIELD = "label_ids"  # 컬럼이 아니라 조인 테이블이라 따로 뗀다
 
 
 def create(
-    con, title, category_id=None, workspace_id=None, note=None, precondition=None
+    con,
+    title,
+    category_id=None,
+    workspace_id=None,
+    note=None,
+    precondition=None,
+    parent_id=None,
 ):
-    """workspace_id 가 있으면 카테고리는 그 워크스페이스에서 가져옴"""
+    """workspace_id 가 있으면 카테고리는 그 워크스페이스에서 가져옴.
+
+    parent_id 만 주면 워크스페이스는 상위 할일의 것을 따른다 — 하위 할일은 늘 부모와
+    같은 트리(워크스페이스)에 있어야 하므로 따로 받을 이유가 없다
+    """
     cleaned = _clean_title(title)
+    parent_id = clean_parent(parent_id)
+    if parent_id is not None and workspace_id is None:
+        workspace_id = get(con, parent_id)["workspace_id"]
+    if parent_id is not None:
+        _validate_parent(con, None, parent_id, workspace_id)
     resolved_category = _resolve_category(con, category_id, workspace_id)
     order = ordering.next_order(con, TABLE, *_group_scope(workspace_id))
     stamp = now()
     with transaction(con):
         cursor = con.execute(
-            "INSERT INTO todos(category_id, workspace_id, title, note, precondition,"
-            " status, sort_order, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO todos(category_id, workspace_id, parent_id, title, note,"
+            " precondition, status, sort_order, created_at, updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 resolved_category,
                 workspace_id,
+                parent_id,
                 cleaned,
                 note,
                 precondition,
@@ -91,11 +113,18 @@ def update(con, todo_id, **fields):
         return get(con, todo_id)
     assignments["updated_at"] = now()
     clause = ",".join(f"{key}=?" for key in assignments)
+    moved = (
+        "workspace_id" in assignments
+        and assignments["workspace_id"] != current["workspace_id"]
+    )
+    # 하위 할일은 부모를 따라간다 — 남겨 두면 다른 워크스페이스의 부모를 가리키게 된다
+    followers = descendant_ids(con, todo_id) if moved else []
     with transaction(con):
         con.execute(
             f"UPDATE todos SET {clause} WHERE id=?",
             tuple(assignments.values()) + (todo_id,),
         )
+        _carry_descendants(con, followers, assignments)
     return get(con, todo_id)
 
 
@@ -112,9 +141,17 @@ def set_google_link(con, todo_id, task_id):
 
 
 def delete(con, todo_id):
-    """붙어 있던 라벨은 연결만 끊는다 — 라벨 자체는 다른 할일도 쓰는 공용이다"""
-    get(con, todo_id)
+    """붙어 있던 라벨은 연결만 끊는다 — 라벨 자체는 다른 할일도 쓰는 공용이다.
+
+    하위 할일은 지우지 않고 한 단계 위(지운 할일의 부모)로 올린다. 할일 하나를
+    지웠다고 그 아래 가지가 통째로 사라지면 되돌릴 방법이 없다
+    """
+    current = get(con, todo_id)
     with transaction(con):
+        con.execute(
+            "UPDATE todos SET parent_id=? WHERE parent_id=?",
+            (current["parent_id"], todo_id),
+        )
         con.execute("DELETE FROM todo_labels WHERE todo_id=?", (todo_id,))
         con.execute("DELETE FROM todos WHERE id=?", (todo_id,))
 
@@ -140,14 +177,19 @@ def set_autorun_order(con, ids):
 
 
 def demote_by_workspace(con, workspace_id):
-    """워크스페이스 삭제 시 소속 할일을 미분류로 내림. 카테고리는 유지"""
+    """워크스페이스 삭제 시 소속 할일을 미분류로 내림. 카테고리는 유지.
+
+    트리는 워크스페이스가 루트라 루트가 사라지면 상하 관계도 함께 풀린다 —
+    미분류에는 트리가 없다 (할일 자체는 하나도 지우지 않는다)
+    """
     members = list_by_workspace(con, workspace_id)
     base = ordering.next_order(con, TABLE, *_group_scope(None))
     stamp = now()
     with transaction(con):
         for offset, todo in enumerate(members):
             con.execute(
-                "UPDATE todos SET workspace_id=NULL, sort_order=?, updated_at=? WHERE id=?",
+                "UPDATE todos SET workspace_id=NULL, parent_id=NULL, sort_order=?,"
+                " updated_at=? WHERE id=?",
                 (base + offset, stamp, todo["id"]),
             )
 
@@ -219,7 +261,87 @@ def _validated_assignments(con, current, fields):
         target = assignments["workspace_id"]
         assignments["category_id"] = _resolve_category(con, current["category_id"], target)
         assignments["sort_order"] = ordering.next_order(con, TABLE, *_group_scope(target))
+        # 다른 트리로 옮기면 옛 부모는 남의 트리에 있다. 새 부모를 같이 안 줬으면 루트 바로 아래로
+        if target != current["workspace_id"] and "parent_id" not in assignments:
+            assignments["parent_id"] = None
+    if "parent_id" in assignments:
+        assignments["parent_id"] = clean_parent(assignments["parent_id"])
+        if assignments["parent_id"] is not None:
+            _validate_parent(
+                con,
+                current["id"],
+                assignments["parent_id"],
+                assignments.get("workspace_id", current["workspace_id"]),
+            )
     return assignments
+
+
+def descendant_ids(con, todo_id):
+    """그 할일 아래 전부(자식·손자…). 저장소가 순환을 막지만 손으로 고친 DB 에서도
+    멈추도록 본 것은 다시 보지 않는다"""
+    found, frontier, seen = [], [todo_id], {todo_id}
+    while frontier:
+        marks = ",".join("?" * len(frontier))
+        rows = con.execute(
+            f"SELECT id FROM todos WHERE parent_id IN ({marks})", tuple(frontier)
+        ).fetchall()
+        frontier = [row["id"] for row in rows if row["id"] not in seen]
+        seen.update(frontier)
+        found += frontier
+    return found
+
+
+def _carry_descendants(con, ids, assignments):
+    """옮긴 할일의 하위를 같은 워크스페이스·카테고리로. 순서는 새 묶음의 뒤에 붙인다"""
+    if not ids:
+        return
+    target = assignments["workspace_id"]
+    base = ordering.next_order(con, TABLE, *_group_scope(target))
+    for offset, child_id in enumerate(ids):
+        con.execute(
+            "UPDATE todos SET workspace_id=?, category_id=?, sort_order=?, updated_at=?"
+            " WHERE id=?",
+            (
+                target,
+                assignments["category_id"],
+                base + offset,
+                assignments["updated_at"],
+                child_id,
+            ),
+        )
+
+
+def clean_parent(value):
+    """상위 할일 id 또는 None(워크스페이스 바로 아래). 빈 값·'none' 도 None 으로 받는다 —
+    CLI 에서 none 을 주거나 화면이 null 을 보내는 것이 '부모 없앰' 이다"""
+    if value is None or (isinstance(value, str) and value.strip().lower() in ("", "none")):
+        return None
+    if isinstance(value, bool):
+        raise Validation(PARENT_INVALID_MSG)
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        raise Validation(PARENT_INVALID_MSG)
+
+
+def _validate_parent(con, todo_id, parent_id, workspace_id):
+    """부모는 같은 워크스페이스의 할일이고, 자기 자신·자기 하위가 아니어야 한다.
+
+    부모가 자기 하위면 트리가 고리가 되어 루트에서 닿지 않는 가지가 생긴다.
+    부모 쪽에서 위로 올라가며 자기를 만나는지 본다 (깊이만큼만 돈다)
+    """
+    if workspace_id is None:
+        raise Validation(PARENT_NEEDS_WORKSPACE_MSG)
+    parent = get(con, parent_id)
+    if parent["workspace_id"] != workspace_id:
+        raise Validation(PARENT_OTHER_WORKSPACE_MSG)
+    node, seen = parent_id, set()
+    while node is not None and node not in seen:
+        if node == todo_id:
+            raise Validation(PARENT_CYCLE_MSG)
+        seen.add(node)
+        row = con.execute("SELECT parent_id FROM todos WHERE id=?", (node,)).fetchone()
+        node = row["parent_id"] if row else None
 
 
 def _group_scope(workspace_id):

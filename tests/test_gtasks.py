@@ -15,14 +15,17 @@ from app.constants import (
     GTASKS_CLIENT_SECRET_ENV,
     GTASKS_ERROR_EXPIRED,
     GTASKS_NEED_CONNECT,
+    GTASKS_SEEN_KEY,
     GTASKS_STATUS_DONE,
     GTASKS_STATUS_TODO,
     OUTCOME_REVIEW,
     PYTHON_MIN,
     STATUS_DONE,
+    STATUS_REVIEW,
     STATUS_TODO,
     WORKSPACE_ACTIVE,
 )
+from app.db import meta_set
 from app.errors import Validation
 from app.services import gtasks_api, gtasks_auth
 from app.repositories import autorun as autorun_repo
@@ -181,6 +184,82 @@ class GtasksSyncTest(unittest.TestCase):
         self._sync()
 
         self.assertEqual(self.client.task_count(), 0)
+
+    # ── 할일 트리 (구글은 1단계만 중첩) ─────────────────────────────────────
+
+    def test_트리_깊은_할일은_내보내지_않는다(self):
+        space = self._space()
+        top = self._todo("설계", workspace_id=space["id"])
+        deep = self._todo("API 초안", parent_id=top["id"])
+
+        report = self._sync()
+
+        self.assertIsNotNone(self.client.find("설계"))
+        self.assertIsNone(self.client.find("API 초안"))
+        self.assertIsNone(self._reload(deep)["google_task_id"])
+        self.assertEqual(self.client.task_count(), 2)  # 워크스페이스 + 바로 아래 할일
+        self.assertEqual(len(report["created_remote"]), 2)
+        # 다시 돌려도 조용하다 — 깊은 할일이 '아직 안 올린 것'으로 매번 잡히지 않는다
+        again = self._sync()
+        self.assertEqual(again["created_remote"], [])
+        self.assertEqual(again["deleted_remote"], [])
+
+    def test_하위로_들어간_할일은_구글에서_내리고_로컬엔_한_벌만_남는다(self):
+        space = self._space()
+        top = self._todo("설계", workspace_id=space["id"])
+        moved = self._todo("API 초안", workspace_id=space["id"])
+        self._sync()
+        self.assertIsNotNone(self.client.find("API 초안"))
+
+        todo_repo.update(self.con, moved["id"], parent_id=top["id"])
+        report = self._sync()
+
+        self.assertIsNone(self.client.find("API 초안"))
+        self.assertIsNone(self._reload(moved)["google_task_id"])
+        self.assertEqual(len(report["deleted_remote"]), 1)
+        self.assertEqual(report["created_local"], [])
+        titles = [todo["title"] for todo in todo_repo.list_by_workspace(self.con, space["id"])]
+        self.assertEqual(sorted(titles), ["API 초안", "설계"])
+
+    def test_지난_회차_기록이_없어도_하위_할일의_짝을_새_할일로_받지_않는다(self):
+        """seen 이 비어 있으면 짝 없는 태스크는 '폰에서 새로 만든 것'으로 읽힌다 —
+        하위로 들어간 할일의 짝은 그 전에 걸러야 로컬에 한 벌이 더 생기지 않는다"""
+        space = self._space()
+        top = self._todo("설계", workspace_id=space["id"])
+        moved = self._todo("API 초안", workspace_id=space["id"])
+        self._sync()
+        todo_repo.update(self.con, moved["id"], parent_id=top["id"])
+        meta_set(self.con, GTASKS_SEEN_KEY, "[]")
+
+        report = self._sync()
+
+        self.assertEqual(report["created_local"], [])
+        self.assertIsNone(self.client.find("API 초안"))
+
+    def test_다시_워크스페이스_바로_아래로_오면_새로_올라간다(self):
+        space = self._space()
+        top = self._todo("설계", workspace_id=space["id"])
+        moved = self._todo("API 초안", workspace_id=space["id"])
+        self._sync()
+        todo_repo.update(self.con, moved["id"], parent_id=top["id"])
+        self._sync()
+
+        todo_repo.update(self.con, moved["id"], parent_id=None)
+        self._sync()
+
+        task = self.client.find("API 초안")
+        self.assertIsNotNone(task)
+        self.assertEqual(self._reload(moved)["google_task_id"], task["id"])
+
+    def test_확인_대기는_구글에서_미완료로_남는다(self):
+        space = self._space()
+        todo = self._todo("설계", workspace_id=space["id"])
+        todo_repo.update(self.con, todo["id"], status=STATUS_REVIEW)
+
+        self._sync()
+
+        self.assertEqual(self.client.find("설계")["status"], GTASKS_STATUS_TODO)
+        self.assertEqual(self._reload(todo)["status"], STATUS_REVIEW)
 
     # ── 내려받기 ──────────────────────────────────────────────────────────
 
