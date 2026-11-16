@@ -222,11 +222,15 @@ python3 dash.py finish [--worktree PATH]     # release only: todo done + server 
 python3 dash.py statusline <session> [--cwd PATH]
 ```
 
-`merge` runs the test suite exactly once, after the target branch has been pulled
-into the worktree, so what is tested is what is merged. If it stops on a
-conflict, resolve the files, `git add` them and run the same command again to
-continue. It does not push, and it does not remove the worktree — `ExitWorktree`
-does that.
+`merge` runs the test suite after the target branch has been pulled into the
+worktree, so what is tested is what is merged. If another session merges into
+the target while the tests run, it pulls the target in again and reruns the
+tests (up to 3 times). If it stops on a conflict in the worktree, resolve the
+files, `git add` them and run the same command again to continue. The main
+checkout is shared by every session and is never left mid-merge: if the final
+merge there still conflicts, `merge` runs `git merge --abort` and stops, and
+running the same command again picks up the new target. It does not push, and
+it does not remove the worktree — `ExitWorktree` does that.
 
 ### Setup, language and autonomous runs
 
