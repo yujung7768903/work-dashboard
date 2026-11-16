@@ -386,52 +386,89 @@
       </dialog>
 
       <!-- 매니저 탭. 보기 전용 — 켜고 끄는 스위치는 없다 (static/js/manager.js).
-           보조 세션이 맨 위 — 지금 움직이는 것부터 본다. 칸마다 10줄씩 페이지로 넘긴다.
-           도구 목록은 보조 세션 바로 아래 — 분류 칩·검색, '연결됨' 줄, 도구마다 한 줄 (보기 전용, 연결 버튼 없음).
-           칸 제목 줄 오른쪽 끝 버튼은 그 칸만 다시 받는다 — 1분 폴링을 기다리지 않고 직접 확인하려고 -->
+           하위 탭 둘: '작업'은 지금 움직이는 것(보조 세션·완료 확인 대기·결정 대기), '설정'은 늘 깔려 있는 것(자동화·도구 목록).
+           보이는 하위 탭의 칸만 받는다 — 보조 세션 목록은 수 초 걸려 설정만 볼 때 기다릴 이유가 없다.
+           작업 탭: 보조 세션은 위에 전체 폭, 그 아래 넓은 화면에서 왼쪽 완료 확인 대기·오른쪽 결정 대기 2컬럼
+           (좁으면 한 컬럼). 보조 세션 자리는 사용자가 정하지 않아 기본으로 둔 것 — .mgr-cols 안팎으로 블록을 옮기면 바뀐다.
+           칸마다 10줄씩 페이지로 넘기고, 칸 제목 줄 오른쪽 끝 버튼은 그 칸만 다시 받는다 -->
       <section id="tab-manager" class="tab" hidden>
-        <h2 class="ar-head mgr-head"><span data-i18n="manager.helpers"></span>
-          <span class="mgr-count" id="mgr-helpers-count"></span>
-          <button type="button" class="icon-btn mgr-refresh" id="mgr-helpers-refresh"
-                  data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
-        <ul id="mgr-helpers" class="mgr-list"></ul>
-        <nav class="mgr-pager" id="mgr-helpers-pager" hidden></nav>
-
-        <h2 class="ar-head mgr-head"><span data-i18n="manager.tools"></span>
-          <span class="mgr-count" id="mgr-tools-count"></span>
-          <button type="button" class="icon-btn mgr-refresh" id="mgr-tools-refresh"
-                  data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
-        <p class="ar-hint" data-i18n="manager.toolsHint"></p>
-        <div class="mgr-tools-bar">
-          <div class="mgr-cats" id="mgr-tools-cats"></div>
-          <label class="mgr-search">
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <path d="m10.5 10.5 3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <nav id="manager-tabs" class="subtabs">
+          <button data-subtab="work" id="mgr-subtab-work" class="active" data-i18n="manager.subtabWork">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <rect x="2.2" y="4.6" width="11.6" height="8.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M5.8 4.6V3.4a.8.8 0 0 1 .8-.8h2.8a.8.8 0 0 1 .8.8v1.2M2.2 8.4h11.6"
+                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
             </svg>
-            <input type="search" id="mgr-tools-search" data-i18n-placeholder="manager.toolSearch"
-                   data-i18n-aria-label="manager.toolSearch">
-          </label>
+          </button>
+          <button data-subtab="setup" id="mgr-subtab-setup" data-i18n="manager.subtabSetup">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="10" cy="4.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="6" cy="11.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </button>
+        </nav>
+
+        <div id="mgr-pane-work" class="mgr-pane">
+          <h2 class="ar-head mgr-head"><span data-i18n="manager.helpers"></span>
+            <span class="mgr-count" id="mgr-helpers-count"></span>
+            <button type="button" class="icon-btn mgr-refresh" id="mgr-helpers-refresh"
+                    data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
+          <ul id="mgr-helpers" class="mgr-list"></ul>
+          <nav class="mgr-pager" id="mgr-helpers-pager" hidden></nav>
+
+          <div class="mgr-cols">
+            <div class="mgr-col">
+              <h2 class="ar-head mgr-head"><span data-i18n="manager.confirms"></span>
+                <span class="mgr-count" id="mgr-confirms-count"></span>
+                <button type="button" class="icon-btn mgr-refresh" id="mgr-confirms-refresh"
+                        data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
+              <p class="ar-hint" data-i18n="manager.confirmsHint"></p>
+              <ul id="mgr-confirms" class="mgr-list"></ul>
+              <nav class="mgr-pager" id="mgr-confirms-pager" hidden></nav>
+            </div>
+            <div class="mgr-col">
+              <h2 class="ar-head mgr-head"><span data-i18n="manager.decisions"></span>
+                <span class="mgr-count" id="mgr-decisions-count"></span>
+                <button type="button" class="icon-btn mgr-refresh" id="mgr-decisions-refresh"
+                        data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
+              <p class="ar-hint" data-i18n="manager.decisionsHint"></p>
+              <ul id="mgr-decisions" class="mgr-list"></ul>
+              <nav class="mgr-pager" id="mgr-decisions-pager" hidden></nav>
+            </div>
+          </div>
         </div>
-        <div class="mgr-connected" id="mgr-tools-connected" hidden></div>
-        <ul id="mgr-tools" class="mgr-list"></ul>
-        <nav class="mgr-pager" id="mgr-tools-pager" hidden></nav>
 
-        <h2 class="ar-head mgr-head"><span data-i18n="manager.automations"></span>
-          <span class="mgr-count" id="mgr-automations-count"></span>
-          <button type="button" class="icon-btn mgr-refresh" id="mgr-automations-refresh"
-                  data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
-        <p class="ar-hint" data-i18n="manager.automationsHint"></p>
-        <ul id="mgr-automations" class="mgr-list"></ul>
-        <nav class="mgr-pager" id="mgr-automations-pager" hidden></nav>
+        <div id="mgr-pane-setup" class="mgr-pane" hidden>
+          <h2 class="ar-head mgr-head"><span data-i18n="manager.automations"></span>
+            <span class="mgr-count" id="mgr-automations-count"></span>
+            <button type="button" class="icon-btn mgr-refresh" id="mgr-automations-refresh"
+                    data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
+          <p class="ar-hint" data-i18n="manager.automationsHint"></p>
+          <ul id="mgr-automations" class="mgr-list"></ul>
+          <nav class="mgr-pager" id="mgr-automations-pager" hidden></nav>
 
-        <h2 class="ar-head mgr-head"><span data-i18n="manager.decisions"></span>
-          <span class="mgr-count" id="mgr-decisions-count"></span>
-          <button type="button" class="icon-btn mgr-refresh" id="mgr-decisions-refresh"
-                  data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
-        <p class="ar-hint" data-i18n="manager.decisionsHint"></p>
-        <ul id="mgr-decisions" class="mgr-list"></ul>
-        <nav class="mgr-pager" id="mgr-decisions-pager" hidden></nav>
+          <h2 class="ar-head mgr-head"><span data-i18n="manager.tools"></span>
+            <span class="mgr-count" id="mgr-tools-count"></span>
+            <button type="button" class="icon-btn mgr-refresh" id="mgr-tools-refresh"
+                    data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
+          <p class="ar-hint" data-i18n="manager.toolsHint"></p>
+          <div class="mgr-tools-bar">
+            <div class="mgr-cats" id="mgr-tools-cats"></div>
+            <label class="mgr-search">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <path d="m10.5 10.5 3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <input type="search" id="mgr-tools-search" data-i18n-placeholder="manager.toolSearch"
+                     data-i18n-aria-label="manager.toolSearch">
+            </label>
+          </div>
+          <div class="mgr-connected" id="mgr-tools-connected" hidden></div>
+          <ul id="mgr-tools" class="mgr-list"></ul>
+          <nav class="mgr-pager" id="mgr-tools-pager" hidden></nav>
+        </div>
       </section>
 
       <section id="tab-usage" class="tab" hidden>
@@ -505,7 +542,7 @@
     </div>
   </dialog>
 
-  <!-- 매니저 탭 결정 대기 줄을 누르면 연다. 매니저 DB 에 기록된 글만 옮긴다 (static/js/manager.js) -->
+  <!-- 매니저 탭 결정 대기·완료 확인 대기 줄을 누르면 연다. 매니저 DB 에 기록된 글만 옮긴다 (static/js/manager.js) -->
   <dialog id="mgr-decision-modal">
     <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
     <div id="mgr-decision-body"></div>

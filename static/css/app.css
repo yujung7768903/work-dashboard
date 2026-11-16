@@ -867,6 +867,15 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 휴대폰 '예약 작업' 목록처럼 한 판에 줄이 쌓인다. 줄 하나 = 왼쪽 이름·설명, 오른쪽
    다음 실행(또는 상태 칩)·마지막 결과. 보기 전용이라 스위치·케밥이 없다 */
 .mgr-head { display: flex; align-items: center; gap: var(--sp-8); }
+/* 하위 탭(작업·설정) 판. 탭 줄이 이미 아래 간격(--gap)을 가져 첫 제목의 위 여백은 겹친다 */
+.mgr-pane[hidden] { display: none; }
+.mgr-pane > .mgr-head:first-child { margin-top: 0; }
+/* 작업 탭 아래 2컬럼 — 왼쪽 완료 확인 대기, 오른쪽 결정 대기. 좁으면 한 컬럼으로 쌓는다.
+   기준 폭은 보드 2컬럼과 같은 1240px(레일 208px 을 뺀 컬럼 약 490px) */
+.mgr-cols { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: var(--gap); }
+@media (min-width: 1240px) {
+  .mgr-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+}
 /* 칸만 다시 받는 버튼. 제목 줄 오른쪽 끝, 받는 동안(disabled) 아이콘이 돈다 */
 .mgr-refresh { margin-left: auto; }
 /* 전역 disabled 는 흐리게 죽인다 — 도는 동안은 진행 표시라 강조색으로 또렷하게 */

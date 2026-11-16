@@ -1,11 +1,19 @@
-// 매니저 탭 — 주기 구조를 사람 말로 옮기고, 세 칸을 한 줄에 하나씩 그리며, 한 칸이 실패해도
-// 나머지는 그리는지 본다. 실행: node tests/manager_tab_check.mjs (tests/test_manager_tab.py 가 부른다)
+// 매니저 탭 — 주기 구조를 사람 말로 옮기고, 칸을 한 줄에 하나씩 그리며, 한 칸이 실패해도
+// 나머지는 그리는지 본다. 하위 탭(작업·설정)은 보이는 탭의 칸만 받는다. 실행: node tests/manager_tab_check.mjs (tests/test_manager_tab.py 가 부른다)
 import assert from "node:assert/strict";
 import { bootKorean } from "./i18n_boot.mjs";
 
 const node = (tag) => {
   const self = {
-    tag, className: "", textContent: "", title: "", children: [], listeners: {},
+    tag, className: "", textContent: "", title: "", children: [], listeners: {}, hidden: false,
+    classList: {
+      toggle(name, on) {
+        const names = new Set(self.className.split(" ").filter(Boolean));
+        if (on) names.add(name);
+        else names.delete(name);
+        self.className = [...names].join(" ");
+      },
+    },
     addEventListener(type, fn) { self.listeners[type] = fn; },
     showModal() { self.open = true; },
     append(...kids) { self.children.push(...kids); },
@@ -76,9 +84,22 @@ const PAYLOAD = {
           session_id: "s1", reply_tail: "…\nA 를 추천해.", reply_from: "transcript",
         },
       },
+    ],
+  },
+  confirms: {
+    error: null,
+    items: [
       {
         id: 61, title: "보조 한도", state: "confirm", detail: null, priority: null, priority_max: 3, since: agoMinutes(90), held: false,
         popup: { detail: null, next_step: null, reason: "master 905f617 반영", session_id: null, reply_tail: null },
+      },
+      {
+        id: 62, title: "블로그 글 반영", state: "confirm", detail: "초안 반영", priority: 2, priority_max: 3, since: agoMinutes(5), held: false,
+        popup: {
+          detail: "초안 반영\n표 너비 수정", next_step: "문체 확인", plan: null, plan_status: null,
+          reason: "PR #12 머지", source_ref: null, open_target: "https://github.com/x/y/pull/12",
+          session_id: "abcdef12-3456", session_name: "보조2 | 블로그", reply_tail: "…\n끝났어.", reply_from: "transcript",
+        },
       },
     ],
   },
@@ -116,6 +137,24 @@ assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kin
 
 await manager.renderManager();
 
+// 처음은 작업 탭 — 그 탭 칸만 받고, 설정 판은 숨긴다
+assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "helpers"], "작업 탭 칸만 받는다");
+assert.equal(elements["mgr-pane-work"].hidden, false);
+assert.equal(elements["mgr-pane-setup"].hidden, true);
+assert.match(elements["mgr-subtab-work"].className, /\bactive\b/);
+assert.doesNotMatch(elements["mgr-subtab-setup"].className, /\bactive\b/);
+assert.equal((elements["mgr-automations"]?.children ?? []).length, 0, "설정 탭 칸은 아직 안 그린다");
+
+// 설정 탭으로 바꾸면 그 탭 칸(자동화·도구)만 바로 받는다. 탭 버튼은 svg 를 품어 closest 로 버튼을 찾는다
+fetched.length = 0;
+elements["manager-tabs"].listeners.click({ target: { closest: () => ({ dataset: { subtab: "setup" } }) } });
+await manager.selectManagerSubtab("setup"); // 이미 그 탭이면 다시 받지 않는다
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.deepEqual([...fetched].sort(), ["automations", "tools"], "설정 탭 칸만 받는다");
+assert.equal(elements["mgr-pane-work"].hidden, true);
+assert.equal(elements["mgr-pane-setup"].hidden, false);
+assert.match(elements["mgr-subtab-setup"].className, /\bactive\b/);
+
 const [header, ...rows] = elements["mgr-automations"].children;
 // 세 칸 표: 주기 / 자동화 내용 / 수행 시간 — 머리줄 하나 + 항목마다 한 줄
 assert.deepEqual(header.children.map((cell) => cell.textContent), ["주기", "자동화 내용", "수행 시간"]);
@@ -142,7 +181,7 @@ assert.match(helperRows[0].textContent, /claude agents 응답 없음/);
 const decisionRows = elements["mgr-decisions"].children;
 // 결정 대기 제목 칸은 '#번호'·우선순위 배지·제목 세 조각이다
 const titleText = (title) => (title.children.length ? title.children.map((kid) => kid.textContent).join(" ") : title.textContent);
-assert.equal(decisionRows.length, 2);
+assert.equal(decisionRows.length, 1, "결정 대기 칸에는 열린 결정만 — 확인 대기는 옆 칸");
 const texts = (row) => {
   const [main, side] = row.children;
   return [titleText(main.children[0]), main.children[1].textContent, side.children[0].textContent, side.children[1].textContent];
@@ -152,8 +191,6 @@ assert.deepEqual(texts(decisionRows[0]), ["#87 2/3 우선순위 출처", "A 추�
 const badge = decisionRows[0].children[0].children[0].children[1];
 assert.equal(badge.className, "todo-priority");
 assert.equal(badge.title, "우선순위 2 / 열린 할일 중 최고 3");
-// 우선순위가 없으면 보드처럼 '-'
-assert.equal(texts(decisionRows[1])[0], "#61 - 보조 한도");
 
 // 결정 대기 줄을 누르면 팝업 — 지금까지 한 일 / 결정할 것, 기록된 글만
 decisionRows[0].listeners.click();
@@ -169,13 +206,33 @@ assert.match(sectionText(body[2]), /A 와 B 중 고르기/);
 assert.match(sectionText(body[2]), /연결 세션의 마지막 답 \(끝부분\)/);
 assert.match(sectionText(body[2]), /A 를 추천해/);
 
-// 확인 대기는 '확인할 것', 완료 근거는 한 일 쪽. 비어 있는 칸은 지어내지 않고 '기록 없음'
-const confirmSections = manager.decisionSections(PAYLOAD.decisions.items[1]);
-assert.deepEqual(confirmSections.map((section) => section.title), ["지금까지 한 일", "확인할 것"]);
-decisionRows[1].listeners.click();
+// 결정에도 연결 세션 칸 — 이름이 없으면 세션 id 앞 8자리. 마지막 답은 결정할 것 쪽에만
+assert.equal(body[3].children[0].textContent, "연결 세션");
+assert.equal(sectionText(body[3]), "연결 세션|s1");
+
+// 완료 확인 대기 — 결정 대기와 같은 줄 모양, 같은 팝업. 우선순위가 없으면 보드처럼 '-'
+const confirmRows = elements["mgr-confirms"].children;
+assert.equal(elements["mgr-confirms-count"].textContent, "2");
+assert.deepEqual(texts(confirmRows[0]), ["#61 - 보조 한도", "", "확인 대기", "1h 전"]);
+assert.deepEqual(texts(confirmRows[1]), ["#62 2/3 블로그 글 반영", "초안 반영", "확인 대기", "5m 전"]);
+// 팝업: 끝낸 내용 / 작업 사항 / 다음 단계 / 산출물(있을 때만) / 연결 세션(이름·마지막 답)
+confirmRows[1].listeners.click();
 const confirmBody = elements["mgr-decision-body"].children;
-assert.match(sectionText(confirmBody[1]), /완료 근거\|master 905f617 반영/);
-assert.equal(sectionText(confirmBody[2]), "확인할 것|기록 없음");
+assert.equal(confirmBody[0].children[0].textContent, "#62 블로그 글 반영");
+assert.deepEqual(confirmBody.slice(1).map((section) => section.children[0].textContent),
+  ["끝낸 내용", "작업 사항", "다음 단계", "산출물", "연결 세션"]);
+assert.equal(sectionText(confirmBody[1]), "끝낸 내용|PR #12 머지");
+assert.match(sectionText(confirmBody[2]), /표 너비 수정/);
+assert.equal(sectionText(confirmBody[3]), "다음 단계|문체 확인");
+// 산출물 URL 은 새 탭 링크
+const outputLink = confirmBody[4].children[1].children[0];
+assert.equal(outputLink.href, "https://github.com/x/y/pull/12");
+assert.equal(outputLink.target, "_blank");
+assert.match(sectionText(confirmBody[5]), /^연결 세션\|보조2 \| 블로그\|연결 세션의 마지막 답 \(끝부분\)\|…\n끝났어\.$/);
+// 비어 있는 칸은 지어내지 않고 '기록 없음', 산출물·연결 세션은 없으면 칸째 뺀다
+confirmRows[0].listeners.click();
+const bareBody = elements["mgr-decision-body"].children;
+assert.deepEqual(bareBody.slice(1).map(sectionText), ["끝낸 내용|master 905f617 반영", "작업 사항|기록 없음", "다음 단계|기록 없음"]);
 
 // 도구 목록 — 용도 칩(받은 용도만)·'연결됨' 줄(개수만)·줄마다 이름/설명(같은 줄)/용도/제작 주체/상태
 const chipTexts = () => elements["mgr-tools-cats"].children.map((chip) => chip.textContent);
@@ -228,7 +285,12 @@ const autoTemplate = PAYLOAD.automations.items[0];
 PAYLOAD.automations.items = Array.from({ length: 23 }, (_, index) => ({ ...autoTemplate, name: `자동화 ${index + 1}` }));
 PAYLOAD.decisions.items = Array.from({ length: 15 }, (_, index) => ({ ...PAYLOAD.decisions.items[0], id: index + 1 }));
 PAYLOAD.helpers = { error: null, items: [{ name: "보조1 | 일", status: "작업 중", doing: "테스트", percent: 40, moved_at: agoMinutes(1) }] };
+// 지금은 설정 탭 — 폴링은 그 탭 칸만 받는다. 작업 탭 칸은 탭을 오갈 때 받는다(숨은 판도 그린 것은 남는다)
+fetched.length = 0;
 await manager.renderManager();
+assert.deepEqual([...fetched].sort(), ["automations", "tools"], "폴링도 보이는 탭 칸만");
+await manager.selectManagerSubtab("work");
+await manager.selectManagerSubtab("setup");
 const autoList = () => elements["mgr-automations"].children;
 const autoNames = () => autoList().slice(1).map((row) => row.children[1].children[0].textContent);
 const pager = (part) => elements[`mgr-${part}-pager`];

@@ -339,13 +339,28 @@ class DecisionsTest(unittest.TestCase):
         con.commit()
         con.close()
 
-    def test_lists_open_decisions_and_confirm_waits_by_priority(self):
+    def test_lists_open_decisions_only_by_priority(self):
         items = manager_panel.decisions(NOW, manager_home=self.home)
-        self.assertEqual([item["title"] for item in items], ["확인 대기", "열린 결정", "미룬 결정"])
-        self.assertEqual([item["state"] for item in items], ["confirm", "decision", "decision"])
-        self.assertEqual(items[1]["detail"], "고를 것")
-        self.assertTrue(items[2]["held"])
-        self.assertFalse(items[1]["held"])
+        self.assertEqual([item["title"] for item in items], ["열린 결정", "미룬 결정"])
+        self.assertEqual([item["state"] for item in items], ["decision", "decision"])
+        self.assertEqual(items[0]["detail"], "고를 것")
+        self.assertTrue(items[1]["held"])
+        self.assertFalse(items[0]["held"])
+
+    def test_confirms_list_confirm_waits_of_any_kind(self):
+        # 확인 대기는 결정(decision)이든 직접 할 일(action)이든 confirm 상태면 모두. 시각은 끝낸 시각(updated_at)
+        con = sqlite3.connect(self.db)
+        con.execute(
+            "INSERT INTO tasks (id, title, kind, priority, status, created_at, updated_at)"
+            " VALUES (6, '결정 확인 대기', 'decision', 1, 'confirm', '2026-11-09T10:00:00', '2026-11-11T13:00:00')"
+        )
+        con.commit()
+        con.close()
+        items = manager_panel.confirms(NOW, manager_home=self.home)
+        self.assertEqual([item["id"] for item in items], [3, 6])
+        self.assertEqual({item["state"] for item in items}, {"confirm"})
+        self.assertEqual(items[0]["popup"]["reason"], "master abc123 반영")
+        self.assertEqual(items[0]["since"], manager_panel._utc_iso("2026-11-11T12:00:00"))
 
     def test_priority_max_counts_open_tasks_only(self):
         # 보드의 '2/3' 분모처럼 열린 할일(open·confirm) 중 최고. 닫힌 할일은 아무리 높아도 빼고,
@@ -364,10 +379,36 @@ class DecisionsTest(unittest.TestCase):
         # 목록 줄은 첫 줄만, 팝업은 전문
         self.assertEqual(popup["detail"], "고를 것\n둘째 줄")
         self.assertEqual(popup["next_step"], "A·B 중 고르기")
-        self.assertEqual(items[3]["popup"]["reason"], "master abc123 반영")
         # 없는 칸(plan 등)은 None — 지어내지 않는다
         self.assertIsNone(popup["plan"])
         self.assertIsNone(items[5]["popup"]["reply_tail"])
+        self.assertIsNone(items[5]["popup"]["session_name"])
+
+    def test_popup_session_name_from_transcript(self):
+        # /rename 이름이 자동 제목보다 앞서고, 나중 이름이 이긴다 (매니저 session_name 과 같은 순서)
+        root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(root, "proj"))
+        lines = [
+            {"type": "ai-title", "aiTitle": "자동 제목"},
+            {"type": "custom-title", "customTitle": "보조1 | 옛 이름"},
+            {"type": "user", "message": {"content": "해 줘"}},
+            {"type": "custom-title", "customTitle": "보조1 | 새 이름"},
+        ]
+        path = os.path.join(root, "proj", "sess-1.jsonl")
+        with open(path, "w") as handle:
+            handle.write("\n".join(json.dumps(line, ensure_ascii=False) for line in lines) + "\n")
+        from app.services import transcript
+        old_find = transcript.find_path
+        transcript.find_path = lambda sid, root_=None: old_find(sid, root)
+        self.addCleanup(setattr, transcript, "find_path", old_find)
+        item = next(item for item in manager_panel.decisions(NOW, manager_home=self.home) if item["id"] == 1)
+        self.assertEqual(item["popup"]["session_name"], "보조1 | 새 이름")
+        # 이름을 붙인 적 없는 세션은 자동 제목
+        with open(path, "w") as handle:
+            handle.write(json.dumps(lines[0], ensure_ascii=False) + "\n")
+        os.utime(path, (1, 1))
+        item = next(item for item in manager_panel.decisions(NOW, manager_home=self.home) if item["id"] == 1)
+        self.assertEqual(item["popup"]["session_name"], "자동 제목")
 
     def test_popup_reply_tail_from_transcript_end(self):
         root = tempfile.mkdtemp()
@@ -409,6 +450,7 @@ class DecisionsTest(unittest.TestCase):
         os.chmod(self.db, 0o444)
         self.addCleanup(os.chmod, self.db, 0o644)
         manager_panel.decisions(NOW, manager_home=self.home)
+        manager_panel.confirms(NOW, manager_home=self.home)
         self.assertEqual(os.path.getmtime(self.db), before)
         # 읽기 전용 연결은 저널·WAL 파일도 만들지 않는다
         self.assertEqual(os.listdir(os.path.dirname(self.db)), ["manager.db"])
@@ -429,6 +471,7 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(payload["tools"], {"items": [], "error": None})
         self.assertIsNone(payload["automations"]["error"])
         self.assertIn("manager.db", payload["decisions"]["error"])
+        self.assertIn("manager.db", payload["confirms"]["error"])
 
     def test_helpers_keep_manager_fields(self):
         rows = [{"name": "보조1 | 일", "status": "작업 중", "percent": 40, "percent_at": None,
