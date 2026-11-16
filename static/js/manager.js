@@ -1,6 +1,7 @@
 // 매니저 탭 — 휴대폰 '예약 작업' 목록처럼 한 줄에 하나씩, 보기 전용.
-// 네 칸(보조 세션·도구 목록·자동화·결정 대기)은 서버에서 따로 받는다. 보조 세션 목록은 claude agents 를
-// 부르느라 수 초 걸려, 한 번에 받으면 나머지 두 칸까지 그만큼 늦게 뜬다 (app/services/manager_panel.py)
+// 하위 탭 둘: '작업'(보조 세션·완료 확인 대기·결정 대기)과 '설정'(자동화·도구 목록).
+// 칸은 서버에서 따로 받는다. 보조 세션 목록은 claude agents 를 부르느라 수 초 걸려, 한 번에 받으면
+// 나머지 칸까지 그만큼 늦게 뜬다 (app/services/manager_panel.py). 보이는 하위 탭의 칸만 받고 폴링한다
 import * as api from "./api.js";
 import { language, t } from "./i18n.js";
 import { formatAge, notePart } from "./sessions.js";
@@ -8,8 +9,14 @@ import { linkify } from "./linkify.js";
 import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
 import { priorityBadge } from "./priority.js";
 
-// 화면 순서 — 보조 세션이 맨 위 (static/index.html)
-const PARTS = ["helpers", "tools", "automations", "decisions"];
+// 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
+const SUBTABS = {
+  work: ["helpers", "confirms", "decisions"],
+  setup: ["automations", "tools"],
+};
+const PARTS = Object.values(SUBTABS).flat();
+// 보드 하위 탭처럼 고른 것은 이 화면에 있는 동안만 기억한다 (main.js)
+let activeSubtab = "work";
 // 칸마다 한 번에 보이는 줄 수. 넘치면 칸 아래 페이지 넘김으로 본다 — 자동화만 27줄이라 아래 칸이 밀려났다
 export const PAGE_SIZE = 10;
 // 칸마다 지금 보는 페이지(0부터)와 마지막으로 받은 응답. 페이지를 넘길 때는 다시 받지 않는다
@@ -52,13 +59,47 @@ export function stopManagerPolling() {
 export async function renderManager() {
   bindToolSearch();
   bindRefresh();
-  // 첫 진입에만 칸마다 '불러오는 중'. 보조 세션 칸은 수 초 걸려 빈 칸이 '없음'으로 읽힌다.
-  // 폴링 재렌더 때는 지금 목록을 둔 채 바꾼다 — 1분마다 깜빡이지 않게
-  PARTS.forEach((part) => {
+  bindSubtabs();
+  showSubtab();
+  await renderParts(SUBTABS[activeSubtab]);
+}
+
+// 첫 진입에만 칸마다 '불러오는 중'. 보조 세션 칸은 수 초 걸려 빈 칸이 '없음'으로 읽힌다.
+// 폴링 재렌더 때는 지금 목록을 둔 채 바꾼다 — 1분마다 깜빡이지 않게
+async function renderParts(parts) {
+  parts.forEach((part) => {
     const list = document.getElementById(`mgr-${part}`);
     if (!list.children.length) list.replaceChildren(note(t("common.loading")));
   });
-  await Promise.all(PARTS.map((part) => renderPart(part)));
+  await Promise.all(parts.map((part) => renderPart(part)));
+}
+
+// ── 하위 탭 — 작업 · 설정 ─────────────────────────────────────────────────
+
+let subtabsBound = false;
+function bindSubtabs() {
+  if (subtabsBound) return;
+  subtabsBound = true;
+  // 버튼이 아이콘 svg 를 품고 있어 event.target 이 버튼이 아닐 수 있다
+  document.getElementById("manager-tabs").addEventListener("click", (event) => {
+    const name = event.target.closest?.("button")?.dataset.subtab;
+    if (name) selectManagerSubtab(name);
+  });
+}
+
+// 하위 탭을 바꾸면 그 탭의 칸을 바로 받는다. 폴링(1분)은 다음 차례부터 이 탭 칸만 돈다
+export function selectManagerSubtab(name) {
+  if (!(name in SUBTABS) || name === activeSubtab) return Promise.resolve();
+  activeSubtab = name;
+  showSubtab();
+  return renderParts(SUBTABS[name]);
+}
+
+function showSubtab() {
+  Object.keys(SUBTABS).forEach((name) => {
+    document.getElementById(`mgr-subtab-${name}`).classList.toggle("active", name === activeSubtab);
+    document.getElementById(`mgr-pane-${name}`).hidden = name !== activeSubtab;
+  });
 }
 
 async function renderPart(part) {
@@ -188,6 +229,7 @@ const EMPTY = {
   helpers: () => t("manager.empty.helpers"),
   tools: () => t("manager.empty.tools"),
   decisions: () => t("manager.empty.decisions"),
+  confirms: () => t("manager.empty.confirms"),
 };
 
 const ROW_BUILDERS = {
@@ -195,6 +237,7 @@ const ROW_BUILDERS = {
   helpers: helperRow,
   tools: toolRow,
   decisions: decisionRow,
+  confirms: decisionRow,
 };
 
 // ── 줄 하나: 왼쪽 위 이름·아래 설명, 오른쪽 위 주 값·아래 보조 값 ─────────────────
@@ -399,33 +442,57 @@ function toolRow(item) {
   return line;
 }
 
-// ── 결정 대기 팝업 — 지금까지 한 일 / 결정(확인)할 것 ────────────────────────────
-// 매니저 DB 와 연결 세션의 마지막 답에 기록된 글만 옮긴다. 요약·추천을 화면이 지어내지 않는다
+// ── 결정 대기·완료 확인 대기 팝업 ─────────────────────────────────────────────
+// 매니저 DB 와 연결 세션의 마지막 답에 기록된 글만 옮긴다. 요약·추천을 화면이 지어내지 않는다.
+// 결정: 지금까지 한 일 / 결정할 것. 완료 확인: 끝낸 내용 / 작업 사항 / 다음 단계 / 산출물(있을 때만)
 
 export function decisionSections(item) {
   const popup = item.popup || {};
-  const confirm = item.state === "confirm";
-  const done = [{ text: popup.detail }];
-  if (popup.plan) {
-    done.push({ label: t("manager.popupPlan", { status: popup.plan_status || "-" }), text: popup.plan });
-  }
-  if (confirm && popup.reason) done.push({ label: t("manager.popupResult"), text: popup.reason });
-  const decide = [{ text: popup.next_step }];
-  if (popup.open_target) decide.push({ label: t("manager.popupOutput"), text: popup.open_target });
-  if (popup.reply_tail) {
-    const head = popup.reply_from === "dashboard_head";
-    decide.push({
-      label: head ? t("manager.popupReplyHead") : t("manager.popupReply"),
-      text: popup.reply_tail,
-      quote: true,
-    });
-  }
-  const sections = [
-    { title: t("manager.popupDone"), parts: done },
-    { title: confirm ? t("manager.popupConfirm") : t("manager.popupDecide"), parts: decide },
-  ];
+  const sections = item.state === "confirm" ? confirmSections(popup) : openSections(popup);
+  if (popup.session_id) sections.push(sessionSection(popup, item.state === "confirm"));
   if (popup.source_ref) sections.push({ title: t("manager.popupSource"), parts: [{ text: popup.source_ref }] });
   return sections;
+}
+
+function openSections(popup) {
+  const decide = [{ text: popup.next_step }];
+  if (popup.open_target) decide.push({ label: t("manager.popupOutput"), text: popup.open_target });
+  // 결정 사항은 보통 답 끝에 있어 결정할 것 쪽에 둔다
+  if (popup.reply_tail) decide.push(replyPart(popup));
+  return [
+    { title: t("manager.popupDone"), parts: [{ text: popup.detail }, ...planPart(popup)] },
+    { title: t("manager.popupDecide"), parts: decide },
+  ];
+}
+
+function confirmSections(popup) {
+  const sections = [
+    { title: t("manager.popupFinished"), parts: [{ text: popup.reason }] },
+    { title: t("manager.popupWork"), parts: [{ text: popup.detail }, ...planPart(popup)] },
+    { title: t("manager.popupNext"), parts: [{ text: popup.next_step }] },
+  ];
+  if (popup.open_target) sections.push({ title: t("manager.popupOutput"), parts: [{ text: popup.open_target }] });
+  return sections;
+}
+
+function planPart(popup) {
+  return popup.plan ? [{ label: t("manager.popupPlan", { status: popup.plan_status || "-" }), text: popup.plan }] : [];
+}
+
+// 연결 세션 — 이름(없으면 세션 id 앞 8자리). 완료 확인은 마지막 답도 여기 붙인다
+function sessionSection(popup, withReply) {
+  const parts = [{ text: popup.session_name || popup.session_id.slice(0, 8) }];
+  if (withReply && popup.reply_tail) parts.push(replyPart(popup));
+  return { title: t("manager.popupSession"), parts };
+}
+
+function replyPart(popup) {
+  const head = popup.reply_from === "dashboard_head";
+  return {
+    label: head ? t("manager.popupReplyHead") : t("manager.popupReply"),
+    text: popup.reply_tail,
+    quote: true,
+  };
 }
 
 function openDecision(item) {

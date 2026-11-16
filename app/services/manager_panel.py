@@ -1,7 +1,7 @@
-"""매니저 탭 — 사용자가 손대지 않아도 도는 자동화, 떠 있는 보조 세션, 매니저가 쓰는 도구(manager_tools.py), 사용자 결정 대기.
+"""매니저 탭 — 사용자가 손대지 않아도 도는 자동화, 떠 있는 보조 세션, 매니저가 쓰는 도구(manager_tools.py), 사용자 결정 대기·완료 확인 대기.
 
 목록은 실제 설정에서 읽는다. 자동화는 crontab 과 매니저 점검 훅의 상수, 보조 세션은
-`manager.py 보조 --json`, 결정 대기는 매니저 DB(state/manager.db)다. 매니저 DB 는 읽기
+`manager.py 보조 --json`, 결정 대기·완료 확인 대기는 매니저 DB(state/manager.db)다. 매니저 DB 는 읽기
 전용(mode=ro)으로만 열고 여기로 옮겨 담지 않는다 — 정본은 매니저 쪽 하나여야 두 곳이
 어긋나지 않는다.
 
@@ -25,7 +25,7 @@ from app.constants import (
 )
 from app.services import cron, manager_tools
 
-PARTS = ("automations", "helpers", "tools", "decisions")
+PARTS = ("automations", "helpers", "tools", "decisions", "confirms")
 STATUS_OK = "ok"
 STATUS_FAIL = "fail"
 STATUS_NODATA = "nodata"
@@ -44,7 +44,7 @@ CONFIRM_STATUS = "confirm"
 
 
 def snapshot(part=None, now=None, con=None, **sources):
-    """part 하나만, 없으면 셋 다. con 은 대시보드 DB(자율 실행 tick 기록을 읽는다).
+    """part 하나만, 없으면 전부. con 은 대시보드 DB(자율 실행 tick 기록을 읽는다).
     sources 는 테스트 주입점(crontab_text, manager_home, helpers_fn, tools_external_fn)"""
     names = (part,) if part else PARTS
     unknown = [name for name in names if name not in PARTS]
@@ -60,6 +60,7 @@ def snapshot(part=None, now=None, con=None, **sources):
             sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
         ),
         "decisions": lambda: decisions(now, con=con, **_pick(sources, "manager_home")),
+        "confirms": lambda: confirms(now, con=con, **_pick(sources, "manager_home")),
     }
     return {name: _section(builders[name]) for name in names}
 
@@ -776,7 +777,17 @@ REPLY_SCAN_BYTES = 512 * 1024
 
 
 def decisions(now, manager_home=None, con=None):
-    """열린 결정(decision)과 사용자 확인 대기(confirm). 읽기 전용 연결로만 읽는다.
+    """열린 결정(decision). 확인 대기는 confirms 칸이 따로 든다"""
+    return _tasks(now, "status=? AND kind=?", (OPEN_STATUS, DECISION_KIND), manager_home, con)
+
+
+def confirms(now, manager_home=None, con=None):
+    """사용자 확인 대기(confirm) — 세션·매니저가 끝냈다고 올린 일. 종류(decision·action)를 가리지 않는다"""
+    return _tasks(now, "status=?", (CONFIRM_STATUS,), manager_home, con)
+
+
+def _tasks(now, where, params, manager_home, con):
+    """매니저 DB 할일을 목록 줄 + 팝업 재료로. 읽기 전용 연결로만 읽는다.
     con(대시보드 DB)이 있으면 연결 세션의 마지막 답 끝부분을 팝업 재료로 붙인다"""
     home = manager_home or globals()["manager_home"]()
     path = os.path.join(home, "state", "manager.db")
@@ -793,12 +804,10 @@ def decisions(now, manager_home=None, con=None):
             if name in columns
         ]
         rows = manager_con.execute(
-            f"SELECT {', '.join(wanted)} FROM tasks"
-            " WHERE (status=? AND kind=?) OR status=?"
-            " ORDER BY priority DESC, created_at, id",
-            (OPEN_STATUS, DECISION_KIND, CONFIRM_STATUS),
+            f"SELECT {', '.join(wanted)} FROM tasks WHERE {where} ORDER BY priority DESC, created_at, id",
+            params,
         ).fetchall()
-        # 우선순위 '2/3' 의 분모. 보드처럼 열린 할일 전체 기준 — 결정 대기에 안 뜨는 직접 할 일(action)도 센다
+        # 우선순위 '2/3' 의 분모. 보드처럼 열린 할일 전체 기준 — 어느 칸에도 안 뜨는 직접 할 일(action)도 센다
         top = (
             manager_con.execute(
                 "SELECT MAX(priority) FROM tasks WHERE status IN (?, ?)", (OPEN_STATUS, CONFIRM_STATUS)
@@ -814,6 +823,7 @@ def decisions(now, manager_home=None, con=None):
     for row in rows:
         popup = {name: _get(row, name) for name in POPUP_FIELDS}
         popup["reply_tail"], popup["reply_from"] = _last_reply(popup["session_id"], replies)
+        popup["session_name"] = _session_name(popup["session_id"])
         items.append(
             {
                 "id": row["id"],
@@ -828,6 +838,47 @@ def decisions(now, manager_home=None, con=None):
             }
         )
     return items
+
+
+_name_cache = {}
+
+
+def _session_name(session_id):
+    """연결 세션 이름 — /rename 이름 → 자동 제목 (매니저 manager.py session_name 과 같은 순서).
+    둘 다 없거나 transcript 를 못 찾으면 None — 화면이 세션 id 앞부분을 대신 쓴다.
+    이름 줄은 transcript 어디에나 끼므로 전체를 훑되, 파일이 그대로면 다시 읽지 않는다"""
+    if not session_id:
+        return None
+    from app.services import transcript
+
+    path = transcript.find_path(session_id)
+    if not path:
+        return None
+    try:
+        stamp = os.path.getmtime(path)
+        cached = _name_cache.get(path)
+        if cached and cached[0] == stamp:
+            return cached[1]
+        custom = ai = None
+        with open(path, "rb") as handle:
+            for line in handle:
+                if b'"custom-title"' in line:
+                    custom = _json_field(line, "customTitle") or custom
+                elif b'"ai-title"' in line:
+                    ai = _json_field(line, "aiTitle") or ai
+    except OSError:
+        return None
+    name = custom or ai
+    _name_cache[path] = (stamp, name)
+    return name
+
+
+def _json_field(line, key):
+    try:
+        entry = json.loads(line)
+    except ValueError:
+        return None
+    return entry.get(key) if isinstance(entry, dict) else None
 
 
 def _get(row, key):

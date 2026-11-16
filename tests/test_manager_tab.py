@@ -78,14 +78,17 @@ class ManagerTabTest(unittest.TestCase):
         done = subprocess.run(["node", CHECK], capture_output=True, text=True)
         self.assertEqual(done.returncode, 0, done.stderr)
 
-    def test_helpers_section_first(self):
-        # 보조 세션이 맨 위, 도구 목록이 바로 아래, 칸마다 바로 아래 페이지 넘김
+    def test_subtab_layout(self):
+        # 작업 탭: 보조 세션(전체 폭) → 2컬럼(왼쪽 완료 확인 대기, 오른쪽 결정 대기).
+        # 설정 탭: 자동화 → 도구 목록. 칸마다 바로 아래 페이지 넘김
         html = open(os.path.join(os.path.dirname(HERE), "static", "index.html"), encoding="utf-8").read()
-        parts = ("helpers", "tools", "automations", "decisions")
-        order = [html.index(f'id="mgr-{part}"') for part in parts]
+        work, setup = html.index('id="mgr-pane-work"'), html.index('id="mgr-pane-setup"')
+        cols = html.index('class="mgr-cols"')
+        self.assertLess(html.index('id="manager-tabs"'), work)
+        order = [html.index(f'id="mgr-{part}"') for part in ("helpers", "confirms", "decisions", "automations", "tools")]
         self.assertEqual(order, sorted(order))
-        self.assertLess(html.index('id="mgr-helpers-pager"'), html.index('id="mgr-tools-count"'))
-        for part in parts:
+        self.assertTrue(work < order[0] < cols < order[1] < order[2] < setup < order[3])
+        for part in ("helpers", "confirms", "decisions", "automations", "tools"):
             self.assertLess(html.index(f'id="mgr-{part}"'), html.index(f'id="mgr-{part}-pager"'))
 
     def test_current_automations_use_one_format(self):
