@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { t } from "./i18n.js";
 import { linkify } from "./linkify.js";
 import { decisionCard } from "./decision-answer.js";
+import { permissionCard } from "./permission-answer.js";
 
 const POLL_INTERVAL_MS = 2000;
 const WORKING = "working";
@@ -45,6 +46,8 @@ let timer = null;
 // 팝업 세션 탭의 답 기다리기 폴링. 첫 전송 뒤에만 돈다
 let detailTimer = null;
 const DETAIL_POLL_MS = 3000;
+// 권한 답을 넘긴 뒤 칸을 다시 읽는 지연. 매니저 훅이 결정 파일을 1초마다 읽고 요청을 닫는다
+const PERMISSION_RELOAD_MS = 1500;
 const SENT_PREVIEW_CHARS = 60;
 // 팝업에서 할일을 고치면 뒤에 깔린 보드도 다시 그려야 한다. 여기서 main.js·board.js 를
 // 가져오면 팝업 렌더만 node 로 검증하는 테스트가 탭 초기화까지 끌고 들어와 못 돈다 —
@@ -223,9 +226,45 @@ function todoBlock(todo) {
   // 결정 칸은 팝업을 여는 동안 한 번 받아 둔다 — 수정했다 돌아와도 같은 칸(입력 중인 의견 포함)을 다시 끼운다
   block.decisionSlot = element("div", "dlg-decisions");
   block.decisionSlot.hidden = true;
+  // 권한 요청 칸도 같은 이유로 한 번 받아 둔다. 결정보다 위 — 권한 창은 세션을 지금 멈춰 세우고, 매니저 훅은
+  // 9분만 기다린 뒤 화면에서 닿지 않는 터미널 프롬프트로 넘긴다
+  block.permissionSlot = element("div", "dlg-permissions");
+  block.permissionSlot.hidden = true;
   fillTodoBlock(block, todo);
+  loadPermissions(block.permissionSlot, todo.id);
   loadDecisions(block.decisionSlot, todo.id);
   return block;
+}
+
+// 그 할일을 잡은 세션이 기다리는 권한 — 도구·명령 전문·대상·기다린 시간. 세션 목록(claude agents)을 거쳐 와서
+// 개요와 따로 받는다. 기다리는 권한이 없으면 칸을 숨긴 채 둔다
+function loadPermissions(slot, todoId) {
+  api
+    .getTodoPermissions(todoId)
+    .then((payload) => fillPermissions(slot, todoId, payload?.items))
+    .catch((error) => {
+      slot.hidden = false;
+      slot.replaceChildren(element("p", "muted", t("permission.loadFailed", { error: error.message })));
+    });
+}
+
+function fillPermissions(slot, todoId, items) {
+  const list = Array.isArray(items) ? items : [];
+  slot.hidden = !list.length;
+  if (!list.length) {
+    slot.replaceChildren();
+    return;
+  }
+  const reload = () => loadPermissions(slot, todoId);
+  const label = element("p", "label", t("permission.title"));
+  label.append(element("span", "dlg-badge open", String(list.length)));
+  // 칸은 팝업을 열 때 한 번 읽는다 — 그 뒤에 온 요청·닫힌 요청은 이 버튼으로 다시 읽는다
+  const refresh = element("button", "perm-reload", t("permission.reload"));
+  refresh.type = "button";
+  refresh.addEventListener("click", reload);
+  label.append(refresh);
+  const onAnswered = () => setTimeout(reload, PERMISSION_RELOAD_MS);
+  slot.replaceChildren(label, ...list.map((item) => permissionCard(item, { onAnswered })));
 }
 
 // 그 할일에 붙은 결정 — 사용자 답을 기다리는 것과 이미 답한 것(다시 답할 수 있다). 매니저 CLI 를 거쳐 와서
@@ -280,6 +319,7 @@ function fillTodoBlock(block, todo) {
   title.append(editButton(block, todo));
   block.replaceChildren(
     title,
+    ...(block.permissionSlot ? [block.permissionSlot] : []),
     ...(block.decisionSlot ? [block.decisionSlot] : []),
     historySection(events(todo, TIME_FIELDS)),
     conditionSection(todo),

@@ -175,6 +175,51 @@ def pending_question(claude_session_id, root=None):
     return None
 
 
+def pending_tool_uses(claude_session_id, root=None):
+    """결과(tool_result)가 아직 없는 도구 호출 — 권한 창이 막고 있는 호출은 여기 있다. 먼저 부른 것부터.
+
+    [{"tool_use_id", "name", "input", "at"}] — input 은 도구 입력 원문 그대로(명령 전문). 꼬리 한 창만 읽는다.
+    사람이 친 지시가 나오면 그 앞의 미응답 호출은 버린다 — 세션이 죽었다 재개되면 끊긴 호출이 결과 없이
+    남는데, 그건 지금 기다리는 권한이 아니다. AskUserQuestion 은 권한이 아니라 질문이라 빼고(세션 탭 몫)
+    """
+    path = find_path(claude_session_id, root)
+    if not path:
+        return []
+    pending = {}
+    for line in tail(path):
+        entry = _entry(line)
+        if not entry:
+            continue
+        if _is_prompt(entry):
+            pending.clear()
+            continue
+        for block in _blocks(entry):
+            kind = block.get("type")
+            if kind == TOOL_USE_BLOCK and entry.get("type") == ASSISTANT_ROLE and block.get("name") != ASK_TOOL:
+                pending[block.get("id") or ""] = {
+                    "tool_use_id": block.get("id") or "",
+                    "name": block.get("name") or "",
+                    "input": block.get("input") or {},
+                    "at": entry.get("timestamp") or "",
+                }
+            elif kind == TOOL_RESULT_BLOCK:
+                pending.pop(block.get("tool_use_id"), None)
+    return list(pending.values())
+
+
+def _is_prompt(entry):
+    """사람이 친 지시 한 줄인가. 도구 결과·훅 주입(isMeta)·리마인더는 아니다"""
+    if entry.get("type") != USER_ROLE or entry.get("isMeta"):
+        return False
+    content = (entry.get("message") or {}).get("content")
+    if isinstance(content, list) and any(
+        isinstance(block, dict) and block.get("type") == TOOL_RESULT_BLOCK for block in content
+    ):
+        return False
+    text = _text(content)
+    return bool(text) and not text.startswith(SKIP_PREFIXES)
+
+
 def _entry(line):
     """transcript 한 줄을 dict 로. 서브에이전트 줄과 깨진 줄은 None"""
     try:

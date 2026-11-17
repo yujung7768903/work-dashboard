@@ -45,6 +45,7 @@ from app.services import (
     gtasks,
     gtasks_setup,
     manager_panel,
+    permission_answer,
     planning,
     precondition,
     release,
@@ -63,8 +64,8 @@ STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
 API_PREFIX = "/api/"
 NONE_LITERAL = "none"
-# 이 PC 에서 온 요청만 받는 POST. 둘 다 도구가 달린 에이전트 세션에 글을 넣는다
-LOCAL_ONLY_HEADS = ("session-message", "decision-answer")
+# 이 PC 에서 온 요청만 받는 POST. 셋 다 도구가 달린 에이전트 세션에 글을 넣거나 그 세션의 도구 실행을 허락한다
+LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -183,6 +184,12 @@ def _route_get(con, head, item_id, query):
         if not todo_id:
             raise Validation("todo_id 가 필요함")
         return decision_answer.for_todo(con, int(todo_id))
+    if head == "permissions":
+        # 할일 상세의 권한 요청 칸 — 그 할일을 잡은 세션이 기다리는 권한(명령 전문은 transcript 에서)
+        todo_id = _single(query, "todo_id", None)
+        if not todo_id:
+            raise Validation("todo_id 가 필요함")
+        return permission_answer.for_todo(con, int(todo_id))
     if head == "manager":
         # 칸(part)마다 따로 부른다 — 보조 세션 목록은 수 초 걸려 다른 칸을 붙잡으면 안 된다
         try:
@@ -268,6 +275,12 @@ def _route_post(con, head, body):
         if not body.get("id"):
             raise Validation("id 가 필요함")
         return decision_answer.start(int(body["id"]), body.get("choice"), body.get("feedback"))
+    if head == "permission-answer":
+        # 할일 상세 권한 요청 칸의 허용·거부. 매니저 permission_gate 가 기다리는 요청에만 닿는다(perm-answer)
+        return permission_answer.answer(
+            body.get("id"), body.get("answer"), body.get("session_id"), body.get("created_at"),
+            body.get("tool_use_id"),
+        )
     if head == "worktrees":
         repo, branch, action = body.get("repo"), body.get("branch"), body.get("action")
         # 서버 조작(띄우기·다시 띄우기·내리기)은 할일·세션을 건드리지 않아 con 을 받지 않는다

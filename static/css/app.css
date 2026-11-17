@@ -1641,6 +1641,51 @@ html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
 .dec-done { margin-top: var(--sp-12); }
 .dec-done > summary { color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 
+/* 권한 요청 (static/js/permission-answer.js) — 할일 상세 개요의 제목 아래, 결정 칸 위.
+   결정 카드와 같은 틀과 같은 뜻의 색: 화면에서 답할 수 있는 요청은 경고색 띠(사람을 기다린다), 터미널에서만
+   답하는 요청은 흐린 띠(여기서 할 일이 없다), 꺼진 세션은 위험색 띠(이어 가지 못한다).
+   명령 전문은 고정폭으로 줄을 접어 다 펼친다 — 가로 스크롤이나 상자 안 스크롤 뒤에 숨은 줄이 있으면 사람이 다 보고
+   고른 게 아니다. 허용 버튼은 명령 아래에 있어 누르려면 전문을 지나간다. 도구 입력 전체(Write·Edit 의 파일 내용
+   JSON)만 길 수 있어 상자 안에서 세로로 스크롤한다 — 대상 경로는 그 위 '대상' 줄에 따로 보인다 */
+.dlg-permissions { margin: var(--sp-12) 0 var(--sp-4); }
+.dlg-permissions > .label { display: flex; align-items: center; }
+.dlg-permissions .dlg-badge.open {
+  min-width: 0; margin-left: var(--sp-8);
+  background: color-mix(in srgb, var(--warn) 18%, var(--surface)); color: var(--warn);
+}
+/* 오른쪽 끝에 두지 않는다 — 팝업 닫기(×)가 우상단에 떠 있어 스크롤하면 그 밑으로 지나간다 */
+.perm-reload {
+  margin-left: var(--sp-12); padding: 0; border: none; background: none;
+  color: var(--accent); font-size: var(--fs-sm); font-weight: 400;
+}
+.perm-card {
+  margin-top: var(--sp-8); padding: var(--sp-12);
+  border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: var(--r-ctl);
+  background: var(--surface);
+}
+.perm-card.terminal { border-left-color: var(--muted); }
+.perm-card.ended { border-left-color: var(--danger); }
+.perm-meta { margin: 0 0 var(--sp-8); color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.perm-field { margin: 0 0 var(--sp-4); overflow-wrap: anywhere; }
+.perm-field .dec-label { display: inline; margin-right: var(--sp-8); }
+.perm-cmd {
+  max-height: 320px; overflow-y: auto;
+  margin: 0 0 var(--sp-8); padding: var(--sp-8);
+  border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm); line-height: var(--lh-body);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.perm-cmd.command { max-height: none; overflow-y: visible; }
+.perm-cmd.preview { color: var(--muted); }
+.perm-attach {
+  display: inline-block; margin-top: var(--sp-8); padding: var(--sp-2) var(--sp-8);
+  border-radius: var(--r-ctl); background: var(--softer); color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm);
+  overflow-wrap: anywhere; user-select: all;
+}
+/* 허용·거부 두 개는 한 줄에 나란히 — 좁은 폭에서도 둘 다 짧은 낱말이라 접히지 않는다 */
+.perm-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 /* 컬럼 하나가 약 490px 이라 긴 한글 할일 제목이 접히지 않음.
    레일이 208px 을 먹으므로 2컬럼 기준을 그만큼 올렸다 */
 @media (min-width: 1240px) {
