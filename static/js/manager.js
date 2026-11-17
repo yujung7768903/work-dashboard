@@ -11,6 +11,7 @@ import { priorityBadge } from "./priority.js";
 import { createTreeMap, soloCard } from "./tree-map.js";
 import { decisionLoader } from "./decision-answer.js";
 import { reportLoader } from "./task-report.js";
+import { feedbackLoader } from "./helper-feedback.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
 const SUBTABS = {
@@ -552,14 +553,17 @@ function openDecision(item) {
   });
 }
 
-// 보조 세션 줄 — 상세는 사용자 요청 / 지금 하는 일 / 연결 세션
+// 보조 세션 줄 — 상세는 사용자 요청 / 지금 하는 일 / 피드백 보내기 / 연결 세션.
+// 피드백은 지금 하는 일을 읽고 바로 쓰게 그 아래에 둔다 — 그 세션에 글을 넘긴다(app/services/helper_feedback.py)
 function helperWork(item) {
   const percent = item.percent == null ? t("manager.noProgress") : `${item.percent}%`;
+  const alive = () => document.getElementById("mgr-decision-modal").open;
   return {
     title: item.card ? `#${item.card.todo_id} ${item.card.title}` : item.name,
     request: item.request,
     sections: [
       { title: t("manager.popupDoing"), parts: [{ text: [item.doing, percent].filter(Boolean).join(" · ") }] },
+      { title: t("helper.feedbackTitle"), node: feedbackLoader(item.session_id, { alive }) },
       { title: t("manager.popupSession"), parts: [{ text: item.name }] },
     ],
     card: item.card,
