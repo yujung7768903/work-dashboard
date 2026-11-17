@@ -258,10 +258,33 @@ const second = await open();
 await settle(() => all(second.slot, byClass("report-card")).length === 1);
 assert.match(text(second.slot), /연결된 세션이 없는 일입니다/);
 
+// ── 선행 대기 — 다른 할일이 먼저 끝나야 하는 일은 응답 대기와 따로 묶고, 사전 조건 할일과 상태를 줄로 보인다.
+// 답하는 칸은 없다. 사전 조건을 누르면 그 매니저 할일 팝업을 연다(manager.js openManagerTask)
+const WAITING = {
+  ...ACTION, id: 9, title: "문의 자동화에 KT 로그 붙이기", next_step: "PR #69 머지", prereq_waiting: true,
+  after: [{ id: 168, title: "KT 서버 로그 경로", status: "open", finished: false },
+    { id: 169, title: "KT 로그 Lambda 배포", status: "done", finished: true }],
+};
+decisions = { available: true, items: [], reports: [ACTION, WAITING] };
+const third = await open();
+await settle(() => all(third.slot, byClass("prereq-card")).length === 1);
+assert.equal(all(third.slot, byClass("report-card")).length, 1, "선행 대기는 응답 카드로 그리지 않는다");
+const labels = all(third.slot, byClass("label")).map(text);
+assert.deepEqual(labels, ["직접 할 일·확인 대기1", "선행 대기1"]);
+const prereqCard = find(third.slot, byClass("prereq-card"));
+assert.equal(prereqCard.children[0].children[0].textContent, "#9 문의 자동화에 KT 로그 붙이기");
+assert.match(prereqCard.children[0].children[1].className, /\bprereq\b/);
+assert.equal(prereqCard.children[0].children[1].textContent, "선행 대기");
+const prereqLines = all(prereqCard, byClass("prereq-item"));
+assert.deepEqual(prereqLines.map(text), ["#168 KT 서버 로그 경로남음", "#169 KT 로그 Lambda 배포끝남"]);
+assert.ok(byClass("finished")(prereqLines[1]), "끝난 사전 조건은 흐리게");
+assert.equal(buttons(prereqCard).length, 0, "답하는 칸이 없다");
+assert.match(text(prereqCard), /다음 단계PR #69 머지/);
+
 // ── 붙은 결정·직접 할 일 모두 없음 — 칸을 숨긴다 ────────────────────────────────
 decisions = { available: true, items: [], reports: [] };
 const none = await open();
-await settle(() => asked.filter((entry) => entry.url === "/api/decisions?todo_id=42").length >= 3);
+await settle(() => asked.filter((entry) => entry.url === "/api/decisions?todo_id=42").length >= 4);
 await new Promise((done) => realSetTimeout(done, 0));
 assert.equal(none.slot.hidden, true);
 assert.equal(none.slot.children.length, 0);

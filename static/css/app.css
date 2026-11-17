@@ -922,6 +922,17 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-chip.working { color: var(--accent); }
 .mgr-chip.waiting { background: color-mix(in srgb, var(--warn) 18%, var(--surface)); color: var(--warn); }
 .mgr-chip.confirm { color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--surface)); }
+/* 선행 대기 — 사람을 기다리는 결정 대기(waiting 주황)와 구분해 중립 테두리로. 사전 조건 할일이 끝나야 풀린다 */
+.mgr-chip.prereq { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.prereq-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; display: grid; gap: var(--sp-4); }
+.prereq-open {
+  display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left; cursor: pointer;
+  padding: var(--sp-4) var(--sp-8); border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: var(--surface); color: inherit; font: inherit;
+}
+.prereq-open:hover, .prereq-open:focus-visible { border-color: var(--accent); }
+.prereq-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prereq-item.finished .prereq-title { color: var(--muted); text-decoration: line-through; }
 .mgr-empty, .mgr-error { padding: var(--sp-12) 0; color: var(--muted); font-size: var(--fs-sm); }
 .mgr-error { color: var(--danger); }
 /* 자동화 표 — 주기 / 자동화 내용 / 수행 시간. 같은 주기끼리 왼쪽 칸에서 줄이 맞는다 */

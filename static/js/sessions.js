@@ -2,7 +2,8 @@
 import * as api from "./api.js";
 import { t } from "./i18n.js";
 import { linkify } from "./linkify.js";
-import { decisionCard } from "./decision-answer.js";
+import { decisionCard, labelled } from "./decision-answer.js";
+import { prereqChip, prereqList } from "./prereq.js";
 import { reportCard } from "./task-report.js";
 import { permissionCard } from "./permission-answer.js";
 
@@ -294,7 +295,9 @@ function fillDecisions(slot, items, reports) {
     alive: () => document.getElementById("session-modal").open,
     renderText: (text) => linkify(text).map(notePart),
   };
-  const waiting = list.filter((item) => item.status === "open");
+  // 선행 대기(다른 할일이 먼저 끝나야 함)는 결정·직접 할 일 어느 쪽이든 따로 모은다 — 지금 답할 것이 아니다
+  const prereq = [...list, ...asks].filter((item) => item.prereq_waiting);
+  const waiting = list.filter((item) => item.status === "open" && !item.prereq_waiting);
   const answered = list.filter((item) => item.status !== "open");
   const parts = [];
   if (waiting.length) {
@@ -311,8 +314,23 @@ function fillDecisions(slot, items, reports) {
     );
     parts.push(fold);
   }
-  parts.push(...reportParts(asks, options));
+  parts.push(...reportParts(asks.filter((item) => !item.prereq_waiting), options));
+  if (prereq.length) {
+    const label = element("p", "label", t("prereq.waitingTitle"));
+    label.append(element("span", "dlg-badge", String(prereq.length)));
+    parts.push(label, ...prereq.map((item) => prereqCard(item, options)));
+  }
   slot.replaceChildren(...parts);
+}
+
+// 선행 대기 한 건 — 무엇을 기다리는지(사전 조건 할일, 누르면 그 할일 팝업)와 다음 단계. 답하는 칸은 없다
+function prereqCard(item, options) {
+  const card = element("div", "dec-card prereq-card");
+  const line = element("p", "dec-head");
+  line.append(element("span", "dec-title", `#${item.id} ${item.title}`), prereqChip());
+  card.append(line, element("p", "dec-label", t("prereq.listTitle")), prereqList(item.after));
+  if (item.next_step) card.append(labelled(t("decision.nextStep"), item.next_step, options.renderText));
+  return card;
 }
 
 // 직접 할 일·확인 대기 — 사용자가 완료·확인하거나 진행 상황·고칠 것을 알린다. 화면에서 알려 닫힌 것은 결과만 보게 접는다

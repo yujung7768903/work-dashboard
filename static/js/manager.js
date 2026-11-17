@@ -11,11 +11,12 @@ import { priorityBadge } from "./priority.js";
 import { createTreeMap, soloCard } from "./tree-map.js";
 import { decisionLoader } from "./decision-answer.js";
 import { reportLoader } from "./task-report.js";
+import { prereqList, prereqSummary } from "./prereq.js";
 import { feedbackLoader } from "./helper-feedback.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
 const SUBTABS = {
-  work: ["helpers", "confirms", "decisions"],
+  work: ["helpers", "confirms", "decisions", "waits"],
   setup: ["automations", "tools"],
 };
 const PARTS = Object.values(SUBTABS).flat();
@@ -239,6 +240,7 @@ const EMPTY = {
   tools: () => t("manager.empty.tools"),
   decisions: () => t("manager.empty.decisions"),
   confirms: () => t("manager.empty.confirms"),
+  waits: () => t("manager.empty.waits"),
 };
 
 const ROW_BUILDERS = {
@@ -247,6 +249,7 @@ const ROW_BUILDERS = {
   tools: toolRow,
   decisions: decisionRow,
   confirms: decisionRow,
+  waits: decisionRow,
 };
 
 // ── 줄 하나: 왼쪽 위 이름·아래 설명, 오른쪽 위 주 값·아래 보조 값 ─────────────────
@@ -340,13 +343,23 @@ function clickable(line, open) {
   return line;
 }
 
+// 매니저 할일 줄 상태(app/services/manager_panel.py STATE_*) → (칩 색, 문구, 트리 카드 상태).
+// 선행 대기는 다른 할일이 끝나야 하는 것이라 사람을 기다리는 결정 대기(waiting)와 다른 색이다
+const TASK_STATES = {
+  decision: ["waiting", () => t("manager.stateDecision"), "doing"],
+  action: ["waiting", () => t("manager.stateAction"), "doing"],
+  confirm: ["confirm", () => t("manager.stateConfirm"), "review"],
+  prereq: ["prereq", () => t("manager.statePrereq"), "todo"],
+  closed: ["", () => t("manager.stateClosed"), "done"],
+};
+
+function taskState(item) {
+  return TASK_STATES[item.state] ?? TASK_STATES.decision;
+}
+
 function decisionRow(item) {
-  const confirm = item.state === "confirm";
-  const chip = el(
-    "span",
-    `mgr-chip ${confirm ? "confirm" : "waiting"}`,
-    confirm ? t("manager.stateConfirm") : t("manager.stateDecision")
-  );
+  const [tone, label] = taskState(item);
+  const chip = el("span", `mgr-chip ${tone}`.trim(), label());
   const extra = [
     item.since ? t("manager.sinceAgo", { age: formatAge(item.since) }) : "",
     item.held ? t("manager.held") : "",
@@ -362,7 +375,7 @@ function decisionRow(item) {
   if (item.card) title.className = "mgr-sub";
   const line = row({
     title: item.card ? cardTitle(item.card) : title,
-    sub: item.card ? title : item.detail || "",
+    sub: item.card ? title : (item.state === "prereq" && prereqSummary(item.prereqs)) || item.detail || "",
     aside: chip,
     asideSub: el("span", "mgr-sub", extra.join(" · ")),
     tone: `mgr-click${item.held ? " off" : ""}`,
@@ -482,6 +495,8 @@ function toolRow(item) {
 export function decisionSections(item) {
   const popup = item.popup || {};
   const sections = item.state === "confirm" ? confirmSections(popup) : openSections(popup);
+  // 사전 조건 — 선행 대기면 맨 위에. 이미 풀린 선행도 무엇을 기다렸는지 보이게 남긴다
+  if (item.prereqs?.length) sections.unshift({ title: t("manager.popupPrereqs"), node: prereqList(item.prereqs) });
   if (popup.session_id) sections.push(sessionSection(popup, item.state === "confirm"));
   if (popup.source_ref) sections.push({ title: t("manager.popupSource"), parts: [{ text: popup.source_ref }] });
   return sections;
@@ -535,13 +550,17 @@ function replyPart(popup) {
 const ANSWER_AT = 2;
 const CONFIRM_AT = 1;
 
+// 선행 대기·닫힌 할일은 답하는 칸이 없다 — 선행 대기는 사전 조건 할일을 먼저 끝낸다
 function openDecision(item) {
   const sections = decisionSections(item);
   const alive = () => document.getElementById("mgr-decision-modal").open;
-  if (item.state !== "confirm") {
-    sections.splice(ANSWER_AT, 0, { title: t("decision.answerTitle"), node: decisionLoader(item.id, { alive }) });
-  } else {
-    sections.splice(CONFIRM_AT, 0, { title: t("report.confirmTitle"), node: reportLoader(item.id, { alive }) });
+  const shift = item.prereqs?.length ? 1 : 0;
+  if (item.state === "decision") {
+    sections.splice(ANSWER_AT + shift, 0, { title: t("decision.answerTitle"), node: decisionLoader(item.id, { alive }) });
+  } else if (item.state === "action") {
+    sections.splice(ANSWER_AT + shift, 0, { title: t("report.actionTitle"), node: reportLoader(item.id, { alive }) });
+  } else if (item.state === "confirm") {
+    sections.splice(CONFIRM_AT + shift, 0, { title: t("report.confirmTitle"), node: reportLoader(item.id, { alive }) });
   }
   openWork({
     title: `#${item.id} ${item.title}`,
@@ -592,14 +611,19 @@ function helperSolo(item) {
 }
 
 function decisionSolo(item) {
-  const confirm = item.state === "confirm";
+  const [, label, status] = taskState(item);
   return {
     id: item.id,
     title: item.title,
-    status: confirm ? "review" : "doing",
-    label: confirm ? t("manager.stateConfirm") : t("manager.stateDecision"),
-    waiting: item.waiting ?? (confirm ? null : DECISION_WAIT),
+    status,
+    label: label(),
+    waiting: item.waiting ?? (item.state === "decision" || item.state === "action" ? DECISION_WAIT : null),
   };
+}
+
+/** 매니저 할일 한 건을 받아 그 팝업을 연다 — 사전 조건 할일을 누를 때(prereq.js) */
+export async function openManagerTask(id) {
+  openDecision(await api.getManagerTask(id));
 }
 
 // 붙은 할일이 있는데 워크스페이스가 없으면 트리가 없다 — 그 할일을 카드로 그리고 제목으로 상세를 연다.
