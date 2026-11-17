@@ -116,6 +116,22 @@ const PAYLOAD = {
     ],
   },
 };
+// 선행 대기 — 다른 할일이 끝나야 하는 일. 결정 대기와 다른 칩, 줄 아랫줄은 남은 사전 조건
+PAYLOAD.waits = {
+  error: null,
+  items: [
+    {
+      id: 9, title: "문의 자동화에 KT 로그 붙이기", state: "prereq", detail: "muni log_search", priority: 3, priority_max: 3,
+      since: agoMinutes(30), held: false,
+      prereqs: [
+        { id: 168, title: "KT 서버 로그 경로", status: "open", finished: false },
+        { id: 169, title: "KT 로그 Lambda 배포", status: "confirm", finished: false },
+      ],
+      popup: { detail: "muni log_search", next_step: "168·169 처리 뒤 PR #69 머지", session_id: null, source_ref: null,
+        request: { status: "no_session" } },
+    },
+  ],
+};
 // 새로고침 검사용 — 부른 칸을 적고, 켜 두면 실패한다
 const fetched = [];
 let failFetch = false;
@@ -130,7 +146,17 @@ const decisionFetched = [];
 // 확인 대기 팝업의 '확인하기' 칸이 열 때 받는 한 건(app/services/task_report.py)
 const reportFetched = [];
 const helperFetched = [];
+const managerTaskFetched = [];
 globalThis.fetch = async (url) => {
+  if (url.startsWith("/api/manager-task/")) {
+    const id = Number(url.split("/").at(-1));
+    managerTaskFetched.push(id);
+    return {
+      ok: true, status: 200,
+      json: async () => ({ id, title: "KT 서버 로그 경로", state: "action", detail: null, priority: 2, priority_max: 3,
+        prereqs: [], popup: { detail: "catalina", next_step: "7일 삭제 크론", session_id: null, request: { status: "no_session" } } }),
+    };
+  }
   if (url.startsWith("/api/decisions/")) {
     decisionFetched.push(url);
     return { ok: true, status: 200, json: async () => DECISION_ONE };
@@ -181,7 +207,7 @@ assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kin
 await manager.renderManager();
 
 // 처음은 작업 탭 — 그 탭 칸만 받고, 설정 판은 숨긴다
-assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "helpers"], "작업 탭 칸만 받는다");
+assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "helpers", "waits"], "작업 탭 칸만 받는다");
 assert.equal(elements["mgr-pane-work"].hidden, false);
 assert.equal(elements["mgr-pane-setup"].hidden, true);
 assert.match(elements["mgr-subtab-work"].className, /\bactive\b/);
@@ -301,6 +327,34 @@ assert.doesNotMatch(modal.className, /\bwide\b/);
 openTab("detail");
 assert.equal(elements["mgr-decision-body"].hidden, false);
 assert.doesNotMatch(modal.className, /\bwide\b/);
+
+// 선행 대기 — 칩은 '선행 대기'(결정 대기와 다른 색), 아랫줄은 남은 사전 조건. 팝업 맨 위에 사전 조건 목록,
+// 답하는 칸은 없다. 사전 조건을 누르면 그 할일 한 건을 받아 그 팝업으로 바뀐다(직접 할 일이면 완료·진행 상황 칸)
+const waitRows = elements["mgr-waits"].children;
+assert.equal(elements["mgr-waits-count"].textContent, "1");
+assert.deepEqual(texts(waitRows[0]), ["#9 3/3 문의 자동화에 KT 로그 붙이기", "#168 · #169 끝나야 함", "선행 대기", "30m 전"]);
+assert.match(waitRows[0].children[1].children[0].className, /\bprereq\b/);
+waitRows[0].listeners.click();
+assert.equal(headTitle(), "#9 문의 자동화에 KT 로그 붙이기");
+const waitBody = elements["mgr-decision-body"].children;
+assert.deepEqual(waitBody.map((section) => section.children[0].textContent),
+  ["사용자 요청", "사전 조건", "지금까지 한 일", "결정할 것"]);
+const prereqItems = waitBody[1].children[1].children;
+assert.equal(prereqItems.length, 2);
+const firstPrereq = prereqItems[0].children[0];
+assert.deepEqual(firstPrereq.children.map((kid) => kid.textContent), ["#168 KT 서버 로그 경로", "남음"]);
+assert.deepEqual(prereqItems[1].children[0].children.map((kid) => kid.textContent), ["#169 KT 로그 Lambda 배포", "확인 대기"]);
+reportFetched.length = 0;
+firstPrereq.listeners.click({ stopPropagation() {} });
+for (let i = 0; !managerTaskFetched.length || headTitle() !== "#168 KT 서버 로그 경로"; i += 1) {
+  assert.ok(i < 50, "사전 조건 할일 팝업이 열려야 한다");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+assert.deepEqual(managerTaskFetched, [168]);
+assert.deepEqual(elements["mgr-decision-body"].children.map((section) => section.children[0].textContent),
+  ["사용자 요청", "지금까지 한 일", "결정할 것", "완료·진행 상황 알리기"]);
+assert.deepEqual(reportFetched, ["/api/task-reports/168"]);
+reportFetched.length = 0;
 
 // 완료 확인 대기 — 결정 대기와 같은 줄 모양, 같은 팝업. 우선순위가 없으면 보드처럼 '-'
 const confirmRows = elements["mgr-confirms"].children;

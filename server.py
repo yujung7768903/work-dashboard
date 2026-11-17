@@ -202,6 +202,11 @@ def _route_get(con, head, item_id, query):
         if not todo_id:
             raise Validation("todo_id 가 필요함")
         return permission_answer.for_todo(con, int(todo_id))
+    if head == "manager-task":
+        # 매니저 할일 한 건 — 선행 대기 팝업·할일 상세의 사전 조건 할일을 누르면 그 할일 팝업을 연다
+        if not item_id:
+            raise Validation("id 가 필요함")
+        return manager_panel.task_item(item_id, con=con)
     if head == "manager":
         # 칸(part)마다 따로 부른다 — 보조 세션 목록은 수 초 걸려 다른 칸을 붙잡으면 안 된다
         try:

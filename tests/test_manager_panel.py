@@ -311,6 +311,72 @@ class DescriptionTest(unittest.TestCase):
         self.assertEqual(check["desc"], "훅 24개 제거 효과.")
 
 
+class PrereqWaitsTest(unittest.TestCase):
+    """선행 대기 — 다른 매니저 할일이 끝나야 할 수 있는 할일(after_ids)은 결정 대기가 아니라 따로 보인다"""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.home, "state"))
+        self.db = os.path.join(self.home, "state", "manager.db")
+        con = sqlite3.connect(self.db)
+        con.execute(
+            "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, detail TEXT, priority INTEGER,"
+            " status TEXT, created_at TEXT, updated_at TEXT, next_step TEXT, after_ids TEXT)"
+        )
+        stamp = "2026-11-11T10:00:00"
+        rows = [
+            (9, "문의 자동화에 KT 로그 붙이기", "action", 3, "open", "168,169"),
+            (168, "KT 서버 로그 경로", "action", 2, "open", None),
+            (169, "KT 로그 Lambda 배포", "action", 2, "confirm", None),
+            (20, "선행 남은 결정", "decision", 2, "open", "168"),
+            (21, "선행 끝난 결정", "decision", 2, "open", "22"),
+            (22, "끝난 선행", "action", 2, "done", None),
+        ]
+        con.executemany(
+            "INSERT INTO tasks (id, title, kind, priority, status, after_ids, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            [(*row, stamp, stamp) for row in rows],
+        )
+        con.commit()
+        con.close()
+
+    def test_waits_lists_open_tasks_with_unfinished_prereqs(self):
+        items = manager_panel.waits(NOW, manager_home=self.home)
+        self.assertEqual([item["id"] for item in items], [9, 20])
+        self.assertEqual({item["state"] for item in items}, {"prereq"})
+        prereqs = items[0]["prereqs"]
+        self.assertEqual([(p["id"], p["title"], p["status"], p["finished"]) for p in prereqs],
+                         [(168, "KT 서버 로그 경로", "open", False), (169, "KT 로그 Lambda 배포", "confirm", False)])
+
+    def test_decisions_exclude_prereq_waiting(self):
+        items = manager_panel.decisions(NOW, manager_home=self.home)
+        self.assertEqual([item["id"] for item in items], [21])
+        self.assertEqual(items[0]["state"], "decision")
+        self.assertTrue(items[0]["prereqs"][0]["finished"])
+
+    def test_task_item_any_status(self):
+        self.assertEqual(manager_panel.task_item(168, NOW, manager_home=self.home)["state"], "action")
+        self.assertEqual(manager_panel.task_item(169, NOW, manager_home=self.home)["state"], "confirm")
+        self.assertEqual(manager_panel.task_item(22, NOW, manager_home=self.home)["state"], "closed")
+        self.assertEqual(manager_panel.task_item(9, NOW, manager_home=self.home)["state"], "prereq")
+        from app.errors import NotFound
+
+        with self.assertRaises(NotFound):
+            manager_panel.task_item(999, NOW, manager_home=self.home)
+
+    def test_old_manager_db_without_after_column_has_no_waits(self):
+        home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(home, "state"))
+        con = sqlite3.connect(os.path.join(home, "state", "manager.db"))
+        con.execute("CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, priority INTEGER,"
+                    " status TEXT, created_at TEXT, updated_at TEXT)")
+        con.execute("INSERT INTO tasks VALUES (1, 'x', 'decision', 2, 'open', 'a', 'a')")
+        con.commit()
+        con.close()
+        self.assertEqual(manager_panel.waits(NOW, manager_home=home), [])
+        self.assertEqual([i["id"] for i in manager_panel.decisions(NOW, manager_home=home)], [1])
+
+
 class DecisionsTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()

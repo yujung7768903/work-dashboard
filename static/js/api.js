@@ -81,6 +81,8 @@ export const sendSessionMessage = (sessionId, text) =>
 // 결정 답하기. 할일 상세에 붙은 결정들 · 한 건(답 보낸 뒤 폴링) · 보내기.
 // 원 세션 전달은 서버 뒤에서 돈다(최대 90초) — 보내기는 바로 돌아오고 화면이 한 건을 폴링한다.
 // 실패는 상자 안 상태 줄에 보이므로 alert 를 띄우지 않는다
+// 매니저 할일 한 건(매니저 탭 줄과 같은 모양) — 사전 조건 할일을 눌러 그 할일 팝업을 열 때
+export const getManagerTask = (id) => request("GET", `/manager-task/${id}`);
 export const getTodoDecisions = (todoId) => request("GET", `/decisions?todo_id=${todoId}`);
 export const getDecision = (id) => request("GET", `/decisions/${id}`);
 export const answerDecision = (id, choice, feedback) =>

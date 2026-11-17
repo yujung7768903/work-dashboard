@@ -25,7 +25,7 @@ from app.constants import (
 )
 from app.services import cron, manager_links, manager_tools
 
-PARTS = ("automations", "helpers", "tools", "decisions", "confirms")
+PARTS = ("automations", "helpers", "tools", "decisions", "confirms", "waits")
 STATUS_OK = "ok"
 STATUS_FAIL = "fail"
 STATUS_NODATA = "nodata"
@@ -41,6 +41,15 @@ INTERPRETERS = re.compile(r"(^|/)(python3?|bash|sh|node|flock)$")
 DECISION_KIND = "decision"
 OPEN_STATUS = "open"
 CONFIRM_STATUS = "confirm"
+ACTION_KIND = "action"
+# 선행 할일이 끝난 것으로 치는 상태 — 매니저 tasks.PREREQ_FINISHED 와 같은 값. 확인 대기(confirm)는 아직이다
+PREREQ_FINISHED = ("done", "invalid")
+# 줄·팝업 상태. prereq = 선행 대기(다른 할일이 끝나야 함), decision = 결정 대기, action = 직접 할 일, confirm = 확인 대기
+STATE_PREREQ = "prereq"
+STATE_DECISION = "decision"
+STATE_ACTION = "action"
+STATE_CONFIRM = "confirm"
+STATE_CLOSED = "closed"
 
 
 def snapshot(part=None, now=None, con=None, **sources):
@@ -61,6 +70,7 @@ def snapshot(part=None, now=None, con=None, **sources):
         ),
         "decisions": lambda: decisions(now, con=con, **_pick(sources, "manager_home")),
         "confirms": lambda: confirms(now, con=con, **_pick(sources, "manager_home")),
+        "waits": lambda: waits(now, con=con, **_pick(sources, "manager_home")),
     }
     return {name: _section(builders[name]) for name in names}
 
@@ -788,8 +798,26 @@ REPLY_SCAN_BYTES = 512 * 1024
 
 
 def decisions(now, manager_home=None, con=None):
-    """열린 결정(decision). 확인 대기는 confirms 칸이 따로 든다"""
-    return _tasks(now, "status=? AND kind=?", (OPEN_STATUS, DECISION_KIND), manager_home, con)
+    """열린 결정(decision). 확인 대기는 confirms 칸이, 선행이 남은 결정은 waits 칸이 따로 든다"""
+    rows = _tasks(now, "status=? AND kind=?", (OPEN_STATUS, DECISION_KIND), manager_home, con)
+    return [row for row in rows if row["state"] != STATE_PREREQ]
+
+
+def waits(now, manager_home=None, con=None):
+    """선행 대기 — 다른 할일이 먼저 끝나야 할 수 있는 열린 할일(종류 무관). 사용자 결정을 기다리는 것이 아니라
+    결정 대기와 따로 보인다. 매니저도 선행이 끝나기 전에는 알리지 않는다(task update --after)"""
+    rows = _tasks(now, "status=? AND after_ids IS NOT NULL", (OPEN_STATUS,), manager_home, con, need="after_ids")
+    return [row for row in rows if row["state"] == STATE_PREREQ]
+
+
+def task_item(task_id, now=None, manager_home=None, con=None):
+    """매니저 할일 한 건 — 선행 할일을 눌러 그 할일 팝업을 열 때. 상태와 상관없이 읽는다"""
+    rows = _tasks(now or datetime.now().astimezone(), "id=?", (task_id,), manager_home, con)
+    if not rows:
+        from app.errors import NotFound
+
+        raise NotFound(f"매니저 할일이 없습니다: #{task_id}")
+    return rows[0]
 
 
 def confirms(now, manager_home=None, con=None):
@@ -797,9 +825,10 @@ def confirms(now, manager_home=None, con=None):
     return _tasks(now, "status=?", (CONFIRM_STATUS,), manager_home, con)
 
 
-def _tasks(now, where, params, manager_home, con):
+def _tasks(now, where, params, manager_home, con, need=None):
     """매니저 DB 할일을 목록 줄 + 팝업 재료로. 읽기 전용 연결로만 읽는다.
-    con(대시보드 DB)이 있으면 연결 세션의 마지막 답 끝부분을 팝업 재료로 붙인다"""
+    con(대시보드 DB)이 있으면 연결 세션의 마지막 답 끝부분을 팝업 재료로 붙인다.
+    need 칸이 매니저 DB 에 없으면(선행 관계 이전 매니저) 빈 목록"""
     home = manager_home or globals()["manager_home"]()
     path = os.path.join(home, "state", "manager.db")
     if not os.path.isfile(path):
@@ -808,10 +837,12 @@ def _tasks(now, where, params, manager_home, con):
     manager_con.row_factory = sqlite3.Row
     try:
         columns = {row["name"] for row in manager_con.execute("PRAGMA table_info(tasks)")}
+        if need and need not in columns:
+            return []
         wanted = [
             name
             for name in ("id", "title", "kind", "status", "priority", "created_at",
-                         "updated_at", "hold_until", "snooze_until") + POPUP_FIELDS
+                         "updated_at", "hold_until", "snooze_until", "after_ids") + POPUP_FIELDS
             if name in columns
         ]
         rows = manager_con.execute(
@@ -826,6 +857,7 @@ def _tasks(now, where, params, manager_home, con):
             if "priority" in columns
             else None
         )
+        prereq_of = {row["id"]: _prereqs(manager_con, _get(row, "after_ids")) for row in rows}
     finally:
         manager_con.close()
     stamp = now.isoformat(timespec="seconds")
@@ -840,11 +872,14 @@ def _tasks(now, where, params, manager_home, con):
         popup["session_name"] = _session_name(popup["session_id"])
         # 그 일을 시작한 사람의 첫 요청. 세션 없이 들어온 할일(Jira·메일 훑기)은 출처를 대신 보인다
         popup["request"] = manager_links.first_request(popup["session_id"], home)
+        prereqs = prereq_of[row["id"]]
         items.append(
             {
                 "id": row["id"],
                 "title": row["title"],
-                "state": "confirm" if row["status"] == CONFIRM_STATUS else "decision",
+                "state": _state(row, prereqs),
+                # 선행 할일 [{id, title, status, finished}] — 선행 대기면 팝업이 사전 조건으로 보이고 눌러 그 할일로 간다
+                "prereqs": prereqs,
                 "detail": _first_line(_get(row, "detail")),
                 "priority": _get(row, "priority"),
                 "priority_max": top,
@@ -856,6 +891,29 @@ def _tasks(now, where, params, manager_home, con):
             }
         )
     return items
+
+
+def _state(row, prereqs):
+    """줄 상태. 열린 할일에 끝나지 않은 선행이 있으면 종류와 상관없이 선행 대기다"""
+    status = row["status"]
+    if status == CONFIRM_STATUS:
+        return STATE_CONFIRM
+    if status != OPEN_STATUS:
+        return STATE_CLOSED
+    if any(not item["finished"] for item in prereqs):
+        return STATE_PREREQ
+    return STATE_DECISION if _get(row, "kind") == DECISION_KIND else STATE_ACTION
+
+
+def _prereqs(manager_con, after_ids):
+    """'168,169' → 선행 할일 [{id, title, status, finished}]. 지운 할일은 제목·상태 없이 끝나지 않은 것으로 둔다"""
+    ids = [int(part) for part in (after_ids or "").split(",") if part.strip().isdigit()]
+    out = []
+    for task_id in ids:
+        found = manager_con.execute("SELECT id, title, status FROM tasks WHERE id=?", (task_id,)).fetchone()
+        title, status = (found["title"], found["status"]) if found else (None, None)
+        out.append({"id": task_id, "title": title, "status": status, "finished": status in PREREQ_FINISHED})
+    return out
 
 
 _name_cache = {}
