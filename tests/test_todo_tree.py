@@ -208,6 +208,17 @@ class ForestTest(TreeFixture):
         self.assertIsNone(nodes[old["id"]]["waiting"])
         self.assertEqual(self._tree()["waiting"], 1)
 
+    def test_last_session_at_is_latest_seen_of_linked_sessions(self):
+        """할일별 보기의 정렬 기준. 보드 상태별 뷰와 같은 값(세션이 마지막으로 살아 있던 시각)이다"""
+        touched = self._todo("잡은 일")
+        idle = self._todo("안 잡은 일")
+        session_repo.register(self.con, "sess-a", cwd="/tmp")
+        session_repo.link_todo(self.con, "sess-a", touched["id"])
+        seen = self.con.execute("SELECT last_seen_at FROM sessions WHERE claude_session_id='sess-a'").fetchone()[0]
+        nodes = {node["id"]: node for node in self._tree()["children"]}
+        self.assertEqual(nodes[touched["id"]]["last_session_at"], seen)
+        self.assertIsNone(nodes[idle["id"]]["last_session_at"])
+
     def test_broken_parent_links_do_not_hide_todos(self):
         """손으로 고친 DB 의 고리·남의 트리 부모도 루트 아래로 올라와 화면에 남는다"""
         first = self._todo("가")
