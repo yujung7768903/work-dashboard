@@ -135,7 +135,8 @@ async function open() {
   openDetail({ todo: { id: 42 } });
   await settle(() => body.children.length === 4);
   const block = body.children[1].children[0];
-  const slot = block.children[1];
+  // 제목 아래 첫 칸은 권한 요청(이 할일엔 없어 숨김), 그다음이 결정
+  const slot = block.children[2];
   await settle(() => !slot.hidden || asked.some((entry) => entry.url.startsWith("/api/decisions?")) && slot.children.length);
   return { block, slot };
 }
@@ -143,7 +144,9 @@ async function open() {
 // ── 답 대기 결정 — 제목 바로 아래, 선택지 버튼·추천·의견 입력 ────────────────────────
 const { block, slot } = await open();
 assert.equal(block.children[0].textContent, "#42 | 결정 버튼", "제목이 맨 위");
-assert.equal(slot.className, "dlg-decisions", "결정 칸은 제목 바로 아래");
+assert.equal(block.children[1].className, "dlg-permissions", "권한 요청 칸이 제목 바로 아래");
+assert.equal(block.children[1].hidden, true, "기다리는 권한이 없으면 숨긴다");
+assert.equal(slot.className, "dlg-decisions", "결정 칸은 권한 요청 칸 다음");
 assert.equal(slot.hidden, false);
 assert.equal(text(slot.children[0]), "결정 대기2", "라벨 + 답 대기 건수");
 

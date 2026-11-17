@@ -469,6 +469,23 @@ polls `GET /api/decisions/<id>` and shows the manager's `answer_state` in words
 Like session input, answers are accepted from this PC only. Answered decisions
 stay folded below and can be answered again.
 
+### Answering a permission request from the dialog
+
+A permission prompt the todo's current session is stuck on shows up above the
+decisions: tool, full command (from the session transcript — the manager's
+preview is masked and cut at 200 characters), target path, working directory and
+how long it has waited. When the manager's `permission_gate` hook is waiting on
+it (the request file under the manager's `state/perm/`, up to 9 minutes), pick
+**Allow** or **Deny** and **Send answer**; `POST /api/permission-answer` runs
+`manager.py perm-answer <id> yes|no` with list arguments. The request is passed
+on only if the session, request timestamp and (for Allow) the tool call id still
+match what the dialog showed — request ids are 4 digits and get reused. If the
+command shown cannot be matched to the request, only Deny is offered. Requests
+the hook already handed to the session's own terminal prompt show the
+`claude attach <id>` command to answer there; a session that ended takes its
+prompt with it, which is shown as such. Answers are accepted from this PC only,
+and nothing is allowed automatically.
+
 ### Session names follow todo titles
 
 A session linked to a todo is named `#<id> | <title>`, the same name autonomous
