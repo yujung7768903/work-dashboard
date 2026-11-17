@@ -11,6 +11,8 @@
   --st-review: var(--warn);
   --st-done: var(--muted);
   --st-wait: var(--danger);
+  /* 할일별 줄 왼쪽 막대 — 지금 떠 있는 보조 세션이 잡은 할일. 손이 가고 있는 일이라 진행 중 색 */
+  --holder-helper: var(--st-doing);
   --on-warn: #1b1d29;          /* 호박색 위 글자. 두 테마 모두 어두운 글자가 읽힌다 */
   --tm-edge: color-mix(in srgb, var(--muted) 65%, transparent);
   --tm-dot: color-mix(in srgb, var(--muted) 40%, transparent);
@@ -40,6 +42,10 @@
 }
 #tree-view button.active { background: var(--softer); color: var(--accent); }
 #tree-tools { display: flex; gap: var(--sp-4); margin-left: auto; }
+/* 막대 범례. 막대와 같은 폭·색의 짧은 막대 + 건수 */
+#tree-legend { display: inline-flex; align-items: center; gap: var(--sp-4); cursor: help; }
+#tree-legend[hidden] { display: none; }
+.tree-legend-bar { flex: none; width: 4px; height: 12px; background: var(--holder-helper); }
 #tree-hide-done[aria-pressed="true"] { background: var(--softer); color: var(--accent); }
 
 /* 목록·경계·패널이 한 줄. 높이는 화면에 맞춰 판(Map)이 아래까지 찬다 */
@@ -125,8 +131,12 @@
 }
 .tree-todo + .tree-todo { border-top: 1px solid var(--line); }
 .tree-todo-row {
-  display: flex; flex-direction: column; gap: var(--sp-2);
+  position: relative; display: flex; flex-direction: column; gap: var(--sp-2);
   padding: var(--sp-8) var(--sp-16); cursor: pointer;
+}
+/* 보조 세션이 잡은 할일 — 트리별 행(.tree-row::before)과 같은 왼쪽 막대. 목록 모서리 둥글기에 같이 잘린다 */
+.tree-todo[data-holder="helper"] > .tree-todo-row::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--holder-helper);
 }
 .tree-todo-row:hover { background: color-mix(in srgb, var(--fg) 3%, transparent); }
 .tree-todo.active .tree-todo-row { background: var(--softer); }

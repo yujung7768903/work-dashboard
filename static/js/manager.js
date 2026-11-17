@@ -36,6 +36,11 @@ const HELPER_STATUS = {
   "결정 대기": ["waiting", () => t("manager.helperWaiting")],
   쉼: ["idle", () => t("manager.helperIdle")],
 };
+// 보조 세션 상태를 화면 언어로. 트리 할일별 줄의 보조 세션 막대 툴팁(tree.js)도 같은 문구를 쓴다
+export function helperStatusText(status) {
+  const [, label] = HELPER_STATUS[status] ?? [null, () => status || "-"];
+  return label();
+}
 const LAST_STATUS = {
   ok: ["ok", (age) => t("manager.lastOk", { age })],
   fail: ["fail", (age) => t("manager.lastFail", { age })],

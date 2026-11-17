@@ -274,6 +274,10 @@
             <button type="button" data-view="map" data-i18n="tree.viewMap"></button>
           </div>
           <span id="tree-summary"></span>
+          <!-- 할일별 줄 왼쪽 막대의 뜻. 막대가 하나라도 있을 때만 보인다 (tree.js drawSummary) -->
+          <span id="tree-legend" hidden data-i18n-title="tree.todoHeldHint">
+            <span class="tree-legend-bar" aria-hidden="true"></span><span id="tree-legend-text"></span>
+          </span>
           <!-- 확인 대기 제안 연결 모음. 건수는 tree.js 가 채운다 -->
           <button type="button" id="tree-proposals-toggle" aria-pressed="false"></button>
           <div id="tree-tools">

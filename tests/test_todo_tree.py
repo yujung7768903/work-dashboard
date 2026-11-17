@@ -219,6 +219,18 @@ class ForestTest(TreeFixture):
         self.assertEqual(nodes[touched["id"]]["last_session_at"], seen)
         self.assertIsNone(nodes[idle["id"]]["last_session_at"])
 
+    def test_nodes_carry_updated_at_for_recency_order(self):
+        """트리 목록이 '최근 작업·수정 순' 으로 세울 재료. 할일은 todos.updated_at, 맥락은 graph_nodes.updated_at"""
+        from app.repositories import graph as graph_repo
+
+        todo = self._todo("수정한 일")
+        todo_repo.update(self.con, todo["id"], title="제목 고침")
+        saved = self._reload(todo)["updated_at"]
+        context = graph_repo.create_context(self.con, "배경", workspace_id=self.space["id"])
+        nodes = {node["key"]: node for node in self._tree()["children"]}
+        self.assertEqual(nodes[f"t{todo['id']}"]["updated_at"], saved)
+        self.assertEqual(nodes[f"c{context['id']}"]["updated_at"], context["updated_at"])
+
     def test_broken_parent_links_do_not_hide_todos(self):
         """손으로 고친 DB 의 고리·남의 트리 부모도 루트 아래로 올라와 화면에 남는다"""
         first = self._todo("가")

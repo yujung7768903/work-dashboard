@@ -2,10 +2,19 @@
 // 다른 상위가 있는 트리가 뒤에 붙는지. 다른 트리를 고르면 그 트리 + 카드까지의 가지를 그리는지.
 // 실행: node tests/tree_todos_check.mjs (tests/test_tree_todos.py 가 부른다)
 import assert from "node:assert/strict";
-import { branchTo, doingTodos, panelTrees, treeIdOf, UNASSIGNED_TREE } from "../static/js/tree-todos.js";
+import {
+  activeAt,
+  branchTo,
+  doingTodos,
+  holdersByTodo,
+  latestFirst,
+  panelTrees,
+  treeIdOf,
+  UNASSIGNED_TREE,
+} from "../static/js/tree-todos.js";
 import { layoutForest } from "../static/js/tree-layout.js";
 
-const node = (id, status, { parents = [], children = [], seen = null, kind = "todo", results = [] } = {}) => ({
+const node = (id, status, { parents = [], children = [], seen = null, updated = null, kind = "todo", results = [] } = {}) => ({
   key: kind === "context" ? `c${id}` : `t${id}`,
   kind,
   id,
@@ -15,6 +24,7 @@ const node = (id, status, { parents = [], children = [], seen = null, kind = "to
   children,
   results,
   last_session_at: seen,
+  updated_at: updated,
   extra_children: [],
 });
 const parent = (key, state = "confirmed") => ({ key, title: `상위${key}`, state });
@@ -134,6 +144,56 @@ const TREES = [SECURITY, AGENT, LOOSE];
   assert.equal(deep.children.length, 2);
   assert.equal(deep.children[0].children.length, 2);
   assert.equal(branchTo(deep, "t999"), null);
+}
+
+{
+  // 할일별 순서 = 연결 세션의 마지막 작업 시각(last_session_at)과 할일 자체의 수정 시각(updated_at) 중
+  // 더 최근 값의 내림차순. 둘 다 없으면 맨 아래
+  const mixed = tree(4, "섞임", [
+    node(60, "doing", { seen: "2026-11-17T08:00:00+00:00", updated: "2026-11-17T13:00:00+00:00" }),
+    node(61, "doing", { seen: "2026-11-17T12:00:00+00:00", updated: "2026-11-17T01:00:00+00:00" }),
+    node(62, "doing", { updated: "2026-11-17T12:30:00+00:00" }),
+    node(63, "doing"),
+  ]);
+  assert.deepEqual(doingTodos([mixed]).map((row) => row.node.id), [60, 62, 61, 63]);
+  assert.equal(activeAt(mixed.children[0]), "2026-11-17T13:00:00+00:00", "수정이 더 최근이면 수정 시각");
+  assert.equal(activeAt(mixed.children[1]), "2026-11-17T12:00:00+00:00", "세션이 더 최근이면 세션 시각");
+  assert.equal(activeAt(mixed.children[3]), null);
+}
+
+{
+  // 트리별 목록의 형제 순서 — 그 줄과 그 아래(주 상위로 붙은 하위 전부) 중 가장 최근 값. 하위에서 방금 일한
+  // 상위가 위로 온다. 맥락은 세션이 없어 자기 수정 시각과 하위로 선다
+  const old = node(70, "done", {
+    updated: "2026-11-01T00:00:00+00:00",
+    children: [node(71, "doing", { seen: "2026-11-17T09:00:00+00:00" })],
+  });
+  const fresh = node(72, "todo", { updated: "2026-11-16T00:00:00+00:00" });
+  const ctx = node(8, "context", { kind: "context", updated: "2026-10-01T00:00:00+00:00" });
+  const never = node(73, "todo");
+  const siblings = [never, fresh, ctx, old];
+  assert.deepEqual(latestFirst(siblings).map((item) => item.key), ["t70", "t72", "c8", "t73"]);
+  assert.deepEqual(siblings.map((item) => item.key), ["t73", "t72", "c8", "t70"], "원래 배열은 그대로 — 맵이 같은 children 을 쓴다");
+  // 같으면 원래 순서
+  assert.deepEqual(latestFirst([node(80, "todo"), node(81, "todo")]).map((item) => item.id), [80, 81]);
+}
+
+{
+  // 매니저 탭 보조 세션 줄(/api/manager?part=helpers 의 items) → 할일 id 별로 그 할일을 지금 잡은 보조 세션.
+  // 이름은 앞의 '보조N' 만 — 할일 제목은 줄에 이미 있다
+  const held = holdersByTodo([
+    { session_id: "s1", name: "보조5 | 트리 색상 바", status: "작업 중", card: { todo_id: 403 } },
+    { session_id: "s2", name: "보조2 | 원래 제목 (지금 이름: #399 | 고친 제목)", status: "결정 대기", card: { todo_id: 399 } },
+    { session_id: "s3", name: "보조7 | 할일 없음", status: "작업 중", card: null },
+    { session_id: "s4", name: "이름만 다른 세션", status: "쉼", card: { todo_id: 403 } },
+  ]);
+  assert.deepEqual([...held.keys()].sort(), [399, 403]);
+  assert.deepEqual(held.get(403), [
+    { label: "보조5", status: "작업 중" },
+    { label: "이름만 다른 세션", status: "쉼" },
+  ]);
+  assert.deepEqual(held.get(399), [{ label: "보조2", status: "결정 대기" }]);
+  assert.equal(holdersByTodo(undefined).size, 0, "매니저가 없거나 칸이 깨지면 빈 표");
 }
 
 console.log("tree todos ok");
