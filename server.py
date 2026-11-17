@@ -44,6 +44,7 @@ from app.services import (
     decision_answer,
     gtasks,
     gtasks_setup,
+    helper_feedback,
     manager_panel,
     permission_answer,
     planning,
@@ -66,8 +67,8 @@ INDEX_FILE = "index.html"
 API_PREFIX = "/api/"
 NONE_LITERAL = "none"
 # 이 PC 에서 온 요청만 받는 POST. 모두 도구가 달린 에이전트 세션에 글을 넣거나 그 세션의 도구 실행을 허락한다.
-# task-report 는 매니저 할일을 닫고(완료·확인) 원 세션에 글을 넣는다
-LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer", "task-report")
+# task-report 는 매니저 할일을 닫고(완료·확인) 원 세션에 글을 넣는다. helper-feedback 은 돌고 있는 보조 세션에 글을 넣는다
+LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer", "task-report", "helper-feedback")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -192,6 +193,9 @@ def _route_get(con, head, item_id, query):
         if not item_id:
             raise Validation("id 가 필요함")
         return task_report.show(item_id)
+    if head == "helper-feedback":
+        # 매니저 탭 보조 세션 상세의 피드백 칸 — 세션 생사와 화면에서 보낸 피드백. 보낸 뒤 화면이 이것을 폴링한다
+        return helper_feedback.show(_single(query, "session_id", None))
     if head == "permissions":
         # 할일 상세의 권한 요청 칸 — 그 할일을 잡은 세션이 기다리는 권한(명령 전문은 transcript 에서)
         todo_id = _single(query, "todo_id", None)
@@ -288,6 +292,9 @@ def _route_post(con, head, body):
         if not body.get("id"):
             raise Validation("id 가 필요함")
         return task_report.start(int(body["id"]), bool(body.get("done")), body.get("feedback"))
+    if head == "helper-feedback":
+        # 매니저 탭 보조 세션 상세의 피드백. 매니저 helper-ui 가 뒤에서 돌고 화면은 GET helper-feedback 을 폴링한다
+        return helper_feedback.start(body.get("session_id"), body.get("feedback"))
     if head == "permission-answer":
         # 할일 상세 권한 요청 칸의 허용·거부. 매니저 permission_gate 가 기다리는 요청에만 닿는다(perm-answer)
         return permission_answer.answer(

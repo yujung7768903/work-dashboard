@@ -129,10 +129,19 @@ const DECISION_ONE = {
 const decisionFetched = [];
 // 확인 대기 팝업의 '확인하기' 칸이 열 때 받는 한 건(app/services/task_report.py)
 const reportFetched = [];
+const helperFetched = [];
 globalThis.fetch = async (url) => {
   if (url.startsWith("/api/decisions/")) {
     decisionFetched.push(url);
     return { ok: true, status: 200, json: async () => DECISION_ONE };
+  }
+  if (url.startsWith("/api/helper-feedback?")) {
+    const sessionId = new URL(url, "http://x").searchParams.get("session_id");
+    helperFetched.push(sessionId);
+    return {
+      ok: true, status: 200,
+      json: async () => ({ session: { id: sessionId, name: "보조", alive: true }, items: [], job: null }),
+    };
   }
   if (url.startsWith("/api/task-reports/")) {
     reportFetched.push(url);
@@ -431,7 +440,10 @@ PAYLOAD.decisions.items = Array.from({ length: 15 }, (_, index) => ({ ...PAYLOAD
 PAYLOAD.helpers = {
   error: null,
   items: [
-    { name: "보조1 | 일", status: "작업 중", doing: "테스트", percent: 40, moved_at: agoMinutes(1), waiting: "permission" },
+    {
+      session_id: "s-helper-1", name: "보조1 | 일", status: "작업 중", doing: "테스트", percent: 40, moved_at: agoMinutes(1),
+      waiting: "permission",
+    },
     { name: "보조2 | 결정", status: "결정 대기", doing: "결정 요청", percent: 70, moved_at: agoMinutes(3), waiting: null },
     { name: "보조3 | 쉼", status: "쉼", doing: null, percent: null, moved_at: null, waiting: null },
   ],
@@ -471,6 +483,15 @@ const helperSolo = (index) => {
 };
 one = helperSolo(0);
 assert.equal(one.title.textContent, "보조1 | 일");
+// 보조 세션 상세: 사용자 요청 / 지금 하는 일 / 피드백 보내기 / 연결 세션. 피드백 상자는 열 때 그 세션 한 건을 받는다
+assert.deepEqual(elements["mgr-decision-body"].children.map((section) => section.children[0].textContent),
+  ["사용자 요청", "지금 하는 일", "피드백 보내기", "연결 세션"]);
+assert.deepEqual(helperFetched, ["s-helper-1"]);
+const feedbackSection = elements["mgr-decision-body"].children[2];
+for (let i = 0; !feedbackSection.children[1].children[0]?.className.startsWith("dec-card") && i < 50; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+assert.match(feedbackSection.children[1].children[0].className, /\bhelper-feedback\b/);
 assert.equal(one.card.dataset.status, "doing");
 assert.equal(one.card.dataset.waiting, "permission");
 assert.deepEqual(one.head, ["작업 중", "권한 대기"]);

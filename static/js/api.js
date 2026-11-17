@@ -90,6 +90,12 @@ export const answerDecision = (id, choice, feedback) =>
 export const getTaskReport = (id) => request("GET", `/task-reports/${id}`);
 export const sendTaskReport = (id, done, feedback) =>
   request("POST", "/task-report", { id, done, feedback }, { silent: true });
+// 보조 세션 피드백. 매니저 탭 보조 세션 상세가 열 때·보낸 뒤 폴링할 때 읽는다(세션 생사 + 보낸 피드백) · 보내기.
+// 할일 상태는 바꾸지 않는다 — 돌고 있는 보조에게 말을 거는 것이다
+export const getHelperFeedback = (sessionId) =>
+  request("GET", `/helper-feedback?session_id=${encodeURIComponent(sessionId)}`);
+export const sendHelperFeedback = (sessionId, feedback) =>
+  request("POST", "/helper-feedback", { session_id: sessionId, feedback }, { silent: true });
 // 권한 요청. 할일 상세에 붙은 것들 · 허용/거부 보내기. 보내기는 화면이 본 요청(세션·생성 시각·호출 id)을 같이
 // 보낸다 — 그 사이 같은 id 로 바뀐 요청에 답이 가지 않게. 실패는 카드 안에 보이므로 alert 를 띄우지 않는다
 export const getTodoPermissions = (todoId) => request("GET", `/permissions?todo_id=${todoId}`);
