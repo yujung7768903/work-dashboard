@@ -32,6 +32,8 @@ FIELDS = (
     "answer_state", "answer", "answer_choice", "answer_feedback", "answered_at", "created_at", "session",
 )
 STDERR_TAIL_LINES = 1
+# 답이 저장된 매니저 exit — 0 전달 · 1 전달 확인 못 함 · 3 원 세션 없음 · 4 매니저에 넘김 · 5 원 세션 꺼짐(task-ui)
+SAVED_EXITS = (0, 1, 3, 4, 5)
 
 # 결정 id → 뒤에서 도는 answer-ui 한 건. 서버 프로세스 하나가 들고 있다 — 서버가 다시 뜨면 비지만,
 # 그때도 답 상태(answer_state)는 매니저 DB 에 남아 화면이 그것으로 이어 본다
@@ -53,15 +55,23 @@ def for_todo(con, todo_id, home=None):
     """그 할일에 붙은 결정. 결정을 올린 세션이 지금 붙잡은 할일(가장 최근 연결)이 이 할일인 것 —
     매니저 탭 줄이 카드를 고르는 규칙(manager_links.cards)과 같아, 줄의 카드를 눌러 열면 같은 결정이 보인다.
     열린 결정(답 대기)이 먼저, 이미 답한 결정(다시 답할 수 있다)은 최근 답 순으로 뒤에.
-    → {"available": 매니저가 있나, "items": [...]}"""
+    같은 규칙으로 고른 직접 할 일·확인 대기(task_report)도 reports 로 함께 준다 — 매니저 목록을 한 번만 읽는다.
+    → {"available": 매니저가 있나, "items": [...], "reports": [...]}"""
+    from app.services import task_report
+
     try:
         rows = _call(["task", "list", "--json", "--all"], home)
     except ManagerMissing:
-        return {"available": False, "items": []}
+        return {"available": False, "items": [], "reports": []}
     decisions = [row for row in rows or [] if _answerable(row)]
-    session_ids = sorted({row.get("session_id") for row in decisions} - {None, ""})
+    reports = [row for row in rows or [] if task_report.listable(row)]
+    session_ids = sorted({row.get("session_id") for row in decisions + reports} - {None, ""})
     cards = session_repo.current_cards(con, session_ids)
-    mine = [row for row in decisions if (cards.get(row.get("session_id")) or {}).get("todo_id") == todo_id]
+
+    def here(row):
+        return (cards.get(row.get("session_id")) or {}).get("todo_id") == todo_id
+
+    mine = [row for row in decisions if here(row)]
     waiting = sorted(
         (row for row in mine if row.get("status") == OPEN_STATUS),
         key=lambda row: (-(row.get("priority") or 0), row.get("created_at") or "", row["id"]),
@@ -71,7 +81,11 @@ def for_todo(con, todo_id, home=None):
         key=lambda row: row.get("answered_at") or "",
         reverse=True,
     )
-    return {"available": True, "items": [_view(row) for row in waiting + answered]}
+    return {
+        "available": True,
+        "items": [_view(row) for row in waiting + answered],
+        "reports": task_report.ordered([row for row in reports if here(row)]),
+    }
 
 
 def show(task_id, home=None):
@@ -100,10 +114,17 @@ def start(task_id, choice=None, feedback=None, home=None, popen=subprocess.Popen
         args.append(f"--choice={choice}")
     if feedback:
         args.append(f"--feedback={feedback}")
+    busy = f"이 결정에 보낸 답을 아직 전하는 중입니다: #{task_id}"
+    return {**_view(row), "job": launch(task_id, args, home, popen, busy)}
+
+
+def launch(task_id, args, home, popen, busy):
+    """매니저 명령 한 건을 뒤에서 띄우고 job 을 돌려준다. 같은 할일에 돌고 있는 것이 있으면 Conflict(busy).
+    직접 할 일·확인 대기 응답(task_report)도 이것을 쓴다 — 할일 id 는 종류를 가리지 않고 하나라 job 도 한 표에 둔다"""
     with _lock:
         running = _jobs.get(task_id)
         if running and running["running"]:
-            raise Conflict(f"이 결정에 보낸 답을 아직 전하는 중입니다: #{task_id}")
+            raise Conflict(busy)
         proc = popen(
             args,
             cwd=home,
@@ -116,7 +137,7 @@ def start(task_id, choice=None, feedback=None, home=None, popen=subprocess.Popen
         job = {"running": True, "started_at": _now(), "finished_at": None, "exit": None, "error": None}
         _jobs[task_id] = job
     threading.Thread(target=_wait, args=(proc, job), daemon=True).start()
-    return {**_view(row), "job": dict(job)}
+    return dict(job)
 
 
 def _wait(proc, job):
@@ -134,9 +155,9 @@ def _wait(proc, job):
 
 
 def _job_error(code, out, err):
-    """사용법 오류(exit 2)는 매니저가 JSON 의 error 로 사유를 준다. 그 밖의 exit(0·1·3·4)는 답이 저장된 결과라
-    오류가 아니다 — 무엇이 됐는지는 answer_state 가 말한다. 모르는 exit 는 stderr 끝줄을 사유로"""
-    if code in (0, 1, 3, 4):
+    """사용법 오류(exit 2)는 매니저가 JSON 의 error 로 사유를 준다. 그 밖의 exit(0·1·3·4, task-ui 의 5 원 세션 꺼짐)는
+    답이 저장된 결과라 오류가 아니다 — 무엇이 됐는지는 answer_state 가 말한다. 모르는 exit 는 stderr 끝줄을 사유로"""
+    if code in SAVED_EXITS:
         return None
     parsed = _last_json(out)
     if isinstance(parsed, dict) and parsed.get("error"):
@@ -155,19 +176,29 @@ def _last_json(text):
 
 
 def _answerable(row):
-    """결정 중 화면에 올릴 것 — 답을 기다리는 것과 이미 답한 것. 답 없이 닫힌 것은 답할 수 없다"""
+    """결정 중 화면에 올릴 것 — 답을 기다리는 것과 이미 답한 것. 답 없이 닫힌 것은 답할 수 없다.
+    확인 대기로 갔다가 화면에서 확인·고칠 것을 받은 결정(answer_via 가 task-ui 종류)은 답이 아니라 task_report 몫이다"""
+    from app.services import task_report
+
     if row.get("kind") != DECISION_KIND:
         return False
-    return row.get("status") == OPEN_STATUS or bool(row.get("answer"))
+    if row.get("status") == OPEN_STATUS:
+        return True
+    return bool(row.get("answer")) and row.get("answer_via") not in task_report.REPORT_VIAS
 
 
 def _view(row):
     view = {field: row.get(field) for field in FIELDS}
     view["options"] = view["options"] or []
-    with _lock:
-        job = _jobs.get(row["id"])
-        view["job"] = dict(job) if job else None
+    view["job"] = job_of(row["id"])
     return view
+
+
+def job_of(task_id):
+    """그 할일에 뒤에서 돌고 있거나 마지막으로 돈 매니저 명령(answer-ui·task-ui)의 사본. 없으면 None"""
+    with _lock:
+        job = _jobs.get(task_id)
+        return dict(job) if job else None
 
 
 def _task(task_id, home):

@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { t } from "./i18n.js";
 import { linkify } from "./linkify.js";
 import { decisionCard } from "./decision-answer.js";
+import { reportCard } from "./task-report.js";
 import { permissionCard } from "./permission-answer.js";
 
 const POLL_INTERVAL_MS = 2000;
@@ -269,21 +270,23 @@ function fillPermissions(slot, todoId, items) {
 
 // 그 할일에 붙은 결정 — 사용자 답을 기다리는 것과 이미 답한 것(다시 답할 수 있다). 매니저 CLI 를 거쳐 와서
 // 개요와 따로 받는다: 늦거나 실패해도 개요는 먼저 뜬다. 붙은 결정이 없거나 매니저가 없는 PC 면 칸을 숨긴 채 둔다.
-// 제목 바로 아래에 둔다 — 이 할일에서 사람이 지금 해야 할 일이 그것이다
+// 제목 바로 아래에 둔다 — 이 할일에서 사람이 지금 해야 할 일이 그것이다.
+// 같은 규칙으로 붙은 직접 할 일·확인 대기(reports)도 같은 응답에 실려 와 결정 아래에 그린다(static/js/task-report.js)
 function loadDecisions(slot, todoId) {
   api
     .getTodoDecisions(todoId)
-    .then((payload) => fillDecisions(slot, payload?.items))
+    .then((payload) => fillDecisions(slot, payload?.items, payload?.reports))
     .catch((error) => {
       slot.hidden = false;
       slot.replaceChildren(element("p", "muted", t("decision.loadFailed", { error: error.message })));
     });
 }
 
-function fillDecisions(slot, items) {
+function fillDecisions(slot, items, reports) {
   const list = Array.isArray(items) ? items : [];
-  slot.hidden = !list.length;
-  if (!list.length) {
+  const asks = Array.isArray(reports) ? reports : [];
+  slot.hidden = !list.length && !asks.length;
+  if (slot.hidden) {
     slot.replaceChildren();
     return;
   }
@@ -308,7 +311,29 @@ function fillDecisions(slot, items) {
     );
     parts.push(fold);
   }
+  parts.push(...reportParts(asks, options));
   slot.replaceChildren(...parts);
+}
+
+// 직접 할 일·확인 대기 — 사용자가 완료·확인하거나 진행 상황·고칠 것을 알린다. 화면에서 알려 닫힌 것은 결과만 보게 접는다
+function reportParts(reports, options) {
+  const waiting = reports.filter((item) => item.status !== "done");
+  const closed = reports.filter((item) => item.status === "done");
+  const parts = [];
+  if (waiting.length) {
+    const label = element("p", "label", t("report.waitingTitle"));
+    label.append(element("span", "dlg-badge open", String(waiting.length)));
+    parts.push(label, ...waiting.map((item) => reportCard(item, options)));
+  }
+  if (closed.length) {
+    const fold = element("details", "dec-done");
+    fold.append(
+      element("summary", null, t("report.closedTitle", { count: closed.length })),
+      ...closed.map((item) => reportCard(item, options))
+    );
+    parts.push(fold);
+  }
+  return parts;
 }
 
 // 보기와 수정이 같은 자리를 번갈아 쓴다 — 고치려고 팝업을 닫고 다시 열지 않게

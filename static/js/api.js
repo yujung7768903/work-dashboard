@@ -85,6 +85,11 @@ export const getTodoDecisions = (todoId) => request("GET", `/decisions?todo_id=$
 export const getDecision = (id) => request("GET", `/decisions/${id}`);
 export const answerDecision = (id, choice, feedback) =>
   request("POST", "/decision-answer", { id, choice, feedback }, { silent: true });
+// 직접 할 일·확인 대기 응답. 할일 상세에 붙은 것은 getTodoDecisions 의 reports 로 함께 온다 · 한 건 · 보내기.
+// done 은 완료(직접 할 일)·확인(확인 대기), feedback 은 진행 상황·고칠 것(done 과 함께면 그 메모)
+export const getTaskReport = (id) => request("GET", `/task-reports/${id}`);
+export const sendTaskReport = (id, done, feedback) =>
+  request("POST", "/task-report", { id, done, feedback }, { silent: true });
 // 권한 요청. 할일 상세에 붙은 것들 · 허용/거부 보내기. 보내기는 화면이 본 요청(세션·생성 시각·호출 id)을 같이
 // 보낸다 — 그 사이 같은 id 로 바뀐 요청에 답이 가지 않게. 실패는 카드 안에 보이므로 alert 를 띄우지 않는다
 export const getTodoPermissions = (todoId) => request("GET", `/permissions?todo_id=${todoId}`);

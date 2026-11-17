@@ -127,10 +127,21 @@ const DECISION_ONE = {
   ], recommend: "A", answer_state: "unanswered", answer: null, answer_choice: null, job: null,
 };
 const decisionFetched = [];
+// 확인 대기 팝업의 '확인하기' 칸이 열 때 받는 한 건(app/services/task_report.py)
+const reportFetched = [];
 globalThis.fetch = async (url) => {
   if (url.startsWith("/api/decisions/")) {
     decisionFetched.push(url);
     return { ok: true, status: 200, json: async () => DECISION_ONE };
+  }
+  if (url.startsWith("/api/task-reports/")) {
+    reportFetched.push(url);
+    const id = Number(url.split("/").at(-1));
+    return {
+      ok: true, status: 200,
+      json: async () => ({ id, title: "확인 대기", status: "confirm", report_kind: "confirm", answer: null,
+        answer_via: null, answer_state: "unanswered", session: null, job: null }),
+    };
   }
   const part = new URL(url, "http://x").searchParams.get("part");
   fetched.push(part);
@@ -291,12 +302,26 @@ assert.deepEqual(texts(confirmRows[1]), ["작업 대시보드 #355 트리 메뉴
 const treeChip = confirmRows[1].children[0].children[0].children[0];
 assert.equal(treeChip.className, "mgr-tree-chip");
 assert.equal(treeChip.title, "트리: 작업 대시보드");
-// 팝업: 사용자 요청 / 끝낸 내용 / 작업 사항 / 다음 단계 / 산출물(있을 때만) / 연결 세션(이름·마지막 답)
+// 팝업: 사용자 요청 / 끝낸 내용 / 확인하기 / 작업 사항 / 다음 단계 / 산출물(있을 때만) / 연결 세션(이름·마지막 답)
 confirmRows[1].listeners.click();
 assert.equal(headTitle(), "#62 블로그 글 반영");
 const confirmBody = elements["mgr-decision-body"].children;
 assert.deepEqual(confirmBody.map((section) => section.children[0].textContent),
-  ["사용자 요청", "끝낸 내용", "작업 사항", "다음 단계", "산출물", "연결 세션"]);
+  ["사용자 요청", "끝낸 내용", "확인하기", "작업 사항", "다음 단계", "산출물", "연결 세션"]);
+// 끝낸 내용 바로 아래 '확인하기' — 열 때 한 건을 받아 확인(기본)·고칠 것 보내기(글이 있을 때)를 그린다
+assert.deepEqual(reportFetched, ["/api/task-reports/62"]);
+for (let i = 0; !confirmBody[2].children[1].children[0]?.className.startsWith("dec-card") && i < 50; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+const confirmCard = confirmBody[2].children[1].children[0];
+assert.equal(confirmCard.className, "dec-card report-card bare", "팝업 안이라 테두리 없이, 머리 없이");
+const confirmBox = confirmCard.children[0];
+assert.equal(confirmBox.children[0].tag, "textarea");
+const [fixButton, confirmButton] = confirmBox.children[2].children;
+assert.deepEqual([fixButton.textContent, confirmButton.textContent], ["고칠 것 보내기", "확인"]);
+assert.equal(fixButton.disabled, true, "글이 없으면 고칠 것은 못 보낸다");
+assert.equal(confirmButton.disabled, false, "확인은 바로 누를 수 있다");
+assert.match(confirmButton.className, /\bprimary\b/);
 // 긴 요청은 접혀 있고 '전체 보기' 로 펼친다 — 전문은 그대로 들어 있다
 const requestBox = confirmBody[0].children[1];
 assert.match(requestBox.className, /\bfolded\b/);
@@ -307,17 +332,18 @@ toggle.listeners.click();
 assert.doesNotMatch(requestBox.className, /\bfolded\b/);
 assert.equal(toggle.textContent, "접기");
 assert.equal(sectionText(confirmBody[1]), "끝낸 내용|PR #12 머지");
-assert.match(sectionText(confirmBody[2]), /표 너비 수정/);
-assert.equal(sectionText(confirmBody[3]), "다음 단계|문체 확인");
+assert.match(sectionText(confirmBody[3]), /표 너비 수정/);
+assert.equal(sectionText(confirmBody[4]), "다음 단계|문체 확인");
 // 산출물 URL 은 새 탭 링크
-const outputLink = confirmBody[4].children[1].children[0];
+const outputLink = confirmBody[5].children[1].children[0];
 assert.equal(outputLink.href, "https://github.com/x/y/pull/12");
 assert.equal(outputLink.target, "_blank");
-assert.match(sectionText(confirmBody[5]), /^연결 세션\|보조2 \| 블로그\|연결 세션의 마지막 답 \(끝부분\)\|…\n끝났어\.$/);
+assert.match(sectionText(confirmBody[6]), /^연결 세션\|보조2 \| 블로그\|연결 세션의 마지막 답 \(끝부분\)\|…\n끝났어\.$/);
 // 비어 있는 칸은 지어내지 않고 '기록 없음', 산출물·연결 세션은 없으면 칸째 뺀다.
 // 세션 없이 들어온 일은 사용자 요청 자리에 '세션 없음' 과 출처
 confirmRows[0].listeners.click();
-const bareBody = elements["mgr-decision-body"].children;
+const bareBody = elements["mgr-decision-body"].children.filter((section) => section.children[0].textContent !== "확인하기");
+assert.equal(elements["mgr-decision-body"].children[2].children[0].textContent, "확인하기");
 assert.deepEqual(bareBody.map(sectionText), [
   "사용자 요청|세션 없음출처: jira · PFD-6350",
   "끝낸 내용|master 905f617 반영", "작업 사항|기록 없음", "다음 단계|기록 없음", "근거 자료|PFD-6350",

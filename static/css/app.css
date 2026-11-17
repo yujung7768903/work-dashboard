@@ -1641,6 +1641,17 @@ html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
 .dec-done { margin-top: var(--sp-12); }
 .dec-done > summary { color: var(--muted); font-size: var(--fs-sm); cursor: pointer; }
 
+/* 직접 할 일·확인 대기 (static/js/task-report.js) — 결정 카드와 같은 틀. 버튼이 둘이다: 글만 보내는 보조 버튼과
+   할일을 닫는 기본 버튼(완료·확인). 기본 버튼은 강조색 면으로 갈라, 무엇을 누르면 닫히는지 이름을 읽기 전에 보이게 한다.
+   둘 다 오른쪽 끝에 붙인다 — 결정 카드의 보내기와 같은 자리 */
+.report-actions { justify-content: flex-end; flex-wrap: wrap; }
+.report-actions button { margin-left: 0; }
+.dec-answer .dec-send.primary { background: var(--accent); color: #fff; }
+.dec-answer .dec-send.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 84%, #000); }
+/* 보내는 동안 — 흐리게만 한다. 전역 disabled 색(--line)이면 강조색 면 위 글자가 사라진다 */
+.dec-answer .dec-send.primary:disabled { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); color: #fff; }
+.dec-sent .mgr-chip { margin-left: var(--sp-8); vertical-align: 1px; }
+
 /* 권한 요청 (static/js/permission-answer.js) — 할일 상세 개요의 제목 아래, 결정 칸 위.
    결정 카드와 같은 틀과 같은 뜻의 색: 화면에서 답할 수 있는 요청은 경고색 띠(사람을 기다린다), 터미널에서만
    답하는 요청은 흐린 띠(여기서 할 일이 없다), 꺼진 세션은 위험색 띠(이어 가지 못한다).
@@ -1719,6 +1730,9 @@ html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
 }
 :where([data-theme="dark"]) .side-nav button.active { background-color: var(--softer); }
 :where([data-theme="dark"]) #quick-submit { color: #14161f; }
+/* 어두운 테마의 강조색(#7c8af2)은 밝아 흰 글자 대비가 3.1 — 글자 버튼은 어두운 글자로 둔다(약 5.8) */
+:where([data-theme="dark"]) .dec-answer .dec-send.primary,
+:where([data-theme="dark"]) .dec-answer .dec-send.primary:disabled { color: #14161f; }
 :where([data-theme="dark"]) select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
