@@ -286,6 +286,11 @@ MANAGER_HELPERS_TIMEOUT_SEC = 45
 MANAGER_TASK_TIMEOUT_SEC = 15
 # answer-ui 는 죽은 원 세션을 되살려 도착을 기다리느라 최대 90초 걸린다(매니저 answer-ui --help). 그보다 넉넉히
 MANAGER_ANSWER_TIMEOUT_SEC = 180
+# 권한 요청에 화면에서 답하기(app/services/permission_answer.py). 매니저 permission_gate 가 결정 파일을 기다리는
+# 시간(MANAGER_GATE_TIMEOUT 기본 540초)과, 그 훅을 Claude Code 가 끊는 시간(settings.json 훅 timeout 600초).
+# 요청 파일이 끊는 시간보다 오래 남아 있으면 기다리던 훅은 이미 없다 — 답해도 받을 쪽이 없다
+MANAGER_GATE_WAIT_SEC = 540
+MANAGER_GATE_HOOK_TIMEOUT_SEC = 600
 # 매니저 탭 도구 목록. claude mcp list 는 stdio 서버(디스코드 봇 포함)를 실제로 띄워 보므로 한 시간에 한 번만
 TOOLS_CACHE_SEC = 3600
 TOOLS_MCP_TIMEOUT_SEC = 90
