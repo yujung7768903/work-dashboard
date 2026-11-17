@@ -55,6 +55,7 @@ from app.services import (
     session_results,
     session_todo,
     spawn_link,
+    task_report,
     todo_tree,
     usage,
     worktrees,
@@ -64,8 +65,9 @@ STATIC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 INDEX_FILE = "index.html"
 API_PREFIX = "/api/"
 NONE_LITERAL = "none"
-# 이 PC 에서 온 요청만 받는 POST. 셋 다 도구가 달린 에이전트 세션에 글을 넣거나 그 세션의 도구 실행을 허락한다
-LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer")
+# 이 PC 에서 온 요청만 받는 POST. 모두 도구가 달린 에이전트 세션에 글을 넣거나 그 세션의 도구 실행을 허락한다.
+# task-report 는 매니저 할일을 닫고(완료·확인) 원 세션에 글을 넣는다
+LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer", "task-report")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -184,6 +186,12 @@ def _route_get(con, head, item_id, query):
         if not todo_id:
             raise Validation("todo_id 가 필요함")
         return decision_answer.for_todo(con, int(todo_id))
+    if head == "task-reports":
+        # 직접 할 일·확인 대기 한 건 — 매니저 탭 확인 대기 팝업이 열 때, 응답을 보낸 뒤 폴링할 때.
+        # 할일 상세에 붙은 것은 decisions?todo_id= 의 reports 로 함께 온다
+        if not item_id:
+            raise Validation("id 가 필요함")
+        return task_report.show(item_id)
     if head == "permissions":
         # 할일 상세의 권한 요청 칸 — 그 할일을 잡은 세션이 기다리는 권한(명령 전문은 transcript 에서)
         todo_id = _single(query, "todo_id", None)
@@ -275,6 +283,11 @@ def _route_post(con, head, body):
         if not body.get("id"):
             raise Validation("id 가 필요함")
         return decision_answer.start(int(body["id"]), body.get("choice"), body.get("feedback"))
+    if head == "task-report":
+        # 직접 할 일의 완료·진행 상황, 확인 대기의 확인·고칠 것. 매니저 task-ui 가 뒤에서 돌고 화면은 task-reports/<id> 를 폴링한다
+        if not body.get("id"):
+            raise Validation("id 가 필요함")
+        return task_report.start(int(body["id"]), bool(body.get("done")), body.get("feedback"))
     if head == "permission-answer":
         # 할일 상세 권한 요청 칸의 허용·거부. 매니저 permission_gate 가 기다리는 요청에만 닿는다(perm-answer)
         return permission_answer.answer(

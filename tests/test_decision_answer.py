@@ -34,7 +34,7 @@ if args[:2] == ["task", "list"]:
     print(json.dumps(rows, ensure_ascii=False))
 elif args[:2] == ["task", "show"]:
     print(json.dumps(next((row for row in tasks if row["id"] == int(args[2])), None), ensure_ascii=False))
-elif args[0] == "answer-ui":
+elif args[0] in ("answer-ui", "task-ui"):
     with open(os.path.join(here, "answer.json"), encoding="utf-8") as handle:
         out = json.load(handle)
     print(json.dumps(out, ensure_ascii=False))
@@ -141,7 +141,7 @@ class ForTodoTest(Fixture):
 
     def test_without_manager_nothing_to_show(self):
         found = decision_answer.for_todo(self.con, self.todo["id"], home=tempfile.mkdtemp())
-        self.assertEqual(found, {"available": False, "items": []})
+        self.assertEqual(found, {"available": False, "items": [], "reports": []})
 
 
 class ShowTest(Fixture):

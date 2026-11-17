@@ -105,12 +105,12 @@ function textNode(text, className, renderText, label) {
   return node;
 }
 
-function labelled(label, text, renderText) {
+export function labelled(label, text, renderText) {
   return textNode(text, "dec-text", renderText, label);
 }
 
 // 긴 배경은 접어 두고 펼친다 — 선택지가 화면 밖으로 밀리지 않게
-function folded(text, renderText) {
+export function folded(text, renderText) {
   const box = element("div", "dec-context");
   box.append(textNode(text, "dec-text", renderText));
   if (text.length <= CONTEXT_FOLD_CHARS && text.split("\n").length <= CONTEXT_FOLD_LINES) return box;

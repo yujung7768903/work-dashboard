@@ -56,6 +56,7 @@ BROWSER_FACING = (
     "app/repositories/todos.py",
     "app/repositories/workspaces.py",
     "app/services/decision_answer.py",
+    "app/services/task_report.py",
     "app/services/permission_answer.py",
     "app/services/serve.py",
     "app/services/session_message.py",
