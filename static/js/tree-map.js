@@ -55,6 +55,8 @@ const BUTTON_STEP = 1.2;
  * host 안에 Map 하나를 만든다.
  * options.onChange: 카드에서 무언가를 바꾼 뒤 부른다. 부르는 쪽이 다시 받아 render 한다
  * options.focusId: 강조할 할일. 그 카드와 루트까지의 길을 칠하고 처음에 그 카드로 간다
+ * options.center: "card" 면 강조 카드를 판 한가운데에 둔다(할일별 보기). 기본은 루트까지의 길이 가운데
+ * options.keepIds: 완료 숨김이어도 남길 할일 id — 다른 트리에서 강조 카드로 선을 긋는 상위가 사라지지 않게
  */
 export function createTreeMap(host, options = {}) {
   const viewport = element("div", "tm-viewport");
@@ -75,7 +77,10 @@ export function createTreeMap(host, options = {}) {
   // 방금 완료로 바꾼 카드. 완료 숨김이어도 이 화면을 보는 동안은 흐려진 채 남는다
   const keep = new Set();
   // 강조할 카드는 끝났어도 숨기지 않는다 — 매니저 팝업이 가리키는 카드가 사라지면 연관을 못 본다
-  const keepFocus = () => options.focusId != null && keep.add(options.focusId);
+  const keepFocus = () => {
+    if (options.focusId != null) keep.add(options.focusId);
+    (options.keepIds ?? []).forEach((id) => keep.add(id));
+  };
   keepFocus();
   // '+N 더' 를 눌러 결과물을 다 펼친 할일 key. 이 판을 보는 동안만 기억한다
   const openResults = new Set();
@@ -137,11 +142,25 @@ export function createTreeMap(host, options = {}) {
     const right = Math.max(...frame.map((item) => item.x + CARD_W));
     const bottom = Math.max(...frame.map((item) => item.y + CARD_H));
     const { width, height } = viewportSize();
+    if (options.center === "card") return cardCenterView(card, frame, width, height);
     const k = clamp(Math.min((width - PAD * 2) / (right - left), (height - PAD * 2) / (bottom - top), 1), MIN_FIT, 1);
     // 다 안 들어가면 강조 카드가 화면 가운데에 오게 한다
     const centerX = (right - left) * k <= width - PAD * 2 ? (left + right) / 2 : card.x + CARD_W / 2;
     const centerY = (bottom - top) * k <= height - PAD * 2 ? (top + bottom) / 2 : card.y + CARD_H / 2;
     return { x: width / 2 - centerX * k, y: height / 2 - centerY * k, k };
+  }
+
+  // 강조 카드를 정확히 가운데 둔다. 배율은 카드에서 가장 먼 틀 카드(루트까지의 길·바로 아래 자식·
+  // 판에 있는 다른 상위)까지 담기는 만큼 — 못 담으면 MIN_FIT 에서 멈추고 카드는 그래도 가운데다
+  function cardCenterView(card, frame, width, height) {
+    const others = (card.data.parents ?? []).map((parent) => layout.byKey.get(parent.key)).filter(Boolean);
+    const all = [...frame, ...others];
+    const cx = card.x + CARD_W / 2;
+    const cy = card.y + CARD_H / 2;
+    const reachX = Math.max(...all.map((item) => Math.max(cx - item.x, item.x + CARD_W - cx)));
+    const reachY = Math.max(...all.map((item) => Math.max(cy - item.y, item.y + CARD_H - cy)));
+    const k = clamp(Math.min((width / 2 - PAD) / reachX, (height / 2 - PAD) / reachY, 1), MIN_FIT, 1);
+    return { x: width / 2 - cx * k, y: height / 2 - cy * k, k };
   }
 
   function viewportSize() {

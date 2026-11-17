@@ -264,12 +264,13 @@
         </div>
       </section>
 
-      <!-- 트리 메뉴 (static/js/tree.js). 목록·맵 전환, 제안 모음, 완료 숨기기, 다시 받기가 한 줄.
+      <!-- 트리 메뉴 (static/js/tree.js). 트리별·할일별 목록·맵 전환, 제안 모음, 완료 숨기기, 다시 받기가 한 줄.
            목록에서 행을 누르면 오른쪽 패널이 열리고, 둘 사이 경계를 끌어 패널 폭을 정한다 -->
       <section id="tab-tree" class="tab" hidden>
         <div id="tree-controls">
           <div id="tree-view">
             <button type="button" class="active" data-view="list" data-i18n="tree.viewList"></button>
+            <button type="button" data-view="todos" data-i18n="tree.viewTodos"></button>
             <button type="button" data-view="map" data-i18n="tree.viewMap"></button>
           </div>
           <span id="tree-summary"></span>

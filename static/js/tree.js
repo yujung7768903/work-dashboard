@@ -1,7 +1,9 @@
 // 트리 메뉴. 워크스페이스 하나가 트리 하나(루트)이고 맥락·할일이 상위 연결로 깊이 제한 없이 매달린다.
 // 상위는 여럿일 수 있고(왜 생겼나 — 계기·목적·배경), 선행은 따로다(무엇을 먼저).
-// List — 트리 1개가 1행 요약. 펼치면 각 상위 밑에 하위가 다 보이고(상위가 둘이면 두 곳에) 줄마다 다시 펼친다.
-//        행을 누르면 오른쪽 패널에 그 트리만 Map 으로.
+// 트리별 — 트리 1개가 1행 요약. 펼치면 각 상위 밑에 하위가 다 보이고(상위가 둘이면 두 곳에) 줄마다 다시 펼친다.
+//          행을 누르면 오른쪽 패널에 그 트리만 Map 으로.
+// 할일별 — 진행 중 할일 1개가 1행. 줄 아래 작게 그 할일이 걸린 트리. 줄을 누르면 카드가 있는 트리를,
+//          트리 이름을 누르면 그 트리를 오른쪽 패널에 그 카드가 가운데 오게 띄운다 (고르는 규칙은 tree-todos.js)
 // Map  — 진행 중인 트리 전부를 한 판에. 카드는 한 번만 그리고 다른 상위·선행은 선을 더 긋는다.
 // 제안(자동·재구성이 만든 연결)은 점선 + 확인·거절. 위쪽 '제안' 버튼이 전부 모아 보여 준다.
 // 보드(카테고리>워크스페이스>할일)는 그대로 두고 같은 데이터를 다른 눈으로 본다
@@ -10,12 +12,15 @@ import { t } from "./i18n.js";
 import { resultView } from "./result-card.js";
 import { cornerBadge, createTreeMap, metaLine, parentLabel, proposalLabel, STATUS_LABEL, STATUS_ORDER } from "./tree-map.js";
 import { isVisible } from "./tree-layout.js";
+import { doingTodos, panelTrees, treeIdOf, UNASSIGNED_TREE } from "./tree-todos.js";
 
 const VIEW_KEY = "tree-view";
 const HIDE_KEY = "tree-hide-done";
 const PANEL_KEY = "tree-panel-width";
 const VIEW_LIST = "list";
+const VIEW_TODOS = "todos";
 const VIEW_MAP = "map";
+const VIEWS = [VIEW_LIST, VIEW_TODOS, VIEW_MAP];
 const DONE = "done";
 const REVIEW = "review";
 // 트리를 펼쳤을 때 처음부터 열려 있는 깊이. 그 아래는 줄마다 펼친다(깊이 제한은 없다)
@@ -24,15 +29,16 @@ const PROPOSED = "proposed";
 const CONFIRMED = "confirmed";
 const REJECTED = "rejected";
 const CONTEXT = "context";
-const UNASSIGNED_TREE = "none";
 // 패널 폭의 한계. 목록 쪽도 이름·진행률이 읽힐 만큼은 남아야 한다
 const PANEL_MIN = 360;
 const LIST_MIN = 320;
 const PANEL_DEFAULT_RATIO = 0.55;
 const KEY_STEP = 24;
+// 이 폭 아래에서는 패널이 목록 밑으로 내려간다(tree.css 와 같은 값) — 할일을 누르면 패널까지 내려 준다
+const STACKED = "(max-width: 900px)";
 
 // 기기마다 다른 취향이라 서버가 아니라 브라우저에 남긴다 (보드의 todo-view 와 같은 방식)
-let view = readStore(VIEW_KEY) === VIEW_MAP ? VIEW_MAP : VIEW_LIST;
+let view = VIEWS.includes(readStore(VIEW_KEY)) ? readStore(VIEW_KEY) : VIEW_LIST;
 let hideDone = readStore(HIDE_KEY) !== "false";
 let trees = [];
 let links = [];
@@ -44,7 +50,8 @@ const toggled = new Map();
 let showProposals = false;
 let mapView = null;
 let panelMap = null;
-// 오른쪽 패널에 띄운 트리(워크스페이스 id)와 강조할 할일
+// 오른쪽 패널에 띄운 트리(워크스페이스 id)와 강조할 할일.
+// 할일별에서 열면 home(카드가 있는 트리)과 center(카드를 가운데)가 붙는다
 let panel = null;
 
 export async function renderTreeTab() {
@@ -89,7 +96,8 @@ function draw() {
     mapView.render(trees, { hideDone, links });
     return;
   }
-  drawList();
+  if (view === VIEW_TODOS) drawTodoList();
+  else drawList();
   if (showPanel) drawPanel();
 }
 
@@ -137,6 +145,12 @@ function syncControls() {
 
 // 판 위 한 줄 — 지금 사람이 봐야 할 것이 몇 개인지
 function drawSummary() {
+  if (view === VIEW_TODOS) {
+    const rows = doingTodos(trees);
+    const waiting = rows.filter((row) => row.node.waiting).length;
+    byId("tree-summary").textContent = t("tree.todoSummary", { count: rows.length, waiting });
+    return;
+  }
   const open = trees.filter((tree) => !tree.complete);
   const review = open.reduce((sum, tree) => sum + (tree.counts[REVIEW] || 0), 0);
   const waiting = open.reduce((sum, tree) => sum + tree.waiting, 0);
@@ -334,6 +348,87 @@ function decideButton(edgeId, state, label, className) {
   return button;
 }
 
+// ── 할일별 ───────────────────────────────────────────────────────────────
+// 줄 = #번호 · 제목 · 사람 대기 · 하위 진행률, 그 아래 작게 걸린 트리. 상태는 전부 진행중이라 칩을 뺀다
+
+function drawTodoList() {
+  const list = byId("tree-list");
+  const rows = doingTodos(trees);
+  if (!rows.length) {
+    list.replaceChildren(element("p", "tree-empty", t("tree.todoEmpty")));
+    return;
+  }
+  const box = element("ul", "tree-todo-list");
+  box.replaceChildren(...rows.map(todoRow));
+  list.replaceChildren(box);
+}
+
+function todoRow({ node, home, trees: member }) {
+  const item = element("li", "tree-todo");
+  // 지금 패널이 이 할일을 어느 트리에서 보여 주는지 — 줄과 그 트리 이름을 같이 칠한다
+  const shownIn = panel?.focusKey === node.key ? panel.treeId : null;
+  if (shownIn != null) item.classList.add("active");
+  const row = element("div", "tree-todo-row");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.title = `${node.title}\n${t("tree.todoOpenHint")}`;
+
+  const head = element("div", "tree-todo-head");
+  head.append(element("span", "tree-kid-id", `#${node.id}`), element("span", "tree-todo-title", node.title));
+  if (node.waiting) head.appendChild(element("span", "tm-waiting", waitingText(node.waiting)));
+  if (node.progress.total) {
+    const num = element("span", "tree-kid-num", `${node.progress.done}/${node.progress.total}`);
+    num.title = t("tree.progressHint", node.progress);
+    head.appendChild(num);
+  }
+
+  const where = element("div", "tree-todo-trees");
+  member.forEach((tree, index) => {
+    // 자기 트리 다음, 다른 상위로 걸린 트리 앞에 한 번 '연결' 을 적어 둘을 가른다
+    if (index === 1) where.appendChild(element("span", "tree-todo-linked", t("tree.todoLinked")));
+    where.appendChild(treeChip(node, home, tree, shownIn));
+  });
+
+  const choose = () => openTodo(node, home, home);
+  row.addEventListener("click", choose);
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      choose();
+    }
+  });
+  row.append(head, where);
+  item.appendChild(row);
+  return item;
+}
+
+// 트리 이름 하나. 카테고리 색 점 + 이름. 누르면 그 트리에서 이 할일을 보인다
+function treeChip(node, home, tree, shownIn) {
+  const name = tree.name ?? t("common.unassigned");
+  const chip = element("button", "tree-todo-tree");
+  chip.type = "button";
+  if (tree.color) chip.style.setProperty("--cat", tree.color);
+  if (tree.proposed) chip.dataset.proposed = "";
+  chip.setAttribute("aria-pressed", String(shownIn === tree.id));
+  chip.append(element("span", "tree-todo-dot"), element("span", "tree-todo-tree-name", name));
+  const parents = tree.via.map((parent) => (parent.id != null ? `#${parent.id} ${parent.title}` : parent.title));
+  chip.title = tree.home
+    ? t("tree.todoHomeTree", { name })
+    : `${tree.proposed ? t("tree.todoProposedTree", { name }) : t("tree.todoLinkedTree", { name })}\n${parents.join("\n")}`;
+  chip.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openTodo(node, home, tree.id);
+  });
+  // 줄의 Enter·Space 처리가 이 버튼의 누름을 막지 않게
+  chip.addEventListener("keydown", (event) => event.stopPropagation());
+  return chip;
+}
+
+function openTodo(node, home, treeId) {
+  openPanel(treeId, node.id, node.key, { home, center: true });
+  if (window.matchMedia?.(STACKED).matches) byId("tree-panel").scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
 // ── 제안 모음 ─────────────────────────────────────────────────────────────
 // 자동·재구성이 만든 확인 대기 연결 전부. 관련처럼 트리에 자리가 없는 제안도 여기서 본다
 
@@ -406,20 +501,31 @@ function waitingCell(tree) {
 
 // ── 오른쪽 패널 ───────────────────────────────────────────────────────────
 
-function openPanel(treeId, focusId, focusKey = null) {
-  const changed = panel?.treeId !== treeId || panel?.focusId !== focusId;
-  panel = { treeId, focusId, focusKey: focusKey ?? (focusId != null ? `t${focusId}` : null) };
+function openPanel(treeId, focusId, focusKey = null, { home = null, center = false } = {}) {
+  const changed =
+    panel?.treeId !== treeId || panel?.focusId !== focusId || panel?.home !== home || panel?.center !== center;
+  panel = { treeId, focusId, focusKey: focusKey ?? (focusId != null ? `t${focusId}` : null), home, center };
   // 다른 트리·다른 할일을 고르면 그 대상으로 시점을 새로 잡는다
   if (changed) panelMap = null;
   draw();
 }
 
+// 할일별에서 다른 트리를 고르면 그 트리 + 카드가 있는 트리의 가지를 함께 그린다(tree-todos.js panelTrees)
 function drawPanel() {
-  const tree = treeOf(panel.treeId);
-  byId("tree-panel-title").textContent = tree.workspace.name ?? t("common.unassigned");
+  const shown = panelTrees(trees, panel);
+  byId("tree-panel-title").textContent = shown[0].workspace.name ?? t("common.unassigned");
   applyPanelWidth();
-  panelMap ??= createTreeMap(byId("tree-panel-map"), { onChange: reload, focusId: panel.focusId });
-  panelMap.render([tree], { hideDone, links });
+  // 그 할일의 상위는 끝났어도 남긴다 — 다른 트리에서 카드로 긋는 선의 시작점이다
+  const keepIds = (nodeByKey.get(panel.focusKey)?.parents ?? [])
+    .filter((parent) => /^t\d+$/.test(parent.key))
+    .map((parent) => Number(parent.key.slice(1)));
+  panelMap ??= createTreeMap(byId("tree-panel-map"), {
+    onChange: reload,
+    focusId: panel.focusId,
+    center: panel.center ? "card" : null,
+    keepIds,
+  });
+  panelMap.render(shown, { hideDone, links });
 }
 
 // 목록과 패널 사이 경계를 끌어 패널 폭을 정한다. 키보드 ←→ 로도 움직인다
@@ -483,11 +589,6 @@ function waitingText(kind) {
 
 function treeOf(treeId) {
   return trees.find((tree) => treeIdOf(tree) === treeId) ?? null;
-}
-
-// 미분류 트리는 워크스페이스 id 가 없어 글자 키로 부른다
-function treeIdOf(tree) {
-  return tree.workspace.id ?? UNASSIGNED_TREE;
 }
 
 function chevron() {

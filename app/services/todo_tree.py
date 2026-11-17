@@ -89,6 +89,8 @@ def proposals(con):
 
 def _load_nodes(con):
     waiting = session_repo.waiting_by_todo(con)
+    # 할일별 보기가 진행 중 할일을 세우는 순서 — 상태별 뷰(보드)와 같은 '방금 손댄 것이 위로'
+    last_seen = session_repo.last_activity_by_todo(con)
     locked = autorun_repo.locked_todo_ids(con)
     sessions = {
         row["todo_id"]: row["n"]
@@ -105,6 +107,7 @@ def _load_nodes(con):
             # 자율 수행이 done 으로 닫았지만 사람이 아직 확인하지 않은 것 (보드의 검토 대기)
             autorun_locked=todo["id"] in locked,
             sessions=sessions.get(todo["id"], 0),
+            last_session_at=last_seen.get(todo["id"]),
         )
         nodes[node["key"]] = node
     for context in graph_repo.list_contexts(con):
@@ -121,6 +124,7 @@ def _load_nodes(con):
             "waiting": None,
             "autorun_locked": False,
             "sessions": 0,
+            "last_session_at": None,
         }
         nodes[node["key"]] = node
     for node in nodes.values():
