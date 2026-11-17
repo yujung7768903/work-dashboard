@@ -1,6 +1,8 @@
 // 트리 메뉴의 할일별 보기 — 무엇을 어떤 순서로 세우고, 줄마다 어느 트리를 붙이고, 패널에 무엇을 그리는지.
-// 진행 중 = 할일 상태 doing (보드 상태별 뷰의 '진행중' 칸과 같은 기준). 순서도 그 칸과 같다 — 세션이 방금
-// 손댄 것이 위로(last_session_at), 한 번도 안 잡힌 것은 아래.
+// 진행 중 = 할일 상태 doing (보드 상태별 뷰의 '진행중' 칸과 같은 기준). 순서는 가장 최근에 작업하거나 고친 것이
+// 위로 — 연결 세션이 마지막으로 살아 있던 시각(last_session_at)과 할일 자체의 수정 시각(updated_at) 중 더 최근
+// 값(activeAt). 둘 다 없는 것은 아래. 트리별 목록의 형제 순서(latestFirst)도 같은 값을 쓴다.
+// 줄 왼쪽 막대는 지금 떠 있는 보조 세션이 잡은 할일(holdersByTodo) — 매니저 탭 보조 세션 목록과 같은 판정이다.
 // 할일 카드는 자기 트리(워크스페이스, 없으면 미분류) 하나에만 그려지고, 다른 트리와는 '다른 상위' 연결로만
 // 이어진다(app/services/todo_tree.py). 그래서 줄에 붙는 트리 맨 앞은 늘 카드가 있는 자기 트리고,
 // 다른 상위가 있는 트리가 뒤에 붙는다. 다른 트리를 고르면 그 트리 + 자기 트리에서 카드까지의 가지를 함께
@@ -11,6 +13,8 @@ export const UNASSIGNED_TREE = "none";
 const DOING = "doing";
 const TODO = "todo";
 const PROPOSED = "proposed";
+// 매니저 spawn 이 붙이는 세션 이름 머리 '보조N | 제목' (매니저 spawn.helper_name)
+const HELPER_LABEL = /^보조\d+/;
 
 // 미분류 트리는 워크스페이스 id 가 없어 글자 키로 부른다
 export function treeIdOf(tree) {
@@ -95,12 +99,61 @@ function entry(tree, home) {
   };
 }
 
-// 상태별 뷰(static/js/kanban.js)와 같은 비교. 같으면 목록에 나오는 순서 그대로(정렬은 안정적이다)
+/**
+ * 그 할일을 마지막으로 작업하거나 고친 시각 — 연결 세션의 last_session_at 과 할일의 updated_at 중 더 최근 것.
+ * 둘 다 서버 now()(UTC ISO 초 단위)라 글자 비교가 곧 시각 비교다. 둘 다 없으면 null
+ */
+export function activeAt(node) {
+  const seen = node.last_session_at ?? "";
+  const updated = node.updated_at ?? "";
+  return (seen > updated ? seen : updated) || null;
+}
+
+/**
+ * 트리별 목록의 형제 순서. 그 줄과 그 아래(주 상위로 붙은 하위 전부) 중 가장 최근 activeAt 이 위로 —
+ * 하위에서 방금 일한 상위가 아래로 묻히지 않게. 같으면 받은 순서 그대로. 받은 배열은 건드리지 않는다
+ * (맵·패널이 같은 children 순서로 카드를 놓는다)
+ */
+export function latestFirst(nodes) {
+  const latest = new Map();
+  const latestOf = (node) => {
+    if (!latest.has(node)) {
+      latest.set(node, (node.children ?? []).reduce((best, kid) => later(best, latestOf(kid)), activeAt(node) ?? ""));
+    }
+    return latest.get(node);
+  };
+  return [...nodes].sort((left, right) => newerFirst(latestOf(left), latestOf(right)));
+}
+
+/**
+ * 매니저 탭 보조 세션 줄(/api/manager?part=helpers 의 items — manager.py 보조 --json 에 대시보드가
+ * 붙인 card) → Map(할일 id → [{ label, status }]). card 는 그 세션이 가장 최근에 연결한 할일이다.
+ * label 은 이름 앞의 '보조N' (할일 제목은 줄에 이미 있다), 없으면 이름 그대로
+ */
+export function holdersByTodo(helpers) {
+  const found = new Map();
+  (helpers ?? []).forEach((helper) => {
+    const todoId = helper.card?.todo_id;
+    if (todoId == null) return;
+    const name = helper.name ?? "";
+    const label = HELPER_LABEL.exec(name)?.[0] ?? name;
+    found.set(todoId, [...(found.get(todoId) ?? []), { label, status: helper.status ?? null }]);
+  });
+  return found;
+}
+
+// 같으면 목록에 나오는 순서 그대로(정렬은 안정적이다)
 function byRecency(left, right) {
-  const a = left.node.last_session_at ?? "";
-  const b = right.node.last_session_at ?? "";
+  return newerFirst(activeAt(left.node) ?? "", activeAt(right.node) ?? "");
+}
+
+function newerFirst(a, b) {
   if (a === b) return 0;
   return a < b ? 1 : -1;
+}
+
+function later(a, b) {
+  return a > b ? a : b;
 }
 
 function findPath(nodes, key) {

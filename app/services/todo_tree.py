@@ -34,7 +34,8 @@ from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import board
 
-NODE_FIELDS = ("id", "title", "status", "parent_id", "priority", "sort_order", "workspace_id")
+# updated_at — 트리 목록이 '최근 작업·수정 순' 으로 세울 때 last_session_at 과 함께 본다(static/js/tree-todos.js)
+NODE_FIELDS = ("id", "title", "status", "parent_id", "priority", "sort_order", "workspace_id", "updated_at")
 CONTEXT_STATUS = "context"  # 맥락은 할일 상태가 없다. 아래가 전부 끝나면 done 으로 본다
 UNASSIGNED_KEY = None
 
@@ -125,6 +126,7 @@ def _load_nodes(con):
             "autorun_locked": False,
             "sessions": 0,
             "last_session_at": None,
+            "updated_at": context["updated_at"],
         }
         nodes[node["key"]] = node
     for node in nodes.values():

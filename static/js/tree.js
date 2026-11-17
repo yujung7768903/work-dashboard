@@ -3,7 +3,9 @@
 // 트리별 — 트리 1개가 1행 요약. 펼치면 각 상위 밑에 하위가 다 보이고(상위가 둘이면 두 곳에) 줄마다 다시 펼친다.
 //          행을 누르면 오른쪽 패널에 그 트리만 Map 으로.
 // 할일별 — 진행 중 할일 1개가 1행. 줄 아래 작게 그 할일이 걸린 트리. 줄을 누르면 카드가 있는 트리를,
-//          트리 이름을 누르면 그 트리를 오른쪽 패널에 그 카드가 가운데 오게 띄운다 (고르는 규칙은 tree-todos.js)
+//          트리 이름을 누르면 그 트리를 오른쪽 패널에 그 카드가 가운데 오게 띄운다 (고르는 규칙은 tree-todos.js).
+//          지금 떠 있는 보조 세션이 잡은 할일은 줄 왼쪽에 막대를 붙인다
+// 트리별·할일별 목록은 가장 최근에 작업하거나 고친 것이 위다(tree-todos.js activeAt). 맵 배치는 그대로
 // Map  — 진행 중인 트리 전부를 한 판에. 카드는 한 번만 그리고 다른 상위·선행은 선을 더 긋는다.
 // 제안(자동·재구성이 만든 연결)은 점선 + 확인·거절. 위쪽 '제안' 버튼이 전부 모아 보여 준다.
 // 보드(카테고리>워크스페이스>할일)는 그대로 두고 같은 데이터를 다른 눈으로 본다
@@ -12,7 +14,8 @@ import { t } from "./i18n.js";
 import { resultView } from "./result-card.js";
 import { cornerBadge, createTreeMap, metaLine, parentLabel, proposalLabel, STATUS_LABEL, STATUS_ORDER } from "./tree-map.js";
 import { isVisible } from "./tree-layout.js";
-import { doingTodos, panelTrees, treeIdOf, UNASSIGNED_TREE } from "./tree-todos.js";
+import { helperStatusText } from "./manager.js";
+import { doingTodos, holdersByTodo, latestFirst, panelTrees, treeIdOf, UNASSIGNED_TREE } from "./tree-todos.js";
 
 const VIEW_KEY = "tree-view";
 const HIDE_KEY = "tree-hide-done";
@@ -29,6 +32,8 @@ const PROPOSED = "proposed";
 const CONFIRMED = "confirmed";
 const REJECTED = "rejected";
 const CONTEXT = "context";
+const HELPERS_PART = "helpers";
+const HOLDER_HELPER = "helper";
 // 패널 폭의 한계. 목록 쪽도 이름·진행률이 읽힐 만큼은 남아야 한다
 const PANEL_MIN = 360;
 const LIST_MIN = 320;
@@ -53,6 +58,9 @@ let panelMap = null;
 // 오른쪽 패널에 띄운 트리(워크스페이스 id)와 강조할 할일.
 // 할일별에서 열면 home(카드가 있는 트리)과 center(카드를 가운데)가 붙는다
 let panel = null;
+// 할일 id → 그 할일을 지금 잡은 보조 세션들 (tree-todos.js holdersByTodo). 할일별에서만 받는다
+let holders = new Map();
+let holdersTicket = 0;
 
 export async function renderTreeTab() {
   bindControls();
@@ -66,7 +74,27 @@ async function reload() {
   proposalCount = payload.proposals ?? 0;
   nodeByKey = indexNodes(trees);
   draw();
+  if (view === VIEW_TODOS) loadHolders();
   if (showProposals) await drawProposals();
+}
+
+// 할일별 줄 왼쪽 막대의 재료 — 매니저 탭 보조 세션 목록과 같은 칸(/manager?part=helpers = manager.py 보조 --json,
+// 지금 떠 있는 보조 세션과 각 세션이 가장 최근에 연결한 할일). 1초 남짓 걸려 목록을 먼저 그리고 뒤에 얹는다.
+// 메인 매니저는 대시보드 훅에서 빠져(매니저 hooks/unless_main.py) 할일을 잡지 않는다 — 막대는 보조 세션만이다
+async function loadHolders() {
+  const ticket = ++holdersTicket;
+  let found;
+  try {
+    found = holdersByTodo((await api.getManager(HELPERS_PART))[HELPERS_PART]?.items);
+  } catch {
+    // 매니저가 없거나 받기에 실패하면 막대 없이 — 목록은 그대로 쓸 수 있어야 한다
+    found = new Map();
+  }
+  if (ticket !== holdersTicket) return;
+  holders = found;
+  if (view !== VIEW_TODOS) return;
+  drawSummary();
+  drawTodoList();
 }
 
 function indexNodes(list) {
@@ -113,6 +141,7 @@ function bindControls() {
     view = next;
     writeStore(VIEW_KEY, view);
     draw();
+    if (view === VIEW_TODOS) loadHolders();
   });
   byId("tree-hide-done").addEventListener("click", () => {
     hideDone = !hideDone;
@@ -145,10 +174,16 @@ function syncControls() {
 
 // 판 위 한 줄 — 지금 사람이 봐야 할 것이 몇 개인지
 function drawSummary() {
+  const legend = byId("tree-legend");
+  legend.hidden = true;
   if (view === VIEW_TODOS) {
     const rows = doingTodos(trees);
     const waiting = rows.filter((row) => row.node.waiting).length;
     byId("tree-summary").textContent = t("tree.todoSummary", { count: rows.length, waiting });
+    // 막대의 뜻 — 막대가 하나라도 있을 때만
+    const held = rows.filter((row) => holders.has(row.node.id)).length;
+    legend.hidden = !held;
+    byId("tree-legend-text").textContent = t("tree.todoHeldLegend", { count: held });
     return;
   }
   const open = trees.filter((tree) => !tree.complete);
@@ -225,7 +260,7 @@ function kidsOf(node) {
 // results 는 바로 위 할일의 세션 결과물 — 하위 할일 다음에 줄로 붙는다(맵과 달리 접지 않는다)
 function kidsList(tree, nodes, depth, parentKey, path, results = []) {
   const list = element("ul", "tree-kids");
-  nodes
+  latestFirst(nodes)
     .filter((node) => isVisible(node, { hideDone }))
     .forEach((node) => {
       const here = `${path}>${node.key}`;
@@ -349,7 +384,8 @@ function decideButton(edgeId, state, label, className) {
 }
 
 // ── 할일별 ───────────────────────────────────────────────────────────────
-// 줄 = #번호 · 제목 · 사람 대기 · 하위 진행률, 그 아래 작게 걸린 트리. 상태는 전부 진행중이라 칩을 뺀다
+// 줄 = #번호 · 제목 · 사람 대기 · 하위 진행률, 그 아래 작게 걸린 트리. 상태는 전부 진행중이라 칩을 뺀다.
+// 지금 떠 있는 보조 세션이 잡은 할일은 왼쪽 막대(트리별 행의 카테고리 막대와 같은 모양) + 툴팁에 세션
 
 function drawTodoList() {
   const list = byId("tree-list");
@@ -368,10 +404,13 @@ function todoRow({ node, home, trees: member }) {
   // 지금 패널이 이 할일을 어느 트리에서 보여 주는지 — 줄과 그 트리 이름을 같이 칠한다
   const shownIn = panel?.focusKey === node.key ? panel.treeId : null;
   if (shownIn != null) item.classList.add("active");
+  const held = holders.get(node.id);
+  if (held) item.dataset.holder = HOLDER_HELPER;
   const row = element("div", "tree-todo-row");
   row.tabIndex = 0;
   row.setAttribute("role", "button");
-  row.title = `${node.title}\n${t("tree.todoOpenHint")}`;
+  const who = held?.map((holder) => `${holder.label} · ${helperStatusText(holder.status)}`).join(", ");
+  row.title = [node.title, who && t("tree.todoHeldBy", { who }), t("tree.todoOpenHint")].filter(Boolean).join("\n");
 
   const head = element("div", "tree-todo-head");
   head.append(element("span", "tree-kid-id", `#${node.id}`), element("span", "tree-todo-title", node.title));
