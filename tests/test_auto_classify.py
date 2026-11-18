@@ -52,7 +52,7 @@ class JudgeTextTest(unittest.TestCase):
     def test_classified_when_evidence_is_clear(self):
         cases = (
             ("허브 취약점 점검 운영 배포", "운영"),
-            ("기자 문의 회신 답변", "문의"),
+            ("기자 문의 회신 답변 편집국 질문", "문의"),
             ("스터디 강의 실습 학습 자료", "공부"),
         )
         for text, expected in cases:
@@ -134,7 +134,7 @@ class SessionTest(unittest.TestCase):
         self.assertEqual(session_repo.get(self.con, "s-manual")["category_name"], "문의")
 
     def test_batch_is_dry_run_by_default_and_apply_leaves_ambiguous(self):
-        self._session("s-a", "기자 문의 회신 답변")
+        self._session("s-a", "기자 문의 회신 답변 편집국 질문")
         self._session("s-b", "가나다")
         report = auto_classify.run(self.con)
         self.assertIsNone(report["applied"])
@@ -179,7 +179,7 @@ class CliTest(unittest.TestCase):
         os.environ[DB_PATH_ENV] = self.path
         con = temp_db(self.path)
         seed(con)
-        for sid, prompt in (("c-1", "기자 문의 회신 답변"), ("c-2", "가나다")):
+        for sid, prompt in (("c-1", "기자 문의 회신 답변 편집국 질문"), ("c-2", "가나다")):
             session_repo.register(con, sid, cwd="/tmp")
             session_repo.set_last_prompt(con, sid, prompt)
         self.con = con
