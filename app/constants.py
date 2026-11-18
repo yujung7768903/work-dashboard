@@ -329,6 +329,11 @@ EDGE_STATES = (EDGE_CONFIRMED, EDGE_PROPOSED, EDGE_REJECTED)
 # 만든 주체. 자동 추출은 출처별로 나눠 둔다 — note 에서 키가 빠지면 note 출처 연결만 걷어낸다
 BY_USER = "user"
 BY_PARENT_COLUMN = "parent_id"  # todos.parent_id 와 짝을 이루는 연결. 이 열을 바꾸면 따라 바뀐다
+# parent_id 와 짝인 연결을 만든 다른 주체 — 매니저 할일 이관(unify)과 매니저가 만든 단계(manager). parent_id 를 바꾸면
+# 이것들도 parent_id 짝처럼 따라 바뀐다(옛 상위 연결이 남아 할일이 두 상위 아래 그려지지 않게)
+BY_UNIFY = "unify"
+BY_MANAGER = "manager"
+PARENT_COLUMN_CREATORS = (BY_PARENT_COLUMN, BY_UNIFY, BY_MANAGER)
 BY_NOTE = "auto:note"
 BY_SHARED_DOC = "auto:shared-doc"
 BY_REBUILD = "rebuild"

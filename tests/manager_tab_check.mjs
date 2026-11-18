@@ -118,8 +118,8 @@ const PAYLOAD = {
           request: { status: "ok", text: Array.from({ length: 14 }, (_, i) => `${i + 1}. 지시 줄`).join("\n") },
         },
         // 이 일이 붙어 있는 트리 카드. 줄 제목이 이 카드 기준이 된다
-        card: { todo_id: 355, title: "트리 메뉴 추가", status: "doing", workspace_id: 3,
-          workspace_name: "작업 대시보드", category_color: "#4a5ae8" },
+        card: { todo_id: 355, title: "트리 메뉴 추가", status: "doing", root_id: 3, tree_key: "t3",
+          root_title: "작업 대시보드", category_color: "#4a5ae8" },
       },
     ],
   },
@@ -520,7 +520,7 @@ openTab("detail");
 // 붙은 할일은 있는데 워크스페이스가 없으면 트리가 없다 — 그 할일을 카드로, 제목을 누르면 할일 상세
 const loose = {
   ...PAYLOAD.decisions.items[0], id: 88, title: "미분류 결정", waiting: "permission",
-  card: { todo_id: 90, title: "미분류 할일", status: "review", workspace_id: null, workspace_name: null },
+  card: { todo_id: 90, title: "미분류 할일", status: "review", root_id: null, tree_key: null, root_title: null },
 };
 const savedDecisions = PAYLOAD.decisions.items;
 PAYLOAD.decisions.items = [loose];

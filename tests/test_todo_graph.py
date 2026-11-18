@@ -146,6 +146,25 @@ class ParentColumnTest(GraphFixture):
         edges = self._edges(REL_PARENT)
         self.assertEqual([(e["src_id"], e["dst_id"]) for e in edges], [(str(second["id"]), str(child["id"]))])
 
+    def test_unify_and_manager_parent_edges_follow_parent_id_too(self):
+        """이관(unify)·매니저 단계(manager)가 만든 상위 연결도 parent_id 짝이다 — 상위를 바꾸면 옛 연결이 남지 않는다.
+        사람이 이은 상위(user)는 그대로 둔다"""
+        for creator in ("unify", "manager"):
+            with self.subTest(creator=creator):
+                old, new, keep, child = self._todo("옛 상위"), self._todo("새 상위"), self._todo("사람이 이은 상위"), self._todo("단계")
+                stamp = "2026-11-18T00:00:00+00:00"
+                self.con.execute(
+                    "INSERT INTO edges(src_kind, src_id, dst_kind, dst_id, relation, basis, evidence, state, created_by,"
+                    " created_at, updated_at) VALUES('todo', ?, 'todo', ?, ?, 'background', NULL, ?, ?, ?, ?)",
+                    (str(old["id"]), str(child["id"]), REL_PARENT, EDGE_CONFIRMED, creator, stamp, stamp),
+                )
+                self.con.execute("UPDATE todos SET parent_id=? WHERE id=?", (old["id"], child["id"]))
+                self.con.commit()
+                self._parent(T(keep), T(child))
+                todo_repo.update(self.con, child["id"], parent_id=new["id"])
+                sources = sorted(e["src_id"] for e in self._edges(REL_PARENT) if e["dst_id"] == str(child["id"]))
+                self.assertEqual(sources, sorted([str(new["id"]), str(keep["id"])]))
+
     def test_removing_mirrored_edge_clears_parent_id(self):
         root = self._todo("설계")
         child = todo_repo.create(self.con, "API", parent_id=root["id"])
@@ -402,9 +421,9 @@ class CliTest(unittest.TestCase):
     def test_link_edges_and_states(self):
         # 할일 준비는 저장소로 — add-workspace·add-todo 명령은 없다
         con = connect()
-        space = workspace_repo.create(con, category_repo.get_by_name(con, "개발")["id"], "검색")
-        todo_repo.create(con, "사진 분석", workspace_id=space["id"])
-        todo_repo.create(con, "필터 원인", workspace_id=space["id"])
+        dev = category_repo.get_by_name(con, "개발")["id"]
+        todo_repo.create(con, "사진 분석", category_id=dev)
+        todo_repo.create(con, "필터 원인", category_id=dev)
         code, out, _ = self.run_cli("link", "상위", "1", "2", "--basis", "계기", "--evidence", "분석 중 발견", "--proposed")
         self.assertEqual(code, 0)
         self.assertIn("상위(계기)", out)
@@ -414,7 +433,7 @@ class CliTest(unittest.TestCase):
         code, _, err = self.run_cli("link", "상위", "2", "1", "--basis", "배경")
         self.assertNotEqual(code, 0)
         self.assertIn(EDGE_CYCLE_MSG, err)
-        code, out, _ = self.run_cli("add-context", "검색 결과 이상", "--workspace", "1")
+        code, out, _ = self.run_cli("add-context", "검색 결과 이상", "--category", "개발")
         self.assertIn("ctx:1", out)
         code, out, _ = self.run_cli("edges", "#2")
         self.assertIn("todo:1 -상위(계기)-> todo:2", out)

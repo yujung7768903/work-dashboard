@@ -9,7 +9,6 @@ from app.errors import Conflict, NeedsConfirm, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
 from app.repositories import todos as todo_repo
-from app.services import board
 from tests.support import temp_db
 
 
@@ -90,19 +89,6 @@ class LabelRepoTest(unittest.TestCase):
         todo_repo.delete(self.con, todo["id"])
         self.assertEqual(len(label_repo.list_all(self.con)), 1)
         self.assertEqual(label_repo.map_by_todo(self.con), {})
-
-    def test_board_tree_carries_labels(self):
-        todo = self._todo()
-        label = label_repo.create(self.con, "버그")
-        todo_repo.update(self.con, todo["id"], label_ids=[label["id"]])
-        groups = board.tree(self.con, board.GROUP_BY_CATEGORY)["groups"]
-        shown = [item for group in groups for item in group["todos"]]
-        self.assertEqual([row["name"] for row in shown[0]["labels"]], ["버그"])
-
-    def test_board_tree_gives_empty_list_when_no_labels(self):
-        self._todo()
-        groups = board.tree(self.con, board.GROUP_BY_CATEGORY)["groups"]
-        self.assertEqual(groups[0]["todos"][0]["labels"], [])
 
 
 if __name__ == "__main__":

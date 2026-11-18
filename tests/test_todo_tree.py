@@ -357,16 +357,16 @@ class CliTest(unittest.TestCase):
     def test_set_parent(self):
         # 할일 준비는 저장소로 — add-workspace·add-todo 명령은 없다
         con = connect()
-        space = workspace_repo.create(con, category_repo.get_by_name(con, "개발")["id"], "결제 개편")
-        todo_repo.create(con, "설계", workspace_id=space["id"])
-        todo_repo.create(con, "구현", workspace_id=space["id"])
+        dev = category_repo.get_by_name(con, "개발")["id"]
+        todo_repo.create(con, "설계", category_id=dev)
+        todo_repo.create(con, "구현", category_id=dev)
         todo_repo.create(con, "API", parent_id=1)
         code, out, _ = self.run_cli("set-parent", "3", "2")
         self.assertEqual(code, 0)
         self.assertIn("#2", out)
         code, out, _ = self.run_cli("set-parent", "3", "none")
         self.assertEqual(code, 0)
-        self.assertIn("워크스페이스 바로 아래", out)
+        self.assertIn("트리 맨 위", out)
         code, _, err = self.run_cli("set-parent", "1", "1")
         self.assertNotEqual(code, 0)
         self.assertIn(PARENT_CYCLE_MSG, err)

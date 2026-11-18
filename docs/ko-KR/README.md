@@ -6,10 +6,11 @@ Claude Code 와 함께 일하는 사람을 위한 로컬 작업 관리 도구. �
 Claude 는 CLI 로 다루고, 둘이 같은 sqlite 파일을 읽고 쓴다. 프레임워크도, 번들러도,
 `pip install` 도 없다.
 
-작업은 **카테고리 → 워크스페이스 → 할일** 3계층으로 관리한다. 그 위에서 Claude Code
-세션 하나하나가 등록되고 워크스페이스로 분류되며 실제로 작업 중인 할일에 연결된다.
-그래서 보드는 지금 무엇이 돌고 있는지를 항상 보여주고, 다음 세션은 어디까지 진행됐는지
-알고 시작한다.
+작업은 할일의 숲이다. 상위가 없는 할일이 그 트리의 맨 위이고, 배경·목적·목표는 맨 위
+할일의 note 에 둔다. 할일에서 나온 파생 요청·결정·확인은 그 할일의 단계로 아래에 붙는다.
+Claude Code 세션은 훅이 등록하고, 카테고리는 대시보드가, 할일(단계) 연결은 매니저가 한다.
+워크스페이스와 보드는 없어졌다(2026-11-18) — 아래 절에 '워크스페이스'가 남아 있으면 '트리의
+맨 위 할일'로 읽는다.
 
 > [!NOTE]
 > 1인용이고 인증이 없으며 외부 서비스를 쓰지 않는다. 전부 내 PC 의 sqlite 파일 하나에
@@ -190,13 +191,12 @@ SVG, 외부 파비콘을 불러오지 않는다), 누르면 새 탭으로 열거
 
 ```bash
 python3 dash.py ls                                   # 전체 트리
-python3 dash.py show <워크스페이스id|JIRA-1>           # 워크스페이스 상세
 python3 dash.py add-category <이름>
 python3 dash.py set-parent <할일id> <상위할일id|none>
 python3 dash.py link <상위|선행|근거|관련> <앞> <뒤> [--basis 계기|목적|배경] [--evidence ...] [--proposed]
 python3 dash.py edges <노드>                          # 12 · ctx:3 · session:<id> · jira:PFD-1
 python3 dash.py edge <confirm|reject|rm> <연결id>
-python3 dash.py add-context <제목> [--workspace ID | --category 이름] [--note ...]
+python3 dash.py add-context <제목> [--category 이름] [--note ...]
 python3 dash.py collect-results [--session ID] [--dry-run] [--verbose]   # transcript 에서 세션 결과물 다시 뽑기(백필)
 ```
 

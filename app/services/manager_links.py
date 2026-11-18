@@ -1,7 +1,7 @@
 """매니저 탭 줄을 대시보드 트리에 잇는다.
 
 - 카드: 그 일을 하는 세션이 지금 붙잡은 할일(가장 최근 연결 = sessions 의 LATEST_LINKED)과 그 할일의
-  트리(워크스페이스). 매니저 할일은 session_id 로, 보조 세션은 자기 세션 id 로 찾는다.
+  트리(맨 위 할일 — root_id·root_title·tree_key). 매니저 할일은 session_id 로, 보조 세션은 자기 세션 id 로 찾는다.
 - 사용자 요청: 그 세션이 맨 처음 받은 사람의 지시 전문. 무엇 때문에 시작한 일인지를 보이려는 것이다.
   보조 세션의 첫 지시는 매니저 spawn 지시문이고, 끝에 spawn 이 자동으로 붙이는 안내 문단
   (진행률·산출물·결정·권한·완료 보고·매니저 자체 작업)은 사람이 쓴 요청이 아니라 걷어낸다.
@@ -44,7 +44,9 @@ _request_cache = {}
 
 
 def cards(con, session_ids):
-    """세션 id → 카드 {todo_id, title, status, workspace_id, workspace_name, category_color}.
+    """세션 id → 카드 {todo_id, title, status, category_color, root_id, root_title, tree_key}.
+    root_* 는 그 할일 트리의 맨 위 할일, tree_key 는 트리 화면의 트리 id(t12·c3).
+    workspace_id(늘 None)·workspace_name(=root_title)은 옛 소비자용 별칭이다(sessions.current_cards).
     연결된 할일이 없거나 대시보드 DB 가 없으면 그 세션은 빠진다"""
     if con is None:
         return {}

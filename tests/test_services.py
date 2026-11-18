@@ -2,98 +2,20 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from app.constants import (
-    OUTCOME_REVIEW,
     STATE_ENDED,
     STATUS_DOING,
     STATUS_DONE,
     UNASSIGNED_LABEL,
 )
-from app.errors import Validation
-from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
-from app.services import board, planning
+from app.services import planning
 from tests.support import temp_db
 
 INACTIVE = "inactive"
 MINE = "sess-mine"
 OTHER = "sess-other"
-
-
-class BoardTreeTest(unittest.TestCase):
-    def setUp(self):
-        self.con = temp_db()
-        self.dev = category_repo.get_by_name(self.con, "개발")["id"]
-        self.ops = category_repo.get_by_name(self.con, "운영")["id"]
-        self.kt = workspace_repo.create(self.con, self.dev, "KT 동시성")
-        self.empty = workspace_repo.create(self.con, self.dev, "빈 워크스페이스")
-        self.todo = todo_repo.create(self.con, "락 재설계", workspace_id=self.kt["id"])
-        todo_repo.create(self.con, "문의 회신", category_id=self.ops)
-
-    def _names(self, group_by):
-        return [group["name"] for group in board.tree(self.con, group_by)["groups"]]
-
-    def test_rejects_unknown_group_by(self):
-        with self.assertRaises(Validation):
-            board.tree(self.con, "priority")
-
-    def test_workspace_grouping_shows_empty_workspace(self):
-        """할일 0개여도 카드가 떠야 거기에 할일을 추가할 수 있다"""
-        self.assertIn(self.empty["name"], self._names(board.GROUP_BY_WORKSPACE))
-
-    def test_workspace_grouping_includes_unassigned_last(self):
-        self.assertEqual(self._names(board.GROUP_BY_WORKSPACE)[-1], UNASSIGNED_LABEL)
-
-    def test_unassigned_group_shown_even_when_empty(self):
-        con = temp_db()
-        groups = board.tree(con, board.GROUP_BY_WORKSPACE)["groups"]
-        self.assertEqual([group["name"] for group in groups], [UNASSIGNED_LABEL])
-
-    def test_workspace_group_carries_category_name(self):
-        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
-        self.assertEqual(group["category_name"], "개발")
-
-    def test_workspace_group_carries_category_id_and_color(self):
-        """보드가 카드 상단 색과 카테고리 라벨 필터에 쓰는 값들"""
-        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
-        dev = category_repo.get_by_name(self.con, "개발")
-        self.assertEqual(group["category_id"], dev["id"])
-        self.assertEqual(group["category_color"], dev["color"])
-
-    def test_unassigned_group_has_no_category_color(self):
-        """미분류는 색을 받지 않고 화면에서 옅은 회색 기본값으로 그려짐"""
-        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][-1]
-        self.assertEqual(group["kind"], board.KIND_UNASSIGNED)
-        self.assertIsNone(group.get("category_color"))
-
-    def test_todos_default_to_not_autorun_locked(self):
-        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
-        self.assertFalse(group["todos"][0]["autorun_locked"])
-
-    def test_todo_pending_review_is_autorun_locked(self):
-        run = autorun_repo.start_run(self.con, self.todo["id"], "sess", "job")
-        autorun_repo.close_run(self.con, run["id"], OUTCOME_REVIEW)
-        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
-        todo = next(t for t in group["todos"] if t["id"] == self.todo["id"])
-        self.assertTrue(todo["autorun_locked"])
-
-    def test_counts_reflect_done_state(self):
-        todo_repo.update(self.con, self.todo["id"], status=STATUS_DONE)
-        group = board.tree(self.con, board.GROUP_BY_WORKSPACE)["groups"][0]
-        self.assertEqual((group["done_count"], group["total_count"]), (1, 1))
-
-    def test_category_grouping_includes_unassigned_todos(self):
-        titles = [
-            todo["title"]
-            for group in board.tree(self.con, board.GROUP_BY_CATEGORY)["groups"]
-            for todo in group["todos"]
-        ]
-        self.assertIn("문의 회신", titles)
-
-    def test_category_grouping_hides_empty_categories(self):
-        self.assertEqual(sorted(self._names(board.GROUP_BY_CATEGORY)), ["개발", "운영"])
 
 
 class PlanningTest(unittest.TestCase):

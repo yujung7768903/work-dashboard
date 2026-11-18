@@ -100,7 +100,7 @@ def proposals(con):
 
 def _load_nodes(con):
     # 답 대기 중인 세션이 매니저에 권한 막힘을 남겼으면 권한 대기로 — 매니저 탭·할일 상세와 같은 구분(manager_links)
-    blocked = manager_links.permission_sessions()
+    blocked = manager_links.permission_sessions(con=con)
     waiting = session_repo.waiting_by_todo(con, lambda kind, sid: manager_links.promote(kind, sid, blocked))
     # 할일별 보기가 진행 중 할일을 세우는 순서 — 상태별 뷰(보드)와 같은 '방금 손댄 것이 위로'
     last_seen = session_repo.last_activity_by_todo(con)

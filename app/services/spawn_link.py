@@ -4,8 +4,8 @@
 (11-11~16 비매니저 보조 99개 중 83개) 트리에서 그 일과 맥락이 통째로 사라졌다. 그래서 띄우는 쪽이:
 1) 출처(원래 세션·매니저 할일)를 남기고 — 원래 세션이 잡고 있던 할일이 새 할일의 상위(계기) 제안이 된다
 2) 할일을 바로 만들어 수행(session_todos)으로 잇는다. 할일 통합 뒤 매니저 할일에서 띄운 세션이면 새 할일이 아니라
-   그 할일의 단계(role='step')를 만들어 잇는다. 자리는 원래 세션 할일의 워크스페이스, 모르면 워크스페이스
-   없이 임시 카테고리. 세션이 나중에 분류되면 그 임시 할일만 분류한 곳으로 옮긴다(follow_classification)
+   그 할일의 단계(role='step')를 만들어 잇는다. 카테고리는 원래 세션 할일의 것, 모르면 임시 카테고리.
+   세션이 나중에 분류되면 그 임시 할일만 분류한 카테고리로 옮긴다(follow_classification)
 매니저는 이 모듈을 import 해 부른다(~/work/manager manager.py _launch)
 """
 import re
@@ -24,7 +24,9 @@ from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 
 HELPER_PREFIX = re.compile(r"^보조\d+\s*\|\s*")
-PROVISIONAL_LINE = "자리: 임시 카테고리 — 이 세션이 분류하면 그 워크스페이스·카테고리로 옮겨진다"
+PROVISIONAL_LINE = "자리: 임시 카테고리 — 이 세션이 분류되면 그 카테고리로 옮겨진다"
+# 워크스페이스가 있던 때 note 에 남은 같은 뜻의 줄 — 그 할일도 임시 자리로 알아본다
+PROVISIONAL_LINES = (PROVISIONAL_LINE, "자리: 임시 카테고리 — 이 세션이 분류하면 그 워크스페이스·카테고리로 옮겨진다")
 
 
 def on_spawn(con, claude_session_id, title, origin_session_id=None, manager_task_id=None, detail=None):
@@ -45,7 +47,6 @@ def on_spawn(con, claude_session_id, title, origin_session_id=None, manager_task
         con,
         clean_title(title),
         category_id=origin["category_id"] if origin else _fallback_category(con),
-        workspace_id=origin["workspace_id"] if origin else None,
         note=_note(origin, manager_task_id, detail),
     )
     session_repo.link_todo(con, claude_session_id, todo["id"])
@@ -76,13 +77,11 @@ def _spawn_step(con, claude_session_id, task, title, manager_task_id, detail):
         con,
         clean_title(title),
         category_id=task["category_id"],
-        workspace_id=task["workspace_id"],
+        parent_id=task["id"],
         note=_step_note(task, manager_task_id, detail),
     )
-    # 상위는 todo_repo 검사(워크스페이스 안에서만 상위)를 거치지 않고 직접 단다 — 할일 통합 뒤에는 워크스페이스가 없다
     with transaction(con):
-        con.execute("UPDATE todos SET role=?, parent_id=? WHERE id=?", (ROLE_STEP, task["id"], step["id"]))
-        graph_repo.sync_parent_column(con, step["id"], None, task["id"])
+        con.execute("UPDATE todos SET role=? WHERE id=?", (ROLE_STEP, step["id"]))
     session_repo.link_todo(con, claude_session_id, step["id"])
     return todo_repo.get(con, step["id"])
 
@@ -97,24 +96,19 @@ def _step_note(task, manager_task_id, detail):
     return "\n".join(lines)
 
 
-def follow_classification(con, claude_session_id, category_id, workspace_id=None):
-    """세션이 분류되면 spawn 이 임시 자리에 만든 그 세션의 할일만 따라 옮긴다 → 옮긴 할일 id.
-    다른 할일은 건드리지 않는다 — 오래 산 세션이 여러 워크스페이스 할일을 거쳐 왔을 수 있다"""
+def follow_classification(con, claude_session_id, category_id):
+    """세션이 분류되면 spawn 이 임시 자리에 만든 그 세션의 할일만 그 카테고리로 따라 옮긴다 → 옮긴 할일 id.
+    다른 할일은 건드리지 않는다 — 오래 산 세션이 여러 트리의 할일을 거쳐 왔을 수 있다"""
     moved = []
+    if category_id is None:
+        return moved
     for todo_id in session_repo.linked_todo_ids(con, claude_session_id):
         todo = todo_repo.get(con, todo_id)
-        if not _provisional(todo):
+        if not _provisional(todo) or category_id == todo["category_id"]:
             continue
-        if workspace_id is not None:
-            todo_repo.update(con, todo_id, workspace_id=workspace_id, note=_settled(todo["note"]))
-        elif category_id is not None and category_id != todo["category_id"]:
-            with transaction(con):
-                con.execute(
-                    "UPDATE todos SET category_id=?, updated_at=? WHERE id=?", (category_id, now(), todo_id)
-                )
-            todo_repo.update(con, todo_id, note=_settled(todo["note"]))
-        else:
-            continue
+        with transaction(con):
+            con.execute("UPDATE todos SET category_id=?, updated_at=? WHERE id=?", (category_id, now(), todo_id))
+        todo_repo.update(con, todo_id, note=_settled(todo["note"]))
         moved.append(todo_id)
     return moved
 
@@ -127,15 +121,14 @@ def clean_title(title):
 def _provisional(todo):
     note = todo.get("note") or ""
     return (
-        todo["workspace_id"] is None
-        and todo["status"] != STATUS_DONE
+        todo["status"] != STATUS_DONE
         and note.startswith(SPAWN_TODO_MARK)
-        and PROVISIONAL_LINE in note
+        and any(line in note for line in PROVISIONAL_LINES)
     )
 
 
 def _settled(note):
-    return "\n".join(line for line in (note or "").splitlines() if line != PROVISIONAL_LINE)
+    return "\n".join(line for line in (note or "").splitlines() if line not in PROVISIONAL_LINES)
 
 
 def _note(origin, manager_task_id, detail):

@@ -34,20 +34,19 @@ from app.constants import (
 )
 from app import evidence as evidence_refs
 from app.db import connect
-from app.errors import DomainError, NeedsConfirm, NotFound, Validation
+from app.errors import DomainError, NeedsConfirm, Validation
 from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import settings as settings_repo
-from app.repositories import workspaces as workspace_repo
 from app.repositories import autorun as autorun_repo
 from app.services import (
     autorun,
-    board,
     gtasks,
     gtasks_auth,
     history,
+    lineage,
     merge,
     release,
     session_link,
@@ -58,6 +57,7 @@ from app.services import (
 )
 
 NONE_LITERAL = "none"
+UNTITLED_TREE = "맥락"  # 맨 위가 할일이 아닌 트리(맥락 노드 아래)
 # 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다.
 # 문구는 팝업과 공유한다 (app.constants.PRECONDITION_HINT)
 PRECONDITION_HELP = f"착수 가능 조건. {PRECONDITION_HINT}"
@@ -105,13 +105,7 @@ def _build_parser():
     parser = argparse.ArgumentParser(description="작업 대시보드 CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    listing = sub.add_parser("ls", help="전체 트리 개요")
-    listing.add_argument(
-        "--group-by",
-        default=board.GROUP_BY_WORKSPACE,
-        choices=board.GROUP_BY_CHOICES,
-        dest="group_by",
-    )
+    listing = sub.add_parser("ls", help="전체 트리 개요 (맨 위 할일별)")
     _add_json_flag(listing)
     listing.set_defaults(handler=_cmd_ls)
 
@@ -120,7 +114,7 @@ def _build_parser():
     add_category.set_defaults(handler=_cmd_add_category)
 
     set_parent = sub.add_parser(
-        "set-parent", help="상위 할일 변경 (같은 워크스페이스만, none 이면 워크스페이스 바로 아래)"
+        "set-parent", help="상위 할일 변경 (none 이면 트리 맨 위로)"
     )
     set_parent.add_argument("todo_id", type=int)
     set_parent.add_argument("parent", help="상위 할일 id 또는 none")
@@ -147,10 +141,9 @@ def _build_parser():
     edge_state.add_argument("edge_id", type=int)
     edge_state.set_defaults(handler=_cmd_edge)
 
-    add_context = sub.add_parser("add-context", help="맥락(할일은 아니지만 배경이 되는 묶음) 추가 — 워크스페이스 아래 루트")
+    add_context = sub.add_parser("add-context", help="맥락(할일은 아니지만 배경이 되는 묶음) 추가 — 트리의 맨 위")
     add_context.add_argument("title")
-    add_context.add_argument("--workspace", type=int, default=None)
-    add_context.add_argument("--category", default=None, help="워크스페이스가 없을 때 카테고리 이름")
+    add_context.add_argument("--category", default=None, help="카테고리 이름")
     add_context.add_argument("--note", default=None)
     add_context.set_defaults(handler=_cmd_add_context)
 
@@ -369,11 +362,24 @@ def _self_session():
 
 
 def _cmd_ls(con, args):
-    tree = board.tree(con, args.group_by)
+    """트리(맨 위 할일)별로 할일을 묶어 보인다 — 순서는 트리 화면과 같다(lineage.grouped_todos)"""
+    todos = [dict(row) for row in con.execute("SELECT * FROM todos ORDER BY sort_order, id")]
+    groups = [
+        {
+            "root_id": head["id"] if head else None,
+            "name": head["title"] if head else UNTITLED_TREE,
+            "done_count": sum(todo["status"] == STATUS_DONE for todo in members),
+            "total_count": len(members),
+            "todos": [{key: todo[key] for key in ("id", "title", "status", "priority")} for todo in members],
+        }
+        for _, head, members in lineage.grouped_todos(con, todos)
+    ]
     if args.as_json:
-        _emit_json(tree)
+        _emit_json({"groups": groups})
         return
-    for group in tree["groups"]:
+    if not groups:
+        print("할일이 없음")
+    for group in groups:
         print(f"{group['name']}  {group['done_count']}/{group['total_count']}")
         for todo in group["todos"]:
             print(f"  [{todo['status']}] {todo['id']}. {todo['title']}")
@@ -386,7 +392,7 @@ def _cmd_add_category(con, args):
 def _cmd_set_parent(con, args):
     parent_id = None if args.parent == NONE_LITERAL else args.parent
     updated = todo_repo.update(con, args.todo_id, parent_id=parent_id)
-    scope = f"#{updated['parent_id']}" if updated["parent_id"] else "워크스페이스 바로 아래"
+    scope = f"#{updated['parent_id']}" if updated["parent_id"] else "트리 맨 위"
     print(f"{updated['id']}. {updated['title']} → {scope}")
 
 
@@ -480,7 +486,7 @@ def _cmd_add_context(con, args):
     if args.category:
         category_id = category_repo.get_by_name(con, args.category)["id"]
     context = graph_repo.create_context(
-        con, args.title, workspace_id=args.workspace, category_id=category_id, note=args.note
+        con, args.title, category_id=category_id, note=args.note
     )
     print(f"{CONTEXT_PREFIX}{context['id']} {context['title']}")
 
@@ -538,7 +544,7 @@ def _cmd_sessions(con, args):
     if not payload["sessions"]:
         print("돌고 있는 세션이 없음")
     for session in payload["sessions"]:
-        scope = session["workspace_name"] or session["category_name"] or "분류 전"
+        scope = session.get("root_title") or session["category_name"] or "분류 전"
         print(f"[{session['state']}] {scope} / {session['last_prompt'] or '(지시 없음)'}")
     if payload["unclassified_count"]:
         print(f"분류 전 {payload['unclassified_count']}건")
@@ -788,16 +794,6 @@ def _age_text(seconds):
     return f"{seconds // SECONDS_PER_HOUR}시간"
 
 
-def _resolve_workspace(con, target):
-    """숫자면 id, 아니면 Jira ID 로 조회"""
-    if target.isdigit():
-        return workspace_repo.get(con, int(target))
-    found = workspace_repo.get_by_jira(con, target)
-    if not found:
-        raise NotFound(f"'{target}' 에 해당하는 워크스페이스 없음")
-    return found
-
-
 def _cmd_autorun(con, args):
     """켜고 끄기는 명시적. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않는다"""
     if args.action != "status":
@@ -853,13 +849,10 @@ def _cmd_judge_stale(con, args):
 def _cmd_autorun_prompt(con, args):
     """자율 세션에 실제로 들어가는 지시. 띄우기 전에 사람이 눈으로 볼 수 있어야 한다"""
     todo = todo_repo.get(con, args.todo_id)
-    workspace = (
-        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
-    )
-    cwd = args.cwd or autorun.target_cwd(con, workspace)
+    cwd = args.cwd or autorun.target_cwd(con, todo)
     if not cwd:
         raise Validation(autorun.REASON_NO_CWD + " — --cwd 로 지정할 것")
-    print(autorun.build_prompt(todo, workspace, cwd))
+    print(autorun.build_prompt(todo, lineage.ancestor_todos(con, todo["id"]), cwd))
 
 
 def _cmd_autorun_reopen(con, args):

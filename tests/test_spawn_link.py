@@ -14,7 +14,6 @@ from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import manager_links, spawn_link
 from tests.support import temp_db
 
@@ -23,19 +22,19 @@ class SpawnLinkTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         self.category = category_repo.list_all(self.con)[0]
-        self.space = workspace_repo.create(self.con, self.category["id"], "통합DB")
+        self.other = category_repo.list_all(self.con)[1]
 
     def _origin(self):
-        todo = todo_repo.create(self.con, "사진 분석", workspace_id=self.space["id"])
+        todo = todo_repo.create(self.con, "사진 분석", category_id=self.other["id"])
         session_repo.register(self.con, "origin-1", cwd="/tmp")
         session_repo.link_todo(self.con, "origin-1", todo["id"])
         return todo
 
-    def test_spawn_creates_todo_in_origin_workspace_with_proposed_parent(self):
+    def test_spawn_creates_todo_in_origin_category_with_proposed_parent(self):
         origin = self._origin()
         todo = spawn_link.on_spawn(self.con, "spawned-1", "보조4 | 필터 원인", "origin-1", 161, "자료ID 6674783")
         self.assertEqual(todo["title"], "필터 원인")
-        self.assertEqual(todo["workspace_id"], self.space["id"])
+        self.assertEqual(todo["category_id"], self.other["id"])
         self.assertEqual(todo["status"], STATUS_DOING)
         self.assertTrue(todo["note"].startswith(SPAWN_TODO_MARK))
         self.assertIn("매니저 할일 161", todo["note"])
@@ -49,16 +48,22 @@ class SpawnLinkTest(unittest.TestCase):
         category_repo.create(self.con, SPAWN_FALLBACK_CATEGORY)
         todo = spawn_link.on_spawn(self.con, "spawned-2", "보조1 | 팀즈 문의 확인", None, 166, "한국일보 체크 시 미노출")
         fallback = category_repo.get_by_name(self.con, SPAWN_FALLBACK_CATEGORY)
-        self.assertEqual((todo["workspace_id"], todo["category_id"]), (None, fallback["id"]))
+        self.assertEqual(todo["category_id"], fallback["id"])
         self.assertIn(spawn_link.PROVISIONAL_LINE, todo["note"])
-        # 세션이 워크스페이스로 분류하면 임시 할일만 따라간다
-        self.assertEqual(spawn_link.follow_classification(self.con, "spawned-2", None, self.space["id"]), [todo["id"]])
+        # 세션이 분류되면 임시 할일만 그 카테고리로 따라간다
+        self.assertEqual(spawn_link.follow_classification(self.con, "spawned-2", self.other["id"]), [todo["id"]])
         moved = todo_repo.get(self.con, todo["id"])
-        self.assertEqual(moved["workspace_id"], self.space["id"])
+        self.assertEqual(moved["category_id"], self.other["id"])
         self.assertNotIn(spawn_link.PROVISIONAL_LINE, moved["note"])
         # 한 번 자리를 잡으면 다시 분류해도 옮기지 않는다
-        other = workspace_repo.create(self.con, self.category["id"], "다른 일")
-        self.assertEqual(spawn_link.follow_classification(self.con, "spawned-2", None, other["id"]), [])
+        self.assertEqual(spawn_link.follow_classification(self.con, "spawned-2", self.category["id"]), [])
+
+    def test_old_provisional_line_still_follows(self):
+        """워크스페이스가 있던 때 note 에 남은 임시 자리 줄도 알아본다"""
+        todo = spawn_link.on_spawn(self.con, "spawned-5", "보조1 | 옛 할일")
+        old = spawn_link.PROVISIONAL_LINES[1]
+        todo_repo.update(self.con, todo["id"], note=todo["note"].replace(spawn_link.PROVISIONAL_LINE, old))
+        self.assertEqual(spawn_link.follow_classification(self.con, "spawned-5", self.other["id"]), [todo["id"]])
 
     def test_category_only_classification_moves_category(self):
         # 임시 카테고리가 지워졌으면 맨 앞 카테고리 — 할일은 카테고리 없이 만들 수 없다
@@ -70,7 +75,7 @@ class SpawnLinkTest(unittest.TestCase):
 
     def test_session_that_already_holds_a_todo_gets_no_new_one(self):
         self._origin()
-        mine = todo_repo.create(self.con, "이미 잡은 일", workspace_id=self.space["id"])
+        mine = todo_repo.create(self.con, "이미 잡은 일", category_id=self.other["id"])
         session_repo.register(self.con, "spawned-4", cwd="/tmp")
         session_repo.link_todo(self.con, "spawned-4", mine["id"])
         before = self.con.execute("SELECT COUNT(*) FROM todos").fetchone()[0]
@@ -84,8 +89,8 @@ class SpawnLinkTest(unittest.TestCase):
         loose = todo_repo.create(self.con, "보통 할일", category_id=self.category["id"])
         session_repo.register(self.con, "sess", cwd="/tmp")
         session_repo.link_todo(self.con, "sess", loose["id"])
-        self.assertEqual(spawn_link.follow_classification(self.con, "sess", None, self.space["id"]), [])
-        self.assertIsNone(todo_repo.get(self.con, loose["id"])["workspace_id"])
+        self.assertEqual(spawn_link.follow_classification(self.con, "sess", self.other["id"]), [])
+        self.assertEqual(todo_repo.get(self.con, loose["id"])["category_id"], self.category["id"])
 
     def test_manager_tab_strips_the_new_spawn_paragraph(self):
         self.assertIn("DASH_TODO", manager_links.SPAWN_SUFFIXES)
