@@ -1,5 +1,5 @@
 // 매니저 탭 '회고' — 매니저 개선건을 메인 매니저 대화·알림과 따로 본다 (app/services/retro_panel.py).
-// 위: 대기 중인 피드백 — 입력창·터미널 /피드백·세션 회고의 개선 후보가 한 항목씩 쌓이고 상태(대기·반영 중·반영됨·안 함)가 보인다.
+// 위: 대기 중인 피드백 — 입력창·터미널 /피드백·세션 회고의 개선 후보가 수집 시각·내용·상태(대기·반영 중·반영됨·안 함) 세 칸 표로 쌓인다.
 // 아래: 날짜별 하루 회고 — 전날 무엇을 회고했고 무엇을 개선했는지 요약, 누르면 그 자리에 상세(근거·바꾼 것·커밋·측정).
 // 판정·반영은 매니저 하루 회고(retro.py)가 한다 — 화면은 읽고 쌓기만 한다. 상태 문구도 매니저가 정한 키를 옮긴다
 import * as api from "./api.js";
@@ -44,7 +44,7 @@ export async function renderRetro() {
     data = await api.getRetro();
   } catch (error) {
     document.getElementById("mgr-retro-feedback").replaceChildren(
-      el("li", "mgr-error", t("manager.partFailed", { error: error.message }))
+      wideRow("mgr-error", t("manager.partFailed", { error: error.message }))
     );
     return;
   }
@@ -96,26 +96,43 @@ function bind() {
 
 // ── 대기 중인 피드백 ───────────────────────────────────────────────────────
 
+// 표 세 칸 — 수집 시각 · 내용 · 상태. 출처(터미널·화면·세션 회고)는 줄 title 로만 둔다
 function drawFeedback(items) {
   const active = items.filter((item) => !["done", "skip"].includes(item.status));
   document.getElementById("mgr-retro-count").textContent = String(active.length);
-  const list = document.getElementById("mgr-retro-feedback");
-  if (!items.length) return list.replaceChildren(el("li", "mgr-empty", t("retro.emptyQueue")));
-  list.replaceChildren(...items.map(feedbackRow));
+  const body = document.getElementById("mgr-retro-feedback");
+  if (!items.length) return body.replaceChildren(wideRow("mgr-empty", t("retro.emptyQueue")));
+  body.replaceChildren(...items.map(feedbackRow));
 }
 
 function feedbackRow(item) {
-  const line = el("li", "mgr-row retro-feedback");
-  const main = el("div", "mgr-main");
-  main.append(el("span", "mgr-title retro-text", item.text));
-  const meta = [SOURCE[item.source]?.() ?? item.source, formatAge(item.created_at)];
-  if (item.note) meta.push(item.note);
-  main.append(el("span", "mgr-sub", meta.filter(Boolean).join(" · ")));
-  const side = el("div", "mgr-side");
-  side.append(chip(STATUS, item.status, item.label));
-  if (item.commits?.length) side.append(el("span", "mgr-sub", item.commits.join(" ")));
-  line.title = item.text;
-  line.append(main, side);
+  const line = el("tr", "retro-feedback");
+  const time = el("td", "retro-col-time", stamp(item.created_at));
+  time.title = formatAge(item.created_at);
+  const text = el("td", "retro-text", item.text);
+  const status = el("td", "retro-col-status");
+  const stack = el("div", "retro-status");
+  stack.append(chip(STATUS, item.status, item.label));
+  // 상태의 사유(결정 대기 메모)와 반영 커밋은 상태 칸 안에 붙인다
+  if (item.note) stack.append(el("span", "mgr-sub", item.note));
+  if (item.commits?.length) stack.append(el("span", "mgr-sub", item.commits.join(" ")));
+  status.append(stack);
+  line.title = SOURCE[item.source]?.() ?? item.source ?? "";
+  line.append(time, text, status);
+  return line;
+}
+
+// 매니저 DB 는 '2026-11-18T18:35:59' 처럼 로컬 시각을 쓴다 — 날짜와 분까지만 보인다
+function stamp(value) {
+  if (!value) return "";
+  return String(value).replace("T", " ").slice(0, 16);
+}
+
+function wideRow(className, text) {
+  const line = el("tr");
+  const cell = el("td", className, text);
+  cell.colSpan = 3;
+  line.append(cell);
   return line;
 }
 
