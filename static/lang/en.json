@@ -686,6 +686,8 @@
   "manager.permissions": "Waiting for access",
   "manager.permissionsHint": "Helper sessions blocked on permissions, credentials or sign-in, waiting for you to allow, sign in or run something. Kept apart from decisions",
   "manager.empty.permissions": "Nothing is waiting for access or sign-in",
+  "manager.permAllowConfirm": "Allow this command? This cannot be undone.\n\n{command}",
+  "manager.permAnswerFailed": "Could not send the answer: {error}",
   "manager.statePermission": "Access",
   "manager.helperPermission": "Needs access",
   "manager.statePrereq": "Blocked",
