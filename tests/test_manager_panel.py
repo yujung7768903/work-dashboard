@@ -405,7 +405,12 @@ class StepsTest(unittest.TestCase):
 
 
 class PermissionWaitsTest(unittest.TestCase):
-    """권한 대기 — ask --blocked permission 으로 남긴 권한·로그인 막힘은 종류와 상관없이 결정 대기와 따로 보인다(사용자 11-18, 할일 223)"""
+    """권한 대기 — 칸은 매니저 권한대기 --json 목록(걸린 권한 요청 + 권한 막힘 할일)을 그대로 보인다. 보조 세션 '권한 대기'
+    배지가 같은 목록으로 정해진다 — 칸이 DB blocked 할일만 읽어 배지는 권한 대기인데 칸은 0건이었다(사용자 11-18)"""
+
+    SID_REQUEST = "aaaaaaaa-1111-2222-3333-444444444444"
+    SID_TASK = "bbbbbbbb-1111-2222-3333-444444444444"
+    SID_IDLE = "cccccccc-1111-2222-3333-444444444444"
 
     def setUp(self):
         self.home = tempfile.mkdtemp()
@@ -413,7 +418,8 @@ class PermissionWaitsTest(unittest.TestCase):
         con = sqlite3.connect(os.path.join(self.home, "state", "manager.db"))
         con.execute(
             "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, detail TEXT, priority INTEGER,"
-            " status TEXT, created_at TEXT, updated_at TEXT, next_step TEXT, after_ids TEXT, blocked TEXT)"
+            " status TEXT, created_at TEXT, updated_at TEXT, next_step TEXT, after_ids TEXT, blocked TEXT,"
+            " session_id TEXT)"
         )
         stamp = "2026-11-18T10:00:00"
         rows = [
@@ -429,13 +435,66 @@ class PermissionWaitsTest(unittest.TestCase):
             " VALUES (?,?,?,?,?,?,?,?,?)",
             [(*row, stamp, stamp) for row in rows],
         )
+        con.execute("UPDATE tasks SET session_id=? WHERE id=223", (self.SID_TASK,))
         con.commit()
         con.close()
+        # 매니저 perm_grant.waits 모양 — 걸린 요청이 먼저, 그다음 막힘 할일(끝난 세션이면 ended·note)
+        self.waits = [
+            {"source": "request", "request_id": "0412", "session_id": self.SID_REQUEST, "tool_name": "Bash",
+             "preview": '{"command": "aws s3 ls s3://bucket"}', "created_at": "2026-11-18T10:05:00",
+             "deliver": "terminal", "answer": "manager.py perm-answer 0412 yes|no"},
+            {"source": "task", "task_id": 223, "title": "로그인", "kind": "decision", "session_id": self.SID_TASK,
+             "created_at": "2026-11-18T10:00:00", "ended": True, "note": "세션 종료됨 — 허용하면 되살려 재시도",
+             "answer": "manager.py answer-send 223 '<allow|deny>'"},
+            {"source": "task", "task_id": 224, "title": "재로그인", "kind": "action", "session_id": None,
+             "created_at": "2026-11-18T10:00:00", "ended": False, "note": None, "answer": "manager.py task done 224"},
+            {"source": "task", "task_id": 999, "title": "그 사이 지운 할일", "kind": "action", "session_id": None,
+             "ended": False, "note": None},
+        ]
+        self.waits_fn = lambda _home: self.waits
 
-    def test_permissions_lists_open_blocked_of_any_kind(self):
-        items = manager_panel.permissions(NOW, manager_home=self.home)
-        self.assertEqual([(item["id"], item["kind"], item["state"]) for item in items],
-                         [(223, "decision", "permission"), (224, "action", "permission")])
+    def test_permissions_follow_manager_list(self):
+        items = manager_panel.permissions(NOW, manager_home=self.home, waits_fn=self.waits_fn)
+        self.assertEqual([(item["source"], item["id"]) for item in items],
+                         [("request", "0412"), ("task", 223), ("task", 224)])
+        request, task, action = items
+        # 세션 이름·명령 요약. 세션 기록에서 전문을 못 찾으면 매니저 미리보기로 보이고 허용은 막힌다(카드 규칙)
+        self.assertEqual(request["summary"], '{"command": "aws s3 ls s3://bucket"}')
+        self.assertEqual(request["permission"]["mode"], "gate")
+        self.assertEqual(request["permission"]["request"]["id"], "0412")
+        self.assertFalse(request["permission"]["verified"])
+        self.assertEqual(request["permission"]["session"]["claude_session_id"], self.SID_REQUEST)
+        self.assertEqual((task["state"], task["kind"], task["ended"]), ("permission", "decision", True))
+        self.assertEqual(task["note"], "세션 종료됨 — 허용하면 되살려 재시도")
+        self.assertEqual((action["state"], action["ended"], action["note"]), ("permission", False, None))
+
+    def test_section_count_and_helper_badge_use_the_same_list(self):
+        rows = [{"session_id": sid, "name": name, "status": "권한 대기" if sid != self.SID_IDLE else "쉼"}
+                for sid, name in ((self.SID_REQUEST, "보조2"), (self.SID_TASK, "보조3"), (self.SID_IDLE, "보조4"))]
+        calls = []
+
+        def waits_fn(home):
+            calls.append(home)
+            return self.waits
+
+        sources = dict(now=NOW, manager_home=self.home, helpers_fn=lambda _home: rows, waits_fn=waits_fn)
+        section = manager_panel.snapshot("permissions", **sources)["permissions"]
+        helpers = manager_panel.snapshot("helpers", **sources)["helpers"]
+        self.assertIsNone(section["error"])
+        self.assertEqual(len(calls), 2)  # 두 칸 모두 권한대기 목록 하나를 원천으로 본다
+        in_section = {item.get("session_id") or item["popup"]["session_id"] for item in section["items"]} - {None}
+        badged = {row["session_id"] for row in helpers["items"] if row["waiting"] == "permission"}
+        self.assertEqual(in_section, {self.SID_REQUEST, self.SID_TASK})
+        self.assertEqual(badged, in_section)
+
+    def test_manager_without_permission_waits_command(self):
+        # 권한대기 명령이 없는 매니저는 사용법을 찍고 0 으로 끝난다 — 칸은 이유를 보이고, 보조 칸은 예전 신호로 돈다
+        home = tempfile.mkdtemp()
+        with open(os.path.join(home, "manager.py"), "w", encoding="utf-8") as handle:
+            handle.write("print('매니저 CLI — 사용법')\n")
+        with self.assertRaisesRegex(RuntimeError, "권한대기 --json"):
+            manager_panel.permissions(NOW, manager_home=home)
+        self.assertEqual(manager_panel.permission_sessions(home), frozenset())
 
     def test_decisions_exclude_permission_wait(self):
         self.assertEqual([item["id"] for item in manager_panel.decisions(NOW, manager_home=self.home)], [225, 226])
@@ -445,7 +504,7 @@ class PermissionWaitsTest(unittest.TestCase):
         self.assertEqual(manager_panel.task_item(223, NOW, manager_home=self.home)["state"], "permission")
         self.assertEqual(manager_panel.task_item(228, NOW, manager_home=self.home)["state"], "closed")
 
-    def test_old_manager_db_without_blocked_column_has_no_permissions(self):
+    def test_old_manager_db_without_blocked_column_still_lists_decisions(self):
         home = tempfile.mkdtemp()
         os.makedirs(os.path.join(home, "state"))
         con = sqlite3.connect(os.path.join(home, "state", "manager.db"))
@@ -454,7 +513,7 @@ class PermissionWaitsTest(unittest.TestCase):
         con.execute("INSERT INTO tasks VALUES (1, 'x', 'decision', 2, 'open', 'a', 'a')")
         con.commit()
         con.close()
-        self.assertEqual(manager_panel.permissions(NOW, manager_home=home), [])
+        self.assertEqual(manager_panel.permissions(NOW, manager_home=home, waits_fn=lambda _home: []), [])
         self.assertEqual([i["id"] for i in manager_panel.decisions(NOW, manager_home=home)], [1])
 
 
