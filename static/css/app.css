@@ -927,14 +927,18 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 /* 선행 대기 — 사람을 기다리는 결정 대기(waiting 주황)와 구분해 중립 테두리로. 사전 조건 할일이 끝나야 풀린다 */
 .mgr-chip.prereq { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .prereq-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; display: grid; gap: var(--sp-4); }
-/* 줄 = 사전 조건 할일 버튼(남은 폭) + 오른쪽 끝 케밥(제거·완료 처리) */
+/* 줄 = 한 상자 안에 사전 조건 할일 버튼(제목 + 상태 칩, 남은 폭) + 칩 바로 오른쪽 케밥(제거·완료 처리).
+   케밥이 상자 밖에 따로 떠 있으면 어느 줄 것인지 흐려지므로 테두리를 줄(li)이 그리고 버튼은 면을 비운다 */
 .prereq-item { display: flex; align-items: center; gap: var(--sp-4); }
+.prereq-row {
+  padding-right: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface);
+}
+.prereq-row:has(> .prereq-open:hover, > .prereq-open:focus-visible) { border-color: var(--accent); }
 .prereq-open {
   display: flex; align-items: center; gap: var(--sp-8); flex: 1; min-width: 0; text-align: left; cursor: pointer;
-  padding: var(--sp-4) var(--sp-8); border: 1px solid var(--line); border-radius: var(--r-ctl);
-  background: var(--surface); color: inherit; font: inherit;
+  padding: var(--sp-4) var(--sp-8); border: 0; border-radius: var(--r-ctl);
+  background: none; color: inherit; font: inherit; outline: none;
 }
-.prereq-open:hover, .prereq-open:focus-visible { border-color: var(--accent); }
 .prereq-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prereq-item.finished .prereq-title { color: var(--muted); text-decoration: line-through; }
 /* 진행 단계 — 사전 조건 목록과 같은 줄 모양. 줄 아래에 넘어가는 조건·답하는 상자가 붙어 세로로 쌓는다.
