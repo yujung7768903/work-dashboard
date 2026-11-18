@@ -269,6 +269,31 @@ assert.equal(gone.children[0].children[1].textContent, "원 세션 없음 — �
 assert.equal(relayed.children[0].children[1].textContent, "매니저에게 넘김");
 assert.match(text(relayed), /매니저가 이어서 전합니다/);
 
+// ── 진행 단계 — 단계 목록을 사전 조건 줄 모양으로, 멈춘 단계 줄 아래에 답하는 상자(선택지·의견)를 넣는다 ──────
+const STEPS = [
+  { name: "조사·선택지 정리", status: "done" },
+  { name: "선택지 결정", status: "current", unblock: "A/B 중 하나 고르기 (추천 A)" },
+  { name: "PR 작성", status: "todo" },
+];
+decisions = { available: true, items: [{ ...OPEN, id: 181, steps: STEPS }, { ...ANSWERED, id: 182, steps: STEPS }] };
+const stepped = await open();
+await settle(() => all(stepped.slot, byClass("dec-card")).length === 2);
+const [stepCard, closedCard] = all(stepped.slot, byClass("dec-card"));
+const stepLines = all(stepCard, byClass("step-item"));
+assert.deepEqual(stepLines.map((line) => text(line.children[0])), ["1조사·선택지 정리끝남", "2선택지 결정여기서 멈춤", "3PR 작성남음"]);
+assert.ok(byClass("stuck")(stepLines[1]), "멈춘 단계를 강조");
+assert.equal(text(stepLines[1].children[1]), "넘어가려면A/B 중 하나 고르기 (추천 A)");
+assert.equal(stepLines[1].children[2].className, "dec-answer", "답하는 상자는 멈춘 단계 줄 바로 아래");
+assert.equal(all(stepLines[1], byClass("choice")).length, 2);
+assert.equal(stepCard.children.at(-1).className.includes("step-list"), true, "카드 끝에 상자가 따로 붙지 않는다");
+// 닫힌 결정 — 단계는 보이되 멈춘 단계를 강조하지 않고, 다시 답하는 상자는 목록 아래에 그대로
+const closedLines = all(closedCard, byClass("step-item"));
+assert.equal(closedLines.filter(byClass("stuck")).length, 0);
+assert.equal(text(closedLines[1].children[0]), "2선택지 결정", "닫힌 할일의 멈춘 단계엔 칩이 없다");
+assert.equal(text(closedLines[2].children[0]), "3PR 작성", "닫힌 할일의 남은 단계도 칩이 없다");
+assert.equal(text(closedLines[0].children[0]), "1조사·선택지 정리끝남");
+assert.equal(closedCard.children.at(-1).className, "dec-answer");
+
 // ── 붙은 결정이 없거나 매니저가 없는 PC — 칸을 숨긴다 ─────────────────────────────
 decisions = { available: false, items: [] };
 const none = await open();

@@ -30,7 +30,7 @@ KIND_CONFIRM = "confirm"
 FIELDS = (
     "id", "title", "kind", "status", "detail", "next_step", "reason", "open_target", "answer", "answer_via",
     "answer_state", "answered_at", "created_at", "priority", "session",
-    "after", "prereq_waiting",
+    "after", "prereq_waiting", "steps",
 )
 
 

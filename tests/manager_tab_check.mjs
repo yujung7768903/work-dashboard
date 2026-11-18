@@ -143,6 +143,16 @@ const DECISION_ONE = {
   ], recommend: "A", answer_state: "unanswered", answer: null, answer_choice: null, job: null,
 };
 const decisionFetched = [];
+// 진행 단계가 있는 결정 — 멈춘 단계를 강조하고 그 줄 아래에 답하는 상자가 들어간다
+const STEPPED = {
+  id: 181, title: "수정 범위 결정", state: "decision", detail: "필터 무력화", priority: 2, priority_max: 3, prereqs: [],
+  steps: [
+    { name: "조사·선택지 정리", status: "done" },
+    { name: "선택지 결정", status: "current", unblock: "A/B/C 중 하나 고르기 (추천 A)" },
+    { name: "PR 작성", status: "todo" },
+  ],
+  popup: { detail: "필터 무력화", next_step: "A/B/C 중 고르기", session_id: null, request: { status: "no_session" } },
+};
 // 확인 대기 팝업의 '확인하기' 칸이 열 때 받는 한 건(app/services/task_report.py)
 const reportFetched = [];
 const helperFetched = [];
@@ -163,6 +173,7 @@ globalThis.fetch = async (url, options) => {
   if (url.startsWith("/api/manager-task/")) {
     const id = Number(url.split("/").at(-1));
     managerTaskFetched.push(id);
+    if (id === 181) return { ok: true, status: 200, json: async () => STEPPED };
     return {
       ok: true, status: 200,
       json: async () => ({ id, title: "KT 서버 로그 경로", state: "action", detail: null, priority: 2, priority_max: 3,
@@ -661,5 +672,23 @@ assert.equal(elements["mgr-decisions-count"].textContent, "1");
 // 다음에 성공하면 오류 줄이 사라진다
 await refresh.listeners.click();
 assert.notEqual(elements["mgr-decisions"].children[0].className, "mgr-error");
+
+// 진행 단계 — '사용자 요청' 다음에 단계 목록. 멈춘 단계만 강조되고 그 줄에 '넘어가려면'과 답하는 상자가 붙는다.
+// 따로 '답하기' 칸은 없다
+decisionFetched.length = 0;
+await manager.openManagerTask(181);
+const stepBody = elements["mgr-decision-body"].children;
+assert.deepEqual(stepBody.map((section) => section.children[0].textContent),
+  ["사용자 요청", "진행 단계", "지금까지 한 일", "결정할 것"]);
+const stepItems = stepBody[1].children[1].children;
+assert.deepEqual(stepItems.map((item) => item.className),
+  ["prereq-item step-item step-done", "prereq-item step-item step-current stuck", "prereq-item step-item step-todo"]);
+assert.deepEqual(stepItems[1].children[0].children.map((kid) => kid.textContent), ["2", "선택지 결정", "여기서 멈춤"]);
+assert.match(stepItems[1].children[0].children[2].className, /\bwaiting\b/);
+assert.deepEqual(stepItems[1].children[1].children.map((kid) => kid.textContent), ["넘어가려면", "A/B/C 중 하나 고르기 (추천 A)"]);
+assert.equal(stepItems[1].children[2].className, "dec-loader", "답하는 상자는 멈춘 단계 줄 바로 아래");
+assert.deepEqual(decisionFetched, ["/api/decisions/181"]);
+assert.equal(stepItems[0].children.length, 1, "지난 단계에는 넘어가는 조건이 없다");
+assert.deepEqual(stepItems[2].children[0].children.map((kid) => kid.textContent), ["3", "PR 작성", "남음"]);
 
 console.log("ok");

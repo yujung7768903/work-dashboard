@@ -842,7 +842,7 @@ def _tasks(now, where, params, manager_home, con, need=None):
         wanted = [
             name
             for name in ("id", "title", "kind", "status", "priority", "created_at",
-                         "updated_at", "hold_until", "snooze_until", "after_ids") + POPUP_FIELDS
+                         "updated_at", "hold_until", "snooze_until", "after_ids", "steps") + POPUP_FIELDS
             if name in columns
         ]
         rows = manager_con.execute(
@@ -880,6 +880,8 @@ def _tasks(now, where, params, manager_home, con, need=None):
                 "state": _state(row, prereqs),
                 # 선행 할일 [{id, title, status, finished}] — 선행 대기면 팝업이 사전 조건으로 보이고 눌러 그 할일로 간다
                 "prereqs": prereqs,
+                # 진행 단계 [{name, status, unblock}] — 팝업이 사전 조건처럼 그리고 멈춘 단계 아래에 답하는 상자를 둔다
+                "steps": _steps(_get(row, "steps")),
                 "detail": _first_line(_get(row, "detail")),
                 "priority": _get(row, "priority"),
                 "priority_max": top,
@@ -903,6 +905,17 @@ def _state(row, prereqs):
     if any(not item["finished"] for item in prereqs):
         return STATE_PREREQ
     return STATE_DECISION if _get(row, "kind") == DECISION_KIND else STATE_ACTION
+
+
+def _steps(raw):
+    """매니저 tasks.steps(JSON) → 목록. 없거나 못 읽으면 [] — 매니저 tasks.steps_list 와 같은 규칙"""
+    if not raw:
+        return []
+    try:
+        steps = json.loads(raw)
+    except ValueError:
+        return []
+    return [step for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
 
 
 def _prereqs(manager_con, after_ids):

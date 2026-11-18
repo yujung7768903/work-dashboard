@@ -9,6 +9,7 @@
 import * as api from "./api.js";
 import { folded, labelled } from "./decision-answer.js";
 import { fromKorean, t } from "./i18n.js";
+import { currentStep, stepList } from "./steps.js";
 
 // 칸 머리 칩 — 무엇을 기다리는 일인가. 키를 문자열 그대로 둔다 — 사전 점검(tests/test_language.py)이 코드에서 키를 찾는다
 const KIND_CHIPS = {
@@ -102,6 +103,12 @@ function cardParts(state, { head, renderText, draw, alive }) {
     const line = element("p", "dec-head");
     line.append(element("span", "dec-title", `#${item.id} ${item.title}`), reportChip(item));
     parts.push(line, ...contextParts(item, renderText));
+    // 진행 단계가 있으면 응답 상자를 멈춘 단계 줄 아래에 넣는다(결정 카드와 같다)
+    if (item.steps?.length) {
+      const slot = !closed(item) && currentStep(item.steps) ? answerBox(state, { draw, alive }) : null;
+      parts.push(element("p", "dec-label", t("steps.title")), stepList(item.steps, { active: !closed(item), slot }));
+      if (slot) return [...parts, ...sentParts(item)];
+    }
   }
   if (!closed(item)) parts.push(answerBox(state, { draw, alive }));
   parts.push(...sentParts(item));

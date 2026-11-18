@@ -377,6 +377,33 @@ class PrereqWaitsTest(unittest.TestCase):
         self.assertEqual([i["id"] for i in manager_panel.decisions(NOW, manager_home=home)], [1])
 
 
+class StepsTest(unittest.TestCase):
+    """진행 단계 — 매니저 tasks.steps(JSON)를 목록으로 실어 팝업이 멈춘 단계를 그린다. 칸이 없거나 못 읽으면 []"""
+
+    def make(self, with_column, steps=None):
+        home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(home, "state"))
+        con = sqlite3.connect(os.path.join(home, "state", "manager.db"))
+        extra = ", steps TEXT" if with_column else ""
+        con.execute("CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, priority INTEGER,"
+                    f" status TEXT, created_at TEXT, updated_at TEXT{extra})")
+        values = (1, "범위", "decision", 2, "open", "a", "a") + ((steps,) if with_column else ())
+        con.execute(f"INSERT INTO tasks VALUES ({','.join('?' * len(values))})", values)
+        con.commit()
+        con.close()
+        return home
+
+    def test_steps_parsed(self):
+        steps = [{"name": "조사", "status": "done"}, {"name": "결정", "status": "current", "unblock": "A/B 고르기"}]
+        home = self.make(True, json.dumps(steps, ensure_ascii=False))
+        self.assertEqual(manager_panel.task_item(1, NOW, manager_home=home)["steps"], steps)
+
+    def test_missing_or_broken_steps_are_empty(self):
+        self.assertEqual(manager_panel.task_item(1, NOW, manager_home=self.make(True, "{깨짐"))["steps"], [])
+        self.assertEqual(manager_panel.task_item(1, NOW, manager_home=self.make(True, None))["steps"], [])
+        self.assertEqual(manager_panel.task_item(1, NOW, manager_home=self.make(False))["steps"], [])
+
+
 class DecisionsTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()

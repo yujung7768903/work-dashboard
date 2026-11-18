@@ -4,6 +4,7 @@ import { t } from "./i18n.js";
 import { linkify } from "./linkify.js";
 import { decisionCard, labelled } from "./decision-answer.js";
 import { prereqChip, prereqList } from "./prereq.js";
+import { stepList } from "./steps.js";
 import { reportCard } from "./task-report.js";
 import { permissionCard } from "./permission-answer.js";
 
@@ -330,6 +331,7 @@ function prereqCard(item, options) {
   const line = element("p", "dec-head");
   line.append(element("span", "dec-title", `#${item.id} ${item.title}`), prereqChip());
   card.append(line, element("p", "dec-label", t("prereq.listTitle")), prereqList(item.after, { owner: item.id, onChange: options.reload }));
+  if (item.steps?.length) card.append(element("p", "dec-label", t("steps.title")), stepList(item.steps));
   if (item.next_step) card.append(labelled(t("decision.nextStep"), item.next_step, options.renderText));
   return card;
 }
