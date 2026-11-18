@@ -125,6 +125,31 @@ class CardTest(LinkFixture):
         self.assertEqual(manager_links.waiting(None, ["helper"]), {})
         self.assertEqual(manager_links.waiting(self.con, []), {})
 
+    def test_input_wait_of_permission_blocked_session_is_permission(self):
+        """매니저 Stop 훅은 권한 막힘을 남긴 세션도 waiting=input 으로 찍는다 — 매니저 DB 막힘 표시로 권한 대기로 올린다(11-18)"""
+        state = os.path.join(self.home, "state")
+        os.makedirs(state)
+        mcon = sqlite3.connect(os.path.join(state, "manager.db"))
+        mcon.execute("CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, status TEXT, session_id TEXT, blocked TEXT)")
+        mcon.executemany("INSERT INTO tasks VALUES (?,?,?,?,?)", [
+            (1, "로그인해 주기", "open", "helper", "permission"),
+            (2, "닫힌 막힘", "done", "loose", "permission"),
+            (3, "보통 결정", "open", "loose", None),
+        ])
+        mcon.commit()
+        mcon.close()
+        blocked = manager_links.permission_sessions(self.home)
+        self.assertEqual(blocked, {"helper"})
+        session_repo.set_waiting(self.con, "helper", "input")
+        session_repo.set_waiting(self.con, "loose", "input")
+        found = manager_links.waiting(self.con, ["helper", "loose"], blocked)
+        self.assertEqual(found, {"helper": "permission", "loose": "input"})
+        # 트리 카드(할일별)도 같은 판정 — helper 가 붙잡은 할일은 권한 대기
+        by_todo = session_repo.waiting_by_todo(self.con, lambda kind, sid: manager_links.promote(kind, sid, blocked))
+        self.assertEqual(by_todo[self.todo["id"]], "permission")
+        # 매니저가 없는 PC·blocked 칸 없는 예전 DB 는 원래 신호 그대로
+        self.assertEqual(manager_links.permission_sessions(tempfile.mkdtemp()), frozenset())
+
     def test_rows_carry_waiting_even_without_card(self):
         # 카드 없는 줄도 트리 탭에 카드 한 장으로 그리므로 대기 신호가 실려야 한다
         session_repo.set_waiting(self.con, "loose", "input")

@@ -296,6 +296,12 @@ await settle(() => all(third.slot, byClass("prereq-card")).length === 0);
 assert.equal(asked.filter((entry) => entry.url === "/api/decisions?todo_id=42").length, before + 1);
 assert.equal(all(third.slot, byClass("prereq-card")).length, 0, "선행이 풀린 할일은 선행 대기에서 빠진다");
 
+// ── 권한 대기 — 권한·로그인 막힘(blocked=permission)은 직접 할 일·결정 대기와 따로 맨 앞에 묶는다 ─────────────
+decisions = { available: true, items: [], reports: [ACTION, { ...ACTION, id: 224, title: "Confluence 재로그인", blocked: "permission" }] };
+const fourth = await open();
+await settle(() => all(fourth.slot, byClass("report-card")).length === 2);
+assert.deepEqual(all(fourth.slot, byClass("label")).map(text), ["권한 대기1", "직접 할 일·확인 대기1"]);
+
 // ── 붙은 결정·직접 할 일 모두 없음 — 칸을 숨긴다 ────────────────────────────────
 decisions = { available: true, items: [], reports: [] };
 const none = await open();

@@ -33,6 +33,7 @@ from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import board
+from app.services import manager_links
 
 # updated_at — 트리 목록이 '최근 작업·수정 순' 으로 세울 때 last_session_at 과 함께 본다(static/js/tree-todos.js)
 NODE_FIELDS = ("id", "title", "status", "parent_id", "priority", "sort_order", "workspace_id", "updated_at")
@@ -89,7 +90,9 @@ def proposals(con):
 
 
 def _load_nodes(con):
-    waiting = session_repo.waiting_by_todo(con)
+    # 답 대기 중인 세션이 매니저에 권한 막힘을 남겼으면 권한 대기로 — 매니저 탭·할일 상세와 같은 구분(manager_links)
+    blocked = manager_links.permission_sessions()
+    waiting = session_repo.waiting_by_todo(con, lambda kind, sid: manager_links.promote(kind, sid, blocked))
     # 할일별 보기가 진행 중 할일을 세우는 순서 — 상태별 뷰(보드)와 같은 '방금 손댄 것이 위로'
     last_seen = session_repo.last_activity_by_todo(con)
     locked = autorun_repo.locked_todo_ids(con)

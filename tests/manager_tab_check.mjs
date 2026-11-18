@@ -132,6 +132,18 @@ PAYLOAD.waits = {
     },
   ],
 };
+// 권한 대기 — 권한·로그인 막힘(ask --blocked permission). 결정 대기와 따로 세고 다른 칩. 예전 ask 가 결정으로 남긴 막힘은 답 칸
+PAYLOAD.permissions = {
+  error: null,
+  items: [
+    {
+      id: 223, title: "에이전트 크롬에서 OpenSearch Dashboards 로그인해 주기", kind: "decision", state: "permission",
+      detail: "로그인 화면에서 멈춤", priority: 2, priority_max: 3, since: agoMinutes(10), held: false, prereqs: [],
+      popup: { detail: "로그인 화면에서 멈춤", next_step: "에이전트 크롬에서 로그인", session_id: null, source_ref: null,
+        request: { status: "no_session" } },
+    },
+  ],
+};
 // 새로고침 검사용 — 부른 칸을 적고, 켜 두면 실패한다
 const fetched = [];
 let failFetch = false;
@@ -219,7 +231,7 @@ assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kin
 await manager.renderManager();
 
 // 처음은 작업 탭 — 그 탭 칸만 받고, 설정 판은 숨긴다
-assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "helpers", "waits"], "작업 탭 칸만 받는다");
+assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "helpers", "permissions", "waits"], "작업 탭 칸만 받는다");
 assert.equal(elements["mgr-pane-work"].hidden, false);
 assert.equal(elements["mgr-pane-setup"].hidden, true);
 assert.match(elements["mgr-subtab-work"].className, /\bactive\b/);
@@ -268,6 +280,14 @@ const texts = (row) => {
   return [titleText(main.children[0]), titleText(main.children[1]), side.children[0].textContent, side.children[1].textContent];
 };
 assert.deepEqual(texts(decisionRows[0]), ["#87 2/3 우선순위 출처", "A 추천", "결정", "30m 전"]);
+
+// 권한 대기 칸 — 건수는 결정 대기와 따로, 칩은 '권한 대기'(permission 색)
+assert.equal(elements["mgr-permissions-count"].textContent, "1");
+assert.equal(elements["mgr-decisions-count"].textContent, "1");
+const permRow = elements["mgr-permissions"].children[0];
+assert.deepEqual(texts(permRow), ["#223 2/3 에이전트 크롬에서 OpenSearch Dashboards 로그인해 주기", "로그인 화면에서 멈춤", "권한 대기", "10m 전"]);
+assert.match(permRow.children[1].children[0].className, /\bpermission\b/);
+assert.doesNotMatch(permRow.children[1].children[0].className, /\bwaiting\b/);
 // 번호 오른쪽 우선순위는 보드 할일 줄과 같은 배지(.todo-priority)
 const badge = decisionRows[0].children[0].children[0].children[1];
 assert.equal(badge.className, "todo-priority");
@@ -376,7 +396,7 @@ fetched.length = 0;
 await kebab.children[1].children[0].listeners.click({ stopPropagation() {} });
 assert.deepEqual(prereqPosted, [{ task_id: 9, prereq_id: 168, action: "remove" }]);
 assert.match(asked[1], /#9/);
-assert.deepEqual([...fetched].sort(), ["decisions", "waits"]);
+assert.deepEqual([...fetched].sort(), ["decisions", "permissions", "waits"]);
 assert.deepEqual(elements["mgr-decision-body"].children.map((section) => section.children[0].textContent),
   ["사용자 요청", "사전 조건", "지금까지 한 일", "결정할 것", "답하기"]);
 const finishedItem = elements["mgr-decision-body"].children[1].children[1].children[0];
@@ -661,5 +681,10 @@ assert.equal(elements["mgr-decisions-count"].textContent, "1");
 // 다음에 성공하면 오류 줄이 사라진다
 await refresh.listeners.click();
 assert.notEqual(elements["mgr-decisions"].children[0].className, "mgr-error");
+
+// 권한 대기 팝업 — 결정으로 남은 막힘(223)은 답 칸, 직접 할 일로 남은 막힘은 완료 칸. 트리 없는 카드의 대기 표시는 '권한 대기'
+elements["mgr-permissions"].children[0].listeners.click();
+assert.equal(headTitle(), "#223 에이전트 크롬에서 OpenSearch Dashboards 로그인해 주기");
+assert.ok(elements["mgr-decision-body"].children.some((section) => section.children[0].textContent === "답하기"));
 
 console.log("ok");

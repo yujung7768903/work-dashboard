@@ -31,6 +31,8 @@ FIELDS = (
     "id", "title", "status", "detail", "next_step", "open_target", "options", "recommend",
     "answer_state", "answer", "answer_choice", "answer_feedback", "answered_at", "created_at", "session",
     "after", "prereq_waiting",
+    # 권한 막힘 표시(ask --blocked permission) — 할일 상세가 결정 대기·직접 할 일과 따로 '권한 대기'로 모은다
+    "blocked",
 )
 STDERR_TAIL_LINES = 1
 # 답이 저장된 매니저 exit — 0 전달 · 1 전달 확인 못 함 · 3 원 세션 없음 · 4 매니저에 넘김 · 5 원 세션 꺼짐(task-ui)

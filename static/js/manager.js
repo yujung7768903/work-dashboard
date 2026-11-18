@@ -16,7 +16,7 @@ import { feedbackLoader } from "./helper-feedback.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
 const SUBTABS = {
-  work: ["helpers", "confirms", "decisions", "waits"],
+  work: ["helpers", "confirms", "decisions", "permissions", "waits"],
   setup: ["automations", "tools"],
 };
 const PARTS = Object.values(SUBTABS).flat();
@@ -37,6 +37,8 @@ let polling = false;
 const HELPER_STATUS = {
   "작업 중": ["working", () => t("manager.helperWorking")],
   "결정 대기": ["waiting", () => t("manager.helperWaiting")],
+  // 권한·로그인 막힘(ask --blocked permission)이나 권한 창을 기다리는 보조 — 고를 것이 있는 결정 대기와 다르다
+  "권한 대기": ["permission", () => t("manager.helperPermission")],
   쉼: ["idle", () => t("manager.helperIdle")],
 };
 // 보조 세션 상태를 화면 언어로. 트리 할일별 줄의 보조 세션 막대 툴팁(tree.js)도 같은 문구를 쓴다
@@ -239,6 +241,7 @@ const EMPTY = {
   helpers: () => t("manager.empty.helpers"),
   tools: () => t("manager.empty.tools"),
   decisions: () => t("manager.empty.decisions"),
+  permissions: () => t("manager.empty.permissions"),
   confirms: () => t("manager.empty.confirms"),
   waits: () => t("manager.empty.waits"),
 };
@@ -248,6 +251,7 @@ const ROW_BUILDERS = {
   helpers: helperRow,
   tools: toolRow,
   decisions: decisionRow,
+  permissions: decisionRow,
   confirms: decisionRow,
   waits: decisionRow,
 };
@@ -347,6 +351,8 @@ function clickable(line, open) {
 // 선행 대기는 다른 할일이 끝나야 하는 것이라 사람을 기다리는 결정 대기(waiting)와 다른 색이다
 const TASK_STATES = {
   decision: ["waiting", () => t("manager.stateDecision"), "doing"],
+  // 권한 대기 — 사용자가 허용·로그인을 해 줘야 보조 세션이 움직인다. 고를 것이 있는 결정과 다른 색
+  permission: ["permission", () => t("manager.statePermission"), "doing"],
   action: ["waiting", () => t("manager.stateAction"), "doing"],
   confirm: ["confirm", () => t("manager.stateConfirm"), "review"],
   prereq: ["prereq", () => t("manager.statePrereq"), "todo"],
@@ -558,9 +564,11 @@ function openDecision(item) {
   const sections = decisionSections(item);
   const alive = () => document.getElementById("mgr-decision-modal").open;
   const shift = item.prereqs?.length ? 1 : 0;
-  if (item.state === "decision") {
+  // 권한 대기는 종류대로 받는다 — 예전 ask 가 결정으로 남긴 막힘은 답 칸, 직접 할 일로 남긴 막힘은 완료 칸
+  const answerAs = item.state === "permission" ? item.kind : item.state;
+  if (answerAs === "decision") {
     sections.splice(ANSWER_AT + shift, 0, { title: t("decision.answerTitle"), node: decisionLoader(item.id, { alive }) });
-  } else if (item.state === "action") {
+  } else if (answerAs === "action") {
     sections.splice(ANSWER_AT + shift, 0, { title: t("report.actionTitle"), node: reportLoader(item.id, { alive }) });
   } else if (item.state === "confirm") {
     sections.splice(CONFIRM_AT + shift, 0, { title: t("report.confirmTitle"), node: reportLoader(item.id, { alive }) });
@@ -600,8 +608,11 @@ function helperWork(item) {
 // 대기 표시가 말한다 — 트리 카드의 '진행 중 + 답 대기' 와 같은 모양.
 // 대기 종류는 그 세션의 대시보드 대기 신호(item.waiting, 트리 카드와 같은 신호)를 먼저 쓴다 —
 // 권한을 기다리는 세션은 '권한 대기' 로 보여야 한다
-const HELPER_TREE_STATUS = { "작업 중": "doing", "결정 대기": "doing", 쉼: "todo" };
+const HELPER_TREE_STATUS = { "작업 중": "doing", "결정 대기": "doing", "권한 대기": "doing", 쉼: "todo" };
 const DECISION_WAIT = "input";
+const PERMISSION_WAIT = "permission";
+const HELPER_WAIT = { "결정 대기": DECISION_WAIT, "권한 대기": PERMISSION_WAIT };
+const TASK_WAIT = { decision: DECISION_WAIT, action: DECISION_WAIT, permission: PERMISSION_WAIT };
 
 function helperSolo(item) {
   const [, label] = HELPER_STATUS[item.status] ?? ["idle", () => item.status || "-"];
@@ -609,7 +620,7 @@ function helperSolo(item) {
     title: item.name,
     status: HELPER_TREE_STATUS[item.status] ?? "todo",
     label: label(),
-    waiting: item.waiting ?? (item.status === "결정 대기" ? DECISION_WAIT : null),
+    waiting: item.waiting ?? HELPER_WAIT[item.status] ?? null,
   };
 }
 
@@ -620,7 +631,7 @@ function decisionSolo(item) {
     title: item.title,
     status,
     label: label(),
-    waiting: item.waiting ?? (item.state === "decision" || item.state === "action" ? DECISION_WAIT : null),
+    waiting: item.waiting ?? TASK_WAIT[item.state] ?? null,
   };
 }
 
@@ -628,7 +639,7 @@ function decisionSolo(item) {
 // 두 칸을 다시 읽고, 열린 팝업은 갱신된 할일로 다시 그린다(풀렸으면 답하는 칸이 생긴다)
 async function afterPrereqChange(task) {
   if (task && document.getElementById("mgr-decision-modal").open) openDecision(task);
-  await Promise.all(["waits", "decisions"].map(refreshPart));
+  await Promise.all(["waits", "decisions", "permissions"].map(refreshPart));
 }
 
 /** 매니저 할일 한 건을 받아 그 팝업을 연다 — 사전 조건 할일을 누를 때(prereq.js) */
