@@ -12,6 +12,7 @@ import re
 from app.constants import (
     SPAWN_FALLBACK_CATEGORY,
     SPAWN_NOTE_CHARS,
+    SPAWN_PROVISIONAL_LINE,
     SPAWN_TODO_MARK,
     STATUS_DONE,
 )
@@ -21,9 +22,10 @@ from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
+from app.services import auto_classify
 
 HELPER_PREFIX = re.compile(r"^보조\d+\s*\|\s*")
-PROVISIONAL_LINE = "자리: 임시 카테고리 — 이 세션이 분류하면 그 워크스페이스·카테고리로 옮겨진다"
+PROVISIONAL_LINE = SPAWN_PROVISIONAL_LINE
 
 
 def on_spawn(con, claude_session_id, title, origin_session_id=None, manager_task_id=None, detail=None):
@@ -40,7 +42,7 @@ def on_spawn(con, claude_session_id, title, origin_session_id=None, manager_task
     todo = todo_repo.create(
         con,
         clean_title(title),
-        category_id=origin["category_id"] if origin else _fallback_category(con),
+        category_id=origin["category_id"] if origin else _guessed_category(con, title, detail),
         workspace_id=origin["workspace_id"] if origin else None,
         note=_note(origin, manager_task_id, detail),
     )
@@ -101,6 +103,18 @@ def _note(origin, manager_task_id, detail):
     if text:
         lines.append(text[:SPAWN_NOTE_CHARS] + ("…" if len(text) > SPAWN_NOTE_CHARS else ""))
     return "\n".join(lines)
+
+
+def _guessed_category(con, title, detail):
+    """원래 세션이 없을 때 할일을 둘 카테고리. 제목·지시가 확실히 가리키는 카테고리가 있으면 그것,
+    애매하면 대체 카테고리. 어느 쪽이든 임시 자리라 세션이 분류하면 그곳으로 옮겨진다"""
+    guessed = auto_classify.category_for_new_todo(con, clean_title(title), detail or "")
+    if guessed["category"]:
+        try:
+            return category_repo.get_by_name(con, guessed["category"])["id"]
+        except NotFound:
+            pass
+    return _fallback_category(con)
 
 
 def _fallback_category(con):

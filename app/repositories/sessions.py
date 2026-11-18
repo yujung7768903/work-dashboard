@@ -6,6 +6,7 @@ from app.constants import (
     LAST_PROMPT_MAX_CHARS,
     SCOPE_REQUIRED_MSG,
     SESSION_STATES,
+    SPAWN_PROVISIONAL_LINE,
     STALE_IDLE_HOURS,
     STATE_ENDED,
     STATE_IDLE,
@@ -202,9 +203,25 @@ def link_todo(con, claude_session_id, todo_id, claim=True, status=None):
         fresh = cursor.rowcount > 0
         if claim:
             _claim(con, todo_id, target, stamp)
+        _inherit_category(con, session["id"], todo_id)
     # 매니저가 띄운 세션이면 출처 세션의 할일을 이 할일의 상위(계기)로 제안한다 — 처음 잡을 때만
     if fresh:
         graph_repo.apply_origin(con, claude_session_id, todo_id)
+
+
+def _inherit_category(con, session_row_id, todo_id):
+    """미분류 세션이 할일을 잡으면 그 할일의 카테고리를 받는다. 트랜잭션은 부르는 쪽.
+
+    할일을 잡았다는 것이 이 세션이 무슨 일을 하는지에 대한 가장 확실한 근거다 — 보조 세션은
+    spawn 이 할일을 이어 주지만 스스로 classify 를 안 하고 끝나 미분류로 남았다(11-18 46건).
+    이미 분류된 세션은 덮지 않고, spawn 임시 자리 할일의 카테고리는 사람이 고른 게 아니라 받지 않는다
+    """
+    con.execute(
+        "UPDATE sessions SET category_id=(SELECT category_id FROM todos WHERE id=?)"
+        " WHERE id=? AND category_id IS NULL"
+        " AND NOT EXISTS (SELECT 1 FROM todos WHERE id=? AND instr(COALESCE(note,''), ?) > 0)",
+        (todo_id, session_row_id, todo_id, SPAWN_PROVISIONAL_LINE),
+    )
 
 
 def _claim(con, todo_id, target, stamp):

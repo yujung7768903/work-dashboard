@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.constants import RESULT_HOOK_MAX_BYTES, STATE_ENDED, STATE_IDLE, STATE_WORKING  # noqa: E402
 from app.db import connect  # noqa: E402
 from app.repositories import sessions as session_repo  # noqa: E402
-from app.services import autorun, session_link, session_results  # noqa: E402
+from app.services import auto_classify, autorun, session_link, session_results  # noqa: E402
 
 EXIT_OK = 0
 GIT_BRANCH_TIMEOUT_SEC = 1
@@ -72,8 +72,17 @@ def _on_stop(con, session_id, payload):
     if cwd:
         session_repo.register(con, session_id, cwd=cwd, git_branch=_current_branch(cwd))
     session_repo.set_state(con, session_id, STATE_IDLE)
+    _auto_classify(con, session_id)
     _collect_results(con, session_id)
     return ""
+
+
+def _auto_classify(con, session_id):
+    """첫 턴이 끝나도 미분류면 근거가 확실할 때만 카테고리를 채운다. 실패해도 상태 기록은 이미 남았다"""
+    try:
+        auto_classify.auto_classify_session(con, session_id)
+    except Exception:
+        pass
 
 
 def _on_session_end(con, session_id, payload):
