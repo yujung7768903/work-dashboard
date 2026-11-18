@@ -31,6 +31,9 @@ export function stepList(steps, { active = true, slot = null } = {}) {
       head.append(element("span", `mgr-chip ${tone}`.trim(), label()));
     }
     line.append(head);
+    // 단계 행(할일 통합 뒤)은 끝난 단계에 누가·언제·결과 한 줄이 있다 — 어디까지 왔는지를 이 줄로 읽는다
+    const meta = stepMeta(step);
+    if (meta) line.append(element("p", "step-meta", meta));
     if (stuck && step.unblock) {
       const how = element("p", "step-unblock");
       how.append(element("span", "dec-label", t("steps.unblock")), document.createTextNode(step.unblock));
@@ -40,6 +43,21 @@ export function stepList(steps, { active = true, slot = null } = {}) {
     list.append(line);
   });
   return list;
+}
+
+/** '누가 · 언제 · 결과' — 있는 것만. 예전 진행 단계(JSON)에는 없어서 빈 문자열 */
+export function stepMeta(step) {
+  if (step.status !== "done") return "";
+  return [step.by, shortTime(step.at), step.result].filter(Boolean).join(" · ");
+}
+
+// '11-18 14:05' — 단계는 며칠 안에 끝나므로 연도는 뺀다. 못 읽으면 원문 그대로
+function shortTime(text) {
+  if (!text) return "";
+  const when = new Date(text);
+  if (Number.isNaN(when.getTime())) return text;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(when.getMonth() + 1)}-${pad(when.getDate())} ${pad(when.getHours())}:${pad(when.getMinutes())}`;
 }
 
 function element(tag, className, text) {

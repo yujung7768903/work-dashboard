@@ -279,17 +279,20 @@ function fillPermissions(slot, todoId, items) {
 function loadDecisions(slot, todoId) {
   api
     .getTodoDecisions(todoId)
-    .then((payload) => fillDecisions(slot, payload?.items, payload?.reports, () => loadDecisions(slot, todoId)))
+    .then((payload) =>
+      fillDecisions(slot, payload?.items, payload?.reports, () => loadDecisions(slot, todoId), payload?.steps)
+    )
     .catch((error) => {
       slot.hidden = false;
       slot.replaceChildren(element("p", "muted", t("decision.loadFailed", { error: error.message })));
     });
 }
 
-function fillDecisions(slot, items, reports, reload) {
+function fillDecisions(slot, items, reports, reload, steps) {
   const list = Array.isArray(items) ? items : [];
   const asks = Array.isArray(reports) ? reports : [];
-  slot.hidden = !list.length && !asks.length;
+  const timeline = Array.isArray(steps) ? steps : [];
+  slot.hidden = !list.length && !asks.length && !timeline.length;
   if (slot.hidden) {
     slot.replaceChildren();
     return;
@@ -308,6 +311,10 @@ function fillDecisions(slot, items, reports, reload) {
   const waiting = list.filter((item) => item.status === "open" && !item.prereq_waiting && !blocked(item));
   const answered = list.filter((item) => item.status !== "open");
   const parts = [];
+  // 진행 단계(단계 행) — 어디까지 왔고 어디서 멈췄는지. 멈춘 단계에 답할 결정·확인이 있으면 그 카드가 같은 목록을
+  // 답하는 상자와 함께 그리므로 여기서는 빼고, 답할 것이 없는 동안(보조 세션이 일하는 중 등)에만 따로 둔다
+  const stepAsked = [...list, ...asks].some((item) => item.task_id && ["open", "confirm"].includes(item.status));
+  if (timeline.length && !stepAsked) parts.push(element("p", "label", t("steps.title")), stepList(timeline));
   if (permission.length) {
     const label = element("p", "label", t("permission.waitingTitle"));
     label.append(element("span", "dlg-badge open", String(permission.length)));

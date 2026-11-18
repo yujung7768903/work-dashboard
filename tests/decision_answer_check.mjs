@@ -294,6 +294,30 @@ assert.equal(text(closedLines[2].children[0]), "3PR 작성", "닫힌 할일의 �
 assert.equal(text(closedLines[0].children[0]), "1조사·선택지 정리끝남");
 assert.equal(closedCard.children.at(-1).className, "dec-answer");
 
+// ── 단계 행(할일 통합 뒤) — 답할 것이 없는 동안은 진행 단계만 따로, 단계의 결정이 있으면 그 카드가 목록을 그린다 ──
+const ROW_STEPS = [
+  { id: 301, name: "자료 조사", status: "done", by: "보조2", at: "2026-11-18T05:05:00Z", result: "후보 3개 정리" },
+  { id: 302, name: "방식 결정", status: "current", unblock: "A·B 중 고르기", ask: "decision" },
+];
+decisions = { available: true, items: [], reports: [], steps: ROW_STEPS };
+const timelineOnly = await open();
+await settle(() => all(timelineOnly.slot, byClass("step-item")).length === 2);
+assert.equal(timelineOnly.slot.hidden, false, "결정이 없어도 진행 단계가 있으면 칸을 연다");
+assert.equal(text(timelineOnly.slot.children[0]), "진행 단계");
+const metaLine = find(timelineOnly.slot, byClass("step-meta"));
+assert.match(text(metaLine), /^보조2 · 11-18 \d\d:05 · 후보 3개 정리$/, "끝난 단계는 누가·언제·결과 한 줄");
+assert.equal(text(find(timelineOnly.slot, byClass("step-unblock"))), "넘어가려면A·B 중 고르기");
+
+const STEP_ASK = { ...OPEN, id: 302, title: "결정 버튼 › 방식 결정", task_id: 42, steps: ROW_STEPS };
+decisions = { available: true, items: [STEP_ASK], reports: [], steps: ROW_STEPS };
+const stepAsk = await open();
+await settle(() => all(stepAsk.slot, byClass("dec-card")).length === 1);
+assert.equal(all(stepAsk.slot, byClass("step-list")).length, 1, "단계의 결정 카드가 목록을 그리면 따로 두지 않는다");
+const askCard = all(stepAsk.slot, byClass("dec-card"))[0];
+assert.equal(askCard.children[0].children[0].textContent, "#302 결정 버튼 › 방식 결정", "단계는 할일 제목과 함께");
+const askLines = all(askCard, byClass("step-item"));
+assert.equal(askLines[1].children.at(-1).className, "dec-answer", "답하는 상자는 멈춘 단계(단계 행) 아래");
+
 // ── 붙은 결정이 없거나 매니저가 없는 PC — 칸을 숨긴다 ─────────────────────────────
 decisions = { available: false, items: [] };
 const none = await open();

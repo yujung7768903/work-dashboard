@@ -186,7 +186,7 @@ def _route_get(con, head, item_id, query):
     if head == "decisions":
         # 결정 답하기. 한 건(답 보낸 뒤 폴링)이거나 할일 상세에 붙은 결정들
         if item_id:
-            return decision_answer.show(item_id)
+            return decision_answer.show(item_id, con=con)
         todo_id = _single(query, "todo_id", None)
         if not todo_id:
             raise Validation("todo_id 가 필요함")
@@ -196,7 +196,7 @@ def _route_get(con, head, item_id, query):
         # 할일 상세에 붙은 것은 decisions?todo_id= 의 reports 로 함께 온다
         if not item_id:
             raise Validation("id 가 필요함")
-        return task_report.show(item_id)
+        return task_report.show(item_id, con=con)
     if head == "helper-feedback":
         # 매니저 탭 보조 세션 상세의 피드백 칸 — 세션 생사와 화면에서 보낸 피드백. 보낸 뒤 화면이 이것을 폴링한다
         return helper_feedback.show(_single(query, "session_id", None))

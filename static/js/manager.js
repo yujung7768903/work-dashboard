@@ -17,7 +17,7 @@ import { feedbackLoader } from "./helper-feedback.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
 const SUBTABS = {
-  work: ["helpers", "confirms", "decisions", "permissions", "waits"],
+  work: ["helpers", "candidates", "confirms", "decisions", "permissions", "waits"],
   setup: ["automations", "tools"],
 };
 const PARTS = Object.values(SUBTABS).flat();
@@ -167,9 +167,12 @@ export async function refreshPart(part) {
 
 function showPart(part) {
   const section = sections[part];
+  // 후보 할일 머리는 후보 수가 아니라 빠진 대기 건수 한 줄 — 후보는 많아야 3건이라 수를 볼 일이 없다
   document.getElementById(`mgr-${part}-count`).textContent = section.error
     ? ""
-    : String(section.items.length);
+    : part === "candidates"
+      ? t("manager.candidatesWaiting", { count: section.waiting ?? 0 })
+      : String(section.items.length);
   drawPart(part);
 }
 
@@ -240,6 +243,7 @@ function pagerButton(className, disabled, onClick) {
 const EMPTY = {
   automations: () => t("manager.empty.automations"),
   helpers: () => t("manager.empty.helpers"),
+  candidates: () => t("manager.empty.candidates"),
   tools: () => t("manager.empty.tools"),
   decisions: () => t("manager.empty.decisions"),
   permissions: () => t("manager.empty.permissions"),
@@ -250,6 +254,7 @@ const EMPTY = {
 const ROW_BUILDERS = {
   automations: automationRow,
   helpers: helperRow,
+  candidates: candidateRow,
   tools: toolRow,
   decisions: decisionRow,
   permissions: decisionRow,
@@ -323,6 +328,28 @@ function helperRow(item) {
     tone: "mgr-click",
   });
   return clickable(line, () => openWork(helperWork(item)));
+}
+
+// 후보 할일 — 지금 일이 끝나면 다음에 할 것(app/services/candidates.py). '#id 우선순위 제목', 아래 카테고리 칩.
+// 누르면 할일 상세
+function candidateRow(item) {
+  const title = el("span", "mgr-title");
+  title.append(
+    document.createTextNode(`#${item.id}`),
+    priorityBadge(item.priority, item.priority_max),
+    document.createTextNode(item.title)
+  );
+  const category = el("span", "mgr-tree-chip", item.category_name || t("common.unassigned"));
+  if (item.category_color) category.style?.setProperty("--cat", item.category_color);
+  const sub = el("span", "mgr-sub");
+  sub.append(category);
+  const line = row({
+    title,
+    sub,
+    aside: el("span", `mgr-chip${item.status === "doing" ? " working" : ""}`, item.status === "doing" ? t("manager.candidateDoing") : t("manager.candidateTodo")),
+    tone: "mgr-click",
+  });
+  return clickable(line, () => openDetail({ todo: { id: item.id } }));
 }
 
 // 줄 제목을 카드 기준으로 — 어느 트리(워크스페이스)인지 칩 하나, 그 뒤 카드 번호·제목

@@ -952,6 +952,7 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .step-item.stuck .step-no { color: var(--warn); }
 .step-unblock { margin: 0; padding: 0 var(--sp-8); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
 .step-unblock .dec-label { margin-right: var(--sp-8); }
+.step-meta { margin: 0; padding: 0 var(--sp-8); font-size: var(--fs-sm); color: var(--muted); overflow-wrap: anywhere; }
 .step-item.stuck > .dec-loader, .step-item.stuck > .dec-answer {
   margin-left: var(--sp-8); padding-left: var(--sp-8); border-left: 2px solid var(--warn);
 }

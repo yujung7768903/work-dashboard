@@ -98,6 +98,52 @@ class SpawnLinkTest(unittest.TestCase):
         self.assertIn("DASH_TODO", manager_links.SPAWN_SUFFIXES)
 
 
+class UnifiedSpawnTest(unittest.TestCase):
+    """할일 통합 뒤 — 매니저 할일에서 띄운 보조 세션의 일은 새 할일이 아니라 그 할일의 단계다"""
+
+    def setUp(self):
+        from app.db import UNIFIED_FLAG, meta_set
+
+        self.con = temp_db()
+        meta_set(self.con, UNIFIED_FLAG)
+        self.category = category_repo.list_all(self.con)[0]
+        self.task = todo_repo.create(self.con, "KT 락 방식", category_id=self.category["id"])
+        self.con.execute("UPDATE todos SET mgr_kind='decision', mgr_status='open' WHERE id=?", (self.task["id"],))
+        self.con.commit()
+
+    def _count(self):
+        return self.con.execute("SELECT COUNT(*) FROM todos").fetchone()[0]
+
+    def test_spawn_with_manager_task_makes_a_step_under_that_task(self):
+        before = self._count()
+        step = spawn_link.on_spawn(self.con, "helper-1", "보조2 | 락 구현", None, self.task["id"], "낙관적 락")
+        self.assertEqual(self._count(), before + 1)
+        self.assertEqual((step["title"], step["role"], step["parent_id"]), ("락 구현", "step", self.task["id"]))
+        self.assertEqual(step["category_id"], self.category["id"])
+        self.assertEqual(session_repo.linked_todo_ids(self.con, "helper-1"), [step["id"]])
+        parents = [e for e in graph_repo.list_edges(self.con, relations=(REL_PARENT,))
+                   if e["dst_id"] == str(step["id"]) and e["src_id"] == str(self.task["id"])]
+        self.assertEqual(len(parents), 1)
+
+    def test_manager_task_that_is_a_step_uses_its_parent_task(self):
+        first = spawn_link.on_spawn(self.con, "helper-1", "보조2 | 락 구현", None, self.task["id"])
+        second = spawn_link.on_spawn(self.con, "helper-2", "보조3 | 락 테스트", None, first["id"])
+        self.assertEqual((second["role"], second["parent_id"]), ("step", self.task["id"]))
+
+    def test_unknown_manager_task_falls_back_to_new_todo(self):
+        todo = spawn_link.on_spawn(self.con, "helper-3", "보조1 | 다른 일", None, 99999)
+        self.assertIsNone(todo["role"])
+        self.assertIsNone(todo["parent_id"])
+
+    def test_before_unification_keeps_creating_a_new_todo(self):
+        con = temp_db()
+        category = category_repo.list_all(con)[0]
+        task = todo_repo.create(con, "매니저 할일 id 와 우연히 같은 할일", category_id=category["id"])
+        todo = spawn_link.on_spawn(con, "helper-4", "보조1 | 일", None, task["id"])
+        self.assertNotEqual(todo["id"], task["id"])
+        self.assertIsNone(todo["role"])
+
+
 class ClassifyCliTest(unittest.TestCase):
     def setUp(self):
         os.environ[DB_PATH_ENV] = temp_db_path()

@@ -24,9 +24,9 @@ from app.constants import (
     MANAGER_HOME_ENV,
     MANAGER_HELPERS_TIMEOUT_SEC,
 )
-from app.services import cron, manager_links, manager_tools
+from app.services import candidates, cron, manager_links, manager_tools, task_steps
 
-PARTS = ("automations", "helpers", "tools", "decisions", "permissions", "confirms", "waits")
+PARTS = ("automations", "helpers", "candidates", "tools", "decisions", "permissions", "confirms", "waits")
 STATUS_OK = "ok"
 STATUS_FAIL = "fail"
 STATUS_NODATA = "nodata"
@@ -70,6 +70,8 @@ def snapshot(part=None, now=None, con=None, **sources):
             now, con=con, **_pick(sources, "crontab_text", "manager_home")
         ),
         "helpers": lambda: helpers(con=con, **_pick(sources, "manager_home", "helpers_fn")),
+        # 후보 할일 — 지금 일이 끝나면 다음에 할 것(app/services/candidates.py). 대기 건수(waiting)를 칸에 함께 싣는다
+        "candidates": lambda: candidates.snapshot(con),
         "tools": lambda: manager_tools.tools(
             sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
         ),
@@ -87,7 +89,11 @@ def _pick(sources, *keys):
 
 def _section(build):
     try:
-        return {"items": build(), "error": None}
+        built = build()
+        # 칸이 목록 말고 덧붙일 값이 있으면 {"items": [...], ...} 로 돌려준다(후보 할일의 대기 건수)
+        if isinstance(built, dict):
+            return {**built, "error": None}
+        return {"items": built, "error": None}
     except Exception as error:  # 한 칸이 깨져도 나머지는 보여야 한다
         return {"items": [], "error": f"{type(error).__name__}: {error}"}
 
@@ -855,7 +861,8 @@ def _tasks(now, where, params, manager_home, con, need=None):
         wanted = [
             name
             for name in ("id", "title", "kind", "status", "priority", "created_at",
-                         "updated_at", "hold_until", "snooze_until", "after_ids", "steps", "blocked") + POPUP_FIELDS
+                         "updated_at", "hold_until", "snooze_until", "after_ids", "steps", "blocked", "role", "parent_id")
+            + POPUP_FIELDS
             if name in columns
         ]
         rows = source.execute(
@@ -887,27 +894,31 @@ def _tasks(now, where, params, manager_home, con, need=None):
         # 그 일을 시작한 사람의 첫 요청. 세션 없이 들어온 할일(Jira·메일 훑기)은 출처를 대신 보인다
         popup["request"] = manager_links.first_request(popup["session_id"], home)
         prereqs = prereq_of[row["id"]]
-        items.append(
-            {
-                "id": row["id"],
-                "title": row["title"],
-                # 권한 대기 팝업이 답 칸(결정 답·직접 할 일 완료)을 고른다
-                "kind": _get(row, "kind"),
-                "state": _state(row, prereqs),
-                # 선행 할일 [{id, title, status, finished}] — 선행 대기면 팝업이 사전 조건으로 보이고 눌러 그 할일로 간다
-                "prereqs": prereqs,
-                # 진행 단계 [{name, status, unblock}] — 팝업이 사전 조건처럼 그리고 멈춘 단계 아래에 답하는 상자를 둔다
-                "steps": _steps(_get(row, "steps")),
-                "detail": _first_line(_get(row, "detail")),
-                "priority": _get(row, "priority"),
-                "priority_max": top,
-                "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
-                "held": _later(row, ("hold_until", "snooze_until"), stamp),
-                "card": linked.get(popup["session_id"]),
-                "waiting": waits.get(popup["session_id"]),
-                "popup": popup,
-            }
-        )
+        item = {
+            "id": row["id"],
+            "title": row["title"],
+            # 권한 대기 팝업이 답 칸(결정 답·직접 할 일 완료)을 고른다
+            "kind": _get(row, "kind"),
+            "state": _state(row, prereqs),
+            # 선행 할일 [{id, title, status, finished}] — 선행 대기면 팝업이 사전 조건으로 보이고 눌러 그 할일로 간다
+            "prereqs": prereqs,
+            # 진행 단계 [{name, status, unblock}] — 팝업이 사전 조건처럼 그리고 멈춘 단계 아래에 답하는 상자를 둔다
+            "steps": _steps(_get(row, "steps")),
+            "detail": _first_line(_get(row, "detail")),
+            "priority": _get(row, "priority"),
+            "priority_max": top,
+            "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
+            "held": _later(row, ("hold_until", "snooze_until"), stamp),
+            "card": linked.get(popup["session_id"]),
+            "waiting": waits.get(popup["session_id"]),
+            "popup": popup,
+        }
+        if task_steps.available(con):
+            # 단계 행이면 '<할일> › <단계>' 와 그 할일의 진행 단계, 단계 행을 가진 할일이면 그 단계 목록(예전 JSON 대신)
+            item = task_steps.with_task(con, item)
+            if _get(row, "role") != task_steps.ROLE_STEP:
+                item["steps"] = task_steps.timeline(con, row["id"]) or item["steps"]
+        items.append(item)
     return items
 
 

@@ -60,6 +60,14 @@ const PAYLOAD = {
     ],
   },
   helpers: { error: "RuntimeError: claude agents 응답 없음", items: [] },
+  // 후보 할일 — 서버(app/services/candidates.py)가 대기를 빼고 우선순위 순으로 3건까지 준다. 머리는 대기 건수
+  candidates: {
+    error: null, waiting: 2,
+    items: [
+      { id: 41, title: "보도자료 자동 분류", status: "doing", priority: 3, priority_max: 3, category_name: "회사", category_color: "#d33" },
+      { id: 52, title: "블로그 2편", status: "todo", priority: null, priority_max: 3, category_name: null, category_color: null },
+    ],
+  },
   tools: {
     error: null,
     items: [
@@ -213,6 +221,8 @@ globalThis.fetch = async (url, options) => {
         answer_via: null, answer_state: "unanswered", session: null, job: null }),
     };
   }
+  // 할일 상세(후보 할일을 누를 때)가 읽는 것 — 이 검사는 상세 모양을 보지 않는다
+  if (!url.startsWith("/api/manager?")) return { ok: true, status: 200, json: async () => ({}) };
   const part = new URL(url, "http://x").searchParams.get("part");
   fetched.push(part);
   if (holdFetch) await holdFetch;
@@ -242,7 +252,24 @@ assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kin
 await manager.renderManager();
 
 // 처음은 작업 탭 — 그 탭 칸만 받고, 설정 판은 숨긴다
-assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "helpers", "permissions", "waits"], "작업 탭 칸만 받는다");
+assert.deepEqual([...fetched].sort(), ["candidates", "confirms", "decisions", "helpers", "permissions", "waits"], "작업 탭 칸만 받는다");
+
+// 후보 할일 — 머리는 후보 수가 아니라 '대기 중 N건' 한 줄. 줄은 '#id 우선순위 제목', 아래 카테고리 칩, 옆 상태
+assert.equal(elements["mgr-candidates-count"].textContent, "대기 중 2건");
+const candidateRows = elements["mgr-candidates"].children;
+assert.equal(candidateRows.length, 2);
+const candidateText = (line) => {
+  const [main, side] = line.children;
+  return [main.children[0].children.map((kid) => kid.textContent).join(" "), main.children[1].children[0].textContent,
+    side.children[0].textContent];
+};
+assert.deepEqual(candidateText(candidateRows[0]), ["#41 3/3 보도자료 자동 분류", "회사", "진행 중"]);
+assert.deepEqual(candidateText(candidateRows[1]), ["#52 - 블로그 2편", "미분류", "할 일"]);
+assert.match(candidateRows[0].children[1].children[0].className, /\bworking\b/);
+// 누르면 할일 상세가 열린다
+candidateRows[0].listeners.click();
+assert.equal(elements["session-modal"].open, true, "후보를 누르면 할일 상세");
+elements["session-modal"].open = false;
 assert.equal(elements["mgr-pane-work"].hidden, false);
 assert.equal(elements["mgr-pane-setup"].hidden, true);
 assert.match(elements["mgr-subtab-work"].className, /\bactive\b/);
@@ -714,5 +741,17 @@ assert.deepEqual(stepItems[2].children[0].children.map((kid) => kid.textContent)
 elements["mgr-permissions"].children[0].listeners.click();
 assert.equal(headTitle(), "#223 에이전트 크롬에서 OpenSearch Dashboards 로그인해 주기");
 assert.ok(elements["mgr-decision-body"].children.some((section) => section.children[0].textContent === "답하기"));
+
+// 단계 행(할일 통합 뒤)의 진행 단계 — 끝난 단계는 누가·언제·결과 한 줄, 멈춘 단계는 넘어가는 조건
+const { stepList, stepMeta } = await import("../static/js/steps.js");
+const rowSteps = [
+  { id: 301, name: "자료 조사", status: "done", by: "보조2", at: "2026-11-18T05:05:00Z", result: "후보 3개 정리" },
+  { id: 302, name: "방식 결정", status: "current", unblock: "A·B 중 고르기", ask: "decision" },
+];
+const rowList = stepList(rowSteps).children;
+assert.equal(rowList[0].children[1].className, "step-meta");
+assert.match(rowList[0].children[1].textContent, /^보조2 · 11-18 \d\d:05 · 후보 3개 정리$/);
+assert.equal(rowList[1].children[1].className, "step-unblock");
+assert.equal(stepMeta({ name: "x", status: "done" }), "", "예전 진행 단계(JSON)에는 줄이 없다");
 
 console.log("ok");

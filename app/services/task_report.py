@@ -60,9 +60,13 @@ def ordered(rows):
     return [view(row) for row in waiting + closed]
 
 
-def show(task_id, home=None):
-    """한 건 + 뒤에서 도는 응답 보내기(job). 매니저 탭 팝업이 열 때, 화면이 보낸 뒤 폴링할 때 읽는다"""
-    return view(decision_answer._task(task_id, home))
+def show(task_id, home=None, con=None):
+    """한 건 + 뒤에서 도는 응답 보내기(job). 매니저 탭 팝업이 열 때, 화면이 보낸 뒤 폴링할 때 읽는다.
+    con(대시보드 DB)을 주면 단계 행은 할일 제목·진행 단계를 붙인다"""
+    from app.services import task_steps
+
+    item = view(decision_answer._task(task_id, home))
+    return task_steps.with_task(con, item) if con is not None else item
 
 
 def start(task_id, done=False, feedback=None, home=None, popen=subprocess.Popen):
