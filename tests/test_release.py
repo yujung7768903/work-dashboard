@@ -11,7 +11,6 @@ from app.constants import STATUS_DONE, STATUS_TODO
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import release, session_link
 from tests.support import free_test_port, serve, temp_db, temp_db_path
 
@@ -299,7 +298,8 @@ class GuideTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         category = category_repo.get_by_name(self.con, "개발")["id"]
-        self.workspace = workspace_repo.create(self.con, category, "작업")["id"]
+        # 할일이 하나라도 있어야 온보딩 대신 분류 블록이 나온다
+        self.workspace = todo_repo.create(self.con, "작업", category_id=category)["id"]
         session_repo.register(self.con, SID, cwd="/tmp")
 
     def test_unclassified_block_carries_release_steps(self):
@@ -309,7 +309,8 @@ class GuideTest(unittest.TestCase):
         self.assertIn("ExitWorktree", block)
 
     def test_classified_block_carries_release_steps(self):
-        session_repo.classify(self.con, SID, workspace_id=self.workspace)
+        # 할일을 잡은 세션이 분류된 세션이다 — 그 할일의 트리 블록이 나온다
+        session_repo.link_todo(self.con, SID, self.workspace)
         block = session_link.render_context(self.con, SID)
         self.assertIn(session_link.STATE_CLASSIFIED, block)
         self.assertIn("dash.py finish", block)

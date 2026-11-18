@@ -1,7 +1,6 @@
-"""보드 워크트리 탭 데이터. 워크스페이스마다 저장소 하나, 그 아래 브랜치·워크트리 행.
+"""워크트리 탭 데이터. 트리(진행 중 맨 위 할일)마다 저장소 하나, 그 아래 브랜치·워크트리 행.
 
-저장소 경로는 워크스페이스에 저장돼 있지 않다 — 그 워크스페이스에서 돌았던 세션의
-cwd 로 유추한다. 조회(overview)는 git·lsof 를 읽기 전용으로만 부르고 실패하면 그
+저장소 경로는 맨 위 할일의 cwd, 없으면 그 트리 할일에서 돌았던 세션의 cwd 로 유추한다. 조회(overview)는 git·lsof 를 읽기 전용으로만 부르고 실패하면 그
 칸만 비운다 — 한 저장소가 깨져도 나머지는 그려져야 한다.
 
 상태를 바꾸는 것은 케밥 메뉴에서 부르는 셋뿐이다 — apply() 는 병합·서버 종료·워크트리
@@ -14,14 +13,13 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from app.constants import STATUS_DONE, TEST_SERVER_PORTS, WORKSPACE_ACTIVE
+from app.constants import STATUS_DONE, TEST_SERVER_PORTS
 from app.db import now
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import worktrees as worktree_repo
-from app.repositories import workspaces as workspace_repo
-from app.services import release, serve
+from app.services import lineage, release, serve
 
 GIT_TIMEOUT_SEC = 5
 # merge·worktree remove·branch delete 는 조회용 git 호출보다 오래 걸릴 수 있다
@@ -48,21 +46,24 @@ STATE_MERGED = "merged"
 STATE_DELETED = "deleted"
 # 세션 cwd 가 워크트리인지 가르고 저장소 루트를 잘라내는 표식
 WORKTREE_MARK = release.WORKTREE_MARK
-# 워크트리 탭 뷰 모드 — 워크스페이스별(기존)과 프로젝트(저장소)별
-GROUP_BY_WORKSPACE = "workspace"
+# 워크트리 탭 뷰 모드 — 트리별(맨 위 할일)과 프로젝트(저장소)별
+GROUP_BY_TREE = "tree"
 GROUP_BY_PROJECT = "project"
-GROUP_BY_CHOICES = (GROUP_BY_WORKSPACE, GROUP_BY_PROJECT)
+GROUP_BY_CHOICES = (GROUP_BY_TREE, GROUP_BY_PROJECT)
+# 옛 화면·저장된 취향이 보내는 값. 워크스페이스는 없어져 트리별로 받는다
+LEGACY_GROUP_BY = {"workspace": GROUP_BY_TREE}
 # 기준 브랜치 reflog 의 병합 항목 — `merge <브랜치>: Merge made by ...` / `...: Fast-forward`
 MERGE_ENTRY = re.compile(r"^merge (\S+):")
 
 
-def overview(con, group_by=GROUP_BY_WORKSPACE):
-    """워크스페이스별은 저장소를 찾은 활성 워크스페이스만(기존과 같음).
+def overview(con, group_by=GROUP_BY_TREE):
+    """트리별은 저장소를 찾은 진행 중 트리(아래에 할일이 있는 맨 위 할일)만.
 
-    프로젝트별은 워크스페이스·할일 연결과 무관하게, 세션이 한 번이라도 다녀간 저장소를
-    전부 보여준다 — 워크스페이스가 done·아카이브됐거나 세션이 아직 분류되지 않았어도
+    프로젝트별은 할일 연결과 무관하게, 세션이 한 번이라도 다녀간 저장소를
+    전부 보여준다 — 트리가 끝났거나 세션이 아직 분류되지 않았어도
     그 저장소의 워크트리는 남아 있을 수 있어서다
     """
+    group_by = LEGACY_GROUP_BY.get(group_by, group_by)
     if group_by not in GROUP_BY_CHOICES:
         raise Validation(f"group_by 는 {GROUP_BY_CHOICES} 중 하나여야 함")
     summaries = {_real(cwd): title
@@ -72,23 +73,26 @@ def overview(con, group_by=GROUP_BY_WORKSPACE):
     todo_id_by_path = {_real(cwd): todo_id
                        for cwd, todo_id in session_repo.todo_id_by_cwd(con).items()}
     processes = _serving_by_path()
-    builder = _project_groups if group_by == GROUP_BY_PROJECT else _workspace_groups
+    builder = _project_groups if group_by == GROUP_BY_PROJECT else _tree_groups
     return {"group_by": group_by, "groups": builder(con, summaries, todo_id_by_path, processes)}
 
 
-def _workspace_groups(con, summaries, todo_id_by_path, processes):
+def _tree_groups(con, summaries, todo_id_by_path, processes):
     categories = {row["id"]: row for row in category_repo.list_all(con)}
     heads = []
-    for workspace in workspace_repo.list_all(con, status=WORKSPACE_ACTIVE):
-        root = _repo_root(session_repo.cwds_by_workspace(con, workspace["id"]))
+    for top in lineage.open_roots(con):
+        cwds = session_repo.cwds_by_todos(con, lineage.tree_todo_ids(con, top["id"]))
+        if (top.get("cwd") or "").strip():
+            cwds = [top["cwd"].strip()] + cwds
+        root = _repo_root(cwds)
         if not root:
             continue
-        category = categories.get(workspace["category_id"]) or {}
+        category = categories.get(top["category_id"]) or {}
         heads.append(
             {
-                "id": workspace["id"],
-                "name": workspace["name"],
-                "category_id": workspace["category_id"],
+                "id": top["id"],
+                "name": top["title"],
+                "category_id": top["category_id"],
                 "category_name": category.get("name"),
                 "category_color": category.get("color"),
                 "repo": root,

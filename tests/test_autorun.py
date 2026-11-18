@@ -30,7 +30,6 @@ from app.repositories import categories as category_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import autorun, session_name
 from tests.support import temp_db
 
@@ -82,7 +81,7 @@ def _limits_file(pct, age_seconds=0, resets_in=3600):
 
 
 class AutorunCase(unittest.TestCase):
-    """워크스페이스 하나 + auto 라벨이 붙은 할일 하나. 작업 위치는 이 저장소로 둔다"""
+    """트리 맨 위 할일 하나(옛 워크스페이스) + 그 아래 auto 라벨이 붙은 할일 하나. 작업 위치는 이 저장소로 둔다"""
 
     def setUp(self):
         self.con = temp_db()
@@ -90,7 +89,7 @@ class AutorunCase(unittest.TestCase):
         self._usage_original = autorun.usage_gate
         self.addCleanup(setattr, autorun, "usage_gate", self._usage_original)
         category = category_repo.create(self.con, "자율")
-        self.workspace = workspace_repo.create(self.con, category["id"], "워크스페이스")
+        self.workspace = todo_repo.create(self.con, "워크스페이스", category_id=category["id"])
         self.label = label_repo.create(self.con, AUTORUN_LABEL)
         self.todo = self._todo("자동으로 돌릴 일", labeled=True)
         session_repo.register(self.con, SID, cwd=self.repo)
@@ -104,7 +103,7 @@ class AutorunCase(unittest.TestCase):
         todo = todo_repo.create(
             self.con,
             title,
-            workspace_id=self.workspace["id"],
+            parent_id=self.workspace["id"],
             precondition=precondition,
         )
         if labeled:
@@ -176,7 +175,7 @@ class CandidatePanel(AutorunCase):
         rows = autorun.candidates(self.con)
         self.assertEqual([row["todo_id"] for row in rows], [self.todo["id"]])
         self.assertEqual(rows[0]["blocker"], autorun.BLOCKER_READY)
-        self.assertEqual(rows[0]["workspace_name"], self.workspace["name"])
+        self.assertEqual(rows[0]["root_title"], self.workspace["title"])
 
     def test_leaves_out_unlabeled_todo(self):
         self._todo("라벨 없는 일")
@@ -200,30 +199,26 @@ class CandidatePanel(AutorunCase):
     def test_marks_unknown_cwd(self):
         """위치를 못 정하면 tick 이 건너뛴다 — 목록이 "시작 가능" 이라 적으면 거짓말이 된다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
-        blind = workspace_repo.create(
-            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
-        )
-        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        blind = todo_repo.create(self.con, "아무도 안 가본 곳", category_id=self.workspace["category_id"])
+        orphan = todo_repo.create(self.con, "위치 모르는 일", parent_id=blind["id"])
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
         row = autorun.candidates(self.con)[0]
         self.assertEqual(row["blocker"], autorun.BLOCKER_CWD)
-        # 화면이 위치를 지정할 워크스페이스를 알아야 그 자리에서 풀 수 있다
-        self.assertEqual(row["workspace_id"], blind["id"])
+        # 화면이 위치를 지정할 곳(트리 맨 위 할일)을 알아야 그 자리에서 풀 수 있다
+        self.assertEqual(row["root_id"], blind["id"])
 
     def test_designated_cwd_clears_the_blocker(self):
-        """사람이 위치를 지정하면 그 워크스페이스의 후보가 바로 돌 수 있게 된다"""
+        """사람이 맨 위 할일에 위치를 지정하면 그 트리의 후보가 바로 돌 수 있게 된다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
-        blind = workspace_repo.create(
-            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
-        )
-        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        blind = todo_repo.create(self.con, "아무도 안 가본 곳", category_id=self.workspace["category_id"])
+        orphan = todo_repo.create(self.con, "위치 모르는 일", parent_id=blind["id"])
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
-        workspace_repo.update(self.con, blind["id"], cwd=tempfile.mkdtemp())
+        todo_repo.update(self.con, blind["id"], cwd=tempfile.mkdtemp())
         self.assertEqual(autorun.candidates(self.con)[0]["blocker"], autorun.BLOCKER_READY)
 
-    def test_marks_unknown_cwd_without_a_workspace(self):
-        """소속 없는 할일은 세션 이력으로 추론할 워크스페이스가 없다 — 위치 미정으로 싣고,
-        화면이 워크스페이스 대신 이 할일에 저장할 수 있게 workspace_id 는 비운다"""
+    def test_marks_unknown_cwd_of_a_parentless_todo(self):
+        """상위 없는 할일은 자기 자신이 트리 맨 위다 — 위치 미정으로 싣고, 화면이 이 할일에 저장하게
+        root_id 는 자기 id 다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
         loose = todo_repo.create(
             self.con, "소속 없는 일", category_id=self.workspace["category_id"]
@@ -231,10 +226,11 @@ class CandidatePanel(AutorunCase):
         label_repo.set_for_todo(self.con, loose["id"], [self.label["id"]])
         row = autorun.candidates(self.con)[0]
         self.assertEqual(row["blocker"], autorun.BLOCKER_CWD)
-        self.assertIsNone(row["workspace_id"])
+        self.assertEqual(row["root_id"], loose["id"])
+        self.assertIsNone(row["root_title"])
 
     def test_designated_todo_cwd_clears_the_blocker(self):
-        """워크스페이스가 없으면 할일에 적은 위치가 그 자리를 대신한다"""
+        """할일에 적은 위치가 곧 답이다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
         loose = todo_repo.create(
             self.con, "소속 없는 일", category_id=self.workspace["category_id"]
@@ -356,33 +352,29 @@ class Gates(AutorunCase):
         session_repo.register(self.con, "sess-stranger", cwd=stranger)
         session_repo.link_todo(self.con, "sess-stranger", self.todo["id"])
         session_repo.set_state(self.con, "sess-stranger", STATE_ENDED)
-        self.assertEqual(autorun.target_cwd(self.con, self.workspace), self.repo)
+        self.assertEqual(autorun.target_cwd(self.con, self.todo), self.repo)
 
     def test_designated_cwd_wins_over_session_history(self):
         """사람이 지정한 위치가 있으면 세션 이력을 추론하지 않는다 — 지정이 곧 답이다.
 
-        저장소가 아닌 곳도 받는다: 자료·문서만 다루는 워크스페이스는 .git 이 없다
+        저장소가 아닌 곳도 받는다: 자료·문서만 다루는 일은 .git 이 없다. 맨 위 할일에 적어도 아래 할일이 물려받는다
         """
         chosen = tempfile.mkdtemp()
-        workspace_repo.update(self.con, self.workspace["id"], cwd=chosen)
-        workspace = workspace_repo.get(self.con, self.workspace["id"])
-        self.assertEqual(autorun.target_cwd(self.con, workspace), chosen)
+        todo_repo.update(self.con, self.workspace["id"], cwd=chosen)
+        self.assertEqual(autorun.target_cwd(self.con, self.todo), chosen)
 
     def test_designated_cwd_that_is_gone_falls_back_to_history(self):
         """지운 경로를 물고 멈추면 안 된다 — 추론으로 내려가고, 그것도 없으면 위치 미정"""
         missing = tempfile.mkdtemp()
         os.rmdir(missing)
-        workspace_repo.update(self.con, self.workspace["id"], cwd=missing)
-        workspace = workspace_repo.get(self.con, self.workspace["id"])
-        self.assertEqual(autorun.target_cwd(self.con, workspace), self.repo)
+        todo_repo.update(self.con, self.workspace["id"], cwd=missing)
+        self.assertEqual(autorun.target_cwd(self.con, self.todo), self.repo)
 
     def test_unknown_cwd_blocks_start(self):
         """그 워크스페이스에서 돈 세션이 없으면 어디서 작업할지 알 수 없다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
-        other = workspace_repo.create(
-            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
-        )
-        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=other["id"])
+        other = todo_repo.create(self.con, "아무도 안 가본 곳", category_id=self.workspace["category_id"])
+        orphan = todo_repo.create(self.con, "위치 모르는 일", parent_id=other["id"])
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
         self.assertEqual(autorun.judge(self.con)["reason"], autorun.REASON_NO_CWD)
 
@@ -391,19 +383,17 @@ class Gates(AutorunCase):
 
         한 워크스페이스가 위치를 못 정했다고 tick 전체가 멈추면 안 된다
         """
-        blind = workspace_repo.create(
-            self.con, self.workspace["category_id"], "아무도 안 가본 곳"
-        )
-        orphan = todo_repo.create(self.con, "위치 모르는 일", workspace_id=blind["id"])
+        blind = todo_repo.create(self.con, "아무도 안 가본 곳", category_id=self.workspace["category_id"])
+        orphan = todo_repo.create(self.con, "위치 모르는 일", parent_id=blind["id"])
         label_repo.set_for_todo(self.con, orphan["id"], [self.label["id"]])
-        workspace_repo.reorder(self.con, [blind["id"], self.workspace["id"]])
+        todo_repo.update(self.con, blind["id"], priority=5)  # 트리 순서상 앞
         decision = autorun.judge(self.con)
         self.assertEqual(decision["reason"], autorun.REASON_READY)
         self.assertEqual(decision["todo"]["id"], self.todo["id"])
         self.assertEqual(decision["cwd"], self.repo)
 
-    def test_todo_cwd_starts_a_todo_without_a_workspace(self):
-        """소속 없는 할일은 위치를 지정하기 전엔 NO_CWD 로 막히고, 할일에 적어 두면 그 경로에서 뜬다"""
+    def test_todo_cwd_starts_a_parentless_todo(self):
+        """상위 없는 할일은 위치를 지정하기 전엔 NO_CWD 로 막히고, 할일에 적어 두면 그 경로에서 뜬다"""
         label_repo.set_for_todo(self.con, self.todo["id"], [])
         loose = todo_repo.create(
             self.con, "소속 없는 일", category_id=self.workspace["category_id"]
@@ -432,8 +422,8 @@ class Gates(AutorunCase):
 class Prompt(AutorunCase):
     def setUp(self):
         super().setUp()
-        workspace_repo.update(self.con, self.workspace["id"], goal="끝까지 돌리기")
-        self.workspace = workspace_repo.get(self.con, self.workspace["id"])
+        # 옛 워크스페이스의 목표는 맨 위 할일 note 에 있다 — 지시문에 상위 할일로 실린다
+        self.workspace = todo_repo.update(self.con, self.workspace["id"], note="목표: 끝까지 돌리기")
 
     def _text(self, cwd=None, **fields):
         todo = (
@@ -441,9 +431,9 @@ class Prompt(AutorunCase):
             if fields
             else self.todo
         )
-        return autorun.build_prompt(todo, self.workspace, cwd or _git_repo())
+        return autorun.build_prompt(todo, [self.workspace], cwd or _git_repo())
 
-    def test_carries_workspace_and_todo(self):
+    def test_carries_ancestor_note_and_todo(self):
         text = self._text()
         self.assertIn("끝까지 돌리기", text)
         self.assertIn(self.todo["title"], text)
@@ -597,22 +587,18 @@ class ManualStart(AutorunCase):
             autorun.start_todo(self.con, self.todo["id"], launcher=Recorder())
 
     def test_blocks_when_cwd_is_unknown(self):
-        workspace = workspace_repo.create(
-            self.con, self.workspace["category_id"], "위치 모름"
-        )
-        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        workspace = todo_repo.create(self.con, "위치 모름", category_id=self.workspace["category_id"])
+        todo = todo_repo.create(self.con, "위치 모르는 일", parent_id=workspace["id"])
         with self.assertRaises(Validation):
             autorun.start_todo(self.con, todo["id"], launcher=Recorder())
 
-    def test_explicit_cwd_is_used_when_workspace_has_no_history(self):
-        """위치를 모르는 워크스페이스도, 화면이 물어 받은 경로가 있으면 그걸 쓴다.
+    def test_explicit_cwd_is_used_when_tree_has_no_history(self):
+        """위치를 모르는 트리도, 화면이 물어 받은 경로가 있으면 그걸 쓴다.
 
         git 저장소로 제한하지 않는다 — 워크트리를 안 만들어도 되는 작업도 있다
         """
-        workspace = workspace_repo.create(
-            self.con, self.workspace["category_id"], "위치 모름"
-        )
-        todo = todo_repo.create(self.con, "위치 모르는 일", workspace_id=workspace["id"])
+        workspace = todo_repo.create(self.con, "위치 모름", category_id=self.workspace["category_id"])
+        todo = todo_repo.create(self.con, "위치 모르는 일", parent_id=workspace["id"])
         chosen = tempfile.mkdtemp()
         launcher = Recorder()
         autorun.start_todo(self.con, todo["id"], launcher=launcher, cwd=chosen)
@@ -881,21 +867,22 @@ class Handover(AutorunCase):
 
 
 class RecentWithTodos(AutorunCase):
-    """자율 수행 패널이 그대로 뿌리는 조회. 할일 제목·워크스페이스 이름이 붙어야 한다"""
+    """자율 수행 패널이 그대로 뿌리는 조회. 할일 제목이 붙고, 트리 맨 위 할일은 panel_runs 가 붙인다"""
 
-    def test_carries_todo_title_and_workspace_name(self):
+    def test_carries_todo_title(self):
         autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         row = autorun_repo.recent_with_todos(self.con)[0]
         self.assertEqual(row["todo_title"], self.todo["title"])
-        self.assertEqual(row["workspace_name"], self.workspace["name"])
 
-    def test_unassigned_todo_has_no_workspace_name(self):
+    def test_panel_runs_carry_the_root_title(self):
         orphan = todo_repo.create(
-            self.con, "미분류 할일", category_id=self.workspace["category_id"]
+            self.con, "상위 없는 할일", category_id=self.workspace["category_id"]
         )
+        autorun_repo.start_run(self.con, self.todo["id"], CHILD, JOB)
         autorun_repo.start_run(self.con, orphan["id"], CHILD, JOB)
-        row = autorun_repo.recent_with_todos(self.con)[0]
-        self.assertIsNone(row["workspace_name"])
+        rows = {row["todo_id"]: row for row in autorun.panel_runs(self.con)}
+        self.assertEqual(rows[self.todo["id"]]["root_title"], self.workspace["title"])
+        self.assertIsNone(rows[orphan["id"]]["root_title"])
 
     def test_carries_the_session_cwd(self):
         """그 세션이 어디서 돌았는지 — 패널의 워크트리 칸이 여기서 나온다"""

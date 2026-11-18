@@ -5,7 +5,7 @@ import subprocess
 import unittest
 
 CHECK = os.path.join(os.path.dirname(__file__), "tab_routing_check.mjs")
-ENTRY_PATHS = ("/", "/board", "/nope")
+ENTRY_PATHS = ("/", "/tree", "/board", "/nope")
 
 
 class TabRoutingTest(unittest.TestCase):

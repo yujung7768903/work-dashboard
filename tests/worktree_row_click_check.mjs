@@ -33,7 +33,6 @@ globalThis.fetch = async (url, options) => {
   asked.push(`${options?.method ?? "GET"} ${path}`);
   const body = {
     "/api/worktrees": { groups: GROUPS },
-    "/api/workspaces": [],
     "/api/categories": [],
     "/api/todos/57": { todo: { id: 57, title: "제목" }, sessions: [] },
   }[path];
@@ -74,7 +73,7 @@ const node = () => {
 
 const created = [];
 const elements = { "worktree-list": node() };
-// worktrees.js 는 board.js 를 거쳐 main.js 까지 끌고 들어온다(순환 참조) — main.js 가
+// worktrees.js 는 main.js 를 끌고 들어온다(순환 참조) — main.js 가
 // 모듈 최상단에서 라우팅을 한 번 돌리므로 history·location·window 도 흉내내야 한다
 globalThis.innerHeight = 800;
 globalThis.location = { pathname: "/" };

@@ -51,8 +51,6 @@ FIRST_SORT_ORDER = 1
 SCOPE_REQUIRED_MSG = "카테고리나 워크스페이스 중 하나를 선택해 주세요"
 PRIORITY_INVALID_MSG = "우선순위는 1 이상 정수로 입력해 주세요"
 # 트리(상위 할일). 화면 alert 와 CLI 가 같은 문장을 쓴다
-PARENT_NEEDS_WORKSPACE_MSG = "워크스페이스에 속한 할일만 상위 할일을 가질 수 있습니다"
-PARENT_OTHER_WORKSPACE_MSG = "상위 할일은 같은 워크스페이스의 할일이어야 합니다"
 PARENT_CYCLE_MSG = "자기 자신이나 하위 할일을 상위로 지정할 수 없습니다"
 PARENT_INVALID_MSG = "상위 할일은 할일 번호로 지정해 주세요"
 

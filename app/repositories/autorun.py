@@ -14,11 +14,10 @@ from app.errors import NotFound, Validation
 
 STATE_ROW_ID = 1
 
-# 실행 한 줄에 화면이 필요로 하는 것 — 할일 제목·워크스페이스·그 세션의 위치
-RUN_JOIN = """SELECT r.*, t.title AS todo_title, w.name AS workspace_name, s.cwd AS cwd
+# 실행 한 줄에 화면이 필요로 하는 것 — 할일 제목·그 세션의 위치 (트리 맨 위 할일은 서비스가 붙인다)
+RUN_JOIN = """SELECT r.*, t.title AS todo_title, s.cwd AS cwd
                 FROM autorun_runs r
                 JOIN todos t ON t.id = r.todo_id
-                LEFT JOIN workspaces w ON w.id = t.workspace_id
                 LEFT JOIN sessions s ON s.claude_session_id = r.claude_session_id"""
 
 

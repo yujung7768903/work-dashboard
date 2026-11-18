@@ -17,7 +17,6 @@ from app.errors import NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import session_link
 from tests.support import temp_db
 
@@ -134,7 +133,8 @@ class SessionClassifyTest(unittest.TestCase):
         self.con = temp_db()
         self.dev = category_repo.get_by_name(self.con, "개발")["id"]
         self.ops = category_repo.get_by_name(self.con, "운영")["id"]
-        self.workspace = workspace_repo.create(self.con, self.dev, "KT 동시성")
+        # 워크스페이스는 없다 — 트리 맨 위 할일
+        self.workspace = todo_repo.create(self.con, "KT 동시성", category_id=self.dev)
         session_repo.register(self.con, SID, cwd="/tmp")
 
     def test_classify_category_only(self):
@@ -142,38 +142,36 @@ class SessionClassifyTest(unittest.TestCase):
         self.assertEqual(result["category_id"], self.ops)
         self.assertIsNone(result["workspace_id"])
 
-    def test_classify_with_workspace_overrides_category(self):
-        """워크스페이스는 카테고리를 고르는 데만 쓰고 세션에 남지 않는다 —
-        세션이 그 워크스페이스 일감이라는 사실은 할일 연결로만 생긴다"""
-        result = session_repo.classify(
-            self.con, SID, category_name="운영", workspace_id=self.workspace["id"]
-        )
-        self.assertEqual(result["category_id"], self.dev)
+    def test_classify_ignores_workspace(self):
+        """옛 호출이 workspace_id 를 넘겨도 무시한다 — 분류는 카테고리만이다"""
+        result = session_repo.classify(self.con, SID, category_name="운영", workspace_id=MISSING_ID)
+        self.assertEqual(result["category_id"], self.ops)
         self.assertIsNone(result["workspace_id"])
 
-    def test_workspace_comes_from_the_linked_todo(self):
-        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+    def test_tree_comes_from_the_linked_todo(self):
+        todo = todo_repo.create(self.con, "락", parent_id=self.workspace["id"])
         session_repo.link_todo(self.con, SID, todo["id"])
-        self.assertEqual(
-            session_repo.get(self.con, SID)["workspace_id"], self.workspace["id"]
-        )
+        session = session_repo.get(self.con, SID)
+        self.assertEqual(session["root_id"], self.workspace["id"])
+        self.assertEqual(session["root_title"], "KT 동시성")
+        self.assertIsNone(session["workspace_id"])
 
-    def test_latest_link_wins_when_todos_span_workspaces(self):
-        other = workspace_repo.create(self.con, self.dev, "다른 일")
-        first = todo_repo.create(self.con, "먼저", workspace_id=self.workspace["id"])
-        later = todo_repo.create(self.con, "나중", workspace_id=other["id"])
+    def test_latest_link_wins_when_todos_span_trees(self):
+        other = todo_repo.create(self.con, "다른 일", category_id=self.dev)
+        first = todo_repo.create(self.con, "먼저", parent_id=self.workspace["id"])
+        later = todo_repo.create(self.con, "나중", parent_id=other["id"])
         session_repo.link_todo(self.con, SID, first["id"])
         session_repo.link_todo(self.con, SID, later["id"])
-        self.assertEqual(session_repo.get(self.con, SID)["workspace_id"], other["id"])
+        self.assertEqual(session_repo.get(self.con, SID)["root_id"], other["id"])
 
     def test_classify_rejects_bad_input(self):
         for exc, why, call in (
-            (Validation, "카테고리도 워크스페이스도 없음",
+            (Validation, "카테고리 없음",
              lambda: session_repo.classify(self.con, SID)),
+            (Validation, "워크스페이스만 줌 — 무시하므로 카테고리 없음과 같다",
+             lambda: session_repo.classify(self.con, SID, workspace_id=MISSING_ID)),
             (NotFound, "없는 카테고리",
              lambda: session_repo.classify(self.con, SID, category_name="없는카테고리")),
-            (NotFound, "없는 워크스페이스",
-             lambda: session_repo.classify(self.con, SID, workspace_id=MISSING_ID)),
             (NotFound, "없는 세션",
              lambda: session_repo.classify(self.con, "gone", category_name="운영")),
         ):
@@ -191,7 +189,7 @@ class SessionClassifyTest(unittest.TestCase):
         for exc, why, call in (
             (NotFound, "없는 세션",
              lambda: session_repo.classify_by_ids(self.con, MISSING_ID, category_id=self.ops)),
-            (Validation, "카테고리도 워크스페이스도 없음",
+            (Validation, "카테고리 없음",
              lambda: session_repo.classify_by_ids(self.con, row_id)),
         ):
             with self.subTest(why=why):
@@ -199,19 +197,19 @@ class SessionClassifyTest(unittest.TestCase):
                     call()
 
     def test_link_todo_ignores_duplicate(self):
-        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "락", parent_id=self.workspace["id"])
         session_repo.link_todo(self.con, SID, todo["id"])
         session_repo.link_todo(self.con, SID, todo["id"])
         self.assertEqual(session_repo.linked_todo_ids(self.con, SID), [todo["id"]])
 
     def test_link_todo_starts_the_todo(self):
         """연결 = 착수 선언"""
-        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "락", parent_id=self.workspace["id"])
         session_repo.link_todo(self.con, SID, todo["id"])
         self.assertEqual(todo_repo.get(self.con, todo["id"])["status"], STATUS_DOING)
 
     def test_link_todo_keeps_done_todo_done(self):
-        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "락", parent_id=self.workspace["id"])
         todo_repo.update(self.con, todo["id"], status=STATUS_DONE)
         session_repo.link_todo(self.con, SID, todo["id"])
         self.assertEqual(todo_repo.get(self.con, todo["id"])["status"], STATUS_DONE)
@@ -228,11 +226,12 @@ class SessionClassifyTest(unittest.TestCase):
 
     def test_list_active_carries_names(self):
         session_repo.set_last_prompt(self.con, SID, "무엇을 하나")
-        session_repo.classify(self.con, SID, workspace_id=self.workspace["id"])
-        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        session_repo.classify(self.con, SID, category_name="개발")
+        todo = todo_repo.create(self.con, "락", parent_id=self.workspace["id"])
         session_repo.link_todo(self.con, SID, todo["id"])
         row = session_repo.list_active(self.con)[0]
-        self.assertEqual(row["workspace_name"], "KT 동시성")
+        self.assertEqual(row["root_title"], "KT 동시성")
+        self.assertEqual(row["workspace_name"], "KT 동시성", "옛 CLI 용 별칭")
         self.assertEqual(row["category_name"], "개발")
 
     def test_list_active_excludes_promptless(self):
@@ -251,7 +250,7 @@ class SessionSweepTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         self.dev = category_repo.get_by_name(self.con, "개발")["id"]
-        self.workspace = workspace_repo.create(self.con, self.dev, "KT")
+        self.workspace = todo_repo.create(self.con, "KT", category_id=self.dev)
 
     def _age(self, session_id, last_seen=None, ended_at=None):
         self.con.execute(
@@ -281,7 +280,7 @@ class SessionSweepTest(unittest.TestCase):
 
     def test_ended_with_todo_survives(self):
         session_repo.register(self.con, SID)
-        todo = todo_repo.create(self.con, "락", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "락", parent_id=self.workspace["id"])
         session_repo.link_todo(self.con, SID, todo["id"])
         session_repo.set_state(self.con, SID, STATE_ENDED)
         self._age(SID, ended_at=_ago(days=ENDED_RETENTION_DAYS + 1))
@@ -298,10 +297,9 @@ class SessionLinkTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         self.dev = category_repo.get_by_name(self.con, "개발")["id"]
-        self.workspace = workspace_repo.create(
-            self.con, self.dev, "KT 동시성", background="엑셀 충돌",
-            purpose="서버사이드 차단", goal="락 재설계", jira_id="KT-1530",
-        )
+        # 옛 워크스페이스의 Jira·배경·목표는 이관이 맨 위 할일 note 로 옮겼다
+        self.workspace = todo_repo.create(self.con, "KT 동시성", category_id=self.dev, note="Jira: KT-1530\n배경: 엑셀 충돌\n목적: 서버사이드 차단\n목표: 락 재설계")
+        todo_repo.create(self.con, "락 초안", parent_id=self.workspace["id"])
 
     def test_jira_from_branch(self):
         self.assertEqual(session_link.jira_from_branch("KT-1530-phase1-lock"), "KT-1530")
@@ -309,8 +307,8 @@ class SessionLinkTest(unittest.TestCase):
         self.assertIsNone(session_link.jira_from_branch("master"))
         self.assertIsNone(session_link.jira_from_branch(None))
 
-    def test_attach_by_branch_finds_workspace(self):
-        """브랜치로 알 수 있는 것은 카테고리까지. 할일을 잡아야 그 워크스페이스 일감이 된다"""
+    def test_attach_by_branch_finds_the_tree(self):
+        """브랜치로 알 수 있는 것은 카테고리까지. 할일을 잡아야 그 트리 일감이 된다"""
         session_repo.register(self.con, SID)
         attached = session_link.attach_by_branch(self.con, SID, "feature/KT-1530-lock")
         self.assertEqual(attached["category_id"], self.workspace["category_id"])
@@ -324,8 +322,8 @@ class SessionLinkTest(unittest.TestCase):
         session_repo.register(self.con, SID)
         self.assertIsNone(session_link.attach_by_branch(self.con, SID, "AB-1"))
 
-    def test_classified_context_has_workspace_fields(self):
-        """할일을 아직 안 잡았어도 브랜치 Jira 로 워크스페이스 컨텍스트는 되찾아 준다"""
+    def test_classified_context_has_tree_note(self):
+        """할일을 아직 안 잡았어도 브랜치 Jira 로 트리 컨텍스트(맨 위 할일 note)는 되찾아 준다"""
         session_repo.register(self.con, SID, git_branch="KT-1530")
         session_link.attach_by_branch(self.con, SID, "KT-1530")
         text = session_link.render_context(self.con, SID)
@@ -361,11 +359,8 @@ class ScopeGuardRenderTest(unittest.TestCase):
     def test_scope_block_has_background_goal_and_steps(self):
         con = temp_db()
         dev = category_repo.get_by_name(con, "개발")["id"]
-        workspace = workspace_repo.create(
-            con, dev, "KT 동시성", background="엑셀 충돌", purpose="차단",
-            goal="락 재설계", jira_id="KT-1530",
-        )
-        todo_repo.create(con, "락 초안", workspace_id=workspace["id"])
+        workspace = todo_repo.create(con, "KT 동시성", category_id=dev, note="Jira: KT-1530\n배경: 엑셀 충돌\n목적: 서버사이드 차단\n목표: 락 재설계")
+        todo_repo.create(con, "락 초안", parent_id=workspace["id"])
         text = session_link.scope_guard_block(con, "kt-1530")
         self.assertIn('<scope-guard active="KT-1530"', text)
         self.assertIn("배경: 엑셀 충돌", text)

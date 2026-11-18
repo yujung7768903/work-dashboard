@@ -23,7 +23,6 @@ from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import stale_judgments as judgment_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.repositories import worktrees as worktree_repo
 from app.services import stale_judge
 from tests.support import temp_db
@@ -52,11 +51,12 @@ class StaleCase(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         category = category_repo.create(self.con, "방치 판정")
-        self.workspace = workspace_repo.create(self.con, category["id"], "워크스페이스")
+        # 워크스페이스 대신 트리 맨 위 할일 — 그 note(배경·목표)가 판정 근거로 간다
+        self.workspace = todo_repo.create(self.con, "워크스페이스", category_id=category["id"], note="목표: 끝내기")
         self.todo = self._doing("오래 붙잡은 일", days=OLD_DAYS, note="처음 적은 맥락")
 
     def _doing(self, title, days, note=None):
-        todo = todo_repo.create(self.con, title, workspace_id=self.workspace["id"], note=note)
+        todo = todo_repo.create(self.con, title, parent_id=self.workspace["id"], note=note)
         todo_repo.update(self.con, todo["id"], status=STATUS_DOING)
         self._age(todo["id"], days)
         return todo_repo.get(self.con, todo["id"])
@@ -70,7 +70,7 @@ class StaleCase(unittest.TestCase):
 class Candidates(StaleCase):
     def test_only_old_doing(self):
         self._doing("방금 잡은 일", days=1)
-        waiting = todo_repo.create(self.con, "대기", workspace_id=self.workspace["id"])
+        waiting = todo_repo.create(self.con, "대기", parent_id=self.workspace["id"])
         self._age(waiting["id"], OLD_DAYS)
         ids = [todo["id"] for todo in stale_judge.candidates(self.con)]
         self.assertEqual(ids, [self.todo["id"]])
@@ -159,7 +159,7 @@ class Evidence(StaleCase):
         branch = f"worktree-todo-{self.todo['id']}-x"
         worktree_repo.remember(self.con, "/tmp/wt", "/tmp/x", branch, "2026-01-01T00:00:00+00:00")
         worktree_repo.mark_merged(self.con, "/tmp/wt", "2026-01-02T00:00:00+00:00", "abc", branch)
-        other = todo_repo.create(self.con, "이웃 할일", workspace_id=self.workspace["id"])
+        other = todo_repo.create(self.con, "이웃 할일", parent_id=self.workspace["id"])
 
         judge = fixed(VERDICT_KEEP)
         stale_judge.run(self.con, judge=judge, root=root)
@@ -168,7 +168,8 @@ class Evidence(StaleCase):
         self.assertEqual([m["text"] for m in facts["tail"]], ["병합해줘", "병합 끝났어"])
         self.assertEqual(facts["worktrees"][0]["merged_at"], "2026-01-02T00:00:00+00:00")
         self.assertEqual(facts["siblings"][0]["id"], other["id"])
-        self.assertEqual(facts["workspace"]["name"], "워크스페이스")
+        self.assertEqual(facts["root"]["title"], "워크스페이스")
+        self.assertEqual(facts["root"]["note"], "목표: 끝내기")
         text = stale_judge.prompt(facts)
         self.assertIn("병합 끝났어", text)
         self.assertIn(branch, text)

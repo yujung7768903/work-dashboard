@@ -23,7 +23,6 @@ from app.constants import (
     STATUS_DONE,
     STATUS_REVIEW,
     STATUS_TODO,
-    WORKSPACE_ACTIVE,
 )
 from app.db import meta_set
 from app.errors import Validation
@@ -32,11 +31,9 @@ from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import gtasks_state
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import gtasks, gtasks_setup
 from tests.support import temp_db
 
-WORKSPACE_DONE = "done"
 
 
 def _stamp(offset_seconds=0):
@@ -122,8 +119,14 @@ class GtasksSyncTest(unittest.TestCase):
         self.list_id = created["id"]
         self.category = category_repo.get(self.con, category["id"])
 
-    def _space(self, name="결제 개편", **fields):
-        return workspace_repo.create(self.con, self.category["id"], name, **fields)
+    def _space(self, name="결제 개편", goal=None):
+        """트리 맨 위 할일(옛 워크스페이스). 목표 등은 note 에 — 이관이 옮긴 자리와 같다"""
+        note = f"목표: {goal}" if goal else None
+        return todo_repo.create(self.con, title=name, category_id=self.category["id"], note=note)
+
+    def _titles(self, **where):
+        rows = todo_repo.list_by_category(self.con, self.category["id"])
+        return sorted(row["title"] for row in rows if all(row[key] == value for key, value in where.items()))
 
     def _todo(self, title="배포 스크립트 정리", **kwargs):
         kwargs.setdefault("category_id", self.category["id"])
@@ -137,9 +140,9 @@ class GtasksSyncTest(unittest.TestCase):
 
     # ── 올려보내기 ────────────────────────────────────────────────────────
 
-    def test_워크스페이스가_최상위_할일이_그_하위로_올라간다(self):
+    def test_맨_위_할일이_최상위_그_아래_할일이_하위로_올라간다(self):
         space = self._space(goal="1차 배포까지")
-        todo = self._todo(workspace_id=space["id"])
+        todo = self._todo(parent_id=space["id"])
 
         report = self._sync()
 
@@ -151,7 +154,7 @@ class GtasksSyncTest(unittest.TestCase):
         self.assertEqual(self._reload(todo)["google_task_id"], child["id"])
         self.assertEqual(len(report["created_remote"]), 2)
 
-    def test_워크스페이스_없는_할일은_최상위로_올라간다(self):
+    def test_상위_없는_할일은_최상위로_올라간다(self):
         self._todo()
 
         self._sync()
@@ -160,7 +163,7 @@ class GtasksSyncTest(unittest.TestCase):
 
     def test_두번_돌려도_같은_태스크를_다시_만들지_않는다(self):
         space = self._space()
-        self._todo(workspace_id=space["id"])
+        self._todo(parent_id=space["id"])
 
         self._sync()
         report = self._sync()
@@ -189,7 +192,7 @@ class GtasksSyncTest(unittest.TestCase):
 
     def test_트리_깊은_할일은_내보내지_않는다(self):
         space = self._space()
-        top = self._todo("설계", workspace_id=space["id"])
+        top = self._todo("설계", parent_id=space["id"])
         deep = self._todo("API 초안", parent_id=top["id"])
 
         report = self._sync()
@@ -197,7 +200,7 @@ class GtasksSyncTest(unittest.TestCase):
         self.assertIsNotNone(self.client.find("설계"))
         self.assertIsNone(self.client.find("API 초안"))
         self.assertIsNone(self._reload(deep)["google_task_id"])
-        self.assertEqual(self.client.task_count(), 2)  # 워크스페이스 + 바로 아래 할일
+        self.assertEqual(self.client.task_count(), 2)  # 맨 위 할일 + 바로 아래 할일
         self.assertEqual(len(report["created_remote"]), 2)
         # 다시 돌려도 조용하다 — 깊은 할일이 '아직 안 올린 것'으로 매번 잡히지 않는다
         again = self._sync()
@@ -206,8 +209,8 @@ class GtasksSyncTest(unittest.TestCase):
 
     def test_하위로_들어간_할일은_구글에서_내리고_로컬엔_한_벌만_남는다(self):
         space = self._space()
-        top = self._todo("설계", workspace_id=space["id"])
-        moved = self._todo("API 초안", workspace_id=space["id"])
+        top = self._todo("설계", parent_id=space["id"])
+        moved = self._todo("API 초안", parent_id=space["id"])
         self._sync()
         self.assertIsNotNone(self.client.find("API 초안"))
 
@@ -218,15 +221,14 @@ class GtasksSyncTest(unittest.TestCase):
         self.assertIsNone(self._reload(moved)["google_task_id"])
         self.assertEqual(len(report["deleted_remote"]), 1)
         self.assertEqual(report["created_local"], [])
-        titles = [todo["title"] for todo in todo_repo.list_by_workspace(self.con, space["id"])]
-        self.assertEqual(sorted(titles), ["API 초안", "설계"])
+        self.assertEqual(self._titles(), ["API 초안", "결제 개편", "설계"])
 
     def test_지난_회차_기록이_없어도_하위_할일의_짝을_새_할일로_받지_않는다(self):
         """seen 이 비어 있으면 짝 없는 태스크는 '폰에서 새로 만든 것'으로 읽힌다 —
         하위로 들어간 할일의 짝은 그 전에 걸러야 로컬에 한 벌이 더 생기지 않는다"""
         space = self._space()
-        top = self._todo("설계", workspace_id=space["id"])
-        moved = self._todo("API 초안", workspace_id=space["id"])
+        top = self._todo("설계", parent_id=space["id"])
+        moved = self._todo("API 초안", parent_id=space["id"])
         self._sync()
         todo_repo.update(self.con, moved["id"], parent_id=top["id"])
         meta_set(self.con, GTASKS_SEEN_KEY, "[]")
@@ -236,10 +238,10 @@ class GtasksSyncTest(unittest.TestCase):
         self.assertEqual(report["created_local"], [])
         self.assertIsNone(self.client.find("API 초안"))
 
-    def test_다시_워크스페이스_바로_아래로_오면_새로_올라간다(self):
+    def test_다시_위로_올라오면_새로_올라간다(self):
         space = self._space()
-        top = self._todo("설계", workspace_id=space["id"])
-        moved = self._todo("API 초안", workspace_id=space["id"])
+        top = self._todo("설계", parent_id=space["id"])
+        moved = self._todo("API 초안", parent_id=space["id"])
         self._sync()
         todo_repo.update(self.con, moved["id"], parent_id=top["id"])
         self._sync()
@@ -253,7 +255,7 @@ class GtasksSyncTest(unittest.TestCase):
 
     def test_확인_대기는_구글에서_미완료로_남는다(self):
         space = self._space()
-        todo = self._todo("설계", workspace_id=space["id"])
+        todo = self._todo("설계", parent_id=space["id"])
         todo_repo.update(self.con, todo["id"], status=STATUS_REVIEW)
 
         self._sync()
@@ -263,8 +265,8 @@ class GtasksSyncTest(unittest.TestCase):
 
     # ── 내려받기 ──────────────────────────────────────────────────────────
 
-    def test_폰에서_만든_최상위는_워크스페이스가_된다(self):
-        """구조를 그대로 받는다 — 최상위가 워크스페이스, 그 하위가 워크스페이스의 할일"""
+    def test_폰에서_만든_최상위는_상위_없는_할일이_된다(self):
+        """구조를 그대로 받는다 — 최상위가 상위 없는 할일, 그 하위가 그 할일의 하위"""
         top = self.client.insert(
             self.list_id, {"title": "결제 개편", "status": GTASKS_STATUS_TODO}
         )
@@ -274,30 +276,29 @@ class GtasksSyncTest(unittest.TestCase):
 
         self._sync()
 
-        spaces = workspace_repo.list_all(self.con)
-        self.assertEqual([s["name"] for s in spaces], ["결제 개편"])
-        kids = todo_repo.list_by_workspace(self.con, spaces[0]["id"])
-        self.assertEqual([t["title"] for t in kids], ["스펙 정리"])
+        self.assertEqual(self._titles(parent_id=None), ["결제 개편"])
+        made = next(row for row in todo_repo.list_by_category(self.con, self.category["id"]) if row["title"] == "결제 개편")
+        self.assertEqual(self._titles(parent_id=made["id"]), ["스펙 정리"])
 
-    def test_받은_워크스페이스는_다음_회차에_또_만들어지지_않는다(self):
-        """링크가 남아 '이미 짝이 있는 것'으로 걸러진다 — 승격을 막던 이유가 이것이었다"""
+    def test_받은_최상위는_다음_회차에_또_만들어지지_않는다(self):
+        """링크가 남아 '이미 짝이 있는 것'으로 걸러진다"""
         self.client.insert(self.list_id, {"title": "결제 개편", "status": GTASKS_STATUS_TODO})
 
         self._sync()
         self._sync()
 
-        self.assertEqual(len(workspace_repo.list_all(self.con)), 1)
+        self.assertEqual(self._titles(), ["결제 개편"])
 
-    def test_올린_카테고리_직속_할일이_워크스페이스로_승격되지_않는다(self):
-        """최상위로 올라가지만 링크가 남으므로 워크스페이스로 오해받지 않는다"""
+    def test_올린_할일이_다음_회차에_한_벌_더_생기지_않는다(self):
+        """최상위로 올라가지만 링크가 남으므로 폰에서 새로 만든 것으로 오해받지 않는다"""
         self._todo()
 
         self._sync()
         self._sync()
 
-        self.assertEqual(workspace_repo.list_all(self.con), [])
+        self.assertEqual(self._titles(), ["배포 스크립트 정리"])
 
-    def test_폰에서_만든_하위는_그_워크스페이스의_할일이_된다(self):
+    def test_폰에서_만든_하위는_그_할일의_하위가_된다(self):
         space = self._space()
         self._sync()
         top = self.client.find("결제 개편")
@@ -307,12 +308,7 @@ class GtasksSyncTest(unittest.TestCase):
 
         self._sync()
 
-        made = [
-            todo
-            for todo in todo_repo.list_by_workspace(self.con, space["id"])
-            if todo["title"] == "폰에서 적은 하위"
-        ]
-        self.assertEqual(len(made), 1)
+        self.assertEqual(self._titles(parent_id=space["id"]), ["폰에서 적은 하위"])
 
     def test_폰에서_완료하면_로컬도_완료된다(self):
         todo = self._todo()
@@ -326,7 +322,7 @@ class GtasksSyncTest(unittest.TestCase):
         self.assertEqual(self._reload(todo)["status"], STATUS_DONE)
         self.assertEqual(len(report["pulled"]), 1)
 
-    def test_폰에서_워크스페이스를_완료하면_done_이_된다(self):
+    def test_폰에서_맨_위_할일을_완료하면_done_이_된다(self):
         space = self._space()
         self._sync()
         top = self.client.find("결제 개편")
@@ -335,12 +331,12 @@ class GtasksSyncTest(unittest.TestCase):
 
         self._sync()
 
-        self.assertEqual(workspace_repo.get(self.con, space["id"])["status"], WORKSPACE_DONE)
+        self.assertEqual(self._reload(space)["status"], STATUS_DONE)
 
-    def test_폰에서_완료를_풀면_워크스페이스가_다시_active_가_된다(self):
+    def test_폰에서_완료를_풀면_맨_위_할일이_다시_todo_가_된다(self):
         space = self._space()
-        self._sync()  # 링크가 생긴 뒤라야 완료된 워크스페이스도 계속 동기화 범위에 남는다
-        workspace_repo.update(self.con, space["id"], status=WORKSPACE_DONE)
+        self._sync()  # 링크가 생긴 뒤라야 완료된 할일도 계속 동기화 범위에 남는다
+        todo_repo.update(self.con, space["id"], status=STATUS_DONE)
         self._sync()
         top = self.client.find("결제 개편")
         top["status"] = GTASKS_STATUS_TODO
@@ -348,7 +344,21 @@ class GtasksSyncTest(unittest.TestCase):
 
         self._sync()
 
-        self.assertEqual(workspace_repo.get(self.con, space["id"])["status"], WORKSPACE_ACTIVE)
+        self.assertEqual(self._reload(space)["status"], STATUS_TODO)
+
+    def test_단계와_기록은_내보내지_않는다(self):
+        """단계(role='step')는 할일 안의 순서고, 그 밖 role(매니저 피드백 기록)은 할일이 아니다"""
+        space = self._space()
+        step = self._todo("셀 수정", parent_id=space["id"])
+        note = self._todo("피드백 기록")
+        self.con.execute("UPDATE todos SET role='step' WHERE id=?", (step["id"],))
+        self.con.execute("UPDATE todos SET role='feedback' WHERE id=?", (note["id"],))
+        self.con.commit()
+
+        self._sync()
+
+        self.assertEqual(self.client.task_count(), 1)
+        self.assertIsNotNone(self.client.find("결제 개편"))
 
     # ── 최신 우선 ─────────────────────────────────────────────────────────
 
@@ -444,17 +454,17 @@ class GtasksSyncTest(unittest.TestCase):
         self.assertEqual(report["deleted_local"], [])
         self.assertEqual(self._reload(todo)["status"], STATUS_DONE)
 
-    def test_워크스페이스를_지워도_소속_할일은_사라지지_않는다(self):
+    def test_맨_위_할일을_지워도_아래_할일은_사라지지_않는다(self):
         """구글은 최상위를 지우면 하위까지 지운다. 링크를 안 끊으면 멀쩡한 할일이 증발한다"""
         space = self._space()
-        todo = self._todo(workspace_id=space["id"])
+        todo = self._todo(parent_id=space["id"])
         self._sync()
-        workspace_repo.delete(self.con, space["id"])  # 소속 할일은 미분류로 강등
+        todo_repo.delete(self.con, space["id"])  # 아래 할일은 한 단계 올라 상위 없는 할일이 된다
 
         self._sync()
 
         survivor = self._reload(todo)
-        self.assertIsNone(survivor["workspace_id"])
+        self.assertIsNone(survivor["parent_id"])
         self.assertEqual(self.client.task_count(), 1)
         self.assertIsNone(self.client.only_task().get("parent"))
         self.assertEqual(self.client.only_task()["id"], survivor["google_task_id"])

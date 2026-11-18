@@ -1,4 +1,5 @@
-// 트리 메뉴. 워크스페이스 하나가 트리 하나(루트)이고 맥락·할일이 상위 연결로 깊이 제한 없이 매달린다.
+// 트리 메뉴. 상위 없는 할일(또는 맥락) 하나가 트리 하나(맨 위)이고 맥락·할일이 상위 연결로 깊이 제한 없이 매달린다.
+// 할일의 단계(role='step')는 하위 줄이 아니라 그 할일 안의 순서 목록이다 — 목록은 할일 줄 아래 단계 줄로, 맵은 카드 안 한 줄로.
 // 상위는 여럿일 수 있고(왜 생겼나 — 계기·목적·배경), 선행은 따로다(무엇을 먼저).
 // 트리별 — 트리 1개가 1행 요약. 펼치면 각 상위 밑에 하위가 다 보이고(상위가 둘이면 두 곳에) 줄마다 다시 펼친다.
 //          행을 누르면 오른쪽 패널에 그 트리만 Map 으로.
@@ -8,18 +9,27 @@
 // 트리별·할일별 목록은 가장 최근에 작업하거나 고친 것이 위다(tree-todos.js activeAt). 맵 배치는 그대로
 // Map  — 진행 중인 트리 전부를 한 판에. 카드는 한 번만 그리고 다른 상위·선행은 선을 더 긋는다.
 // 제안(자동·재구성이 만든 연결)은 점선 + 확인·거절. 위쪽 '제안' 버튼이 전부 모아 보여 준다.
-// 보드(카테고리>워크스페이스>할일)는 그대로 두고 같은 데이터를 다른 눈으로 본다
 import * as api from "./api.js";
 import { t } from "./i18n.js";
 import { resultView } from "./result-card.js";
-import { cornerBadge, createTreeMap, metaLine, parentLabel, proposalLabel, STATUS_LABEL, STATUS_ORDER } from "./tree-map.js";
+import {
+  cornerBadge,
+  createTreeMap,
+  metaLine,
+  parentLabel,
+  proposalLabel,
+  STATUS_LABEL,
+  STATUS_ORDER,
+  stepLines,
+} from "./tree-map.js";
 import { isVisible } from "./tree-layout.js";
 import { helperStatusText } from "./manager.js";
-import { doingTodos, holdersByTodo, latestFirst, panelTrees, treeIdOf, UNASSIGNED_TREE } from "./tree-todos.js";
+import { doingTodos, holdersByTodo, latestFirst, panelTrees, treeIdOf } from "./tree-todos.js";
 
 const VIEW_KEY = "tree-view";
 const HIDE_KEY = "tree-hide-done";
 const PANEL_KEY = "tree-panel-width";
+const CATEGORY_KEY = "tree-add-category";
 const VIEW_LIST = "list";
 const VIEW_TODOS = "todos";
 const VIEW_MAP = "map";
@@ -49,13 +59,15 @@ let trees = [];
 let links = [];
 let proposalCount = 0;
 let nodeByKey = new Map();
+// 노드 key → 그 카드가 있는 트리 id. 하위 줄을 누르면 그 트리를 패널에 연다
+let homeByKey = new Map();
 const expanded = new Set();
 // 줄 펼침을 사람이 바꾼 것. key 는 트리부터 그 줄까지의 경로 — 상위가 둘이면 같은 할일도 줄이 둘이다
 const toggled = new Map();
 let showProposals = false;
 let mapView = null;
 let panelMap = null;
-// 오른쪽 패널에 띄운 트리(워크스페이스 id)와 강조할 할일.
+// 오른쪽 패널에 띄운 트리(맨 위 노드 key)와 강조할 할일.
 // 할일별에서 열면 home(카드가 있는 트리)과 center(카드를 가운데)가 붙는다
 let panel = null;
 // 할일 id → 그 할일을 지금 잡은 보조 세션들 (tree-todos.js holdersByTodo). 할일별에서만 받는다
@@ -73,6 +85,7 @@ async function reload() {
   links = payload.links ?? [];
   proposalCount = payload.proposals ?? 0;
   nodeByKey = indexNodes(trees);
+  homeByKey = indexHomes(trees);
   draw();
   if (view === VIEW_TODOS) loadHolders();
   if (showProposals) await drawProposals();
@@ -105,6 +118,17 @@ function indexNodes(list) {
       walk(node.children);
     });
   list.forEach((tree) => walk(tree.children));
+  return found;
+}
+
+function indexHomes(list) {
+  const found = new Map();
+  const walk = (nodes, id) =>
+    nodes.forEach((node) => {
+      found.set(node.key, id);
+      walk(node.children, id);
+    });
+  list.forEach((tree) => walk(tree.children, treeIdOf(tree)));
   return found;
 }
 
@@ -159,6 +183,43 @@ function bindControls() {
     draw();
   });
   bindSplitter();
+  bindQuickAdd();
+}
+
+// 맨 위 새 할일(= 새 트리). 상위가 없으니 카테고리를 함께 고른다 — 고른 카테고리는 기억해 둔다.
+// 카테고리 목록은 뒤에 채운다 — 못 받아도 트리는 그려야 한다(고를 것이 없으면 추가만 막힌다)
+function bindQuickAdd() {
+  const form = byId("tree-add");
+  const select = byId("tree-add-category");
+  const input = byId("tree-add-title");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const title = input.value.trim();
+    if (!title || !select.value) return;
+    writeStore(CATEGORY_KEY, select.value);
+    input.disabled = true;
+    try {
+      await api.createTodo({ title, category_id: Number(select.value) });
+      input.value = "";
+    } finally {
+      input.disabled = false;
+      await reload();
+    }
+  });
+  api
+    .getCategories()
+    .then((categories) => {
+      const saved = readStore(CATEGORY_KEY);
+      select.replaceChildren(
+        ...categories.map((category) => {
+          const option = element("option", null, category.name);
+          option.value = String(category.id);
+          option.selected = option.value === saved;
+          return option;
+        })
+      );
+    })
+    .catch(() => {});
 }
 
 function syncControls() {
@@ -207,13 +268,15 @@ function drawList() {
 function rowBlock(tree) {
   const block = element("div", "tree-block");
   const id = treeIdOf(tree);
-  const treeName = tree.workspace.name ?? t("common.unassigned");
+  const treeName = tree.name ?? "";
+  // 맨 위 노드 자신. 줄을 펼치면 그 아래가 나온다 — 맨 위 할일 자체는 패널 카드(제목을 눌러 상세)로 본다
+  const [head] = tree.children;
   const row = element("div", "tree-row");
   row.tabIndex = 0;
   row.setAttribute("role", "button");
   if (tree.complete) row.dataset.status = DONE;
   if (panel?.treeId === id) row.classList.add("active");
-  if (tree.workspace.category_color) row.style.setProperty("--cat", tree.workspace.category_color);
+  if (tree.category_color) row.style.setProperty("--cat", tree.category_color);
 
   const open = expanded.has(id);
   const toggle = element("button", "icon-btn tree-expand");
@@ -221,7 +284,7 @@ function rowBlock(tree) {
   toggle.title = t("tree.expand");
   toggle.setAttribute("aria-label", t("tree.expand"));
   toggle.setAttribute("aria-expanded", String(open));
-  toggle.disabled = !tree.children.length;
+  toggle.disabled = !(kidsOf(head).length + (head.results ?? []).length + (head.steps ?? []).length);
   toggle.appendChild(chevron());
   toggle.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -233,7 +296,7 @@ function rowBlock(tree) {
   const name = element("span", "tree-row-name");
   name.append(element("span", "tree-row-title", treeName));
   name.title = treeName;
-  const category = element("span", "tree-row-cat", tree.workspace.category_name ?? "");
+  const category = element("span", "tree-row-cat", tree.category_name ?? "");
 
   row.append(toggle, name, category, progressCell(tree.progress), countsCell(tree), waitingCell(tree));
   const choose = () => openPanel(id, null);
@@ -245,7 +308,10 @@ function rowBlock(tree) {
     }
   });
   block.appendChild(row);
-  if (open) block.appendChild(kidsList(tree, tree.children, 1, null, String(id)));
+  if (open) {
+    const kids = kidsOf(head).filter((kid) => isVisible(kid, { hideDone }));
+    block.appendChild(kidsList(tree, kids, 1, head.key, String(id), head.results ?? [], head.steps ?? []));
+  }
   return block;
 }
 
@@ -258,14 +324,17 @@ function kidsOf(node) {
 // 펼친 줄. 깊이 제한 없이 줄마다 펼친다. 상위가 둘인 할일은 두 상위 밑에 다 나온다 — 그 줄에서
 // 지금 매달린 상위를 뺀 나머지를 '다른 상위 N개' 로 알린다. 이 줄의 연결이 제안이면 점선 + 확인·거절.
 // results 는 바로 위 할일의 세션 결과물 — 하위 할일 다음에 줄로 붙는다(맵과 달리 접지 않는다)
-function kidsList(tree, nodes, depth, parentKey, path, results = []) {
+function kidsList(tree, nodes, depth, parentKey, path, results = [], steps = []) {
   const list = element("ul", "tree-kids");
+  // 바로 위 할일의 단계 — 하위 할일보다 먼저, 순서대로
+  stepLines(steps).forEach((text, index) => list.appendChild(stepRow(steps[index], text, depth)));
   latestFirst(nodes)
     .filter((node) => isVisible(node, { hideDone }))
     .forEach((node) => {
       const here = `${path}>${node.key}`;
       const kids = kidsOf(node).filter((kid) => isVisible(kid, { hideDone }));
       const outputs = node.results ?? [];
+      const steps = node.steps ?? [];
       const via = parentKey ? node.parents.find((parent) => parent.key === parentKey) : null;
       // 주 상위가 아닌 자리(다른 상위 밑)는 같은 가지가 두 번 펼쳐지지 않게 처음엔 닫아 둔다
       const fresh = via && !via.primary ? false : depth < OPEN_DEPTH;
@@ -274,16 +343,36 @@ function kidsList(tree, nodes, depth, parentKey, path, results = []) {
       const row = element("div", "tree-kid-row");
       row.style.setProperty("--depth", depth);
       if (via?.state === PROPOSED) row.classList.add("proposed");
-      row.append(kidToggle(here, open, kids.length + outputs.length), kidLine(node, parentKey));
+      row.append(kidToggle(here, open, kids.length + outputs.length + steps.length), kidLine(node, parentKey));
       if (via?.state === PROPOSED) row.appendChild(decideBox(via));
       item.appendChild(row);
-      if (open && kids.length + outputs.length) {
-        item.appendChild(kidsList(tree, kids, depth + 1, node.key, here, outputs));
+      if (open && kids.length + outputs.length + steps.length) {
+        item.appendChild(kidsList(tree, kids, depth + 1, node.key, here, outputs, steps));
       }
       list.appendChild(item);
     });
   results.forEach((result) => list.appendChild(resultRow(result, depth)));
   return list;
+}
+
+// 단계 한 줄 — 순번·상태·제목. 결정이 걸려 답을 기다리는 단계는 대기 칩. 단계는 할일이 아니라 누를 곳이 없다
+function stepRow(step, text, depth) {
+  const item = element("li");
+  const row = element("div", "tree-kid-row tree-step-row");
+  row.style.setProperty("--depth", depth);
+  const spacer = element("span", "icon-btn tree-kid-toggle");
+  spacer.setAttribute("aria-hidden", "true");
+  const line = element("span", "tree-step");
+  line.dataset.status = step.status;
+  line.title = text;
+  line.append(
+    element("span", "tree-kid-status", STATUS_LABEL[step.status] ?? step.status),
+    element("span", "tree-kid-title", step.title)
+  );
+  if (step.waiting) line.appendChild(element("span", "tm-waiting", t("tree.stepWaitingOne")));
+  row.append(spacer, line);
+  item.appendChild(row);
+  return item;
 }
 
 // 결과물 한 줄 — 배지(로고 + 종류) · 제목 · 동작. 누르면 새 탭으로 열거나(파일은) 담긴 폴더를 연다
@@ -333,9 +422,9 @@ function kidLine(node, parentKey) {
   }
   const via = parentKey ? node.parents.find((parent) => parent.key === parentKey) : null;
   line.title = via?.evidence ? `${node.title}\n${parentLabel(via)} — ${via.evidence}` : node.title;
-  // 패널은 그 할일의 카드가 있는 트리(자기 워크스페이스)를 연다 — 다른 트리의 상위 밑에서 눌러도
+  // 패널은 그 할일의 카드가 있는 트리를 연다 — 다른 트리의 상위 밑에서 눌러도
   line.addEventListener("click", () =>
-    openPanel(node.workspace_id ?? UNASSIGNED_TREE, node.kind === CONTEXT ? null : node.id, node.key)
+    openPanel(homeByKey.get(node.key), node.kind === CONTEXT ? null : node.id, node.key)
   );
   return line;
 }
@@ -552,7 +641,7 @@ function openPanel(treeId, focusId, focusKey = null, { home = null, center = fal
 // 할일별에서 다른 트리를 고르면 그 트리 + 카드가 있는 트리의 가지를 함께 그린다(tree-todos.js panelTrees)
 function drawPanel() {
   const shown = panelTrees(trees, panel);
-  byId("tree-panel-title").textContent = shown[0].workspace.name ?? t("common.unassigned");
+  byId("tree-panel-title").textContent = shown[0].name ?? "";
   applyPanelWidth();
   // 그 할일의 상위는 끝났어도 남긴다 — 다른 트리에서 카드로 긋는 선의 시작점이다
   const keepIds = (nodeByKey.get(panel.focusKey)?.parents ?? [])

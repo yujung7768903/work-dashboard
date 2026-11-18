@@ -2,19 +2,16 @@
 import re
 
 from app.constants import (
-    HISTORY_DAY_CHOICES,
     JIRA_PATTERN,
     ONBOARDING_DECLINED_FLAG,
-    ONBOARDING_MIN_SESSIONS,
     STATUS_DONE,
-    WORKSPACE_ACTIVE,
 )
 from app.db import meta_get, meta_set
 from app.repositories import categories as category_repo
+from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
-from app.services import precondition, transcript, worktrees
+from app.services import lineage, precondition, transcript, worktrees
 
 BLOCK_OPEN = '<work-dashboard session="{session}" state="{state}">'
 BLOCK_CLOSE = "</work-dashboard>"
@@ -22,12 +19,8 @@ STATE_CLASSIFIED = "classified"
 STATE_UNCLASSIFIED = "unclassified"
 STATE_ONBOARDING = "onboarding"
 STATE_RELEASED = "released"
-CONTEXT_LABELS = (
-    ("배경", "background"),
-    ("목적", "purpose"),
-    ("목표", "goal"),
-    ("고려사항", "considerations"),
-)
+# 미분류 블록에 보여 줄 진행 중 트리 수. 전부 넣으면 세션 첫 주입이 길어진다
+UNCLASSIFIED_TREE_LIMIT = 20
 # 여러 세션이 같은 저장소를 동시에 고치므로 모든 주입에 붙는 공통 규칙
 FRESHNESS_GUIDE = (
     "공통: 다른 세션이 같은 코드·문서를 고칠 수 있다. 착수 전에 최신 상태를 다시 읽는다 "
@@ -97,59 +90,6 @@ UNCLASSIFIED_GUIDE = (
     "dash.py show-todo --session 으로 할일을 직접 확인하고 "
     "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."
 )
-ONBOARDING_GUIDE = (
-    "지침: 등록된 워크스페이스가 하나도 없다. 초기 설정을 진행한다. "
-    "(0) 먼저 화면 언어를 묻는다 — English(en, 기본) / 한국어(ko) / 日本語(ja) / 中文(zh). "
-    "고른 값을 python3 dash.py language <코드> 로 적는다. 자동 분류를 거절해도 "
-    "이 질문은 먼저 한다 — 화면 언어는 초기 설정 여부와 무관하게 필요하다. "
-    "이후 언제든 설정 탭에서 바꿀 수 있다는 것도 알린다. "
-    "(1) 다음으로 사용자에게 묻는다 — 최근 며칠 치 Claude 히스토리를 보고 자동 분류할지. "
-    f"{' / '.join(f'{days}일' for days in HISTORY_DAY_CHOICES)} / 자동 분류 안 함. "
-    "'안 함' 이면 python3 dash.py onboard --skip 을 실행하고 여기서 끝낸다 "
-    "— 이후 이 질문은 다시 뜨지 않는다. "
-    "(2) python3 dash.py scan-history --days <선택> 을 실행한다. 세션당 한 줄로 나온다. "
-    "(3) 그 출력을 읽고 같은 일감끼리 묶는다. "
-    "묶는 단위는 기본적으로 작업 위치(디렉토리) 하나 = 워크스페이스 하나다. "
-    "한 저장소 안의 기획·구현·배포는 워크스페이스가 아니라 착수 순서대로 놓는 할일이다. "
-    "홈 디렉토리나 scratch 성격의 위치처럼 서로 무관한 일이 섞인 곳만 내용으로 쪼갠다. "
-    f"세션 {ONBOARDING_MIN_SESSIONS}건 미만인 묶음은 워크스페이스로 만들지 않고 "
-    "맨 아래 '(기타: 세션 N건 — 워크스페이스 미생성)' 한 줄로만 표시한다. "
-    "(4) 카테고리 두 안을 제시하고 고르게 한다 — A 는 위 디폴트 그대로, "
-    "B 는 히스토리에서 도출한 목록. B 를 고르면 B 에만 있는 것을 dash.py add-category 로 "
-    "추가한다. 어느 쪽이든 기존 카테고리는 지우지 않으며, 이 사실을 질문할 때 함께 알리고 "
-    "사용자가 지목해 빼달라고 할 때만 지운다. "
-    "(5) 카테고리 > 워크스페이스 트리를 보여주고 확인받는다. 워크스페이스마다 "
-    "이름·목표·세션 건수·기간을 적는다. 항목별로 하나씩 묻지 말고 트리 전체를 보여준 뒤 "
-    "자유 수정을 반복한다. 확정 전에는 DB 에 쓰지 않는다. "
-    "(6) 확정되면 dash.py add-workspace <카테고리> <이름> --goal <목표> 로 등록한다. "
-    "배경·목적·고려사항은 이 단계에서 채우지 않는다. "
-    "(7) 워크스페이스마다 할일을 dash.py add-todo --workspace <id> 로 만들고, "
-    "히스토리로 미루어 짐작되는 상태를 dash.py set-status todo <id> <todo|doing|done> 로 넣는다. "
-    "할일은 착수 가능한 순서로 놓는다(중요도 순이 아니다). "
-    "할일을 반드시 만드는 이유 — 보드는 할일이 0개인 워크스페이스를 통째로 감춘다. "
-    "워크스페이스만 만들면 사용자 화면에는 아무것도 안 나타나 초기 설정이 실패한 것처럼 보인다. "
-    "상태 추정이 틀려도 사용자가 보드에서 바로 고칠 수 있으므로 비워두는 것보다 낫다. "
-    "(8) 할일마다 그 할일을 뽑아낸 근거 세션을 "
-    "dash.py link-todo <세션앞머리> <todo-id> --past 로 연결한다. "
-    "앞머리는 scan-history 출력 각 줄 맨 앞에 찍혀 있다. --past 는 없는 세션을 ended 로 "
-    "등록하고 할일 상태를 건드리지 않는다(끝난 세션 연결은 착수 선언이 아니다). "
-    "이어서 그 세션들에서 이 할일을 착수할 때 필요한 구체 정보를 뽑아 "
-    "dash.py add-todo 의 --note 또는 웹에서 note 에 적는다 — "
-    "실패한 명령과 오류 문구, 확정된 수치·기준, 제외하기로 한 범위, 참고 경로·주소처럼 "
-    "다시 찾으려면 시간이 드는 것들이다. 근거 세션이 없는 할일은 연결하지 말고 "
-    "note 에 아직 착수 세션이 없다는 사실과 선행 조건을 적는다. "
-    "(9) 마지막으로 배경·목적·고려사항도 채울지 묻는다 — "
-    "1 아니요(기본) / 2 순차: 워크스페이스 하나를 채우고 확인받고 다음으로 / "
-    "3 병렬: 전부 추정해 한 번에 보여주고 한 번만 확인. "
-    "추정으로 채운 내용은 이후 매 세션 주입되므로 2 가 기본 동작이고, "
-    "3 은 사용자가 속도를 명시적으로 고를 때만 쓴다. "
-    "채울 때의 기준은 '매 세션 주입돼도 값어치가 있는가' 하나다 — "
-    "배경은 왜 이 일이 존재하는가(도메인의 문제, 시간이 지나도 안 변하는 것), "
-    "목적은 그 문제를 어떤 방향으로 푸는가, 목표는 끝났다고 판정할 수 있는 상태, "
-    "고려사항은 벗어나면 안 되는 제약·금지다. "
-    "기술 스택·URL·포트·저장소 주소·재현 절차처럼 특정 할일에서만 필요한 것은 "
-    "워크스페이스가 아니라 그 할일의 note 로 내린다."
-)
 SCOPE_GUIDE = (
     "지침: 이 브랜치 작업은 위 하위단계 범위 내에서만 진행한다. "
     "범위를 벗어나는 작업은 착수 전 사용자에게 안내하고 확인받는다."
@@ -163,14 +103,13 @@ def jira_from_branch(branch):
 
 
 def attach_by_branch(con, claude_session_id, branch):
-    """브랜치 Jira 로 워크스페이스를 찾으면 확인 없이 분류. 못 찾으면 None"""
-    jira = jira_from_branch(branch)
-    if not jira:
+    """브랜치 Jira 가 적힌 할일을 찾으면 확인 없이 그 할일의 카테고리로 분류. 못 찾으면 None.
+    워크스페이스 jira_id 는 이관이 맨 위 할일 note 로 옮겼다(lineage.todo_by_jira)"""
+    found = lineage.todo_by_jira(con, jira_from_branch(branch))
+    if not found or found.get("category_id") is None:
         return None
-    workspace = workspace_repo.get_by_jira(con, jira)
-    if not workspace:
-        return None
-    return session_repo.classify(con, claude_session_id, workspace_id=workspace["id"])
+    category = category_repo.get(con, found["category_id"])
+    return session_repo.classify(con, claude_session_id, category_name=category["name"])
 
 
 def render_context(con, claude_session_id):
@@ -178,21 +117,13 @@ def render_context(con, claude_session_id):
     session = session_repo.find(con, claude_session_id)
     if not session:
         return ""
-    if session["workspace_id"]:
-        return _classified_block(con, session, session["workspace_id"])
-    by_branch = _workspace_by_branch(con, session)
+    if session.get("linked_todo_id"):
+        return _classified_block(con, session, session["linked_todo_id"])
+    by_branch = lineage.todo_by_jira(con, jira_from_branch(session["git_branch"]))
     if by_branch:
-        # 소속은 아직 없다(할일 미연결). 워크스페이스 컨텍스트만 브랜치로 되찾아 준다 —
-        # 저장하지 않고 매번 다시 계산하므로 세션에 워크스페이스가 남지는 않는다
+        # 할일은 아직 안 잡았다. 브랜치 Jira 로 그 트리 컨텍스트만 되찾아 준다 — 저장하지 않고 매번 다시 계산한다
         return _classified_block(con, session, by_branch["id"], linked=False)
-    if needs_onboarding(con):
-        return _onboarding_block(con, session)
     return _unclassified_block(con, session)
-
-
-def _workspace_by_branch(con, session):
-    jira = jira_from_branch(session["git_branch"])
-    return workspace_repo.get_by_jira(con, jira) if jira else None
 
 
 def released_context(con, claude_session_id):
@@ -219,14 +150,15 @@ def released_context(con, claude_session_id):
 
 
 def needs_onboarding(con):
-    """워크스페이스가 없고 사용자가 거절한 적도 없을 때.
+    """할일이 하나도 없고 사용자가 거절한 적도 없을 때. 세션 주입은 더 이상 초기 설정 블록을 내지 않는다
+    (워크스페이스 초기 설정이 없어졌다) — CLI onboard 가 상태를 보일 때만 쓴다.
 
-    완료 플래그는 두지 않는다 — 온보딩이 끝나면 워크스페이스가 생겨 첫 조건이 저절로 깨진다.
+    완료 플래그는 두지 않는다 — 온보딩이 끝나면 할일이 생겨 첫 조건이 저절로 깨진다.
     상태를 플래그와 실제 데이터 두 곳에 적으면 어긋나고, 그때 믿어야 하는 건 실제 데이터다
     """
     if meta_get(con, ONBOARDING_DECLINED_FLAG):
         return False
-    return not workspace_repo.list_all(con)
+    return con.execute("SELECT 1 FROM todos LIMIT 1").fetchone() is None
 
 
 def decline(con):
@@ -274,67 +206,58 @@ def todo_detail(con, todo_id):
 
 
 def _with_conditions(con, todo):
-    """착수 조건을 항목으로 쪼개 붙인다 — 팝업이 원문 대신 체크리스트로 그린다"""
-    return {**todo, "precondition_items": precondition.items(con, todo["precondition"])}
+    """착수 조건을 항목으로 쪼개 붙인다 — 팝업이 원문 대신 체크리스트로 그린다.
+    붙은 라벨도 싣는다 — 팝업의 라벨 켜고 끄기가 지금 상태를 알아야 한다"""
+    return {
+        **todo,
+        "precondition_items": precondition.items(con, todo["precondition"]),
+        "labels": label_repo.list_by_todo(con, todo["id"]),
+    }
 
 
 def scope_guard_block(con, jira_id):
-    """scope-guard 가 쓰던 블록 형식 유지. SKILL.md 를 고치지 않기 위함"""
+    """scope-guard 가 쓰던 블록 형식 유지. SKILL.md 를 고치지 않기 위함.
+    그 Jira 키가 적힌 할일의 트리 맨 위 할일 note(옛 워크스페이스 배경·목표)와 그 트리 할일을 싣는다"""
     normalized = (jira_id or "").upper()
-    workspace = workspace_repo.get_by_jira(con, normalized)
-    if not workspace:
+    found = lineage.todo_by_jira(con, normalized)
+    root = lineage.root_todo(con, found["id"]) if found else None
+    if not root:
         return (
             f'<scope-guard missing="{normalized}">\n'
-            f"이 브랜치({normalized})에 등록된 워크스페이스가 없다.\n"
+            f"이 브랜치({normalized})가 적힌 할일이 없다.\n"
             "지침: 첫 응답에서 사용자에게 배경·목적·목표를 물어보고, "
-            "답을 받으면 dash.py add-workspace 로 저장한다.\n"
+            "답을 받으면 dash.py add-todo <제목> --note '<배경·목적·목표>' 로 저장한다.\n"
             "</scope-guard>"
         )
     lines = [
-        f'<scope-guard active="{normalized}" status="{workspace["status"]}">',
-        f"배경: {workspace['background'] or '(미입력)'}",
-        f"목적: {workspace['purpose'] or '(미입력)'}",
-        f"목표: {workspace['goal'] or '(미입력)'}",
+        f'<scope-guard active="{normalized}" status="{root["status"]}">',
+        f"맨 위 할일: #{root['id']} {root['title']}",
+        root["note"] or "(배경·목표 미입력)",
         "하위단계:",
     ]
-    lines.extend(_todo_lines(con, workspace["id"]))
+    lines.extend(_todo_lines(con, root["id"]))
     lines.append(SCOPE_GUIDE)
     lines.append("</scope-guard>")
     return "\n".join(lines)
 
 
-def _classified_block(con, session, workspace_id, linked=True):
-    workspace = workspace_repo.get(con, workspace_id)
-    category = category_repo.get(con, workspace["category_id"])
-    jira = f" [{workspace['jira_id']}]" if workspace["jira_id"] else ""
+def _classified_block(con, session, todo_id, linked=True):
+    root = lineage.root_todo(con, todo_id) or todo_repo.get(con, todo_id)
+    category = category_repo.get(con, root["category_id"]) if root.get("category_id") else None
     lines = [
         BLOCK_OPEN.format(session=session["claude_session_id"], state=STATE_CLASSIFIED),
-        f"워크스페이스: {workspace['name']} ({category['name']}){jira}",
+        f"트리: #{root['id']} {root['title']}" + (f" ({category['name']})" if category else ""),
+        "배경·목표(맨 위 할일 note):",
+        root["note"] or "(미입력)",
+        "할일:",
     ]
-    for label, key in CONTEXT_LABELS:
-        lines.append(f"{label}: {workspace[key] or '(미입력)'}")
-    lines.append("할일:")
-    lines.extend(_todo_lines(con, workspace["id"]))
+    lines.extend(_todo_lines(con, root["id"]))
     if not linked:
         lines.append(UNLINKED_GUIDE)
     lines.append(CLASSIFIED_GUIDE)
     lines.append(RELEASE_GUIDE)
     lines.append(FRESHNESS_GUIDE)
     lines.append(BLOCK_CLOSE)
-    return "\n".join(lines)
-
-
-def _onboarding_block(con, session):
-    categories = category_repo.list_all(con)
-    lines = [
-        BLOCK_OPEN.format(session=session["claude_session_id"], state=STATE_ONBOARDING),
-        f"현재 위치: {session['cwd'] or '(알 수 없음)'}",
-        "카테고리(디폴트): " + " / ".join(row["name"] for row in categories),
-        "워크스페이스: (없음)",
-        ONBOARDING_GUIDE,
-        FRESHNESS_GUIDE,
-        BLOCK_CLOSE,
-    ]
     return "\n".join(lines)
 
 
@@ -346,16 +269,13 @@ def _unclassified_block(con, session):
         f"현재 위치: {session['cwd'] or '(알 수 없음)'}"
         f" (브랜치 {session['git_branch'] or '없음'})",
         "카테고리: " + " / ".join(row["name"] for row in categories),
-        "진행 중 워크스페이스:",
+        "진행 중 트리(맨 위 할일):",
     ]
-    active = workspace_repo.list_all(con, status=WORKSPACE_ACTIVE)
+    active = lineage.open_roots(con, UNCLASSIFIED_TREE_LIMIT)
     if active:
-        for workspace in active:
-            goal = (workspace["goal"] or "").strip() or "(목표 미입력)"
-            category_name = names.get(workspace["category_id"], "?")
-            lines.append(
-                f"  {workspace['id']}. {workspace['name']} ({category_name}) — {goal}"
-            )
+        for root in active:
+            category_name = names.get(root["category_id"], "?")
+            lines.append(f"  {root['id']}. {root['title']} ({category_name})")
     else:
         lines.append("  (없음)")
     lines.append(UNCLASSIFIED_GUIDE)
@@ -365,18 +285,22 @@ def _unclassified_block(con, session):
     return "\n".join(lines)
 
 
-def _todo_lines(con, workspace_id):
-    todos = todo_repo.list_by_workspace(con, workspace_id)
+def _todo_lines(con, root_id):
+    """그 트리의 할일(맨 위 제외, 단계·기록 제외)"""
+    ids = [todo_id for todo_id in lineage.tree_todo_ids(con, root_id) if todo_id != root_id]
+    todos = [todo for todo in (todo_repo.get(con, todo_id) for todo_id in ids) if lineage.is_task(todo)]
+    todos.sort(key=lambda todo: (todo["sort_order"] or 0, todo["id"]))
     if not todos:
         return ["  (없음)"]
     # note 는 내용을 넣지 않고 존재만 표시 — 할일 12개 컨텍스트를 다 넣으면 세션이 오염됨.
     # 조건은 반대로 내용을 넣는다. 착수 가능 여부를 보려고 show-note 를 또 불러야 하면
     # 조건을 둔 의미가 없다. 대신 첫 줄만 — '확인:' 명령줄은 show-note 에서 본다
     lines = []
-    for todo in todos:
+    # 번호는 트리 안 순서(1부터) — sort_order 는 이제 트리 밖까지 한 줄로 매겨져 있어 번호로 쓰면 튄다
+    for position, todo in enumerate(todos, start=1):
         marker = f" (컨텍스트 #{todo['id']})" if todo["note"] else ""
         lines.append(
-            f"  {todo['sort_order']}. [{todo['status']}] {todo['title']}{marker}"
+            f"  {position}. [{todo['status']}] {todo['title']}{marker}"
         )
         if todo["precondition"]:
             lines.append(f"     조건: {_first_line(todo['precondition'])}")

@@ -53,13 +53,6 @@
                   stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </button>
-        <button data-tab="board" class="active" data-i18n="nav.board" data-i18n-title="nav.board">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <path d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9z"
-                  fill="none" stroke="currentColor" stroke-width="1.5"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
         <button data-tab="tree" data-i18n="nav.tree" data-i18n-title="nav.tree">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
             <rect x="1.8" y="6.2" width="3.6" height="3.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -67,6 +60,15 @@
             <rect x="10.6" y="10.2" width="3.6" height="3.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <path d="M5.4 8c2.6 0 2.4-4 5.2-4M5.4 8c2.6 0 2.4 4 5.2 4" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button data-tab="worktrees" data-i18n="common.worktree" data-i18n-title="common.worktree">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="4.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="4.5" cy="12.4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="11.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M4.5 5.4v5.2M11.5 5.4v1.3a2.4 2.4 0 0 1-2.4 2.4H6.9"
+                  fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </button>
         <button data-tab="autorun" data-i18n="nav.autorun" data-i18n-title="nav.autorun">
@@ -81,13 +83,6 @@
             <circle cx="8" cy="8.6" r="5.2" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <path d="M8 5.8v2.9l1.9 1.2M6.4 1.9h3.2" fill="none" stroke="currentColor"
                   stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button data-tab="workspace" data-i18n="nav.workspace" data-i18n-title="nav.workspace">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-            <path d="M2.2 4.3a.9.9 0 0 1 .9-.9h2.6l1.4 1.8h6a.9.9 0 0 1 .9.9v5.7a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z"
-                  fill="none" stroke="currentColor" stroke-width="1.5"
-                  stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
         <button data-tab="settings" data-i18n="nav.settings" data-i18n-title="nav.settings">
@@ -106,7 +101,7 @@
 
     <main class="app-main">
       <header class="topbar">
-        <h1 id="page-title" data-i18n="nav.board"></h1>
+        <h1 id="page-title" data-i18n="nav.usage"></h1>
         <p id="error" hidden></p>
         <!-- 상단바 오른쪽 아이콘 묶음. 상단바 gap 이 둘 사이까지 벌리지 않게 감싼다 -->
         <div class="topbar-tools">
@@ -124,75 +119,17 @@
         </div>
       </header>
 
-      <section id="tab-board" class="tab">
-        <!-- 여기부터 카테고리 라벨까지는 두 하위 탭이 함께 쓴다 -->
-        <!-- 두 문구를 각자 span 에 담는다. 텍스트 노드로 두면 채워 넣는 자리가 span 뒤가 된다 -->
-        <p id="next-line"><span data-i18n="board.nextLine"></span>
-          <span id="next-text" data-i18n="common.loading"></span>
-        </p>
-        <!-- 기본 접힘. 펼쳐도 진행중만 보이고 대기 중은 목록 하단 토글로 -->
-        <details id="session-panel">
-          <summary>
-            <span id="session-head">
-              <span id="session-count" data-i18n="session.runningInitial"></span>
-              <span id="session-warn" hidden></span>
-            </span>
-          </summary>
-          <ul id="session-list"></ul>
-        </details>
-        <form id="quick-add">
-          <select id="quick-category" data-i18n-title="common.category"></select>
-          <input id="quick-name" data-i18n-placeholder="board.quickAddPlaceholder" required>
-          <button type="submit" id="quick-submit" data-i18n-title="board.quickAddSubmit">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
-                    stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </form>
-        <div id="category-filter"></div>
-
-        <!-- 공통 영역 바로 아래. 레일 메뉴와 달리 밑줄로만 고른 것을 표시한다 -->
-        <nav id="board-tabs" class="subtabs">
-          <button data-subtab="todos" class="active" data-i18n="common.todos">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path d="M2.5 4.5 4 6l2.5-2.5M8.5 4.8H14M2.5 11 4 12.5 6.5 10M8.5 11.3H14"
-                    fill="none" stroke="currentColor" stroke-width="1.5"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <button data-subtab="worktrees" data-i18n="common.worktree">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <circle cx="4.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <circle cx="4.5" cy="12.4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <circle cx="11.5" cy="3.6" r="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M4.5 5.4v5.2M11.5 5.4v1.3a2.4 2.4 0 0 1-2.4 2.4H6.9"
-                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </nav>
-
-        <div id="board-todos">
-        <div id="board-controls">
-          <!-- 워크스페이스별(카드 목록)·상태별(상태 컬럼) 전환. 워크트리 탭의 뷰 전환과 같은 형태 -->
-          <div id="todo-view">
-            <button type="button" class="active" data-view="workspace"
-                    data-i18n="board.viewWorkspace"></button>
-            <button type="button" data-view="status" data-i18n="board.viewStatus"></button>
+      <section id="tab-worktrees" class="tab" hidden>
+        <div id="worktree-controls">
+          <!-- 트리별(진행 중 맨 위 할일)·프로젝트별(저장소 전체) 전환. 프로젝트별은 할일에 안 걸린
+               워크트리까지 보여준다 -->
+          <div id="worktree-view">
+            <button type="button" class="active" data-view="tree"
+                    data-i18n="worktree.viewTree"></button>
+            <button type="button" data-view="project"
+                    data-i18n="worktree.viewProject"></button>
           </div>
-          <!-- 줄 오른쪽 끝의 아이콘 묶음 — 완료 표시·1열·2열. 상태별 뷰에서는 완료가 제
-               컬럼을 갖고 컬럼 수도 넷으로 고정이라 board.js 가 이 묶음째 감춘다 -->
-          <div id="todo-tools">
-          <!-- 완료 항목 표시. 눌린 상태가 남는 아이콘이라 aria-pressed 가 값이다 -->
-          <button type="button" class="icon-btn" id="show-done" aria-pressed="false"
-                  data-i18n-title="board.showDone" data-i18n-aria-label="board.showDone">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M5.6 8.2 7.3 9.9l3.1-3.5" fill="none" stroke="currentColor"
-                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 화면 폭이 정하던 것을 직접 고른다 -->
+          <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지 (layout.js) -->
           <div class="view-columns">
             <button type="button" class="icon-btn" data-columns="1"
                     data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
@@ -215,58 +152,24 @@
               </svg>
             </button>
           </div>
-          </div>
         </div>
-        <div id="groups"></div>
-        <details id="done-today">
-          <summary data-i18n="common.done"></summary>
-          <div id="done-groups"></div>
-        </details>
-        <!-- 상태별 뷰. 상태 컬럼 → 할일 카드. 컬럼 수가 넷으로 고정이라 열 수 아이콘은 감춘다 -->
-        <div id="kanban" hidden></div>
-        </div>
-
-        <div id="board-worktrees" hidden>
-          <div id="worktree-controls">
-            <!-- 워크스페이스별(기존)·프로젝트별(저장소 전체) 전환. 프로젝트별은 워크스페이스나
-                 할일에 안 걸린 워크트리까지 보여준다 -->
-            <div id="worktree-view">
-              <button type="button" class="active" data-view="workspace"
-                      data-i18n="worktree.viewWorkspace"></button>
-              <button type="button" data-view="project"
-                      data-i18n="worktree.viewProject"></button>
-            </div>
-            <!-- 카드를 한 줄에 하나로 볼지 둘로 볼지. 할일 탭의 view-columns 와 같은 취향을 공유한다 -->
-            <div class="view-columns">
-              <button type="button" class="icon-btn" data-columns="1"
-                      data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
-                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                  <path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                </svg>
-              </button>
-              <button type="button" class="icon-btn" data-columns="2"
-                      data-i18n-title="board.twoColumns" data-i18n-aria-label="board.twoColumns">
-                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                  <rect x="2.6" y="2.6" width="4.8" height="4.8" rx="1.2"
-                        fill="none" stroke="currentColor" stroke-width="1.5"/>
-                  <rect x="8.6" y="2.6" width="4.8" height="4.8" rx="1.2"
-                        fill="none" stroke="currentColor" stroke-width="1.5"/>
-                  <rect x="2.6" y="8.6" width="4.8" height="4.8" rx="1.2"
-                        fill="none" stroke="currentColor" stroke-width="1.5"/>
-                  <rect x="8.6" y="8.6" width="4.8" height="4.8" rx="1.2"
-                        fill="none" stroke="currentColor" stroke-width="1.5"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div id="worktree-list"></div>
-        </div>
+        <div id="worktree-list"></div>
       </section>
 
       <!-- 트리 메뉴 (static/js/tree.js). 트리별·할일별 목록·맵 전환, 제안 모음, 완료 숨기기, 다시 받기가 한 줄.
            목록에서 행을 누르면 오른쪽 패널이 열리고, 둘 사이 경계를 끌어 패널 폭을 정한다 -->
       <section id="tab-tree" class="tab" hidden>
+        <!-- 상위 없는 새 할일 = 새 트리. 카드 아래 할일은 카드의 + 로 만든다 (tree.js bindQuickAdd) -->
+        <form id="tree-add">
+          <select id="tree-add-category" data-i18n-title="common.category"></select>
+          <input id="tree-add-title" data-i18n-placeholder="tree.addRootPlaceholder" required>
+          <button type="submit" class="icon-btn" data-i18n-title="tree.addRoot" data-i18n-aria-label="tree.addRoot">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </form>
         <div id="tree-controls">
           <div id="tree-view">
             <button type="button" class="active" data-view="list" data-i18n="tree.viewList"></button>
@@ -321,41 +224,6 @@
           </aside>
           <div id="tree-map" class="tm-host" hidden></div>
         </div>
-      </section>
-
-      <section id="tab-workspace" class="tab" hidden>
-        <!-- 추가 폼은 왼쪽, 열 수 아이콘은 오른쪽 끝. 할일·워크트리 탭의 view-columns 와
-             같은 취향(body[data-board-columns])을 공유하므로 여기서 고르면 보드도 같이 바뀐다 -->
-        <div id="workspace-controls">
-          <form id="workspace-add">
-            <input id="workspace-new-name" data-i18n-placeholder="workspace.newPlaceholder" required>
-            <select id="workspace-new-category"></select>
-            <button type="submit" data-i18n="common.add"></button>
-          </form>
-          <div class="view-columns">
-            <button type="button" class="icon-btn" data-columns="1"
-                    data-i18n-title="board.oneColumn" data-i18n-aria-label="board.oneColumn">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4" fill="none"
-                      stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              </svg>
-            </button>
-            <button type="button" class="icon-btn" data-columns="2"
-                    data-i18n-title="board.twoColumns" data-i18n-aria-label="board.twoColumns">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <rect x="2.6" y="2.6" width="4.8" height="4.8" rx="1.2"
-                      fill="none" stroke="currentColor" stroke-width="1.5"/>
-                <rect x="8.6" y="2.6" width="4.8" height="4.8" rx="1.2"
-                      fill="none" stroke="currentColor" stroke-width="1.5"/>
-                <rect x="2.6" y="8.6" width="4.8" height="4.8" rx="1.2"
-                      fill="none" stroke="currentColor" stroke-width="1.5"/>
-                <rect x="8.6" y="8.6" width="4.8" height="4.8" rx="1.2"
-                      fill="none" stroke="currentColor" stroke-width="1.5"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div id="workspace-list"></div>
       </section>
 
       <section id="tab-settings" class="tab" hidden>
@@ -587,46 +455,6 @@
   <dialog id="session-modal">
     <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
     <div id="session-modal-body"></div>
-  </dialog>
-
-  <!-- 카드 헤더 케밥의 "할일 추가" 가 여는 폼. 세 값을 한 번에 받는다 —
-       prompt 를 연달아 띄우면 브라우저가 둘째부터 억제해 제목만 물어본 꼴이 된다 -->
-  <dialog id="todo-add-modal">
-    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
-    <form id="todo-add-form">
-      <div class="dlg-head"><p class="dlg-title" id="todo-add-scope"></p></div>
-      <div class="field">
-        <label for="todo-add-title" data-i18n="common.title"></label>
-        <input id="todo-add-title" required>
-      </div>
-      <!-- 미분류에 넣을 때만 보인다. 워크스페이스에 넣으면 카테고리는 그쪽을 따라간다 -->
-      <div class="field" id="todo-add-category-field" hidden>
-        <label for="todo-add-category" data-i18n="common.category"></label>
-        <select id="todo-add-category"></select>
-      </div>
-      <div class="field">
-        <label for="todo-add-precondition" data-i18n="common.precondition"></label>
-        <!-- 문구는 static/lang/ko.json 에 있고 dash.py --precondition 도움말과 같아야 한다
-             (app.constants.PRECONDITION_HINT). tests/test_precondition.py 가 갈라지면 실패한다 -->
-        <p class="hint" id="todo-add-precondition-hint" data-i18n="common.preconditionHint"></p>
-        <textarea id="todo-add-precondition" aria-describedby="todo-add-precondition-hint"
-                  data-i18n-placeholder="common.preconditionExample"></textarea>
-      </div>
-      <div class="field">
-        <label for="todo-add-note">note</label>
-        <textarea id="todo-add-note"></textarea>
-      </div>
-      <div class="dlg-actions"><button type="submit" data-i18n="common.add"></button></div>
-    </form>
-  </dialog>
-
-  <!-- 카드 헤더 케밥의 "수정". 워크스페이스 탭의 편집 카드를 그대로 담는다 (static/js/board.js) -->
-  <dialog id="ws-edit-modal">
-    <form method="dialog"><button class="modal-close" data-i18n-aria-label="common.close">×</button></form>
-    <div id="ws-edit-body">
-      <div class="dlg-head"><p class="dlg-title" id="ws-edit-title"></p></div>
-      <div id="ws-edit-card"></div>
-    </div>
   </dialog>
 
   <!-- 매니저 탭 보조 세션·결정 대기·완료 확인 대기 줄을 누르면 연다 (static/js/manager.js).

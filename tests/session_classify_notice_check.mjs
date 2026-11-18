@@ -45,8 +45,7 @@ const modal = {
   },
 };
 const body = node("div");
-// renderSessions 가 만지는 목록 요소들 — 팝업 밖이라 내용은 보지 않는다
-const others = { "session-count": node("span"), "session-warn": node("p"), "session-list": node("ul") };
+const others = {};
 globalThis.Option = function Option(text, value, _default, selected) {
   return { ...node("option"), textContent: text, value, selected };
 };
@@ -58,19 +57,17 @@ globalThis.document = {
 const SESSION = {
   id: 3,
   claude_session_id: "abc",
-  workspace_id: null,
-  workspace_name: null,
+  root_title: null,
   category_id: 4,
   cwd: "/tmp",
   git_branch: "master",
   state: "idle",
 };
 const TODO = { id: 42, title: "분류 안내 확인", created_at: "2026-08-05T10:00:00" };
-const WORKSPACE = { id: 7, name: "비개발자 스터디", category_id: 4, status: "active" };
 
 const GET = {
-  "/api/workspaces": [WORKSPACE],
-  "/api/categories": [{ id: 4, name: "공부" }],
+  "/api/categories": [{ id: 4, name: "공부" }, { id: 5, name: "개발" }],
+  "/api/labels": [],
   "/api/todos/42": { todo: TODO, sessions: [{ id: 3 }], worktrees: [] },
   "/api/sessions/3": { session: SESSION, messages: [], todos: [TODO], worktrees: [] },
   "/api/sessions": { sessions: [], unclassified_count: 0 },
@@ -81,7 +78,7 @@ globalThis.fetch = (url, options = {}) => {
     patched.push([url, JSON.parse(options.body)]);
     return Promise.resolve({
       ok: true,
-      json: () => Promise.resolve({ ...SESSION, workspace_id: 7, created_todo: null }),
+      json: () => Promise.resolve({ ...SESSION, category_id: 5, created_todo: null }),
     });
   }
   return Promise.resolve({ ok: true, json: () => Promise.resolve(GET[url]) });
@@ -112,11 +109,12 @@ let [, , sessionPane] = await rendered();
 const row = find(sessionPane, "session-classify");
 assert.ok(row, "분류 줄이 없다");
 const [select, save] = row.children;
-select.value = "w:7";
+// 분류는 카테고리만이다 — 워크스페이스는 없어졌다
+select.value = "c:5";
 
 body.children = [];
 await save.listeners.click();
-assert.deepEqual(patched, [["/api/sessions/3", { workspace_id: 7 }]]);
+assert.deepEqual(patched, [["/api/sessions/3", { category_id: 5 }]]);
 
 // 닫히지 않고 다시 그린다 — 세션 탭에 머물며 끝났다는 안내가 남아야 한다
 assert.equal(closed, 0, "저장 뒤 팝업이 닫혔다");

@@ -16,7 +16,6 @@ const CATEGORIES = {
   update: api.updateCategory,
   remove: api.deleteCategory,
   reorderKind: "categories",
-  extra: addWorkspaceButton,
 };
 
 const LABELS = {
@@ -96,20 +95,6 @@ function moveButton(config, index, items, offset) {
       ids.splice(target, 0, moved);
       await api.reorder(config.reorderKind, ids);
       await renderList(config);
-    })
-  );
-  return button;
-}
-
-function addWorkspaceButton(category) {
-  const button = document.createElement("button");
-  button.textContent = t("settings.addWorkspace");
-  button.addEventListener("click", () =>
-    run(async () => {
-      const name = prompt(t("settings.workspaceNamePrompt", { category: category.name }));
-      if (!name) return;
-      await api.createWorkspace({ category_id: category.id, name });
-      alert(t("settings.workspaceCreated"));
     })
   );
   return button;

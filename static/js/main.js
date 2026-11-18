@@ -1,40 +1,17 @@
 // 탭 전환과 에러 표시. 각 탭 내용은 해당 모듈이 그림
 // (이 모듈은 boot.js 가 언어를 확정한 뒤에 들어온다 — 아래 TITLES 가 그때 번역된다)
 import { startAutorunPolling, stopAutorunPolling } from "./autorun.js";
-import { renderBoard, renderShared } from "./board.js";
 import { t } from "./i18n.js";
 import { startManagerPolling, stopManagerPolling } from "./manager.js";
 import { renderSettings } from "./settings.js";
 import { renderTreeTab } from "./tree.js";
 import { renderUsage } from "./usage.js";
-import { renderWorkspaceTab } from "./workspace.js";
 import { renderWorktrees } from "./worktrees.js";
 
-// 보드 안의 하위 탭. 할일과 워크트리는 같은 워크스페이스를 다른 눈으로 보는 화면이라
-// 레일 항목을 늘리지 않고 보드 안에서 가른다. 카테고리 라벨까지의 위쪽은 둘이 함께 쓴다
-// (renderBoard 는 자기가 renderShared 를 부르므로 여기서 또 부르지 않는다)
-const SUBRENDERERS = { todos: renderBoard, worktrees: renderWorktreeSubtab };
-let activeSubtab = "todos";
-
-async function renderWorktreeSubtab() {
-  await renderShared();
-  await renderWorktrees();
-}
-
-export function renderBoardTab() {
-  document.querySelectorAll("#board-tabs button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.subtab === activeSubtab);
-  });
-  Object.keys(SUBRENDERERS).forEach((key) => {
-    document.getElementById(`board-${key}`).hidden = key !== activeSubtab;
-  });
-  return SUBRENDERERS[activeSubtab]();
-}
-
+// 보드·워크스페이스 탭은 없어졌다(사용자 결정 11-18) — 할일은 트리 탭, 워크트리는 제 탭에서 본다
 const RENDERERS = {
-  board: renderBoardTab,
   tree: renderTreeTab,
-  workspace: renderWorkspaceTab,
+  worktrees: renderWorktrees,
   settings: renderSettings,
   usage: renderUsage,
   autorun: startAutorunPolling,
@@ -46,9 +23,8 @@ const DEFAULT_TAB = "usage";
 
 // 상단 바 제목. 레일 메뉴 라벨과 같은 말을 쓴다
 const TITLES = {
-  board: t("nav.board"),
   tree: t("nav.tree"),
-  workspace: t("nav.workspace"),
+  worktrees: t("common.worktree"),
   settings: t("nav.settings"),
   usage: t("nav.usage"),
   autorun: t("nav.autorun"),
@@ -70,7 +46,7 @@ export async function run(action) {
   }
 }
 
-// 주소창의 /board 같은 경로가 곧 탭 이름. 모르는 경로는 기본 탭으로 떨어진다
+// 주소창의 /tree 같은 경로가 곧 탭 이름. 모르는 경로(옛 /board·/workspace 포함)는 기본 탭으로 떨어진다
 function tabFromPath() {
   const name = location.pathname.replace(/^\/|\/$/g, "");
   return name in RENDERERS ? name : DEFAULT_TAB;
@@ -96,14 +72,6 @@ function showTab(name, push = true) {
 document.getElementById("tabs").addEventListener("click", (event) => {
   const tab = event.target.closest("button")?.dataset.tab;
   if (tab) showTab(tab);
-});
-
-// 하위 탭도 아이콘 svg 를 품고 있어 event.target 이 버튼이 아닐 수 있다
-document.getElementById("board-tabs").addEventListener("click", (event) => {
-  const subtab = event.target.closest("button")?.dataset.subtab;
-  if (!subtab || subtab === activeSubtab) return;
-  activeSubtab = subtab;
-  run(renderBoardTab);
 });
 
 // 뒤로/앞으로 가기는 주소만 바뀌므로 화면을 따라가게 한다

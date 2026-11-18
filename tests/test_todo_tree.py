@@ -10,8 +10,6 @@ import server
 from app.constants import (
     DB_PATH_ENV,
     PARENT_CYCLE_MSG,
-    PARENT_NEEDS_WORKSPACE_MSG,
-    PARENT_OTHER_WORKSPACE_MSG,
     SESSION_ID_ENV,
     STATUS_DOING,
     STATUS_DONE,
@@ -30,51 +28,53 @@ from tests.support import temp_db, temp_db_path
 
 
 class TreeFixture(unittest.TestCase):
+    """워크스페이스 없이 — 상위 없는 할일이 트리 하나의 맨 위다(사용자 결정 11-18)"""
+
     def setUp(self):
         self.con = temp_db()
         self.category = category_repo.list_all(self.con)[0]
-        self.space = workspace_repo.create(self.con, self.category["id"], "결제 개편")
-        self.other = workspace_repo.create(self.con, self.category["id"], "KT 동시성")
+        self.space = self._todo("결제 개편", top=True)
+        self.other = self._todo("KT 동시성", top=True)
 
-    def _todo(self, title, workspace=None, parent=None):
-        return todo_repo.create(
-            self.con,
-            title,
-            workspace_id=(workspace or self.space)["id"] if parent is None else None,
-            parent_id=parent["id"] if parent else None,
+    def _todo(self, title, parent=None, top=False):
+        """parent 를 안 주면 결제 개편(self.space) 아래. top 이면 상위 없는 새 트리"""
+        if top:
+            return todo_repo.create(self.con, title, category_id=self.category["id"])
+        return todo_repo.create(self.con, title, parent_id=(parent or self.space)["id"])
+
+    def _step(self, title, parent, status=STATUS_TODO, mgr_kind=None, mgr_status=None):
+        """단계 행(role='step') — 매니저가 만드는 모양 그대로 parent_id·상위 연결로 할일 아래에 붙인다"""
+        step = todo_repo.create(self.con, title, parent_id=parent["id"])
+        self.con.execute(
+            "UPDATE todos SET role='step', status=?, mgr_kind=?, mgr_status=? WHERE id=?",
+            (status, mgr_kind, mgr_status, step["id"]),
         )
+        self.con.commit()
+        return step
 
     def _reload(self, todo):
         return todo_repo.get(self.con, todo["id"])
 
 
 class ParentRuleTest(TreeFixture):
-    def test_child_takes_workspace_of_parent(self):
-        root = self._todo("설계")
-        child = self._todo("API 초안", parent=root)
-        self.assertEqual(child["parent_id"], root["id"])
-        self.assertEqual(child["workspace_id"], self.space["id"])
+    def test_child_takes_category_of_parent(self):
+        child = self._todo("API 초안")
+        self.assertEqual(child["parent_id"], self.space["id"])
         self.assertEqual(child["category_id"], self.space["category_id"])
+        self.assertIsNone(child["workspace_id"])
 
-    def test_existing_todos_stay_directly_under_workspace(self):
-        """컬럼이 생겨도 기존 할일은 NULL 이라 지금처럼 워크스페이스 바로 아래다"""
-        self.assertIsNone(self._todo("기존 할일")["parent_id"])
-
-    def test_parent_in_other_workspace_is_rejected(self):
-        foreign = self._todo("락 재설계", workspace=self.other)
+    def test_parent_from_any_tree_is_allowed(self):
+        """워크스페이스 제약은 없다 — 다른 트리의 할일 아래로도 옮길 수 있다"""
+        foreign = self._todo("락 재설계", parent=self.other)
         mine = self._todo("설계")
-        with self.assertRaisesRegex(Validation, PARENT_OTHER_WORKSPACE_MSG):
-            todo_repo.update(self.con, mine["id"], parent_id=foreign["id"])
-        with self.assertRaisesRegex(Validation, PARENT_OTHER_WORKSPACE_MSG):
-            todo_repo.create(
-                self.con, "섞인 것", workspace_id=self.space["id"], parent_id=foreign["id"]
-            )
+        moved = todo_repo.update(self.con, mine["id"], parent_id=foreign["id"])
+        self.assertEqual(moved["parent_id"], foreign["id"])
 
-    def test_unassigned_todo_cannot_have_parent(self):
-        loose = todo_repo.create(self.con, "미분류", category_id=self.category["id"])
-        other_loose = todo_repo.create(self.con, "미분류 2", category_id=self.category["id"])
-        with self.assertRaisesRegex(Validation, PARENT_NEEDS_WORKSPACE_MSG):
-            todo_repo.update(self.con, loose["id"], parent_id=other_loose["id"])
+    def test_top_level_todo_can_get_a_parent(self):
+        loose = self._todo("미분류", top=True)
+        other_loose = self._todo("미분류 2", top=True)
+        moved = todo_repo.update(self.con, loose["id"], parent_id=other_loose["id"])
+        self.assertEqual(moved["parent_id"], other_loose["id"])
 
     def test_self_parent_is_rejected(self):
         root = self._todo("설계")
@@ -87,9 +87,9 @@ class ParentRuleTest(TreeFixture):
         grandchild = self._todo("엔드포인트", parent=child)
         with self.assertRaisesRegex(Validation, PARENT_CYCLE_MSG):
             todo_repo.update(self.con, root["id"], parent_id=grandchild["id"])
-        self.assertIsNone(self._reload(root)["parent_id"])
+        self.assertEqual(self._reload(root)["parent_id"], self.space["id"])
 
-    def test_reparent_within_tree_and_back_to_root(self):
+    def test_reparent_and_lift_to_top(self):
         first = self._todo("설계")
         second = self._todo("구현")
         child = self._todo("API", parent=first)
@@ -111,32 +111,6 @@ class ParentRuleTest(TreeFixture):
         todo_repo.delete(self.con, middle["id"])
         self.assertEqual(self._reload(leaf)["parent_id"], root["id"])
 
-    def test_moving_to_other_workspace_carries_subtree(self):
-        root = self._todo("설계")
-        middle = self._todo("API", parent=root)
-        leaf = self._todo("엔드포인트", parent=middle)
-        todo_repo.update(self.con, middle["id"], workspace_id=self.other["id"])
-        moved, carried = self._reload(middle), self._reload(leaf)
-        self.assertIsNone(moved["parent_id"])  # 옛 부모는 다른 트리라 루트 바로 아래로
-        self.assertEqual(carried["workspace_id"], self.other["id"])
-        self.assertEqual(carried["parent_id"], middle["id"])
-        self.assertEqual(self._reload(root)["workspace_id"], self.space["id"])
-
-    def test_saving_same_workspace_keeps_parent(self):
-        """상세 팝업처럼 같은 워크스페이스를 다시 보내도 부모가 풀리면 안 된다"""
-        root = self._todo("설계")
-        child = self._todo("API", parent=root)
-        todo_repo.update(self.con, child["id"], workspace_id=self.space["id"])
-        self.assertEqual(self._reload(child)["parent_id"], root["id"])
-
-    def test_deleting_workspace_flattens_tree(self):
-        root = self._todo("설계")
-        child = self._todo("API", parent=root)
-        workspace_repo.delete(self.con, self.space["id"])
-        demoted = self._reload(child)
-        self.assertIsNone(demoted["workspace_id"])
-        self.assertIsNone(demoted["parent_id"])
-
 
 class ReviewStatusTest(TreeFixture):
     def test_review_is_a_valid_open_status(self):
@@ -145,10 +119,13 @@ class ReviewStatusTest(TreeFixture):
         self.assertIsNone(todo["completed_at"])
 
     def test_review_is_not_picked_as_next(self):
+        todo_repo.update(self.con, self.other["id"], status=STATUS_DONE)
         waiting = todo_repo.update(self.con, self._todo("확인만 남음")["id"], status=STATUS_REVIEW)
+        todo_repo.update(self.con, self.space["id"], status=STATUS_REVIEW)
         fresh = self._todo("새 일")
-        picked = planning.next_todo(self.con, workspace_id=self.space["id"])
+        picked = planning.next_todo(self.con)
         self.assertEqual(picked["todo"]["id"], fresh["id"])
+        self.assertEqual(picked["root"]["id"], self.space["id"])
         self.assertNotIn(waiting["id"], [row["id"] for row in planning.ranked(self.con)])
 
     def test_linking_session_revives_review_to_doing(self):
@@ -159,9 +136,20 @@ class ReviewStatusTest(TreeFixture):
 
 
 class ForestTest(TreeFixture):
-    def _tree(self, workspace=None):
+    def _tree(self, top=None):
         trees = todo_tree.forest(self.con)["trees"]
-        return next(t for t in trees if t["workspace"]["id"] == (workspace or self.space)["id"])
+        return next(t for t in trees if t["key"] == f"t{(top or self.space)['id']}")
+
+    def _kids(self, top=None):
+        return self._tree(top)["children"][0]["children"]
+
+    def test_each_parentless_todo_is_its_own_tree(self):
+        lone = self._todo("혼자", top=True)
+        tree = self._tree(lone)
+        self.assertEqual(tree["name"], "혼자")
+        self.assertEqual([node["id"] for node in tree["children"]], [lone["id"]])
+        self.assertEqual(tree["category_id"], self.category["id"])
+        self.assertEqual(tree["category_name"], self.category["name"])
 
     def test_nested_children_and_subtree_progress(self):
         root = self._todo("설계")
@@ -169,32 +157,57 @@ class ForestTest(TreeFixture):
         leaf = self._todo("엔드포인트", parent=child)
         todo_repo.update(self.con, leaf["id"], status=STATUS_DONE)
         tree = self._tree()
-        node = tree["children"][0]
+        node = self._kids()[0]
         self.assertEqual(node["id"], root["id"])
         self.assertEqual(node["children"][0]["children"][0]["id"], leaf["id"])
         # 하위 전체(자식·손자) 중 완료 수. 자기 자신은 세지 않는다
         self.assertEqual(node["progress"], {"done": 1, "total": 2})
-        self.assertEqual(tree["progress"], {"done": 1, "total": 3})
-        self.assertEqual(tree["counts"][STATUS_TODO], 2)
+        # 트리 진행률은 맨 위 할일까지 센다
+        self.assertEqual(tree["progress"], {"done": 1, "total": 4})
+        self.assertEqual(tree["counts"][STATUS_TODO], 3)
         self.assertFalse(tree["complete"])
 
+    def test_steps_ride_inside_the_task_and_count_toward_progress(self):
+        task = self._todo("열 정리")
+        first = self._step("열 추가", task, status=STATUS_DONE)
+        second = self._step("정렬 결정", task, mgr_kind="decision", mgr_status="open")
+        child = self._todo("하위 할일", parent=task)
+        node = self._kids()[0]
+        # 단계는 하위 카드가 아니다 — children 에는 하위 할일만
+        self.assertEqual([kid["id"] for kid in node["children"]], [child["id"]])
+        self.assertEqual([step["id"] for step in node["steps"]], [first["id"], second["id"]])
+        self.assertEqual([step["waiting"] for step in node["steps"]], [False, True])
+        # 진행률 = 단계 + 하위 할일
+        self.assertEqual(node["progress"], {"done": 1, "total": 3})
+        # 트리 상태 개수에는 단계가 들지 않는다
+        tree = self._tree()
+        self.assertEqual(sum(tree["counts"].values()), 3)
+        self.assertEqual(tree["waiting"], 1)
+
+    def test_hidden_roles_are_not_in_the_tree(self):
+        """role 이 NULL·step 이 아닌 행(매니저 보조 피드백 기록)은 어디에도 없다"""
+        note = self._todo("피드백 기록", top=True)
+        self.con.execute("UPDATE todos SET role='feedback', status='done' WHERE id=?", (note["id"],))
+        self.con.commit()
+        keys = [tree["key"] for tree in todo_tree.forest(self.con)["trees"]]
+        self.assertNotIn(f"t{note['id']}", keys)
+
     def test_tree_is_complete_only_when_every_todo_is_done(self):
-        root = self._todo("설계")
-        child = self._todo("API", parent=root)
-        todo_repo.update(self.con, root["id"], status=STATUS_DONE)
+        child = self._todo("API")
+        todo_repo.update(self.con, self.space["id"], status=STATUS_DONE)
         self.assertFalse(self._tree()["complete"])
         todo_repo.update(self.con, child["id"], status=STATUS_DONE)
         self.assertTrue(self._tree()["complete"])
 
-    def test_empty_tree_is_not_complete(self):
-        self.assertFalse(self._tree(self.other)["complete"])
-
-    def test_complete_trees_come_last(self):
-        done = self._todo("락", workspace=self.other)
+    def test_order_unfinished_then_priority_then_sort_order(self):
+        done = self._todo("끝난 트리", top=True)
         todo_repo.update(self.con, done["id"], status=STATUS_DONE)
-        self._todo("설계")
-        trees = todo_tree.forest(self.con)["trees"]
-        self.assertEqual(trees[-1]["workspace"]["id"], self.other["id"])
+        todo_repo.update(self.con, self.other["id"], priority=3)
+        lone = self._todo("우선순위 없음", top=True)
+        keys = [tree["key"] for tree in todo_tree.forest(self.con)["trees"]]
+        self.assertEqual(keys[0], f"t{self.other['id']}")
+        self.assertLess(keys.index(f"t{self.space['id']}"), keys.index(f"t{lone['id']}"))
+        self.assertEqual(keys[-1], f"t{done['id']}")
 
     def test_waiting_mark_follows_sessions_current_todo(self):
         old = self._todo("지난 일")
@@ -203,44 +216,43 @@ class ForestTest(TreeFixture):
         session_repo.link_todo(self.con, "sess-a", old["id"])
         session_repo.link_todo(self.con, "sess-a", current["id"])
         session_repo.set_waiting(self.con, "sess-a", "permission")
-        nodes = {node["id"]: node for node in self._tree()["children"]}
+        nodes = {node["id"]: node for node in self._kids()}
         self.assertEqual(nodes[current["id"]]["waiting"], "permission")
         self.assertIsNone(nodes[old["id"]]["waiting"])
         self.assertEqual(self._tree()["waiting"], 1)
 
     def test_last_session_at_is_latest_seen_of_linked_sessions(self):
-        """할일별 보기의 정렬 기준. 보드 상태별 뷰와 같은 값(세션이 마지막으로 살아 있던 시각)이다"""
+        """할일별 보기의 정렬 기준 — 세션이 마지막으로 살아 있던 시각"""
         touched = self._todo("잡은 일")
         idle = self._todo("안 잡은 일")
         session_repo.register(self.con, "sess-a", cwd="/tmp")
         session_repo.link_todo(self.con, "sess-a", touched["id"])
         seen = self.con.execute("SELECT last_seen_at FROM sessions WHERE claude_session_id='sess-a'").fetchone()[0]
-        nodes = {node["id"]: node for node in self._tree()["children"]}
+        nodes = {node["id"]: node for node in self._kids()}
         self.assertEqual(nodes[touched["id"]]["last_session_at"], seen)
         self.assertIsNone(nodes[idle["id"]]["last_session_at"])
 
     def test_nodes_carry_updated_at_for_recency_order(self):
-        """트리 목록이 '최근 작업·수정 순' 으로 세울 재료. 할일은 todos.updated_at, 맥락은 graph_nodes.updated_at"""
+        """할일은 todos.updated_at, 맥락은 graph_nodes.updated_at. 상위 없는 맥락은 제 트리의 맨 위다"""
         from app.repositories import graph as graph_repo
 
         todo = self._todo("수정한 일")
         todo_repo.update(self.con, todo["id"], title="제목 고침")
         saved = self._reload(todo)["updated_at"]
-        context = graph_repo.create_context(self.con, "배경", workspace_id=self.space["id"])
-        nodes = {node["key"]: node for node in self._tree()["children"]}
+        context = graph_repo.create_context(self.con, "배경", category_id=self.category["id"])
+        nodes = {node["key"]: node for node in self._kids()}
         self.assertEqual(nodes[f"t{todo['id']}"]["updated_at"], saved)
-        self.assertEqual(nodes[f"c{context['id']}"]["updated_at"], context["updated_at"])
+        trees = todo_tree.forest(self.con)["trees"]
+        top = next(tree for tree in trees if tree["key"] == f"c{context['id']}")
+        self.assertEqual(top["children"][0]["updated_at"], context["updated_at"])
 
     def test_broken_parent_links_do_not_hide_todos(self):
-        """손으로 고친 DB 의 고리·남의 트리 부모도 루트 아래로 올라와 화면에 남는다"""
+        """손으로 고친 DB 의 고리도 어딘가의 맨 위 아래로 올라와 화면에 남는다"""
         first = self._todo("가")
         second = self._todo("나", parent=first)
-        foreign = self._todo("다른 트리", workspace=self.other)
-        third = self._todo("라")
-        self.con.execute("UPDATE todos SET parent_id=? WHERE id=?", (second["id"], first["id"]))
-        self.con.execute("UPDATE todos SET parent_id=? WHERE id=?", (foreign["id"], third["id"]))
+        self.con.execute("UPDATE edges SET src_id=? WHERE dst_kind='todo' AND dst_id=? AND relation='parent'",
+                         (str(second["id"]), str(first["id"])))
         self.con.commit()
-        tree = self._tree()
         seen = []
 
         def walk(nodes):
@@ -248,8 +260,43 @@ class ForestTest(TreeFixture):
                 seen.append(node["id"])
                 walk(node["children"])
 
-        walk(tree["children"])
-        self.assertEqual(sorted(seen), sorted([first["id"], second["id"], third["id"]]))
+        for tree in todo_tree.forest(self.con)["trees"]:
+            walk(tree["children"])
+        self.assertIn(first["id"], seen)
+        self.assertIn(second["id"], seen)
+
+
+class LineageTest(TreeFixture):
+    """워크스페이스가 주던 것(작업 위치·맨 위)을 상위 연결로 찾는다 (app/services/lineage.py)"""
+
+    def test_cwd_comes_from_the_nearest_ancestor(self):
+        import tempfile
+        from app.services import autorun, lineage
+
+        top_dir, mid_dir = tempfile.mkdtemp(), tempfile.mkdtemp()
+        todo_repo.update(self.con, self.space["id"], cwd=top_dir)
+        middle = self._todo("중간")
+        leaf = self._todo("잎", parent=middle)
+        self.assertEqual(lineage.nearest_cwd(self.con, self._reload(leaf)), top_dir)
+        todo_repo.update(self.con, middle["id"], cwd=mid_dir)
+        self.assertEqual(lineage.nearest_cwd(self.con, self._reload(leaf)), mid_dir)
+        # 자율 수행의 위치 판정도 같은 답 — 사람이 지정한 위치가 추론보다 먼저다
+        self.assertEqual(autorun.target_cwd(self.con, self._reload(leaf)), mid_dir)
+        self.assertEqual(autorun.cwd_resolver(self.con)(self._reload(leaf)), mid_dir)
+        # 없어진 경로는 건너뛴다
+        todo_repo.update(self.con, middle["id"], cwd="/없는/경로")
+        self.assertEqual(lineage.nearest_cwd(self.con, self._reload(leaf)), top_dir)
+
+    def test_root_todo_and_tree_members(self):
+        from app.services import lineage
+
+        middle = self._todo("중간")
+        leaf = self._todo("잎", parent=middle)
+        self.assertEqual(lineage.root_todo(self.con, leaf["id"])["id"], self.space["id"])
+        self.assertEqual(lineage.root_todo(self.con, self.other["id"])["id"], self.other["id"])
+        self.assertEqual(
+            lineage.tree_todo_ids(self.con, leaf["id"]), sorted([self.space["id"], middle["id"], leaf["id"]])
+        )
 
 
 class ApiTest(TreeFixture):
@@ -258,11 +305,19 @@ class ApiTest(TreeFixture):
         created = server.route(
             self.con, "POST", "/api/todos", {}, {"title": "API", "parent_id": root["id"]}
         )
-        self.assertEqual(created["workspace_id"], self.space["id"])
+        self.assertEqual(created["category_id"], self.category["id"])
         payload = server.route(self.con, "GET", "/api/todo-trees", {}, {})
         self.assertIn(STATUS_REVIEW, payload["statuses"])
-        tree = next(t for t in payload["trees"] if t["workspace"]["id"] == self.space["id"])
-        self.assertEqual(tree["children"][0]["children"][0]["id"], created["id"])
+        tree = next(t for t in payload["trees"] if t["key"] == f"t{self.space['id']}")
+        self.assertEqual(tree["children"][0]["children"][0]["children"][0]["id"], created["id"])
+
+    def test_create_top_level_todo_needs_a_category(self):
+        created = server.route(
+            self.con, "POST", "/api/todos", {}, {"title": "새 트리", "category_id": self.category["id"]}
+        )
+        self.assertIsNone(created["parent_id"])
+        keys = [tree["key"] for tree in server.route(self.con, "GET", "/api/todo-trees", {}, {})["trees"]]
+        self.assertIn(f"t{created['id']}", keys)
 
     def test_patch_parent_and_status(self):
         root = self._todo("설계")
@@ -275,6 +330,13 @@ class ApiTest(TreeFixture):
             self.con, "PATCH", f"/api/todos/{child['id']}", {}, {"status": STATUS_REVIEW}
         )
         self.assertEqual(reviewed["status"], STATUS_REVIEW)
+
+    def test_workspace_and_board_routes_are_gone(self):
+        from app.errors import UnknownEndpoint
+
+        for method, path in (("GET", "/api/workspaces"), ("GET", "/api/tree"), ("POST", "/api/workspaces")):
+            with self.subTest(path=path, method=method), self.assertRaises(UnknownEndpoint):
+                server.route(self.con, method, path, {}, {})
 
 
 class CliTest(unittest.TestCase):

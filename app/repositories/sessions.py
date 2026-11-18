@@ -19,20 +19,17 @@ from app.db import now, transaction
 from app.errors import NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
-from app.repositories import workspaces as workspace_repo
+from app.services import lineage
 
 TABLE = "sessions"
 ACTIVE_STATES = (STATE_WORKING, STATE_IDLE)
-# 세션의 워크스페이스는 저장하지 않고 연결된 할일에서 파생한다 — 소속이 세션과 할일
-# 두 군데 있으면 세션을 분류해도 보드에 안 나타나는 어긋남이 생긴다.
+# 세션이 어느 트리 일감인지는 저장하지 않고 연결된 할일에서 파생한다(그 할일 트리의 맨 위 할일 = root_title).
 # 할일이 여럿이면 가장 최근 연결된 것이 이 세션의 현재 작업이다
 LATEST_LINKED = """FROM session_todos st JOIN todos t ON t.id = st.todo_id
                    WHERE st.session_id = s.id
                    ORDER BY st.created_at DESC, st.todo_id DESC LIMIT 1"""
 WITH_NAMES = f"""SELECT s.*, c.name AS category_name,
-                (SELECT t.workspace_id {LATEST_LINKED}) AS workspace_id,
-                (SELECT (SELECT w.name FROM workspaces w WHERE w.id = t.workspace_id)
-                 {LATEST_LINKED}) AS workspace_name
+                (SELECT t.id {LATEST_LINKED}) AS linked_todo_id
             FROM sessions s
             LEFT JOIN categories c ON c.id = s.category_id"""
 # 데몬이 미리 띄우는 spare 프로세스도 SessionStart 로 등록된다. 프롬프트가 한 번도
@@ -72,7 +69,7 @@ def find(con, claude_session_id):
     row = con.execute(
         f"{WITH_NAMES} WHERE s.claude_session_id=?", (claude_session_id,)
     ).fetchone()
-    return dict(row) if row else None
+    return _named(con, row) if row else None
 
 
 def set_state(con, claude_session_id, state):
@@ -140,17 +137,16 @@ def list_waiting(con):
         " ORDER BY s.last_seen_at DESC",
         (STATE_ENDED,),
     ).fetchall()
-    return [dict(r) for r in rows]
+    return [_named(con, r) for r in rows]
 
 
 def classify(con, claude_session_id, category_name=None, workspace_id=None):
-    """워크스페이스를 주면 카테고리는 그 워크스페이스의 것이 이김.
-
-    워크스페이스 자체는 저장하지 않는다 — 세션이 어느 워크스페이스 일감인지는
-    할일을 연결하는 것으로 정해진다. 여기서는 카테고리를 고르는 데만 쓴다
+    """세션을 카테고리로 분류. workspace_id 는 옛 호출이 깨지지 않게 받기만 하고 무시한다 —
+    워크스페이스는 없어졌다(사용자 결정 11-18). 세션이 어느 트리 일감인지는 할일 연결로 정해진다
     """
+    del workspace_id
     get(con, claude_session_id)
-    category_id = _resolve_category(con, category_name, workspace_id)
+    category_id = _resolve_category(con, category_name)
     with transaction(con):
         con.execute(
             "UPDATE sessions SET category_id=?, last_seen_at=? WHERE claude_session_id=?",
@@ -160,12 +156,11 @@ def classify(con, claude_session_id, category_name=None, workspace_id=None):
 
 
 def classify_by_ids(con, session_row_id, category_id=None, workspace_id=None):
-    """대시보드에서 손으로 고칠 때. 내부 정수 id 로 받음"""
+    """대시보드에서 손으로 고칠 때. 내부 정수 id 로 받음. workspace_id 는 무시한다(classify 와 같음)"""
+    del workspace_id
     if not _row_by_id(con, session_row_id):
         raise NotFound("세션을 찾을 수 없습니다")
-    if workspace_id is not None:
-        category_id = workspace_repo.get(con, workspace_id)["category_id"]
-    elif category_id is not None:
+    if category_id is not None:
         category_repo.get(con, category_id)
     else:
         raise Validation(SCOPE_REQUIRED_MSG)
@@ -261,7 +256,7 @@ def list_active(con):
             ORDER BY s.last_seen_at DESC""",
         ACTIVE_STATES,
     )
-    return [dict(row) for row in rows]
+    return [_named(con, row) for row in rows]
 
 
 def list_by_todo(con, todo_id):
@@ -272,7 +267,7 @@ def list_by_todo(con, todo_id):
             WHERE st.todo_id=? ORDER BY s.last_seen_at DESC""",
         (todo_id,),
     )
-    return [dict(row) for row in rows]
+    return [_named(con, row) for row in rows]
 
 
 def last_activity_by_todo(con):
@@ -326,43 +321,57 @@ def waiting_by_todo(con, promote=None):
 
 
 def current_cards(con, claude_session_ids):
-    """세션 id → 그 세션이 지금 붙잡은 할일(가장 최근 연결)과 그 트리(워크스페이스).
-    매니저 탭 줄을 트리 카드에 잇는 데 쓴다. 연결된 할일이 없는 세션은 빠진다"""
+    """세션 id → 그 세션이 지금 붙잡은 할일(가장 최근 연결)과 그 트리 맨 위 할일(root_id·root_title·tree_key).
+    매니저 탭 줄을 트리 카드에 잇는 데 쓴다. 연결된 할일이 없는 세션은 빠진다.
+    workspace_id 는 늘 None, workspace_name 은 root_title 과 같은 옛 소비자용 별칭이다"""
     if not claude_session_ids:
         return {}
     marks = ",".join("?" * len(claude_session_ids))
     rows = con.execute(
         f"""SELECT s.claude_session_id AS session_id, t.id AS todo_id, t.title AS title,
-                   t.status AS status, t.workspace_id AS workspace_id,
-                   w.name AS workspace_name, c.color AS category_color
+                   t.status AS status, c.color AS category_color
             FROM sessions s
             JOIN todos t ON t.id = (SELECT t.id {LATEST_LINKED})
-            LEFT JOIN workspaces w ON w.id = t.workspace_id
-            LEFT JOIN categories c ON c.id = COALESCE(w.category_id, t.category_id)
+            LEFT JOIN categories c ON c.id = t.category_id
             WHERE s.claude_session_id IN ({marks})""",
         tuple(claude_session_ids),
     )
-    return {row["session_id"]: {key: row[key] for key in row.keys() if key != "session_id"} for row in rows}
+    parents = lineage.parent_map(con)
+    cards = {}
+    for row in rows:
+        card = {key: row[key] for key in row.keys() if key != "session_id"}
+        top = lineage.top_of(con, card["todo_id"], parents)
+        root = lineage.root_todo(con, card["todo_id"], parents)
+        card.update(
+            tree_key=lineage.tree_key(top),
+            root_id=root["id"] if root else None,
+            root_title=root["title"] if root else None,
+            workspace_id=None,
+            workspace_name=root["title"] if root else None,
+        )
+        cards[row["session_id"]] = card
+    return cards
 
 
-def cwds_by_workspace(con, workspace_id):
-    """그 워크스페이스에서 돌았던 작업 위치. 최근 순.
-    워크스페이스에는 저장소 경로가 없어 워크트리 뷰가 여기서 저장소를 유추한다"""
+def cwds_by_todos(con, todo_ids):
+    """그 할일들을 잡았던 세션의 작업 위치. 최근 순. 트리에는 저장소 경로가 없어 워크트리 뷰가
+    트리(맨 위 할일과 그 아래) 할일들에서 저장소를 유추한다"""
+    if not todo_ids:
+        return []
     rows = con.execute(
-        """SELECT s.cwd AS cwd, MAX(s.last_seen_at) AS seen FROM sessions s
+        f"""SELECT s.cwd AS cwd, MAX(s.last_seen_at) AS seen FROM sessions s
             JOIN session_todos st ON st.session_id = s.id
-            JOIN todos t ON t.id = st.todo_id
-            WHERE t.workspace_id=? AND COALESCE(s.cwd,'') <> ''
+            WHERE st.todo_id IN ({_placeholders(todo_ids)}) AND COALESCE(s.cwd,'') <> ''
             GROUP BY s.cwd ORDER BY seen DESC""",
-        (workspace_id,),
+        tuple(todo_ids),
     )
     return [row["cwd"] for row in rows]
 
 
 def all_cwds(con):
     """세션이 남긴 모든 작업 위치, 워크스페이스·할일 연결 여부와 무관하게. 최근 순.
-    워크트리 뷰의 프로젝트 모드가 저장소를 유추할 때 쓴다 — cwds_by_workspace 와 달리
-    todos 조인이 없어 어느 워크스페이스에도 속하지 않은 위치까지 잡힌다"""
+    워크트리 뷰의 프로젝트 모드가 저장소를 유추할 때 쓴다 — cwds_by_todos 와 달리
+    할일 조인이 없어 어느 할일에도 속하지 않은 위치까지 잡힌다"""
     rows = con.execute(
         "SELECT cwd, MAX(last_seen_at) AS seen FROM sessions"
         " WHERE COALESCE(cwd,'') <> '' GROUP BY cwd ORDER BY seen DESC"
@@ -370,21 +379,22 @@ def all_cwds(con):
     return [row["cwd"] for row in rows]
 
 
-def cwd_counts_by_workspace(con, workspace_id):
-    """그 워크스페이스에서 돈 작업 위치 → 세션 수. 많이 돈 순, 같으면 최근 순.
+def cwd_counts_by_todos(con, todo_ids):
+    """그 할일들에서 돈 작업 위치 → 세션 수. 많이 돈 순, 같으면 최근 순.
 
-    cwds_by_workspace 와 갈라 두는 이유 — 워크트리 뷰는 '어느 저장소들을 봐야 하나'라
-    목록이 필요하고, 자율 실행은 '어디가 이 워크스페이스의 본거지인가'라 무게가 필요하다.
+    cwds_by_todos 와 갈라 두는 이유 — 워크트리 뷰는 '어느 저장소들을 봐야 하나'라
+    목록이 필요하고, 자율 실행은 '어디가 이 트리의 본거지인가'라 무게가 필요하다.
     한 번 스쳐간 위치가 최근이라는 이유로 이기면 자율 잡이 엉뚱한 저장소에서 돈다
     """
+    if not todo_ids:
+        return []
     rows = con.execute(
-        """SELECT s.cwd AS cwd, COUNT(*) AS sessions, MAX(s.last_seen_at) AS seen
+        f"""SELECT s.cwd AS cwd, COUNT(*) AS sessions, MAX(s.last_seen_at) AS seen
              FROM sessions s
              JOIN session_todos st ON st.session_id = s.id
-             JOIN todos t ON t.id = st.todo_id
-            WHERE t.workspace_id=? AND COALESCE(s.cwd,'') <> ''
+            WHERE st.todo_id IN ({_placeholders(todo_ids)}) AND COALESCE(s.cwd,'') <> ''
             GROUP BY s.cwd ORDER BY sessions DESC, seen DESC""",
-        (workspace_id,),
+        tuple(todo_ids),
     )
     return [(row["cwd"], row["sessions"]) for row in rows]
 
@@ -435,7 +445,7 @@ def get_by_row_id(con, session_row_id):
     row = con.execute(f"{WITH_NAMES} WHERE s.id=?", (session_row_id,)).fetchone()
     if not row:
         raise NotFound("세션을 찾을 수 없습니다")
-    return dict(row)
+    return _named(con, row)
 
 
 def sweep(con):
@@ -461,9 +471,20 @@ def _row_by_id(con, session_row_id):
     return dict(row) if row else None
 
 
-def _resolve_category(con, category_name, workspace_id):
-    if workspace_id is not None:
-        return workspace_repo.get(con, workspace_id)["category_id"]
+def _named(con, row):
+    """세션 행에 그 세션이 지금 잡은 할일의 트리 맨 위 할일(root_title·root_id)을 붙인다.
+    workspace_id·workspace_name 은 옛 소비자(CLI)를 위한 별칭이다 — workspace_id 는 늘 None,
+    workspace_name 은 root_title 과 같다"""
+    session = dict(row)
+    root = lineage.root_todo(con, session["linked_todo_id"]) if session.get("linked_todo_id") else None
+    session["root_id"] = root["id"] if root else None
+    session["root_title"] = root["title"] if root else None
+    session["workspace_id"] = None
+    session["workspace_name"] = session["root_title"]
+    return session
+
+
+def _resolve_category(con, category_name):
     if not category_name:
         raise Validation(SCOPE_REQUIRED_MSG)
     return category_repo.get_by_name(con, category_name)["id"]

@@ -298,7 +298,7 @@ class CliTest(unittest.TestCase):
         self.run_cli("add-workspace", "개발", "KT")
         con = connect()
         session_repo.register(con, "env-sess")
-        session_repo.classify(con, "env-sess", workspace_id=1)
+        session_repo.classify(con, "env-sess", category_name="개발")
         self.run_cli("add-todo", "워크스페이스 할일", "--workspace", "1")
         self.run_cli("add-todo", "남의 할일", "--category", "운영")
         os.environ[SESSION_ID_ENV] = "env-sess"
@@ -325,14 +325,14 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("연결", out)
 
-    def test_add_todo_with_session_uses_its_workspace(self):
+    def test_add_todo_with_session_uses_its_category(self):
         from app.db import connect
         from app.repositories import sessions as session_repo
 
         self.run_cli("add-workspace", "개발", "KT")
         con = connect()
         session_repo.register(con, "todo-sess")
-        session_repo.classify(con, "todo-sess", workspace_id=1)
+        session_repo.classify(con, "todo-sess", category_name="개발")
         code, out, _ = self.run_cli(
             "add-todo", "세션 할일", "--session", "todo-sess", "--note", "파일 경계 메모"
         )
