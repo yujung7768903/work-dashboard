@@ -349,6 +349,9 @@
   "manager.subtabSetup": "設定",
   "manager.subtabRetro": "振り返り",
   "retro.queue": "保留中のフィードバック",
+  "retro.colTime": "収集日時",
+  "retro.colText": "内容",
+  "retro.colStatus": "状態",
   "retro.queueHint": "マネージャーへのフィードバックはここに溜まり、1日1回の振り返りが処理します。どのターミナルでも {command} <内容> で送れます。",
   "retro.placeholder": "マネージャーへのフィードバック",
   "retro.send": "追加",
@@ -717,5 +720,6 @@
   "todo.startHint": "このTodoで新しいセッションを起動する",
   "todo.delete": "削除",
   "todo.confirmDelete": "'{title}' を削除しますか? 下位のTodoは一段上に移ります。",
-  "todo.noLabels": "ラベルなし — 設定タブで作成"
+  "todo.labelsTitle": "ラベル",
+  "todo.noLabels":"ラベルなし — 設定タブで作成"
 }

@@ -944,7 +944,24 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .retro-form textarea { flex: 1; min-width: 0; min-height: 40px; resize: vertical; }
 .retro-form button { flex: none; }
 .retro-form-note { margin: 0 0 var(--sp-8); color: var(--muted); font-size: var(--fs-sm); }
-.mgr-row.retro-feedback .retro-text { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: normal; }
+/* 대기 중인 피드백 표 — 수집 시각·상태는 내용에 맞춘 좁은 칸(줄바꿈 없음), 내용이 남는 폭을 다 쓰고 줄임 없이 감싼다 */
+.retro-table-box {
+  background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
+  padding: 0 var(--pad-card); overflow-x: auto;
+}
+.retro-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.retro-table th, .retro-table td {
+  padding: var(--sp-8) var(--sp-8); border-top: 1px solid var(--line);
+  text-align: left; vertical-align: top;
+}
+.retro-table thead th { border-top: none; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.retro-table th:first-child, .retro-table td:first-child { padding-left: 0; }
+.retro-table th:last-child, .retro-table td:last-child { padding-right: 0; }
+.retro-table .retro-col-time { width: 1%; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.retro-table .retro-col-status { width: 1%; white-space: nowrap; }
+.retro-status { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+.retro-status .mgr-sub { white-space: normal; min-width: 7em; max-width: 16em; }
+.retro-table .retro-text { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 12em; }
 .mgr-row.retro-day .retro-summary { white-space: normal; }
 .retro-detail { list-style: none; padding: var(--sp-8) var(--sp-12); border-bottom: 1px solid var(--line);
   background: var(--softer); font-size: var(--fs-sm); }
@@ -1811,10 +1828,21 @@ html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-/* 할일 상세 팝업의 동작 줄 — 시작·라벨·삭제 (static/js/todo-actions.js) */
-.todo-actions { display: flex; align-items: center; gap: var(--sp-8); flex-wrap: wrap; margin: var(--sp-8) 0; }
-.todo-actions .todo-labels { display: flex; gap: var(--sp-4); flex-wrap: wrap; flex: 1; min-width: 0; }
-.todo-actions .todo-delete { margin-left: auto; }
+/* 할일 상세 팝업 — 라벨 칸(속성)과 맨 아래 동작 줄 (static/js/todo-actions.js).
+   라벨 칩은 왼쪽부터 접혀 내려가고, 동작 줄은 구분선 아래 시작(주 동작) 왼쪽 · 삭제(위험 동작) 오른쪽 끝.
+   버튼 둘만 남아 좁은 폭에서도 한 줄이 꼬이지 않는다 */
+.todo-label-picker { justify-content: flex-start; flex: none; }
+.todo-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8);
+  margin: var(--sp-16) 0 0; padding-top: var(--sp-12); border-top: 1px solid var(--line);
+}
+.todo-actions .todo-start { background: var(--accent); color: #fff; }
+.todo-actions .todo-start:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, var(--fg)); }
+.todo-actions .todo-delete {
+  background: transparent; color: var(--danger);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 45%, var(--surface));
+}
+.todo-actions .todo-delete:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }
 .todo-label {
   padding: 0 var(--sp-8); border-radius: var(--r-pill); font-size: var(--fs-sm); line-height: var(--lh-body);
   color: var(--muted); background: color-mix(in srgb, var(--fg) 5%, var(--surface));

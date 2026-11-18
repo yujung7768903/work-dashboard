@@ -349,6 +349,9 @@
   "manager.subtabSetup": "Setup",
   "manager.subtabRetro": "Retro",
   "retro.queue": "Pending feedback",
+  "retro.colTime": "Collected",
+  "retro.colText": "Feedback",
+  "retro.colStatus": "Status",
   "retro.queueHint": "Feedback on the manager piles up here and the daily retro handles it. You can also type {command} <text> in any terminal session.",
   "retro.placeholder": "Feedback on the manager",
   "retro.send": "Add",
@@ -717,5 +720,6 @@
   "todo.startHint": "Start a new session on this todo",
   "todo.delete": "Delete",
   "todo.confirmDelete": "Delete '{title}'? Its children move up one level.",
-  "todo.noLabels": "No labels — create them in Settings"
+  "todo.labelsTitle": "Labels",
+  "todo.noLabels":"No labels — create them in Settings"
 }
