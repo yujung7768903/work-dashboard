@@ -506,6 +506,7 @@
   "tree.completeHint": "Mark as done once you have reviewed it",
   "tree.changeStatus": "Change status",
   "tree.openDetail": "Click for details",
+  "tree.openWaiting": "Click to open #{id} {title}, which is waiting on you",
   "tree.zoomIn": "Zoom in",
   "tree.zoomOut": "Zoom out",
   "tree.fit": "Fit to view",
