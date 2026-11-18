@@ -46,8 +46,8 @@ ACTION_KIND = "action"
 PREREQ_FINISHED = ("done", "invalid")
 # 매니저 tasks.BLOCKED_PERMISSION — ask --blocked permission 으로 남긴 권한·인증·로그인 막힘
 BLOCKED_PERMISSION = "permission"
-# 세션 회고로 남은 개선 후보 — 매니저 tasks.IMPROVE_PREFIX 와 같다. 결정 대기 칸이 아니라 회고 탭에 보인다(11-18)
-IMPROVE_PREFIX = "개선 후보"
+# 세션 회고로 남은 개선 후보 — 매니저 tasks.RETRO_PREFIX 와 같다. 결정 대기 칸이 아니라 회고 탭에 보인다(11-18)
+IMPROVE_PREFIX = "개선 후보:"
 # 줄·팝업 상태. prereq = 선행 대기(다른 할일이 끝나야 함), permission = 권한 대기(권한·로그인 막힘 — 종류 무관),
 # decision = 결정 대기(고를 것이 있음), action = 직접 할 일, confirm = 확인 대기
 STATE_PREREQ = "prereq"
