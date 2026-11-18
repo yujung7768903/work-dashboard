@@ -387,8 +387,11 @@ assert.equal(prereqItems.length, 2);
 const firstPrereq = prereqItems[0].children[0];
 assert.deepEqual(firstPrereq.children.map((kid) => kid.textContent), ["#168 KT 서버 로그 경로", "남음"]);
 assert.deepEqual(prereqItems[1].children[0].children.map((kid) => kid.textContent), ["#169 KT 로그 Lambda 배포", "확인 대기"]);
-// 사전 조건 줄 오른쪽 끝 케밥 — 제거하기·완료 처리하기. 누르기 전에 되묻고, 처리 뒤 선행 대기·결정 대기 칸을 다시 읽고
+// 사전 조건 줄 상자 안, 상태 칩(남음) 바로 오른쪽 케밥 — 제거하기·완료 처리하기. 누르기 전에 되묻고, 처리 뒤 선행 대기·결정 대기 칸을 다시 읽고
 // 팝업을 갱신된 할일로 다시 그린다(선행이 풀리면 답하는 칸이 생긴다). 끝난 사전 조건은 닫을 것이 없어 제거만 있다
+// 테두리는 줄(li.prereq-row)이 그려 케밥이 상자 밖에 따로 떠 있지 않다
+assert.match(prereqItems[0].className, /\bprereq-row\b/);
+assert.equal(prereqItems[0].children.length, 2, "줄 상자 안에 여는 버튼과 케밥만 있다");
 const kebab = prereqItems[0].children[1];
 assert.match(kebab.className, /\bws-menu\b/);
 assert.equal(kebab.children[0].textContent, "⋮");
