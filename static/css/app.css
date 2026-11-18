@@ -944,7 +944,24 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .retro-form textarea { flex: 1; min-width: 0; min-height: 40px; resize: vertical; }
 .retro-form button { flex: none; }
 .retro-form-note { margin: 0 0 var(--sp-8); color: var(--muted); font-size: var(--fs-sm); }
-.mgr-row.retro-feedback .retro-text { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: normal; }
+/* 대기 중인 피드백 표 — 수집 시각·상태는 내용에 맞춘 좁은 칸(줄바꿈 없음), 내용이 남는 폭을 다 쓰고 줄임 없이 감싼다 */
+.retro-table-box {
+  background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow-card);
+  padding: 0 var(--pad-card); overflow-x: auto;
+}
+.retro-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.retro-table th, .retro-table td {
+  padding: var(--sp-8) var(--sp-8); border-top: 1px solid var(--line);
+  text-align: left; vertical-align: top;
+}
+.retro-table thead th { border-top: none; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.retro-table th:first-child, .retro-table td:first-child { padding-left: 0; }
+.retro-table th:last-child, .retro-table td:last-child { padding-right: 0; }
+.retro-table .retro-col-time { width: 1%; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.retro-table .retro-col-status { width: 1%; white-space: nowrap; }
+.retro-status { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+.retro-status .mgr-sub { white-space: normal; min-width: 7em; max-width: 16em; }
+.retro-table .retro-text { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 12em; }
 .mgr-row.retro-day .retro-summary { white-space: normal; }
 .retro-detail { list-style: none; padding: var(--sp-8) var(--sp-12); border-bottom: 1px solid var(--line);
   background: var(--softer); font-size: var(--fs-sm); }

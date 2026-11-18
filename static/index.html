@@ -453,7 +453,17 @@
             <button type="submit" id="retro-send" data-i18n="retro.send"></button>
           </form>
           <p class="retro-form-note" id="retro-form-note" hidden></p>
-          <ul id="mgr-retro-feedback" class="mgr-list"></ul>
+          <!-- 수집 시각 · 내용 · 상태 세 칸. 행은 static/js/retro.js 가 채운다 -->
+          <div class="retro-table-box">
+            <table class="retro-table">
+              <thead><tr>
+                <th scope="col" class="retro-col-time" data-i18n="retro.colTime"></th>
+                <th scope="col" data-i18n="retro.colText"></th>
+                <th scope="col" class="retro-col-status" data-i18n="retro.colStatus"></th>
+              </tr></thead>
+              <tbody id="mgr-retro-feedback"></tbody>
+            </table>
+          </div>
 
           <h2 class="ar-head mgr-head"><span data-i18n="retro.days"></span>
             <span class="mgr-count" id="mgr-retro-days-count"></span></h2>
