@@ -267,6 +267,7 @@ def connect(path=None):
     _add_todo_cwd_column(con)
     _add_todo_priority_column(con)
     _add_todo_parent_column(con)
+    _add_manager_task_columns(con)
     _add_gtasks_columns(con)
     _rename_paused_status(con)
     _drop_session_workspace_column(con)
@@ -536,4 +537,58 @@ def _add_manager_columns(con):
         con.execute("ALTER TABLE sessions ADD COLUMN waiting TEXT")
     if "last_reply" not in columns:
         con.execute("ALTER TABLE sessions ADD COLUMN last_reply TEXT")
+    con.commit()
+
+
+# 매니저 할일(사용자 결정·직접 할 일)을 이 todos 하나로 합친다(사용자 지시 11-18). 매니저 쪽 칸은 mgr_ 를 붙여 두고
+# 매니저가 쓰던 이름 그대로 보이는 뷰(manager_tasks)를 둔다 — 매니저 코드는 연결마다 이 뷰를 TEMP VIEW tasks 로
+# 덮어 기존 SQL 을 그대로 쓴다. mgr_kind 가 있는 행만 매니저 할일이다(대시보드 일감 중 사용자 결정·조치를 기다리는 것).
+# 상태는 둘이다: status(todo·doing·done)는 일의 진행, mgr_status(open·confirm·done·invalid)는 사용자 답의 상태 —
+# 결정에 답했다고 일이 끝난 것이 아니라서 섞지 않는다. 매니저가 만든 행(origin=manager)만 답이 끝나면 일도 끝난다
+MANAGER_TASK_PLAIN = (
+    "kind", "detail", "next_step", "source", "source_ref", "session_id", "official", "reason", "answer",
+    "answered_at", "delivered_at", "notified_at", "plan", "plan_status", "plan_at", "open_target", "due_at",
+    "due_unsure", "snooze_until", "hold_until", "hold_session", "handoff", "remind_at", "validated_at", "blocked",
+    "options", "recommend", "answer_choice", "answer_feedback", "answer_via", "delivery", "delivery_at",
+    "after_ids", "steps", "await_screen", "await_until", "await_result",
+)
+# 매니저 이름 → todos 칸. title·priority 는 대시보드 칸과 나눠 쓴다(아래 뷰 정의)
+MANAGER_TASK_RENAMED = {"status": "mgr_status", "created_at": "mgr_created_at", "updated_at": "mgr_updated_at"}
+MANAGER_ORIGIN = "manager"  # 매니저가 만든 행 — 대시보드 일감과 합쳐진 행은 origin 이 NULL(대시보드)이다
+MANAGER_DEFAULT_PRIORITY = 2
+UNIFIED_FLAG = "unified_todos"  # 이관(매니저 tasks → todos)이 끝났다 — 매니저가 이 표시를 보고 통합 테이블로 바꾼다
+
+
+def manager_task_columns():
+    """뷰 manager_tasks 의 칸 이름 → todos 칸 (title·priority 제외)"""
+    columns = {name: f"mgr_{name}" for name in MANAGER_TASK_PLAIN}
+    columns.update(MANAGER_TASK_RENAMED)
+    return columns
+
+
+def manager_tasks_view_sql():
+    mapped = ", ".join(f"{todo_col} AS {name}" for name, todo_col in manager_task_columns().items())
+    return (
+        "CREATE VIEW manager_tasks AS SELECT id, COALESCE(mgr_title, title) AS title, "
+        f"COALESCE(priority, {MANAGER_DEFAULT_PRIORITY}) AS priority, {mapped}, "
+        "id AS todo_id, status AS todo_status, origin, legacy_task_id "
+        "FROM todos WHERE mgr_kind IS NOT NULL"
+    )
+
+
+def _add_manager_task_columns(con):
+    """매니저 할일 칸(mgr_*)·출처(origin)·옛 매니저 id(legacy_task_id)와 뷰 manager_tasks.
+    mgr_title 은 대시보드 일감과 합쳐진 행에서 매니저가 물은 제목이다(일감 제목 title 은 그대로 둔다)"""
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
+    wanted = [*manager_task_columns().values(), "mgr_title", "origin", "legacy_task_id"]
+    for name in wanted:
+        if name not in columns:
+            kind = "INTEGER" if name == "legacy_task_id" else "TEXT"
+            con.execute(f"ALTER TABLE todos ADD COLUMN {name} {kind}")
+    con.execute("CREATE INDEX IF NOT EXISTS todos_mgr_status ON todos(mgr_status)")
+    con.execute("CREATE INDEX IF NOT EXISTS todos_mgr_session ON todos(mgr_session_id)")
+    view = con.execute("SELECT sql FROM sqlite_master WHERE type='view' AND name='manager_tasks'").fetchone()
+    if view is None or view["sql"] != manager_tasks_view_sql():
+        con.execute("DROP VIEW IF EXISTS manager_tasks")
+        con.execute(manager_tasks_view_sql())
     con.commit()
