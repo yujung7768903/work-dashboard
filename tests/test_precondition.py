@@ -9,7 +9,6 @@ import server
 from app.constants import PRECONDITION_EXAMPLE, PRECONDITION_HINT
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import precondition, session_link
 from tests.support import temp_db, temp_db_path
 
@@ -25,20 +24,20 @@ MULTILINE = (
 class PreconditionStorageTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
-        self.workspace = workspace_repo.create(self.con, 1, "테스트")
+        self.top = todo_repo.create(self.con, "테스트", category_id=1)
 
     def test_todo_keeps_precondition(self):
         todo = todo_repo.create(
-            self.con, "할일", workspace_id=self.workspace["id"], precondition=CONDITION
+            self.con, "할일", parent_id=self.top["id"], precondition=CONDITION
         )
         self.assertEqual(todo_repo.get(self.con, todo["id"])["precondition"], CONDITION)
 
     def test_defaults_to_none(self):
-        todo = todo_repo.create(self.con, "조건 없음", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "조건 없음", parent_id=self.top["id"])
         self.assertIsNone(todo["precondition"])
 
     def test_update_can_set_precondition(self):
-        todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "할일", parent_id=self.top["id"])
         updated = todo_repo.update(self.con, todo["id"], precondition=CONDITION)
         self.assertEqual(updated["precondition"], CONDITION)
 
@@ -81,14 +80,14 @@ class PreconditionMigrationTest(unittest.TestCase):
 class PreconditionInjectionTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
-        # 세션에 워크스페이스가 저장되지 않으므로 브랜치 Jira 로 컨텍스트를 되찾는 경로를 씀
-        self.workspace = workspace_repo.create(self.con, 1, "테스트", jira_id="AB-1")
+        # 세션이 할일을 아직 안 잡았으므로 브랜치 Jira 로 트리 컨텍스트를 되찾는 경로를 씀 —
+        # Jira 키는 트리 맨 위 할일 note 에 있다(옛 워크스페이스 jira_id 를 이관이 옮긴 자리)
+        self.top = todo_repo.create(self.con, "테스트", category_id=1, note="Jira: AB-1")
         session_repo.register(self.con, "sess-1", cwd="/tmp", git_branch="AB-1")
-        session_repo.classify(self.con, "sess-1", workspace_id=self.workspace["id"])
 
     def test_condition_appears_in_injected_block(self):
         todo_repo.create(
-            self.con, "할일", workspace_id=self.workspace["id"], precondition=CONDITION
+            self.con, "할일", parent_id=self.top["id"], precondition=CONDITION
         )
         block = session_link.render_context(self.con, "sess-1")
         self.assertIn(f"조건: {CONDITION}", block)
@@ -96,7 +95,7 @@ class PreconditionInjectionTest(unittest.TestCase):
     def test_only_first_line_is_injected(self):
         """'확인:' 명령줄까지 넣으면 할일이 많을 때 블록이 불어난다"""
         todo_repo.create(
-            self.con, "할일", workspace_id=self.workspace["id"], precondition=MULTILINE
+            self.con, "할일", parent_id=self.top["id"], precondition=MULTILINE
         )
         block = session_link.render_context(self.con, "sess-1")
         self.assertIn("조건: work-dashboard 에 미커밋", block)
@@ -104,7 +103,7 @@ class PreconditionInjectionTest(unittest.TestCase):
 
     def test_no_condition_line_when_absent(self):
         """지침 문구에도 '조건:' 이 들어 있으므로 들여쓴 할일 줄만 본다"""
-        todo_repo.create(self.con, "조건 없음", workspace_id=self.workspace["id"])
+        todo_repo.create(self.con, "조건 없음", parent_id=self.top["id"])
         block = session_link.render_context(self.con, "sess-1")
         self.assertNotIn("     조건:", block)
 
@@ -114,11 +113,11 @@ class PreconditionPopupTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.workspace = workspace_repo.create(self.con, 1, "테스트")
+        self.top = todo_repo.create(self.con, "테스트", category_id=1)
 
     def test_todo_detail_carries_condition(self):
         todo = todo_repo.create(
-            self.con, "할일", workspace_id=self.workspace["id"], precondition=MULTILINE
+            self.con, "할일", parent_id=self.top["id"], precondition=MULTILINE
         )
         payload = session_link.todo_detail(self.con, todo["id"])
         self.assertEqual(payload["todo"]["precondition"], MULTILINE)
@@ -126,7 +125,7 @@ class PreconditionPopupTest(unittest.TestCase):
     def test_todo_detail_carries_parsed_items(self):
         """팝업은 원문이 아니라 항목별 충족 여부를 그린다"""
         todo = todo_repo.create(
-            self.con, "할일", workspace_id=self.workspace["id"], precondition=MULTILINE
+            self.con, "할일", parent_id=self.top["id"], precondition=MULTILINE
         )
         items = session_link.todo_detail(self.con, todo["id"])["todo"][
             "precondition_items"
@@ -141,10 +140,10 @@ class PreconditionParseTest(unittest.TestCase):
 
     def setUp(self):
         self.con = temp_db()
-        self.workspace = workspace_repo.create(self.con, 1, "테스트")
+        self.top = todo_repo.create(self.con, "테스트", category_id=1)
 
     def _todo(self, title, status="todo"):
-        todo = todo_repo.create(self.con, title, workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, title, parent_id=self.top["id"])
         if status != "todo":
             todo_repo.update(self.con, todo["id"], status=status)
         return todo
@@ -243,15 +242,14 @@ class PreconditionAddFormTest(unittest.TestCase):
         """
         korean = json.loads((STATIC / "lang" / "ko.json").read_text(encoding="utf-8"))
         self.assertEqual(korean["common.preconditionHint"], PRECONDITION_HINT)
-        self.assertIn("common.preconditionHint", INDEX.read_text(encoding="utf-8"))
+        # 입력칸은 할일 상세 팝업의 수정 칸이다 (보드의 할일 추가 팝업은 없어졌다)
+        popup = (STATIC / "js" / "sessions.js").read_text(encoding="utf-8")
+        self.assertIn('t("common.preconditionHint")', popup)
         self.assertIn(PRECONDITION_HINT, dash.PRECONDITION_HELP)
         # 예시는 placeholder 로 보여 준다. 안내 문구와 같이 사전에서 꺼내 쓰므로
         # 화면 언어를 따라가고, 한국어 값은 CLI 도움말과 같은 상수여야 한다
         self.assertEqual(korean["common.preconditionExample"], PRECONDITION_EXAMPLE)
-        self.assertIn(
-            'data-i18n-placeholder="common.preconditionExample"',
-            INDEX.read_text(encoding="utf-8"),
-        )
+        self.assertIn('t("common.preconditionExample")', popup)
 
 
 if __name__ == "__main__":

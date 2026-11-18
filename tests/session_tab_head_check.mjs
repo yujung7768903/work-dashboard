@@ -1,5 +1,5 @@
 // 할일 상세에서 세션 탭을 열면 머리글이 개요와 같은 "#id | 제목" 인지 확인한다.
-// 세션 줄에서 열었을 때는 예전대로 워크스페이스+카테고리가 남아야 한다 (분류 UI 의 맥락).
+// 세션에서 열었을 때는 그 세션 할일의 트리(맨 위 할일)+카테고리가 남아야 한다 (분류 UI 의 맥락).
 // 실행: node tests/session_tab_head_check.mjs (tests/test_session_tab_head.py 가 이걸 부른다)
 import assert from "node:assert/strict";
 import { bootKorean } from "./i18n_boot.mjs";
@@ -45,7 +45,7 @@ globalThis.document = {
 const SESSION = {
   id: 3,
   claude_session_id: "abc",
-  workspace_name: "작업 대시보드",
+  root_title: "작업 대시보드",
   category_id: 4,
   cwd: "/tmp",
   git_branch: "master",
@@ -54,7 +54,6 @@ const SESSION = {
 const TODO = { id: 42, title: "세션 탭 머리글 정리", created_at: "2026-08-05T10:00:00" };
 
 const PAYLOAD = {
-  "/api/workspaces": [],
   "/api/categories": [{ id: 4, name: "개발환경 개선" }],
   "/api/todos/42": { todo: TODO, sessions: [{ id: 3 }], worktrees: [] },
   "/api/sessions/3": { session: SESSION, messages: [], todos: [TODO], worktrees: [] },
@@ -94,7 +93,7 @@ const [overviewTitle, sessionTitle] = await titles({ todo: { id: 42 } });
 assert.equal(overviewTitle, "#42 | 세션 탭 머리글 정리");
 assert.equal(sessionTitle, "#42 | 세션 탭 머리글 정리");
 
-// 세션 줄에서 열면 분류할 대상을 알아야 하므로 워크스페이스 이름을 그대로 둔다
+// 세션에서 열면 분류할 대상을 알아야 하므로 트리 맨 위 할일 제목을 둔다
 const [, fromSession] = await titles({ session: { id: 3 } });
 assert.equal(fromSession, "작업 대시보드");
 

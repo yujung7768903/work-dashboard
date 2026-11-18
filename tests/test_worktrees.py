@@ -14,7 +14,6 @@ from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import release, worktrees
 from tests.support import free_test_port, serve, temp_db
 
@@ -164,13 +163,13 @@ class RepoTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         category = category_repo.list_all(self.con)[0]
-        self.workspace = workspace_repo.create(self.con, category["id"], "테스트")
+        self.workspace = todo_repo.create(self.con, "테스트", category_id=category["id"])
 
     def _register(self, session_id, cwd, todo_title=None):
-        """세션이 워크스페이스에 속한다는 것은 그 워크스페이스 할일을 잡았다는 뜻이다"""
+        """세션이 트리에 속한다는 것은 그 트리 할일을 잡았다는 뜻이다"""
         session_repo.register(self.con, session_id, cwd=cwd)
         todo = todo_repo.create(
-            self.con, todo_title or f"작업 {session_id}", workspace_id=self.workspace["id"]
+            self.con, todo_title or f"작업 {session_id}", parent_id=self.workspace["id"]
         )
         session_repo.link_todo(self.con, session_id, todo["id"])
 
@@ -234,7 +233,7 @@ class RepoTest(unittest.TestCase):
 
     def test_row_carries_the_todo_id_of_the_session_that_worked_there(self):
         """워크트리 탭 클릭으로 할일 상세를 열려면 줄마다 todo_id 가 있어야 한다"""
-        todo = todo_repo.create(self.con, "탭 분리", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "탭 분리", parent_id=self.workspace["id"])
         session_repo.register(self.con, "sess-4444", cwd=self.worktree)
         session_repo.link_todo(self.con, "sess-4444", todo["id"])
         row = next(r for r in self._group()["rows"] if r["branch"] == "worktree-feat")
@@ -244,8 +243,8 @@ class RepoTest(unittest.TestCase):
         row = next(r for r in self._group()["rows"] if r["branch"] == "worktree-feat")
         self.assertIsNone(row["todo_id"])
 
-    def test_workspace_without_a_repo_is_left_out(self):
-        """세션이 한 번도 안 돈 워크스페이스는 저장소를 모르므로 그리지 않는다"""
+    def test_tree_without_a_repo_is_left_out(self):
+        """세션이 한 번도 안 돈 트리는 저장소를 모르므로 그리지 않는다"""
         groups = worktrees.overview(self.con)["groups"]
         self.assertEqual([group["id"] for group in groups], [])
 
@@ -263,19 +262,19 @@ class RepoTest(unittest.TestCase):
         self.assertEqual(group["name"], "repo")
         self.assertEqual([row["branch"] for row in group["rows"]], ["master", "worktree-feat"])
 
-    def test_workspace_view_excludes_that_same_untied_session(self):
-        """반면 워크스페이스 뷰는 그 세션을 워크스페이스로 엮지 못해 여전히 안 보인다"""
+    def test_tree_view_excludes_that_same_untied_session(self):
+        """반면 트리 뷰는 그 세션을 어느 트리로도 엮지 못해 여전히 안 보인다"""
         session_repo.register(self.con, "sess-untied-2", cwd=self.repo)
-        groups = worktrees.overview(self.con, worktrees.GROUP_BY_WORKSPACE)["groups"]
+        groups = worktrees.overview(self.con, worktrees.GROUP_BY_TREE)["groups"]
         self.assertEqual(groups, [])
 
     def test_project_view_shows_a_shared_repo_only_once(self):
         """같은 저장소를 워크스페이스 둘이 나눠 써도 프로젝트 뷰에는 한 번만"""
-        other = workspace_repo.create(self.con, self.workspace["category_id"], "다른 워크스페이스")
+        other = todo_repo.create(self.con, "다른 트리", category_id=self.workspace["category_id"])
         for index, workspace in enumerate((self.workspace, other)):
             session_id = f"sess-dup-{index}"
             session_repo.register(self.con, session_id, cwd=self.repo)
-            todo = todo_repo.create(self.con, f"작업{index}", workspace_id=workspace["id"])
+            todo = todo_repo.create(self.con, f"작업{index}", parent_id=workspace["id"])
             session_repo.link_todo(self.con, session_id, todo["id"])
         groups = worktrees.overview(self.con, worktrees.GROUP_BY_PROJECT)["groups"]
         matches = [g for g in groups if os.path.realpath(g["repo"]) == os.path.realpath(self.repo)]
@@ -388,12 +387,12 @@ class ApplyTest(unittest.TestCase):
         git(self.repo, "worktree", "add", "-q", "-b", "worktree-feat", self.worktree)
         write_commit(self.worktree, "base.txt", "워크트리 변경\n", "feat: base.txt 수정")
         category = category_repo.list_all(self.con)[0]
-        self.workspace = workspace_repo.create(self.con, category["id"], "테스트")
+        self.workspace = todo_repo.create(self.con, "테스트", category_id=category["id"])
 
     def _link_todo(self, cwd, title="할일"):
         session_id = f"sess-{title}"
         session_repo.register(self.con, session_id, cwd=cwd)
-        todo = todo_repo.create(self.con, title, workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, title, parent_id=self.workspace["id"])
         session_repo.link_todo(self.con, session_id, todo["id"])
         return todo["id"]
 
@@ -502,7 +501,7 @@ class DiscardTest(unittest.TestCase):
         git(self.repo, "worktree", "add", "-q", "-b", "worktree-feat", self.worktree)
         write_commit(self.worktree, "base.txt", "워크트리 변경\n", "feat: base.txt 수정")
         category = category_repo.list_all(self.con)[0]
-        self.workspace = workspace_repo.create(self.con, category["id"], "테스트")
+        self.workspace = todo_repo.create(self.con, "테스트", category_id=category["id"])
 
     def test_discard_removes_worktree_and_branch_without_merging(self):
         result = worktrees.discard(self.con, self.repo, "worktree-feat")
@@ -515,7 +514,7 @@ class DiscardTest(unittest.TestCase):
     def test_discard_leaves_linked_todos_alone(self):
         """적용과 달리 완료 처리를 하지 않는다 — 붙어 있던 할일은 doing 으로 남는다"""
         session_repo.register(self.con, "sess-1", cwd=self.worktree)
-        todo = todo_repo.create(self.con, "할일", workspace_id=self.workspace["id"])
+        todo = todo_repo.create(self.con, "할일", parent_id=self.workspace["id"])
         session_repo.link_todo(self.con, "sess-1", todo["id"])
         worktrees.discard(self.con, self.repo, "worktree-feat")
         self.assertFalse(os.path.isdir(self.worktree))

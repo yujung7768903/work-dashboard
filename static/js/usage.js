@@ -619,24 +619,23 @@ function renderShare(tokens) {
 function renderNext(next, categories) {
   const box = slot("u-next");
   if (!box) return;
-  box.appendChild(railHead(t("usage.nextTodo"), boardLink()));
+  box.appendChild(railHead(t("usage.nextTodo"), treeLink()));
   if (!next?.todo) {
     box.appendChild(railCard(tag("p", "u-caption", t("usage.noNextTodo"))));
     return;
   }
 
-  const { todo, workspace } = next;
+  const { todo, root } = next;
   const item = tag("div", "u-next-item");
-  // Jira 키가 없는 워크스페이스도 있다 — 그 자리에는 배지를 두지 않는다
-  if (workspace?.jira_id) item.appendChild(tag("div", "u-next-badge", workspace.jira_id));
   const body = tag("div", "u-next-body");
   body.append(tag("p", null, todo.title));
-  if (workspace?.name) body.appendChild(tag("small", null, workspace.name));
+  // 트리 맨 위 할일 — 자기 자신이 맨 위면 붙이지 않는다
+  if (root && root.id !== todo.id) body.appendChild(tag("small", null, root.title));
   item.appendChild(body);
 
   const meta = tag("div", "u-next-meta");
   meta.appendChild(tag("span", "u-chip", STATUS_LABEL[todo.status] || todo.status));
-  const categoryName = nameOf(categories, workspace?.category_id);
+  const categoryName = nameOf(categories, todo.category_id);
   if (categoryName) meta.appendChild(tag("span", "u-chip plain", categoryName));
 
   const shell = railCard(item);
@@ -644,13 +643,13 @@ function renderNext(next, categories) {
   box.appendChild(shell);
 }
 
-function boardLink() {
+function treeLink() {
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = t("usage.toBoard");
+  button.textContent = t("usage.toTree");
   // 탭 전환은 main.js 가 #tabs 클릭으로 처리한다. 그 버튼을 그대로 누른다
   button.addEventListener("click", () => {
-    document.querySelector("#tabs [data-tab=board]")?.click();
+    document.querySelector("#tabs [data-tab=tree]")?.click();
   });
   return button;
 }
@@ -677,7 +676,7 @@ function renderSessions(payload) {
     const item = tag("div", `u-rail-card u-sess-item ${session.state}`);
     item.appendChild(tag("div", "u-sess-mark"));
     const body = tag("div", "u-sess-body");
-    const scope = tag("div", "u-sess-scope", session.workspace_name || UNCLASSIFIED_LABEL);
+    const scope = tag("div", "u-sess-scope", session.root_title || UNCLASSIFIED_LABEL);
     // 카테고리·경과시간은 없어도 빈 칸으로 둔다. 조건부로 빼면 줄마다 열이 어긋난다
     scope.append(
       tag("span", "u-sess-cat", session.category_name || ""),

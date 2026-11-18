@@ -1,4 +1,4 @@
-// 할일 트리 배치. 루트(워크스페이스)가 왼쪽, 자식이 오른쪽 열로 한 칸씩 나간다.
+// 할일 트리 배치. 트리 맨 위 할일(상위 없는 할일·맥락)이 왼쪽, 자식이 오른쪽 열로 한 칸씩 나간다.
 // 상위가 여럿인 할일은 서버가 고른 주 상위 밑에 한 번만 놓는다 — 다른 상위·선행 선은 tree-map.js 가 긋는다.
 // 잎(보이는 자식이 없는 카드)이 위에서부터 한 줄씩 자리를 받고, 부모는 첫 자식과 마지막
 // 자식의 가운데에 선다 — 자식이 하나면 일직선, 여럿이면 부채꼴로 퍼진다(참고 이미지의 노드 그래프).
@@ -41,7 +41,8 @@ export function layoutForest(trees, { hideDone = false, keep = new Set(), openRe
     if (hideDone && tree.complete && !hasKept(tree.children, keep)) continue;
     if (drawn) state.cursor += TREE_GAP - ROW_GAP;
     const top = state.cursor;
-    place({ kind: "root", tree, data: tree }, 0, null, state, options, cards, edges);
+    // tree.children 은 맨 위 노드 하나다 — 그 카드가 곧 트리의 첫 카드(할일이면 할일 카드)
+    tree.children.forEach((head) => place({ kind: head.kind ?? "todo", tree, data: head }, 0, null, state, options, cards, edges));
     lanes.push({ tree, top: top - LANE_HEAD, bottom: state.cursor - ROW_GAP + LANE_PAD });
     drawn += 1;
   }
@@ -71,9 +72,8 @@ export function pathKeys(layout, todoId) {
   return keys;
 }
 
-// 루트 = 워크스페이스(미분류 트리는 id 가 없다). 할일·맥락은 서버가 준 key(t12·c3)
+// 할일·맥락은 서버가 준 key(t12·c3)
 export function cardKey(kind, data) {
-  if (kind === "root") return `w${data.workspace.id ?? "none"}`;
   return data.key ?? `t${data.id}`;
 }
 

@@ -40,8 +40,7 @@ from app.repositories import autorun as autorun_repo
 from app.repositories import labels as label_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
-from app.services import planning, precondition, release, worktrees
+from app.services import lineage, planning, precondition, release, worktrees
 
 # --bg 는 잡을 띄우자마자 "backgrounded … <8자리>" 를 찍고 돌아온다. 그 8자리가 잡 id
 JOB_ID_PATTERN = re.compile(r"backgrounded[^\n]*?([0-9a-f]{8})")
@@ -57,12 +56,8 @@ JOB_ID_LENGTH = 8  # 잡 디렉터리 이름은 세션 id 앞 8자
 NAME_RETRY_SLEEP_SEC = 2
 FIVE_HOUR_KEY = "five_hour"
 MS_PER_SECOND = 1000
-WORKSPACE_LABELS = (
-    ("배경", "background"),
-    ("목적", "purpose"),
-    ("목표", "goal"),
-    ("고려사항", "considerations"),
-)
+# 지시문에 싣는 상위 할일 수 — 가장 가까운 것부터. 맨 위 할일의 note 에 옛 워크스페이스 배경·목표가 있다
+PROMPT_ANCESTORS = 3
 
 # 시작하지 않은 이유. 사람이 --dry-run 으로 읽는 문장이라 그대로 쓴다
 REASON_OFF = "autorun 이 꺼져 있음"
@@ -114,19 +109,14 @@ def start_todo(con, todo_id, launcher=None, cwd=None):
     이 할일을 직접 고른 것 자체가 그 판단이다. 검토 대기만은 todos.update() 와 같은
     이유로 막는다 — 안 막으면 확인하기 전에 같은 할일에 잡을 또 띄워 diff 가 두 벌 생긴다
 
-    cwd 를 받으면 target_cwd() 대신 그 경로를 그대로 쓴다 — 그 워크스페이스로 분류된
-    세션이 없어 위치를 못 정했을 때, 화면이 사람에게 물어 받은 값이 이 자리로 온다.
+    cwd 를 받으면 target_cwd() 대신 그 경로를 그대로 쓴다 — 그 트리에서 돈 세션이 없어
+    위치를 못 정했을 때, 화면이 사람에게 물어 받은 값이 이 자리로 온다.
     한 번 쓰면 launch() 가 그 경로로 세션을 등록하므로 다음부터는 target_cwd() 가
     알아서 찾는다 — 매번 물을 필요가 없다
     """
     todo = todo_repo.get(con, todo_id)
     if todo["id"] in autorun_repo.locked_todo_ids(con):
         raise Validation(REVIEW_LOCKED_MSG)
-    workspace = (
-        workspace_repo.get(con, todo["workspace_id"])
-        if todo["workspace_id"] is not None
-        else None
-    )
     if cwd:
         if not os.path.isdir(cwd):
             raise Validation(f"{MSG_NOT_A_DIRECTORY}: {cwd}")
@@ -136,15 +126,14 @@ def start_todo(con, todo_id, launcher=None, cwd=None):
         raise Validation(REASON_NO_CWD)
     name = job_name(todo)
     launched = (launcher or launch)(
-        prompt=build_prompt(todo, workspace, cwd), cwd=cwd, name=name
+        prompt=build_prompt(todo, lineage.ancestor_todos(con, todo["id"]), cwd), cwd=cwd, name=name
     )
     if not launched.get("job_id"):
         raise Validation(launched.get("error") or "잡을 띄우지 못함")
     session_id = launched.get("session_id") or ""
     if session_id:
         session_repo.register(con, session_id, cwd=cwd)
-        if workspace:
-            session_repo.classify(con, session_id, workspace_id=workspace["id"])
+        _classify(con, session_id, todo)
         session_repo.link_todo(con, session_id, todo_id)
     return {
         "job_id": launched["job_id"],
@@ -160,7 +149,10 @@ def panel_runs(con, limit=10):
     변경을 어디서 봐야 하는지, 띄워 둔 서버가 몇 번인지 알 수 없다
     """
     runs = _merged_runs(con, limit)
+    parents = lineage.parent_map(con)
     for run in runs:
+        root = lineage.root_todo(con, run["todo_id"], parents)
+        run["root_title"] = root["title"] if root and root["id"] != run["todo_id"] else None
         path = _run_worktree(run)
         run["worktree_path"] = path
         run["worktree"] = _worktree_name(path)
@@ -232,7 +224,7 @@ def judge(con):
         reason=REASON_READY,
         state=state,
         cwd=cwd,
-        prompt=build_prompt(picked["todo"], picked["workspace"], cwd),
+        prompt=build_prompt(picked["todo"], lineage.ancestor_todos(con, picked["todo"]["id"]), cwd),
     )
 
 
@@ -251,10 +243,8 @@ def pick(con):
     if not rows:
         return None
     todo = rows[0]
-    workspace = (
-        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
-    )
-    return {"todo": todo, "workspace": workspace}
+    root = lineage.root_todo(con, todo["id"])
+    return {"todo": todo, "root": root, "workspace": None}
 
 
 def sorted_candidates(con, keep, limit=None):
@@ -272,26 +262,21 @@ def sorted_candidates(con, keep, limit=None):
 def cwd_resolver(con):
     """할일 → 작업 위치. 판정과 후보 목록이 같은 답을 쓰게 하나로 모았다.
 
-    위치는 워크스페이스 단위 속성이라 워크스페이스당 한 번만 계산한다 — 후보 수만큼
-    target_cwd 를 다시 돌리면 매번 세션 이력을 훑는다. 할일에 직접 적힌 위치(todos.cwd)가
-    있으면 그게 먼저다 — 워크스페이스가 없는 할일은 그 길밖에 없다. 없어진 경로는
-    workspaces.cwd 와 같은 규칙으로 무시한다
+    할일에 직접 적힌 위치(todos.cwd)가 먼저고, 없으면 가장 가까운 상위 할일의 것(lineage.nearest_cwd),
+    그것도 없으면 그 트리에서 가장 많이 작업한 저장소(target_cwd). 트리 단위 추론은 맨 위 노드당
+    한 번만 계산한다 — 후보 수만큼 다시 돌리면 매번 세션 이력을 훑는다. 없어진 경로는 무시한다
     """
     memo = {}
+    parents = lineage.parent_map(con)
 
     def resolve(todo):
-        own = (todo.get("cwd") or "").strip()
-        if own and os.path.isdir(own):
-            return own
-        workspace_id = todo["workspace_id"]
-        if workspace_id not in memo:
-            workspace = (
-                workspace_repo.get(con, workspace_id)
-                if workspace_id is not None
-                else None
-            )
-            memo[workspace_id] = target_cwd(con, workspace)
-        return memo[workspace_id]
+        chosen = lineage.nearest_cwd(con, todo)
+        if chosen:
+            return chosen
+        top = lineage.top_of(con, todo["id"], parents)
+        if top not in memo:
+            memo[top] = target_cwd(con, todo)
+        return memo[top]
 
     resolve.memo = memo
     return resolve
@@ -305,7 +290,7 @@ def eligible(con):
     할일에 잡을 또 띄워 diff 가 두 벌 생긴다. failed 는 안 뺀다 — AUTORUN_FAIL_LIMIT
     이 연속 실패 재시도를 전제하므로, 한 번 실패했다고 바로 빼면 그 한도가 무의미해진다.
 
-    위치는 cwd_resolver 가 워크스페이스당 한 번만 계산하고, 그 결과를 `keep.cwd_memo`
+    위치는 cwd_resolver 가 트리당 한 번만 계산하고, 그 결과를 `keep.cwd_memo`
     로 내보낸다 — judge() 가 빈 문자열이 섞여 있는지로 "위치 때문에 건너뛴 후보가
     있었는지"를 안다. 고른 할일의 위치는 `keep.cwd_of` 로 다시 묻는다 — 할일에
     직접 적힌 위치는 memo 에 없다
@@ -370,10 +355,9 @@ def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
             "todo_id": todo["id"],
             "title": todo["title"],
             "status": todo["status"],
-            # 위치를 지정하는 팝업이 어디에 저장할지 알아야 한다 — 워크스페이스가
-            # 있으면 그쪽(workspaces.cwd), 없으면 이 할일(todos.cwd)
-            "workspace_id": todo["workspace_id"],
-            "workspace_name": todo["workspace_name"],
+            # 위치를 지정하는 팝업은 트리 맨 위 할일(root_id)의 cwd 에 저장한다 — 그 아래 할일이 다 물려받는다
+            "root_id": todo["root_id"],
+            "root_title": todo["root_title"],
             "blocker": _blocker(con, todo, cwd_of),
             "precondition": precondition.summary(con, todo["precondition"]),
         }
@@ -384,7 +368,7 @@ def candidates(con, limit=AUTORUN_CANDIDATE_LIMIT):
 def _blocker(con, todo, cwd_of):
     """무엇 하나만 고르면 되는 값이다 — 사람이 먼저 손댈 것부터 본다.
 
-    위치 미정을 조건 미충족보다 먼저 보는 이유 — 한 번 지정하면 그 워크스페이스의
+    위치 미정을 조건 미충족보다 먼저 보는 이유 — 한 번 지정하면 그 트리의
     후보가 다 풀리고, 조건은 할일마다 따로 풀어야 한다. 그리고 eligible() 이 위치
     없는 후보를 건너뛰므로, 여기서 안 알려주면 화면은 "시작 가능"이라 적어 놓고
     tick 은 조용히 지나간다 — 사람이 왜 안 도는지 알 방법이 없다
@@ -435,28 +419,26 @@ def _window_reset(window):
     return isinstance(resets_at, (int, float)) and time.time() >= resets_at
 
 
-def target_cwd(con, workspace):
-    """그 워크스페이스에서 가장 많이 작업한 저장소의 메인 체크아웃.
+def target_cwd(con, todo):
+    """그 할일의 트리(맨 위 노드와 그 아래 할일 전부)에서 가장 많이 작업한 저장소의 메인 체크아웃.
 
     워크트리 경로가 잡히면 `/.claude/worktrees/` 앞에서 잘라 본 저장소로 되돌린다 —
     남의 워크트리에 들어가 고치면 그 세션의 변경과 섞인다.
 
-    '가장 최근' 이 아니라 '가장 많이' 인 이유 — 다른 저장소에서 이 워크스페이스의
+    '가장 최근' 이 아니라 '가장 많이' 인 이유 — 다른 저장소에서 이 트리의
     할일을 하나 잡기만 해도 최근 1위가 그쪽으로 넘어간다(실제로 그랬다). 저장소가
     아닌 위치(홈·scratch)는 .git 이 없어 여기서 걸러진다.
 
-    사람이 지정한 위치(workspaces.cwd)가 있으면 그것이 먼저다 — 추론은 그 워크스페이스에서
-    저장소에 들어가 일해 본 적이 있어야 답이 나오고, 없으면 영영 안 나온다. 지정 위치에는
-    .git 을 요구하지 않는다: 저장소가 아닌 곳에서 하는 일(자료·문서)도 있고, 추론과 달리
-    엉뚱한 데를 짚을 위험이 없다. 없어진 경로면 무시하고 추론으로 내려간다
+    사람이 지정한 위치(그 할일이나 상위 할일의 cwd)가 있으면 그것이 먼저다 — 지정 위치에는
+    .git 을 요구하지 않는다: 저장소가 아닌 곳에서 하는 일(자료·문서)도 있다. 할일이 없으면 ""
     """
-    if not workspace:
+    if not todo:
         return ""
-    chosen = (workspace.get("cwd") or "").strip()
-    if chosen and os.path.isdir(chosen):
+    chosen = lineage.nearest_cwd(con, todo)
+    if chosen:
         return chosen
     counted = {}
-    for cwd, sessions in session_repo.cwd_counts_by_workspace(con, workspace["id"]):
+    for cwd, sessions in session_repo.cwd_counts_by_todos(con, lineage.tree_todo_ids(con, todo["id"])):
         root = _main_checkout(cwd)
         if root and os.path.exists(os.path.join(root, ".git")):
             counted[root] = counted.get(root, 0) + sessions
@@ -465,16 +447,14 @@ def target_cwd(con, workspace):
     return max(counted, key=lambda root: counted[root])
 
 
-def build_prompt(todo, workspace, cwd):
-    """자율 세션에 주는 지시 전문. 하네스 기본 지시를 이겨야 하므로 금지를 명시한다"""
+def build_prompt(todo, ancestors, cwd):
+    """자율 세션에 주는 지시 전문. 하네스 기본 지시를 이겨야 하므로 금지를 명시한다.
+    ancestors 는 상위 할일 행들(가까운 것부터) — 그 note 에 왜 하는 일인지(배경·목표)가 있다"""
     lines = [f"작업 대시보드의 할일 하나를 끝까지 수행한다. 대상 저장소: {cwd}", ""]
-    if workspace:
-        lines.append(f"# 워크스페이스: {workspace['name']}")
-        lines += [
-            f"- {label}: {workspace[key]}"
-            for label, key in WORKSPACE_LABELS
-            if workspace.get(key)
-        ]
+    for above in list(ancestors or [])[:PROMPT_ANCESTORS][::-1]:
+        lines.append(f"# 상위 할일 {above['id']}. {above['title']}")
+        if above.get("note"):
+            lines.append(above["note"])
         lines.append("")
     lines.append(f"# 할일 {todo['id']}. {todo['title']}")
     if todo.get("precondition"):
@@ -695,7 +675,7 @@ def _apply_streak(con, outcome):
 def _register_run(con, decision, launched):
     """자율 세션을 대시보드에 붙인다 — 안 붙이면 보드는 그 작업을 모른다.
 
-    ②의 --inherit 이 아직 없으므로 워크스페이스를 직접 지정한다. link_todo 가
+    세션 카테고리는 그 할일의 카테고리로 둔다. link_todo 가
     할일을 doing 으로 올리므로 사람이 보드에서 진행 중임을 바로 본다.
 
     last_prompt 는 여기서 심지 않는다 — 잡의 UserPromptSubmit 훅이 곧 채운다.
@@ -706,12 +686,16 @@ def _register_run(con, decision, launched):
     todo = decision["todo"]
     if session_id:
         session_repo.register(con, session_id, cwd=decision["cwd"])
-        if decision.get("workspace"):
-            session_repo.classify(
-                con, session_id, workspace_id=decision["workspace"]["id"]
-            )
+        _classify(con, session_id, todo)
         session_repo.link_todo(con, session_id, todo["id"])
     return autorun_repo.start_run(con, todo["id"], session_id, launched["job_id"])
+
+
+def _classify(con, session_id, todo):
+    """띄운 세션을 그 할일의 카테고리로 분류한다 — 미분류로 남으면 세션 목록에서 어디 일인지 안 보인다"""
+    category = con.execute("SELECT name FROM categories WHERE id=?", (todo.get("category_id"),)).fetchone()
+    if category:
+        session_repo.classify(con, session_id, category_name=category["name"])
 
 
 def _job_finished(job_id, jobs_root=AUTORUN_JOBS_ROOT):

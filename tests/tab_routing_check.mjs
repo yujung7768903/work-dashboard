@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { bootKorean } from "./i18n_boot.mjs";
 
-// main.js 는 레일 메뉴(#tabs)와 보드 하위 탭(#board-tabs) 두 곳에 클릭을 건다.
+// main.js 는 레일 메뉴(#tabs)에 클릭을 건다. 화면 모듈도 제 요소에 건다.
 // 요소를 하나로 흉내내면 나중 것이 앞의 핸들러를 덮으므로 id 별로 따로 만든다
 const listeners = {};
 const elements = {};
@@ -38,7 +38,8 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 await import("../static/js/main.js");
 
 // 들어온 주소가 곧 탭이다. / 로 들어오면 기본 탭 경로로 정리된다
-const expected = { "/": "/usage", "/board": "/board", "/nope": "/usage" };
+// 보드 탭은 없어졌다 — 옛 /board 주소는 기본 탭으로 떨어진다
+const expected = { "/": "/usage", "/tree": "/tree", "/board": "/usage", "/nope": "/usage" };
 assert.equal(location.pathname, expected[process.argv[2] || "/"]);
 
 // 메뉴를 누르면 주소가 따라 바뀐다 — 그래야 새로고침이 제자리로 돌아온다

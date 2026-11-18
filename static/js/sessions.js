@@ -1,4 +1,4 @@
-// 활성 세션 영역. 이 영역만 폴링해 편집 중인 입력을 건드리지 않음
+// 세션·할일 상세 팝업. 사용량 레일·트리·매니저·자율 수행이 모두 이 팝업 하나를 쓴다
 import * as api from "./api.js";
 import { t } from "./i18n.js";
 import { linkify } from "./linkify.js";
@@ -7,11 +7,8 @@ import { prereqChip, prereqList } from "./prereq.js";
 import { stepList } from "./steps.js";
 import { reportCard } from "./task-report.js";
 import { permissionCard } from "./permission-answer.js";
+import { todoActions } from "./todo-actions.js";
 
-const POLL_INTERVAL_MS = 2000;
-const WORKING = "working";
-const ACTIVE = "active";
-const NO_WORKSPACE = "―";
 const UNCLASSIFIED_LABEL = t("session.unclassified");
 const ROLE_LABELS = { user: t("session.roleUser"), assistant: t("session.roleAssistant") };
 const OVERVIEW_TAB = "overview";
@@ -45,7 +42,6 @@ const WORKTREE_TIME_FIELDS = [
   ["deleted_at", t("history.deleted")],
 ];
 
-let timer = null;
 // 팝업 세션 탭의 답 기다리기 폴링. 첫 전송 뒤에만 돈다
 let detailTimer = null;
 const DETAIL_POLL_MS = 3000;
@@ -54,38 +50,6 @@ const PERMISSION_RELOAD_MS = 1500;
 // 매니저 할일의 권한 막힘 표시(tasks.blocked) — 할일 상세가 결정 대기·직접 할 일과 따로 '권한 대기'로 모은다
 const PERMISSION_BLOCK = "permission";
 const SENT_PREVIEW_CHARS = 60;
-// 팝업에서 할일을 고치면 뒤에 깔린 보드도 다시 그려야 한다. 여기서 main.js·board.js 를
-// 가져오면 팝업 렌더만 node 로 검증하는 테스트가 탭 초기화까지 끌고 들어와 못 돈다 —
-// 보드가 자기 갱신 함수를 맡기고 간다
-let refreshBoard = null;
-// 사용자가 펼친 '대기 중'은 폴링이 접지 않도록 모듈에 남긴다
-let showIdle = false;
-
-export function setBoardRefresh(refresh) {
-  refreshBoard = refresh;
-}
-
-export async function renderSessions() {
-  const payload = await api.getSessions();
-  const working = payload.sessions.filter((s) => s.state === WORKING);
-  const idle = payload.sessions.filter((s) => s.state !== WORKING);
-
-  document.getElementById("session-count").textContent = t("session.runningCount", {
-    count: working.length,
-  });
-  const warn = document.getElementById("session-warn");
-  warn.hidden = !payload.unclassified_count;
-  warn.textContent = payload.unclassified_count
-    ? t("session.unclassifiedCount", { count: payload.unclassified_count })
-    : "";
-
-  const list = document.getElementById("session-list");
-  list.innerHTML = "";
-  const shown = showIdle ? [...working, ...idle] : working;
-  shown.forEach((session) => list.appendChild(sessionRow(session)));
-  if (idle.length) list.appendChild(idleToggle(idle.length));
-}
-
 // 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다. autorun.js 는 이걸 그대로 쓴다
 export function formatAge(iso) {
   if (!iso) return "";
@@ -96,38 +60,6 @@ export function formatAge(iso) {
   if (sec < 3600) return `${Math.floor(sec / 60)}m`;
   if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
   return `${Math.floor(sec / 86400)}d`;
-}
-
-function idleToggle(count) {
-  const item = document.createElement("li");
-  item.className = "more";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = showIdle
-    ? t("session.hideIdle")
-    : t("session.showIdle", { count });
-  button.addEventListener("click", () => {
-    showIdle = !showIdle;
-    renderSessions().catch(() => {});
-  });
-  item.appendChild(button);
-  return item;
-}
-
-function sessionRow(session) {
-  const item = document.createElement("li");
-  item.className = session.state === WORKING ? "working" : "idle";
-
-  const mark = element("span", null, session.state === WORKING ? "●" : "○");
-  const scope = element("span", "scope", session.workspace_name || NO_WORKSPACE);
-  const category = element("span", null, `(${session.category_name || UNCLASSIFIED_LABEL})`);
-  const prompt = element("span", "prompt", session.last_prompt || "");
-
-  const age = element("span", "age", formatAge(session.last_seen_at));
-
-  item.append(mark, scope, category, prompt, age);
-  item.addEventListener("click", () => openDetail({ session }));
-  return item;
 }
 
 // 세션 줄·사용량 레일의 세션 카드·보드의 할일이 모두 이 팝업 하나를 쓴다.
@@ -150,11 +82,8 @@ export function openDetail(target) {
 
 // 두 갈래 입력을 같은 모양으로 맞춘다 — 이후 렌더는 어디서 열렸는지 모른다
 async function loadContext(target) {
-  const [workspaces, categories] = await Promise.all([
-    api.getWorkspaces(),
-    api.getCategories(),
-  ]);
-  const common = { workspaces, categories };
+  const categories = await api.getCategories();
+  const common = { categories };
   if (target.session) {
     const detail = await api.getSession(target.session.id);
     // 분류 직후처럼 방금 만들어진 할일을 보여줘야 할 때만 개요로 열린다
@@ -390,8 +319,10 @@ function fillTodoBlock(block, todo) {
     ...(block.decisionSlot ? [block.decisionSlot] : []),
     historySection(events(todo, TIME_FIELDS)),
     conditionSection(todo),
-    // 하위 할일은 보드 카드에서 펼쳐 보므로 여기서는 안 그린다
-    ...textField("note", todo.note)
+    // 하위 할일·단계는 트리에서 펼쳐 보므로 여기서는 안 그린다
+    ...textField("note", todo.note),
+    // 시작·라벨·삭제 — 보드 케밥에 있던 것. 지우면 팝업을 닫는다(닫힘을 듣는 트리가 다시 받는다)
+    todoActions(todo, { onDeleted: () => document.getElementById("session-modal").close() })
   );
 }
 
@@ -402,7 +333,7 @@ function editButton(block, todo) {
   return button;
 }
 
-// 제목·우선순위·착수 조건·note 만 고친다. 상태·라벨·워크스페이스는 보드 케밥에 이미 있다
+// 제목·우선순위·착수 조건·note 만 고친다. 라벨·시작·삭제는 위 동작 줄(todo-actions.js), 상태는 트리 카드에 있다
 function fillTodoEdit(block, todo) {
   const title = element("input");
   title.value = todo.title;
@@ -437,8 +368,6 @@ function fillTodoEdit(block, todo) {
       .then(() => api.getTodo(todo.id))
       .then((payload) => {
         fillTodoBlock(block, payload.todo);
-        // 제목이 바뀌면 뒤에 깔린 보드도 따라가야 한다 — 팝업만 고치면 두 곳이 어긋난다
-        return refreshBoard?.();
       })
       .catch((error) => {
         save.disabled = false;
@@ -697,11 +626,11 @@ function sessionPane(context) {
 
 function headBlock(session, categories, todo) {
   const head = element("div", "dlg-head");
-  // 할일에서 열었으면 개요 탭과 같은 "#id | 제목". 세션 줄에서 열었으면 워크스페이스+카테고리
+  // 할일에서 열었으면 개요 탭과 같은 "#id | 제목". 세션에서 열었으면 그 세션 할일의 트리(맨 위 할일)+카테고리
   const title = element(
     "p",
     "dlg-title",
-    todo ? `#${todo.id} | ${todo.title}` : session.workspace_name || UNCLASSIFIED_LABEL
+    todo ? `#${todo.id} | ${todo.title}` : session.root_title || UNCLASSIFIED_LABEL
   );
   const category = todo ? null : categories.find((item) => item.id === session.category_id);
   if (category) {
@@ -733,7 +662,7 @@ function metaLine(session) {
 function classifyRow(context) {
   const { session } = context;
   const row = element("div", "session-classify");
-  const select = targetSelect(session, context.workspaces, context.categories);
+  const select = targetSelect(session, context.categories);
   // 방금 저장하고 다시 그린 팝업이면 끝났다는 안내를 이어서 보인다
   const status = element("p", "session-status", context.notice ?? "");
 
@@ -745,19 +674,14 @@ function classifyRow(context) {
       return;
     }
     try {
-      // 제목 요약은 서버가 뒷일로 돌리므로 이 응답은 바로 온다 (제목은 나중에 바뀐다)
       status.textContent = t("session.classifying");
       save.disabled = true;
-      const result = await api.classifySession(session.id, fields);
+      await api.classifySession(session.id, fields);
       save.disabled = false;
-      await renderSessions();
-      // 붙어 있던 할일이 그 워크스페이스로 옮겨지므로 뒤에 깔린 보드도 따라가야 한다
-      await refreshBoard?.();
-      // 닫지 않고 같은 곳에서 다시 그린다 — 머리의 소속과 선택이 새 분류를 따라가고,
-      // 끝났다는 안내가 남는다. 할일이 자동으로 생겼으면 개요 탭으로 넘겨 무엇이 만들어졌는지 보여준다
+      // 닫지 않고 같은 곳에서 다시 그린다 — 머리의 소속과 선택이 새 분류를 따라가고, 끝났다는 안내가 남는다
       openDetail({
         ...(context.fromTodo ? { todo: context.todos[0] } : { session }),
-        tab: result?.created_todo ? OVERVIEW_TAB : SESSION_TAB,
+        tab: SESSION_TAB,
         notice: t("session.classified"),
       });
     } catch (error) {
@@ -771,47 +695,20 @@ function classifyRow(context) {
 
 function classifyFields(value) {
   const [kind, id] = value.split(":");
-  if (kind === "w") return { workspace_id: Number(id) };
   if (kind === "c") return { category_id: Number(id) };
   return null;
 }
 
-function targetSelect(session, workspaces, categories) {
+// 세션 분류는 카테고리만이다 — 어느 트리 일인지는 세션이 잡은 할일이 정한다
+function targetSelect(session, categories) {
   const select = element("select", "session-target");
   const placeholder = new Option(t("session.classifyPlaceholder"), "");
   placeholder.disabled = true;
   placeholder.selected = true;
   select.add(placeholder);
-
-  const names = new Map(categories.map((category) => [category.id, category.name]));
-  const workspaceGroup = optgroup(t("nav.workspace"));
-  workspaces
-    .filter((workspace) => workspace.status === ACTIVE)
-    .forEach((workspace) =>
-      workspaceGroup.appendChild(
-        new Option(
-          `${workspace.name} (${names.get(workspace.category_id) ?? "?"})`,
-          `w:${workspace.id}`,
-          false,
-          session.workspace_id === workspace.id
-        )
-      )
-    );
-
-  // 워크스페이스 없이 카테고리만 정하는 세션이 있어 두 갈래를 한 select 에 둔다
-  const categoryGroup = optgroup(t("session.categoryOnly"));
   categories.forEach((category) =>
-    categoryGroup.appendChild(
-      new Option(
-        category.name,
-        `c:${category.id}`,
-        false,
-        !session.workspace_id && session.category_id === category.id
-      )
-    )
+    select.add(new Option(category.name, `c:${category.id}`, false, session.category_id === category.id))
   );
-
-  select.append(workspaceGroup, categoryGroup);
   return select;
 }
 
@@ -999,23 +896,9 @@ function stopDetailPolling() {
   detailTimer = null;
 }
 
-function optgroup(label) {
-  const group = document.createElement("optgroup");
-  group.label = label;
-  return group;
-}
-
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-export function startSessionPolling() {
-  if (timer) clearInterval(timer);
-  // 폴링 실패는 삼킨다 — 2초마다 배너를 덮어쓰면 다른 조작의 에러가 지워짐
-  const tick = () => renderSessions().catch(() => {});
-  tick();
-  timer = setInterval(tick, POLL_INTERVAL_MS);
 }

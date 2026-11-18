@@ -27,7 +27,6 @@ from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import session_results, todo_tree
 from tests.support import temp_db, temp_db_path
 
@@ -220,9 +219,9 @@ class ResultFixture(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         category = category_repo.list_all(self.con)[0]
-        self.space = workspace_repo.create(self.con, category["id"], "취약점 점검")
-        self.first = todo_repo.create(self.con, "스캐닝", workspace_id=self.space["id"])
-        self.second = todo_repo.create(self.con, "보고서", workspace_id=self.space["id"])
+        self.space = todo_repo.create(self.con, "취약점 점검", category_id=category["id"])
+        self.first = todo_repo.create(self.con, "스캐닝", parent_id=self.space["id"])
+        self.second = todo_repo.create(self.con, "보고서", parent_id=self.space["id"])
         session_repo.register(self.con, SID, cwd="/tmp")
         self.session_row = session_repo.find(self.con, SID)["id"]
 
@@ -279,7 +278,7 @@ class StoreTest(ResultFixture):
         self.assertEqual(first[0]["url"], "https://github.com/hkilbo/muni/pull/69")
         # 결과물은 할일이 아니다 — 진행률에 안 센다
         tree = todo_tree.forest(self.con)["trees"][0]
-        self.assertEqual(tree["progress"]["total"], 2)
+        self.assertEqual(tree["progress"]["total"], 3)  # 맨 위 할일 + 두 할일
 
     def test_session_without_todo_has_no_place_in_the_tree(self):
         graph_repo.add_result(self.con, SID, "jira:PFD-10", "생성", "2026-11-16T00:30:00+00:00")

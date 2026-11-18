@@ -1,15 +1,21 @@
-"""할일 트리 조립. 워크스페이스 하나가 트리 하나(루트)이고, 그 아래에 맥락·할일이 상위 연결(edges)로
-깊이 제한 없이 매달린다. 워크스페이스 없는 할일·맥락은 '미분류' 트리 하나에 모은다.
+"""할일 트리 조립. 상위 연결(edges)이 없는 할일·맥락 하나가 트리 하나(맨 위)이고, 그 아래에 맥락·할일이
+상위 연결로 깊이 제한 없이 매달린다. 워크스페이스는 없다(사용자 결정 11-18) — 옛 워크스페이스는 이관이 맨 위
+할일로 바꿔 두었고 배경·목표는 그 할일의 note 에 있다. 카테고리는 트리 맨 위 노드의 표시(색·이름)일 뿐이다.
 
 상위는 여러 개일 수 있다. 화면은 카드를 한 번만 그리므로 할일마다 '주 상위' 하나를 골라 그 밑에 둔다:
-같은 트리(워크스페이스)의 상위 중 확정 > 제안, 먼저 이은 것 순. 같은 트리에 상위가 없으면 그 트리 루트 바로
-아래다. 나머지 상위·선행·관련은 links 로 따로 내려 화면이 선을 더 긋는다(목록은 각 상위 밑에도 보인다).
+확정 > 제안, 먼저 이은 것 순(app/services/lineage.py 와 같은 규칙). 나머지 상위·선행·관련은 links 로 따로
+내려 화면이 선을 더 긋는다(목록은 각 상위 밑에도 보인다).
 
-진행률은 상위마다 하위 전부를 센다 — 상위가 둘인 할일은 두 상위의 진행률에 다 들어간다. 같은 상위 아래로
-두 길로 닿아도 한 번만 센다. 트리(워크스페이스) 완료는 그 트리 할일이 전부 done 일 때다(저장하지 않는다)
+할일은 role 이 NULL 인 행뿐이다. 그 밖의 role(예: 매니저 보조 피드백 기록 'feedback')은 어디에도 그리지 않는다.
+단계(role='step')는 노드가 아니다. 할일 하나는 결과 하나로 끝나는 일이고 그 과정의 파생 요청·결정은 그
+할일의 단계다 — 할일 카드 안에 순서 목록(steps)으로 싣는다. 단계에 열린 매니저 결정·확인이 있으면 waiting.
+
+진행률은 상위마다 자기 단계 전부 + 하위 할일 전부를 센다 — 상위가 둘인 할일은 두 상위의 진행률에 다 들어간다.
+같은 상위 아래로 두 길로 닿아도 한 번만 센다. 트리 완료는 그 트리 할일이 전부 done 일 때다(저장하지 않는다)
 
 세션 결과물(세션이 만들거나 고친 Confluence·Jira·PR·아티팩트·사이트·파일)은 그 세션이 맡던 할일의 results 로
-내려 화면이 그 할일 오른쪽에 잎 카드로 그린다. 진행률·상태 개수에는 세지 않는다 — 할일이 아니다
+내려 화면이 그 할일 오른쪽에 잎 카드로 그린다(단계를 맡던 세션이면 그 단계의 할일). 진행률·상태 개수에는
+세지 않는다 — 할일이 아니다
 """
 import os
 
@@ -31,14 +37,14 @@ from app.repositories import autorun as autorun_repo
 from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
-from app.repositories import workspaces as workspace_repo
-from app.services import board
+from app.services import lineage
 from app.services import manager_links
 
 # updated_at — 트리 목록이 '최근 작업·수정 순' 으로 세울 때 last_session_at 과 함께 본다(static/js/tree-todos.js)
-NODE_FIELDS = ("id", "title", "status", "parent_id", "priority", "sort_order", "workspace_id", "updated_at")
+NODE_FIELDS = ("id", "title", "status", "parent_id", "priority", "sort_order", "category_id", "cwd", "updated_at")
 CONTEXT_STATUS = "context"  # 맥락은 할일 상태가 없다. 아래가 전부 끝나면 done 으로 본다
-UNASSIGNED_KEY = None
+# 단계에 걸린 매니저 결정·확인이 아직 사람 답을 기다리는 상태
+STEP_WAITING_STATUSES = ("open", "confirm")
 
 
 def key_of(kind, ident):
@@ -46,21 +52,22 @@ def key_of(kind, ident):
 
 
 def forest(con):
-    """진행 중인 트리가 앞, 완료된 트리가 뒤. 같은 쪽 안에서는 보드의 워크스페이스 순서. 미분류는 맨 뒤"""
+    """주 상위가 없는 노드마다 트리 하나. 안 끝난 트리가 앞, 그 안에서 맨 위 우선순위 높은 것(없으면 뒤),
+    그다음 sort_order·id (lineage.rank)"""
     categories = {row["id"]: row for row in category_repo.list_all(con)}
-    nodes = _load_nodes(con)
+    nodes, steps = _load_nodes(con)
     links = _load_links(con, nodes)
     _attach(nodes, links)
-    _attach_results(con, nodes)
+    _place_children(nodes)
+    _attach_steps(nodes, steps, lineage.parent_map(con))
+    _attach_results(con, nodes, steps)
+    tops = [node for node in nodes.values() if not any(parent["primary"] for parent in node["parents"])]
     trees = []
-    for workspace in workspace_repo.list_all(con):
-        members = [node for node in nodes.values() if node["workspace_id"] == workspace["id"]]
-        tree = _tree(_workspace_head(workspace, categories), members, nodes)
-        trees.append((tree, (0,) + tuple(_board_rank(workspace, members))))
-    loose = [node for node in nodes.values() if node["workspace_id"] is None]
-    if loose:
-        trees.append((_tree({"id": None, "name": None, "unassigned": True}, loose, nodes), (1,)))
-    trees.sort(key=lambda pair: (pair[0]["complete"], pair[1]))
+    for top in sorted(tops, key=lambda item: (item["sort_order"] or 0, item["id"])):
+        tree = _tree(top, nodes, categories)
+        head = top if top["kind"] == NODE_TODO else None
+        trees.append((tree, lineage.rank(tree["complete"], head)))
+    trees.sort(key=lambda pair: pair[1])
     proposals = sum(1 for link in links if link["state"] == EDGE_PROPOSED)
     return {
         "trees": [tree for tree, _ in trees],
@@ -72,7 +79,9 @@ def forest(con):
 
 def proposals(con):
     """확인 대기 제안 목록 — 화면의 제안 칸이 쓴다. 양 끝 제목을 붙여 무엇과 무엇인지 바로 읽히게"""
-    nodes = _load_nodes(con)
+    nodes, steps = _load_nodes(con)
+    for step in steps.values():
+        nodes[key_of(NODE_TODO, step["id"])] = step
     found = []
     for edge in graph_repo.list_edges(con, states=(EDGE_PROPOSED,)):
         found.append(
@@ -100,9 +109,23 @@ def _load_nodes(con):
         row["todo_id"]: row["n"]
         for row in con.execute("SELECT todo_id, COUNT(*) AS n FROM session_todos GROUP BY todo_id")
     }
-    nodes = {}
+    nodes, steps = {}, {}
     for row in con.execute("SELECT * FROM todos ORDER BY sort_order, id"):
         todo = dict(row)
+        if lineage.is_hidden(todo):
+            continue  # 할일도 단계도 아닌 기록(예: 매니저 보조 피드백)은 트리에 없다
+        if lineage.is_step(todo):
+            steps[todo["id"]] = {
+                "id": todo["id"],
+                "title": todo["title"],
+                "status": todo["status"],
+                "sort_order": todo["sort_order"],
+                "parent_id": todo["parent_id"],
+                # 결정·확인이 걸린 단계 — 매니저 칸(mgr_*)이 아직 답을 기다리면 화면이 '대기' 를 붙인다
+                "decision": todo.get("mgr_kind"),
+                "waiting": bool(todo.get("mgr_kind")) and todo.get("mgr_status") in STEP_WAITING_STATUSES,
+            }
+            continue
         node = {key: todo.get(key) for key in NODE_FIELDS}
         node.update(
             key=key_of(NODE_TODO, todo["id"]),
@@ -122,7 +145,9 @@ def _load_nodes(con):
             "title": context["title"],
             "note": context["note"],
             "status": CONTEXT_STATUS,
-            "workspace_id": context["workspace_id"],
+            "category_id": context["category_id"],
+            "cwd": None,
+            "parent_id": None,
             "priority": None,
             "sort_order": 0,
             "waiting": None,
@@ -134,8 +159,8 @@ def _load_nodes(con):
         nodes[node["key"]] = node
     for node in nodes.values():
         node.update(parents=[], docs=[], after=[], before=[], related=[], children=[], extra_children=[],
-                    results=[])
-    return nodes
+                    results=[], steps=[])
+    return nodes, steps
 
 
 def _load_links(con, nodes):
@@ -203,15 +228,10 @@ def _attach(nodes, links):
 
 
 def _primary_parent(node, nodes):
-    """같은 트리 안의 상위 중 확정 > 제안, 먼저 이은 것"""
-    same = [
-        parent for parent in node["parents"]
-        if nodes[parent["key"]]["workspace_id"] == node["workspace_id"]
-    ]
-    if not same:
+    """상위 중 확정 > 제안, 먼저 이은 것"""
+    if not node["parents"]:
         return None
-    same.sort(key=lambda parent: (parent["state"] == EDGE_PROPOSED, parent["edge_id"]))
-    return same[0]
+    return sorted(node["parents"], key=lambda parent: (parent["state"] == EDGE_PROPOSED, parent["edge_id"]))[0]
 
 
 def _break_primary_cycles(nodes):
@@ -232,11 +252,24 @@ def _break_primary_cycles(nodes):
             step = primary_of(step["key"])
 
 
-def _attach_results(con, nodes):
+def _attach_steps(nodes, steps, parents):
+    """단계를 그 할일 카드의 steps 로. 상위는 parent_id, 없으면 그 단계로 가는 주 상위 연결(lineage.parent_map)"""
+    for step in sorted(steps.values(), key=lambda item: (item["sort_order"] or 0, item["id"])):
+        owner = nodes.get(key_of(NODE_TODO, step["parent_id"])) if step["parent_id"] is not None else None
+        if owner is None:
+            above = parents.get((NODE_TODO, str(step["id"])))
+            owner = nodes.get(key_of(*above)) if above else None
+        if owner is not None:
+            owner["steps"].append({key: step[key] for key in ("id", "title", "status", "decision", "waiting")})
+
+
+def _attach_results(con, nodes, steps=None):
     """세션 결과물(세션 → 문서 결과 관계)을 그 세션이 그때 맡던 할일 카드 밑에 붙인다.
     세션이 할일을 여럿 맡았으면 결과 시각 직전에 이은 할일, 그보다 앞선 연결이 없으면 처음 이은 할일.
+    맡던 것이 단계면 그 단계의 할일 카드다.
     할일을 안 맡은 세션의 결과는 트리에 자리가 없어 그리지 않는다(관계는 DB 에 남는다).
     같은 할일 밑 같은 문서는 세션이 달라도 카드 하나로 모으고 동작을 합친다"""
+    steps = steps or {}
     performed = {}
     for row in con.execute(
         "SELECT s.claude_session_id AS sid, st.todo_id, st.created_at FROM session_todos st"
@@ -245,6 +278,8 @@ def _attach_results(con, nodes):
         performed.setdefault(row["sid"], []).append((row["created_at"], row["todo_id"]))
     for result in graph_repo.results(con):
         todo_id = _todo_at(performed.get(result["src_id"]), result["created_at"])
+        if todo_id in steps:
+            todo_id = steps[todo_id]["parent_id"]
         node = nodes.get(key_of(NODE_TODO, todo_id)) if todo_id is not None else None
         if node is None:
             continue
@@ -295,20 +330,26 @@ def _result_card(result, todo_id):
 # ── 트리 조립 ───────────────────────────────────────────────────────────
 
 
-def _tree(head, members, nodes):
-    """주 상위를 따라 중첩. 진행률은 모든 상위 연결을 따라 센다"""
-    member_keys = {node["key"] for node in members}
-    roots = []
-    for node in sorted(members, key=lambda item: (item["kind"] != NODE_CONTEXT, item["sort_order"] or 0, item["id"])):
-        primary = next((parent for parent in node["parents"] if parent["primary"]), None)
-        if primary is None or primary["key"] not in member_keys:
-            roots.append(node)
-        else:
-            nodes[primary["key"]]["children"].append(node)
-    for node in members:
+def _place_children(nodes):
+    """주 상위 밑 children·다른 상위 밑 extra_children 을 한 번에 채운다"""
+    order = sorted(nodes.values(), key=lambda item: (item["kind"] != NODE_CONTEXT, item["sort_order"] or 0, item["id"]))
+    for node in order:
         for parent in node["parents"]:
-            if not parent["primary"]:
-                nodes[parent["key"]]["extra_children"].append(node["key"])
+            target = nodes[parent["key"]]
+            if parent["primary"]:
+                target["children"].append(node)
+            else:
+                target["extra_children"].append(node["key"])
+
+
+def _tree(top, nodes, categories):
+    """맨 위 노드 하나와 그 아래(주 상위로 붙은 것 전부). 진행률은 모든 상위 연결을 따라 센다.
+    children 에는 맨 위 노드 자신이 하나 들어 있다 — 화면은 맨 위를 할일(또는 맥락) 카드 그대로 그린다"""
+    members, stack = [], [top]
+    while stack:
+        node = stack.pop()
+        members.append(node)
+        stack.extend(node["children"])
     for node in members:
         _fill_progress(node, nodes)
     todos = [node for node in members if node["kind"] == NODE_TODO]
@@ -317,18 +358,24 @@ def _tree(head, members, nodes):
         counts[todo["status"]] = counts.get(todo["status"], 0) + 1
     total = len(todos)
     done = counts.get(STATUS_DONE, 0)
+    category = categories.get(top["category_id"]) or {}
     return {
-        "workspace": head,
-        "children": roots,
+        "key": top["key"],
+        "name": top["title"],
+        "category_id": top["category_id"],
+        "category_name": category.get("name"),
+        "category_color": category.get("color"),
+        "children": [top],
         "progress": {"done": done, "total": total},
         "counts": counts,
-        "waiting": sum(1 for todo in todos if todo["waiting"]),
+        "waiting": sum(1 for todo in todos if todo["waiting"] or any(step["waiting"] for step in todo["steps"])),
         "complete": total > 0 and done == total,
     }
 
 
 def _fill_progress(node, nodes):
-    """하위 전체(모든 상위 연결을 따라) 중 완료 수. 자기 자신은 세지 않는다. 맥락은 아래가 다 끝나면 done"""
+    """자기 단계 + 하위 할일 전체(모든 상위 연결을 따라) 중 완료 수. 자기 자신은 세지 않는다.
+    맥락은 아래가 다 끝나면 done"""
     if "progress" in node:
         return
     found, stack = set(), [node["key"]]
@@ -345,37 +392,11 @@ def _fill_progress(node, nodes):
     found.discard(node["key"])
     todos = [nodes[key] for key in found if nodes[key]["kind"] == NODE_TODO]
     done = sum(1 for todo in todos if todo["status"] == STATUS_DONE)
-    node["progress"] = {"done": done, "total": len(todos)}
-    if node["kind"] == NODE_CONTEXT and todos and done == len(todos):
+    done += sum(1 for step in node["steps"] if step["status"] == STATUS_DONE)
+    total = len(todos) + len(node["steps"])
+    node["progress"] = {"done": done, "total": total}
+    if node["kind"] == NODE_CONTEXT and todos and done == total:
         node["status"] = STATUS_DONE
-
-
-def _workspace_head(workspace, categories):
-    category = categories.get(workspace["category_id"]) or {}
-    return {
-        "id": workspace["id"],
-        "name": workspace["name"],
-        "status": workspace["status"],
-        "jira_id": workspace.get("jira_id"),
-        "category_id": workspace["category_id"],
-        "category_name": category.get("name"),
-        "category_color": category.get("color"),
-    }
-
-
-def _board_rank(workspace, members):
-    """보드가 워크스페이스 카드를 세우는 순서를 그대로 쓴다 (app/services/board.py)"""
-    todos = [node for node in members if node["kind"] == NODE_TODO]
-    done = sum(1 for todo in todos if todo["status"] == STATUS_DONE)
-    rank = board.workspace_rank(
-        {
-            "todos": todos,
-            "total_count": len(todos),
-            "done_count": done,
-            "sort_order": workspace["sort_order"],
-        }
-    )
-    return rank if isinstance(rank, tuple) else (rank,)
 
 
 def _ref(node):

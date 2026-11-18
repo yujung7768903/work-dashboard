@@ -45,7 +45,18 @@ class CliTest(unittest.TestCase):
     def test_ls_succeeds_on_fresh_db(self):
         code, out, _ = self.run_cli("ls")
         self.assertEqual(code, 0)
-        self.assertIn("미분류", out)
+        self.assertIn("할일이 없음", out)
+
+    def test_ls_groups_by_top_todo(self):
+        """트리(맨 위 할일)별 묶음 — 워크스페이스는 없어졌다"""
+        con = connect()
+        dev = category_repo.get_by_name(con, "개발")["id"]
+        top = todo_repo.create(con, "결제 개편", category_id=dev)
+        todo_repo.create(con, "설계", parent_id=top["id"])
+        code, out, _ = self.run_cli("ls", "--json")
+        self.assertEqual(code, 0)
+        [group] = [g for g in json.loads(out)["groups"] if g["root_id"] == top["id"]]
+        self.assertEqual((group["name"], group["total_count"]), ("결제 개편", 2))
 
     def test_json_flag_emits_parseable_output(self):
         code, out, _ = self.run_cli("ls", "--json")
