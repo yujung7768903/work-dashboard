@@ -580,15 +580,19 @@ def manager_tasks_view_sql():
 # 되돌리기·확인 필요 해소 등)과 결정·확인 질문은 새 할일이 아니라 그 할일의 단계로 쌓는다. 단계는 todos 행이고
 # role='step' 이며 상위 연결(edges parent, src=할일 → dst=단계)과 parent_id 로 그 할일 아래에 붙는다. 순서는 sort_order.
 # 결정·확인은 그 단계 행의 mgr_* 칸에 둔다 — 선택지·버튼·답 흐름이 단계 단위로 그대로 돈다.
-# 새 할일로 나누는 것은 결과물이 다를 때뿐이다. role 이 NULL 이면 할일이다
+# 새 할일로 나누는 것은 결과물이 다를 때뿐이다. role 이 NULL 이면 할일이다.
+# 이 단계가 할일 상세의 '진행 단계'(끝난 단계·멈춘 단계·넘어가는 조건, 그 아래 피드백)다 — 따로 두지 않는다.
+# 단계 행: title=단계 이름, status todo·doing(멈춘·진행 중 단계)·done, step_by=누가(세션 이름·사용자),
+# completed_at=언제 끝났나, step_result=결과 한 줄, step_unblock=사용자가 무엇을 하면 넘어가는지
 ROLE_STEP = "step"
+STEP_COLUMNS = ("step_by", "step_result", "step_unblock")
 
 
 def _add_manager_task_columns(con):
     """매니저 할일 칸(mgr_*)·출처(origin)·옛 매니저 id(legacy_task_id)·단계 표시(role)와 뷰 manager_tasks.
     mgr_title 은 대시보드 일감과 합쳐진 행에서 매니저가 물은 제목이다(일감 제목 title 은 그대로 둔다)"""
     columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
-    wanted = [*manager_task_columns().values(), "mgr_title", "origin", "legacy_task_id", "role"]
+    wanted = [*manager_task_columns().values(), "mgr_title", "origin", "legacy_task_id", "role", *STEP_COLUMNS]
     for name in wanted:
         if name not in columns:
             kind = "INTEGER" if name == "legacy_task_id" else "TEXT"
