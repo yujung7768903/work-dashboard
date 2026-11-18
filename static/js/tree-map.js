@@ -6,6 +6,7 @@ import { t } from "./i18n.js";
 import { resultLogo, resultView } from "./result-card.js";
 import { openDetail } from "./sessions.js";
 import { CARD_H, CARD_W, LANE_PAD, MORE, RESULT, layoutForest, pathKeys } from "./tree-layout.js";
+import { waitingTodos } from "./tree-todos.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DONE = "done";
@@ -423,17 +424,35 @@ export function createTreeMap(host, options = {}) {
     return node;
   }
 
-  // 루트 = 워크스페이스. 트리 전체의 진행률과 상태별 개수를 싣는다
+  // 루트 = 워크스페이스. 트리 전체의 진행률과 상태별 개수를 싣는다.
+  // 워크스페이스 상세 팝업은 따로 없다 — 사람 대기가 있으면 제목·배지를 눌러 기다리는 할일(최근 것)의 상세를 연다.
+  // 대기가 없으면 열 대상이 없어 제목은 글자로 둔다
   function rootCard(tree) {
     const card = element("div", "tm-card tm-root");
     if (tree.workspace.category_color) card.style.setProperty("--cat", tree.workspace.category_color);
     if (tree.complete) card.dataset.status = DONE;
     const head = element("div", "tm-head");
     head.append(element("span", "tm-cat", tree.workspace.category_name ?? t("common.unassigned")));
-    if (tree.waiting) head.appendChild(waitingBadge(t("tree.treeWaiting", { count: tree.waiting })));
     const name = tree.workspace.name ?? t("common.unassigned");
-    const title = element("div", "tm-title", name);
-    title.title = name;
+    const waiting = tree.waiting ? waitingTodos(tree) : [];
+    const [waitingTodo] = waiting;
+    let title;
+    if (waitingTodo) {
+      const hint = t("tree.openWaiting", { id: waitingTodo.id, title: waitingTodo.title });
+      const badge = element("button", "tm-waiting", t("tree.treeWaiting", { count: tree.waiting }));
+      badge.type = "button";
+      badge.title = waiting.map((todo) => `#${todo.id} ${todo.title}`).join("\n");
+      badge.addEventListener("click", () => showDetail(waitingTodo.id));
+      head.appendChild(badge);
+      title = element("button", "tm-title", name);
+      title.type = "button";
+      title.title = `${name} — ${hint}`;
+      title.addEventListener("click", () => showDetail(waitingTodo.id));
+    } else {
+      if (tree.waiting) head.appendChild(waitingBadge(t("tree.treeWaiting", { count: tree.waiting })));
+      title = element("div", "tm-title", name);
+      title.title = name;
+    }
     const foot = element("div", "tm-foot");
     foot.append(progress(tree.progress), countsLine(tree.counts));
     // 미분류 트리는 워크스페이스가 없어 여기서 바로 만들 할일의 소속을 정할 수 없다

@@ -300,6 +300,8 @@ button.tm-title { cursor: pointer; }
   font-size: var(--fs-sm); font-weight: 600; line-height: var(--lh-body); white-space: nowrap;
   color: #fff; background: var(--st-wait);
 }
+/* 루트 카드의 사람 대기 배지는 기다리는 할일을 여는 버튼이다. 기본 버튼 hover 회색면 대신 같은 색을 어둡게 */
+.tm-card button.tm-waiting:hover:not(:disabled) { background: color-mix(in srgb, var(--st-wait) 82%, #000); }
 .tm-flag {
   padding: 0 var(--sp-8); border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 600;
   color: var(--st-review); background: color-mix(in srgb, var(--st-review) 14%, var(--surface));
