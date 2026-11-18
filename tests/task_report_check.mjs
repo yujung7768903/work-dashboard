@@ -291,7 +291,7 @@ assert.deepEqual(prereqLines.map((line) => text(find(line, byClass("prereq-open"
 assert.ok(byClass("finished")(prereqLines[1]), "끝난 사전 조건은 흐리게");
 assert.equal(buttons(prereqCard).length, 0, "답하는 칸이 없다");
 assert.match(text(prereqCard), /다음 단계PR #69 머지/);
-// 사전 조건 줄 오른쪽 끝 케밥 — 완료 처리하기는 되물은 뒤 보내고, 처리 뒤 이 할일에 붙은 것을 다시 읽어 선행 대기에서 뺀다
+// 사전 조건 줄 상자 안 상태 칩 오른쪽 케밥 — 완료 처리하기는 되물은 뒤 보내고, 처리 뒤 이 할일에 붙은 것을 다시 읽어 선행 대기에서 뺀다
 const menuItems = all(prereqLines[0], byClass("ws-menu-items"))[0].children;
 assert.deepEqual(menuItems.map(text), ["사전 조건 제거하기", "완료 처리하기"]);
 assert.deepEqual(all(prereqLines[1], byClass("ws-menu-items"))[0].children.map(text), ["사전 조건 제거하기"]);

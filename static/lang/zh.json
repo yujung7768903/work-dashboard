@@ -506,6 +506,7 @@
   "tree.completeHint": "确认完毕后标记为完成",
   "tree.changeStatus": "更改状态",
   "tree.openDetail": "点击查看详情",
+  "tree.openWaiting": "点击查看等待处理的 #{id} {title} 详情",
   "tree.zoomIn": "放大",
   "tree.zoomOut": "缩小",
   "tree.fit": "适应窗口",

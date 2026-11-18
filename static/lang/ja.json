@@ -506,6 +506,7 @@
   "tree.completeHint": "確認が済んだら完了にします",
   "tree.changeStatus": "ステータス変更",
   "tree.openDetail": "クリックで詳細",
+  "tree.openWaiting": "クリックで対応待ちの #{id} {title} の詳細",
   "tree.zoomIn": "拡大",
   "tree.zoomOut": "縮小",
   "tree.fit": "画面に合わせる",

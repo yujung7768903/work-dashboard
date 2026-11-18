@@ -27,12 +27,13 @@ export function prereqSummary(prereqs) {
 }
 
 /** 사전 조건 할일 목록. 줄을 누르면 그 매니저 할일 팝업을 연다.
- *  owner(선행을 가진 할일 id)를 주면 줄 오른쪽 끝에 케밥 — 사전 조건 제거하기·완료 처리하기. 처리 뒤 onChange(갱신된 할일) */
+ *  owner(선행을 가진 할일 id)를 주면 같은 줄 상자 안, 상태 칩(남음·끝남…) 오른쪽에 케밥 — 사전 조건 제거하기·완료 처리하기.
+ *  처리 뒤 onChange(갱신된 할일). 테두리는 줄(li)이 그린다 — 여는 버튼 안에 케밥 버튼을 넣으면 버튼이 겹쳐 들어가므로 */
 export function prereqList(prereqs, { owner, onChange } = {}) {
   const list = element("ul", "prereq-list");
   for (const item of prereqs || []) {
     const [tone, label] = item.status ? STATUS[item.status] ?? ["", () => item.status] : MISSING;
-    const line = element("li", `prereq-item${item.finished ? " finished" : ""}`);
+    const line = element("li", `prereq-item prereq-row${item.finished ? " finished" : ""}`);
     const button = element("button", "prereq-open");
     button.type = "button";
     button.title = t("prereq.open");

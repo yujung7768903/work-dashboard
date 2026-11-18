@@ -126,6 +126,18 @@ export function latestFirst(nodes) {
 }
 
 /**
+ * 트리에서 사람을 기다리는 할일(waiting 있음) — 최근 손댄 순, 같은 할일은 한 번만.
+ * 루트 카드의 '사람 대기 N' 은 개수만 실려 와서, 눌렀을 때 열 할일을 여기서 찾는다
+ */
+export function waitingTodos(tree) {
+  const found = new Map();
+  walk(tree.children ?? [], (node) => {
+    if (node.kind !== "context" && node.waiting && !found.has(node.id)) found.set(node.id, node);
+  });
+  return [...found.values()].sort((left, right) => newerFirst(activeAt(left) ?? "", activeAt(right) ?? ""));
+}
+
+/**
  * 매니저 탭 보조 세션 줄(/api/manager?part=helpers 의 items — manager.py 보조 --json 에 대시보드가
  * 붙인 card) → Map(할일 id → [{ label, status }]). card 는 그 세션이 가장 최근에 연결한 할일이다.
  * label 은 이름 앞의 '보조N' (할일 제목은 줄에 이미 있다), 없으면 이름 그대로
@@ -168,7 +180,7 @@ function findPath(nodes, key) {
 function walk(nodes, visit) {
   nodes.forEach((node) => {
     visit(node);
-    walk(node.children, visit);
+    walk(node.children ?? [], visit);
   });
 }
 

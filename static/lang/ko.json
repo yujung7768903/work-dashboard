@@ -506,6 +506,7 @@
   "tree.completeHint": "확인을 마쳤으면 완료로 바꿉니다",
   "tree.changeStatus": "상태 변경",
   "tree.openDetail": "눌러서 상세 보기",
+  "tree.openWaiting": "눌러서 사람을 기다리는 #{id} {title} 상세 보기",
   "tree.zoomIn": "확대",
   "tree.zoomOut": "축소",
   "tree.fit": "화면에 맞추기",
