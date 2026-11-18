@@ -404,6 +404,60 @@ class StepsTest(unittest.TestCase):
         self.assertEqual(manager_panel.task_item(1, NOW, manager_home=self.make(False))["steps"], [])
 
 
+class PermissionWaitsTest(unittest.TestCase):
+    """권한 대기 — ask --blocked permission 으로 남긴 권한·로그인 막힘은 종류와 상관없이 결정 대기와 따로 보인다(사용자 11-18, 할일 223)"""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.home, "state"))
+        con = sqlite3.connect(os.path.join(self.home, "state", "manager.db"))
+        con.execute(
+            "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, detail TEXT, priority INTEGER,"
+            " status TEXT, created_at TEXT, updated_at TEXT, next_step TEXT, after_ids TEXT, blocked TEXT)"
+        )
+        stamp = "2026-11-18T10:00:00"
+        rows = [
+            (223, "에이전트 크롬에서 OpenSearch Dashboards 로그인해 주기", "decision", 2, "open", None, "permission"),
+            (224, "Confluence 재로그인", "action", 1, "open", None, "permission"),
+            (225, "배포 방식 고르기", "decision", 2, "open", None, None),
+            (226, "권한 표시 해제한 결정", "decision", 2, "open", None, "none"),
+            (227, "선행 남은 막힘", "action", 2, "open", "225", "permission"),
+            (228, "닫힌 막힘", "decision", 2, "done", None, "permission"),
+        ]
+        con.executemany(
+            "INSERT INTO tasks (id, title, kind, priority, status, after_ids, blocked, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            [(*row, stamp, stamp) for row in rows],
+        )
+        con.commit()
+        con.close()
+
+    def test_permissions_lists_open_blocked_of_any_kind(self):
+        items = manager_panel.permissions(NOW, manager_home=self.home)
+        self.assertEqual([(item["id"], item["kind"], item["state"]) for item in items],
+                         [(223, "decision", "permission"), (224, "action", "permission")])
+
+    def test_decisions_exclude_permission_wait(self):
+        self.assertEqual([item["id"] for item in manager_panel.decisions(NOW, manager_home=self.home)], [225, 226])
+
+    def test_prereq_wins_over_permission(self):
+        self.assertEqual([item["id"] for item in manager_panel.waits(NOW, manager_home=self.home)], [227])
+        self.assertEqual(manager_panel.task_item(223, NOW, manager_home=self.home)["state"], "permission")
+        self.assertEqual(manager_panel.task_item(228, NOW, manager_home=self.home)["state"], "closed")
+
+    def test_old_manager_db_without_blocked_column_has_no_permissions(self):
+        home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(home, "state"))
+        con = sqlite3.connect(os.path.join(home, "state", "manager.db"))
+        con.execute("CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT, kind TEXT, priority INTEGER,"
+                    " status TEXT, created_at TEXT, updated_at TEXT)")
+        con.execute("INSERT INTO tasks VALUES (1, 'x', 'decision', 2, 'open', 'a', 'a')")
+        con.commit()
+        con.close()
+        self.assertEqual(manager_panel.permissions(NOW, manager_home=home), [])
+        self.assertEqual([i["id"] for i in manager_panel.decisions(NOW, manager_home=home)], [1])
+
+
 class DecisionsTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()

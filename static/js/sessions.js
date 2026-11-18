@@ -51,6 +51,8 @@ let detailTimer = null;
 const DETAIL_POLL_MS = 3000;
 // 권한 답을 넘긴 뒤 칸을 다시 읽는 지연. 매니저 훅이 결정 파일을 1초마다 읽고 요청을 닫는다
 const PERMISSION_RELOAD_MS = 1500;
+// 매니저 할일의 권한 막힘 표시(tasks.blocked) — 할일 상세가 결정 대기·직접 할 일과 따로 '권한 대기'로 모은다
+const PERMISSION_BLOCK = "permission";
 const SENT_PREVIEW_CHARS = 60;
 // 팝업에서 할일을 고치면 뒤에 깔린 보드도 다시 그려야 한다. 여기서 main.js·board.js 를
 // 가져오면 팝업 렌더만 node 로 검증하는 테스트가 탭 초기화까지 끌고 들어와 못 돈다 —
@@ -299,9 +301,21 @@ function fillDecisions(slot, items, reports, reload) {
   };
   // 선행 대기(다른 할일이 먼저 끝나야 함)는 결정·직접 할 일 어느 쪽이든 따로 모은다 — 지금 답할 것이 아니다
   const prereq = [...list, ...asks].filter((item) => item.prereq_waiting);
-  const waiting = list.filter((item) => item.status === "open" && !item.prereq_waiting);
+  // 권한 대기(ask --blocked permission — 권한·로그인 막힘)는 종류와 상관없이 맨 앞에 따로 — 고를 것이 있는 결정이 아니다.
+  // 카드 모양은 종류대로: 예전 ask 가 결정으로 남긴 막힘은 답 칸, 직접 할 일로 남긴 막힘은 완료 칸
+  const blocked = (item) => item.status === "open" && !item.prereq_waiting && item.blocked === PERMISSION_BLOCK;
+  const permission = [...list, ...asks].filter(blocked);
+  const waiting = list.filter((item) => item.status === "open" && !item.prereq_waiting && !blocked(item));
   const answered = list.filter((item) => item.status !== "open");
   const parts = [];
+  if (permission.length) {
+    const label = element("p", "label", t("permission.waitingTitle"));
+    label.append(element("span", "dlg-badge open", String(permission.length)));
+    parts.push(
+      label,
+      ...permission.map((item) => (list.includes(item) ? decisionCard(item, options) : reportCard(item, options)))
+    );
+  }
   if (waiting.length) {
     const label = element("p", "label", t("decision.waitingTitle"));
     label.append(element("span", "dlg-badge open", String(waiting.length)));
@@ -316,7 +330,7 @@ function fillDecisions(slot, items, reports, reload) {
     );
     parts.push(fold);
   }
-  parts.push(...reportParts(asks.filter((item) => !item.prereq_waiting), options));
+  parts.push(...reportParts(asks.filter((item) => !item.prereq_waiting && !blocked(item)), options));
   if (prereq.length) {
     const label = element("p", "label", t("prereq.waitingTitle"));
     label.append(element("span", "dlg-badge", String(prereq.length)));
