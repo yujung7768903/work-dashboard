@@ -696,5 +696,12 @@
   "prereq.open": "その作業を開く",
   "prereq.openFailed": "作業を開けませんでした: {error}",
   "prereq.waitingTitle": "先行待ち",
-  "prereq.listTitle": "前提条件 — これらが先に終わる必要があります"
+  "prereq.listTitle": "前提条件 — これらが先に終わる必要があります",
+  "prereq.menu": "前提条件メニュー",
+  "prereq.remove": "前提条件を外す",
+  "prereq.finish": "完了にする",
+  "prereq.confirmRemove": "{task} の前提条件から {prereq} を外しますか?そのタスク自体はそのまま残ります。",
+  "prereq.confirmFinish": "{prereq} をユーザー完了として閉じますか?画面で直接終えたものとして記録され、元に戻せません。",
+  "error.prereqNotOwn": "#{task} の前提条件ではありません: #{prereq}",
+  "error.prereqActionRequired": "task_id・prereq_id・action(remove|finish) が必要です"
 }

@@ -696,5 +696,12 @@
   "prereq.open": "打开该任务",
   "prereq.openFailed": "无法打开任务：{error}",
   "prereq.waitingTitle": "等待前置任务",
-  "prereq.listTitle": "前置条件——这些需要先完成"
+  "prereq.listTitle": "前置条件——这些需要先完成",
+  "prereq.menu": "前置条件菜单",
+  "prereq.remove": "移除前置条件",
+  "prereq.finish": "标记为完成",
+  "prereq.confirmRemove": "要从 {task} 的前置条件中移除 {prereq} 吗?该任务本身保持不变。",
+  "prereq.confirmFinish": "要将 {prereq} 作为用户完成关闭吗?将记录为在界面上直接完成,无法撤销。",
+  "error.prereqNotOwn": "不是 #{task} 的前置条件: #{prereq}",
+  "error.prereqActionRequired": "需要 task_id、prereq_id 和 action(remove|finish)"
 }

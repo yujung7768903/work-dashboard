@@ -99,6 +99,7 @@ globalThis.fetch = (url, options) => {
   if (url === "/api/todos/42") payload = { todo: TODO, sessions: [], worktrees: [] };
   else if (url === "/api/decisions?todo_id=42") payload = decisions;
   else if (url === "/api/task-report") [ok, payload] = reportReply;
+  else if (url === "/api/prereq-action") payload = { task: { id: 9, state: "action", prereqs: [] } };
   else if (url.startsWith("/api/task-reports/")) payload = showQueue.length > 1 ? showQueue.shift() : showQueue[0];
   else payload = [];
   return Promise.resolve({ ok, status: ok ? 200 : 400, json: () => Promise.resolve(payload) });
@@ -276,10 +277,24 @@ assert.equal(prereqCard.children[0].children[0].textContent, "#9 문의 자동�
 assert.match(prereqCard.children[0].children[1].className, /\bprereq\b/);
 assert.equal(prereqCard.children[0].children[1].textContent, "선행 대기");
 const prereqLines = all(prereqCard, byClass("prereq-item"));
-assert.deepEqual(prereqLines.map(text), ["#168 KT 서버 로그 경로남음", "#169 KT 로그 Lambda 배포끝남"]);
+assert.deepEqual(prereqLines.map((line) => text(find(line, byClass("prereq-open")))),
+  ["#168 KT 서버 로그 경로남음", "#169 KT 로그 Lambda 배포끝남"]);
 assert.ok(byClass("finished")(prereqLines[1]), "끝난 사전 조건은 흐리게");
 assert.equal(buttons(prereqCard).length, 0, "답하는 칸이 없다");
 assert.match(text(prereqCard), /다음 단계PR #69 머지/);
+// 사전 조건 줄 오른쪽 끝 케밥 — 완료 처리하기는 되물은 뒤 보내고, 처리 뒤 이 할일에 붙은 것을 다시 읽어 선행 대기에서 뺀다
+const menuItems = all(prereqLines[0], byClass("ws-menu-items"))[0].children;
+assert.deepEqual(menuItems.map(text), ["사전 조건 제거하기", "완료 처리하기"]);
+assert.deepEqual(all(prereqLines[1], byClass("ws-menu-items"))[0].children.map(text), ["사전 조건 제거하기"]);
+globalThis.confirm = () => true;
+decisions = { available: true, items: [], reports: [ACTION, { ...WAITING, prereq_waiting: false }] };
+const before = asked.filter((entry) => entry.url === "/api/decisions?todo_id=42").length;
+await menuItems[1].listeners.click({ stopPropagation() {} });
+const posted = asked.filter((entry) => entry.url === "/api/prereq-action");
+assert.deepEqual(posted.map((entry) => JSON.parse(entry.body)), [{ task_id: 9, prereq_id: 168, action: "finish" }]);
+await settle(() => all(third.slot, byClass("prereq-card")).length === 0);
+assert.equal(asked.filter((entry) => entry.url === "/api/decisions?todo_id=42").length, before + 1);
+assert.equal(all(third.slot, byClass("prereq-card")).length, 0, "선행이 풀린 할일은 선행 대기에서 빠진다");
 
 // ── 붙은 결정·직접 할 일 모두 없음 — 칸을 숨긴다 ────────────────────────────────
 decisions = { available: true, items: [], reports: [] };

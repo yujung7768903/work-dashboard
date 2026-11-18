@@ -48,6 +48,7 @@ from app.services import (
     manager_panel,
     permission_answer,
     planning,
+    prereq_action,
     precondition,
     release,
     session_link,
@@ -67,8 +68,10 @@ INDEX_FILE = "index.html"
 API_PREFIX = "/api/"
 NONE_LITERAL = "none"
 # 이 PC 에서 온 요청만 받는 POST. 모두 도구가 달린 에이전트 세션에 글을 넣거나 그 세션의 도구 실행을 허락한다.
-# task-report 는 매니저 할일을 닫고(완료·확인) 원 세션에 글을 넣는다. helper-feedback 은 돌고 있는 보조 세션에 글을 넣는다
-LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer", "task-report", "helper-feedback")
+# task-report 는 매니저 할일을 닫고(완료·확인) 원 세션에 글을 넣는다. helper-feedback 은 돌고 있는 보조 세션에 글을 넣는다.
+# prereq-action 은 매니저 할일의 선행을 고치거나 사전 조건 할일을 닫는다
+LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer", "task-report", "helper-feedback",
+                    "prereq-action")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -80,6 +83,7 @@ STATUS_BY_ERROR = (
     (Conflict, HTTPStatus.CONFLICT),
     (Validation, HTTPStatus.BAD_REQUEST),
 )
+PREREQ_ACTIONS = {"remove": prereq_action.remove, "finish": prereq_action.finish}
 WORKSPACE_CREATE_FIELDS = ("background", "purpose", "goal", "considerations", "jira_id")
 
 
@@ -297,6 +301,13 @@ def _route_post(con, head, body):
         if not body.get("id"):
             raise Validation("id 가 필요함")
         return task_report.start(int(body["id"]), bool(body.get("done")), body.get("feedback"))
+    if head == "prereq-action":
+        # 선행 대기 사전 조건 항목의 케밥 — remove 는 그 선행 하나만 빼고, finish 는 사전 조건 할일을 사용자 완료로 닫는다.
+        # 처리 뒤 선행을 가진 할일을 매니저 탭 줄 모양으로 돌려준다
+        action = PREREQ_ACTIONS.get(body.get("action"))
+        if not action or not body.get("task_id") or not body.get("prereq_id"):
+            raise Validation("task_id·prereq_id·action(remove|finish) 가 필요함")
+        return action(int(body["task_id"]), int(body["prereq_id"]))
     if head == "helper-feedback":
         # 매니저 탭 보조 세션 상세의 피드백. 매니저 helper-ui 가 뒤에서 돌고 화면은 GET helper-feedback 을 폴링한다
         return helper_feedback.start(body.get("session_id"), body.get("feedback"))

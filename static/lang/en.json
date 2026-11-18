@@ -696,5 +696,12 @@
   "prereq.open": "Open that task",
   "prereq.openFailed": "Could not open the task: {error}",
   "prereq.waitingTitle": "Waiting on other tasks",
-  "prereq.listTitle": "Prerequisites — these must finish first"
+  "prereq.listTitle": "Prerequisites — these must finish first",
+  "prereq.menu": "Prerequisite menu",
+  "prereq.remove": "Remove prerequisite",
+  "prereq.finish": "Mark as done",
+  "prereq.confirmRemove": "Remove {prereq} from the prerequisites of {task}? That task itself stays as is.",
+  "prereq.confirmFinish": "Close {prereq} as done by you? It is recorded as finished on screen and cannot be undone.",
+  "error.prereqNotOwn": "Not a prerequisite of #{task}: #{prereq}",
+  "error.prereqActionRequired": "task_id, prereq_id and action (remove|finish) are required"
 }

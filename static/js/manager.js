@@ -496,7 +496,10 @@ export function decisionSections(item) {
   const popup = item.popup || {};
   const sections = item.state === "confirm" ? confirmSections(popup) : openSections(popup);
   // 사전 조건 — 선행 대기면 맨 위에. 이미 풀린 선행도 무엇을 기다렸는지 보이게 남긴다
-  if (item.prereqs?.length) sections.unshift({ title: t("manager.popupPrereqs"), node: prereqList(item.prereqs) });
+  if (item.prereqs?.length) {
+    const node = prereqList(item.prereqs, { owner: item.id, onChange: afterPrereqChange });
+    sections.unshift({ title: t("manager.popupPrereqs"), node });
+  }
   if (popup.session_id) sections.push(sessionSection(popup, item.state === "confirm"));
   if (popup.source_ref) sections.push({ title: t("manager.popupSource"), parts: [{ text: popup.source_ref }] });
   return sections;
@@ -619,6 +622,13 @@ function decisionSolo(item) {
     label: label(),
     waiting: item.waiting ?? (item.state === "decision" || item.state === "action" ? DECISION_WAIT : null),
   };
+}
+
+// 사전 조건을 빼거나 닫은 뒤 — 선행이 모두 풀린 할일은 선행 대기에서 빠져 결정 대기·직접 할 일로 간다.
+// 두 칸을 다시 읽고, 열린 팝업은 갱신된 할일로 다시 그린다(풀렸으면 답하는 칸이 생긴다)
+async function afterPrereqChange(task) {
+  if (task && document.getElementById("mgr-decision-modal").open) openDecision(task);
+  await Promise.all(["waits", "decisions"].map(refreshPart));
 }
 
 /** 매니저 할일 한 건을 받아 그 팝업을 연다 — 사전 조건 할일을 누를 때(prereq.js) */

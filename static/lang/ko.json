@@ -696,5 +696,12 @@
   "prereq.open": "그 할일 열기",
   "prereq.openFailed": "할일을 열지 못했습니다: {error}",
   "prereq.waitingTitle": "선행 대기",
-  "prereq.listTitle": "사전 조건 — 이 할일들이 끝나야 합니다"
+  "prereq.listTitle": "사전 조건 — 이 할일들이 끝나야 합니다",
+  "prereq.menu": "사전 조건 메뉴",
+  "prereq.remove": "사전 조건 제거하기",
+  "prereq.finish": "완료 처리하기",
+  "prereq.confirmRemove": "{task} 의 사전 조건에서 {prereq} 를 뺄까요? 그 할일 자체는 그대로 둡니다.",
+  "prereq.confirmFinish": "{prereq} 를 사용자 완료로 닫을까요? 화면에서 직접 끝낸 것으로 기록되고 되돌릴 수 없습니다.",
+  "error.prereqNotOwn": "#{task} 의 사전 조건이 아닙니다: #{prereq}",
+  "error.prereqActionRequired": "task_id·prereq_id·action(remove|finish) 가 필요함"
 }
