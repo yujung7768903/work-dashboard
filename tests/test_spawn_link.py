@@ -61,7 +61,7 @@ class SpawnLinkTest(unittest.TestCase):
     def test_old_provisional_line_still_follows(self):
         """워크스페이스가 있던 때 note 에 남은 임시 자리 줄도 알아본다"""
         todo = spawn_link.on_spawn(self.con, "spawned-5", "보조1 | 옛 할일")
-        old = spawn_link.PROVISIONAL_LINES[1]
+        old = "자리: 임시 카테고리 — 이 세션이 분류하면 그 워크스페이스·카테고리로 옮겨진다"
         todo_repo.update(self.con, todo["id"], note=todo["note"].replace(spawn_link.PROVISIONAL_LINE, old))
         self.assertEqual(spawn_link.follow_classification(self.con, "spawned-5", self.other["id"]), [todo["id"]])
 

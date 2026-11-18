@@ -99,6 +99,10 @@ export const getHelperFeedback = (sessionId) =>
   request("GET", `/helper-feedback?session_id=${encodeURIComponent(sessionId)}`);
 export const sendHelperFeedback = (sessionId, feedback) =>
   request("POST", "/helper-feedback", { session_id: sessionId, feedback }, { silent: true });
+// 매니저 탭 회고 — 대기 중인 피드백 + 날짜별 회고 · 회고 한 건 상세 · 입력창 피드백 쌓기(하루 회고가 처리한다)
+export const getRetro = () => request("GET", "/manager-retro");
+export const getRetroDetail = (id) => request("GET", `/manager-retro/${id}`);
+export const sendRetroFeedback = (text) => request("POST", "/retro-feedback", { text }, { silent: true });
 // 권한 요청. 할일 상세에 붙은 것들 · 허용/거부 보내기. 보내기는 화면이 본 요청(세션·생성 시각·호출 id)을 같이
 // 보낸다 — 그 사이 같은 id 로 바뀐 요청에 답이 가지 않게. 실패는 카드 안에 보이므로 alert 를 띄우지 않는다
 export const getTodoPermissions = (todoId) => request("GET", `/permissions?todo_id=${todoId}`);
