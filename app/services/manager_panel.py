@@ -46,6 +46,8 @@ ACTION_KIND = "action"
 PREREQ_FINISHED = ("done", "invalid")
 # 매니저 tasks.BLOCKED_PERMISSION — ask --blocked permission 으로 남긴 권한·인증·로그인 막힘
 BLOCKED_PERMISSION = "permission"
+# 세션 회고로 남은 개선 후보 — 매니저 tasks.IMPROVE_PREFIX 와 같다. 결정 대기 칸이 아니라 회고 탭에 보인다(11-18)
+IMPROVE_PREFIX = "개선 후보"
 # 줄·팝업 상태. prereq = 선행 대기(다른 할일이 끝나야 함), permission = 권한 대기(권한·로그인 막힘 — 종류 무관),
 # decision = 결정 대기(고를 것이 있음), action = 직접 할 일, confirm = 확인 대기
 STATE_PREREQ = "prereq"
@@ -827,7 +829,7 @@ def waits(now, manager_home=None, con=None):
 
 def task_item(task_id, now=None, manager_home=None, con=None):
     """매니저 할일 한 건 — 선행 할일을 눌러 그 할일 팝업을 열 때. 상태와 상관없이 읽는다"""
-    rows = _tasks(now or datetime.now().astimezone(), "id=?", (task_id,), manager_home, con)
+    rows = _tasks(now or datetime.now().astimezone(), "id=?", (task_id,), manager_home, con, retro=True)
     if not rows:
         from app.errors import NotFound
 
@@ -840,10 +842,14 @@ def confirms(now, manager_home=None, con=None):
     return _tasks(now, "status=?", (CONFIRM_STATUS,), manager_home, con)
 
 
-def _tasks(now, where, params, manager_home, con, need=None):
+def _tasks(now, where, params, manager_home, con, need=None, retro=False):
     """매니저 DB 할일을 목록 줄 + 팝업 재료로. 읽기 전용 연결로만 읽는다.
     con(대시보드 DB)이 있으면 연결 세션의 마지막 답 끝부분을 팝업 재료로 붙인다.
-    need 칸이 매니저 DB 에 없으면(선행 관계 이전 매니저) 빈 목록"""
+    need 칸이 매니저 DB 에 없으면(선행 관계 이전 매니저) 빈 목록.
+    개선 후보(제목이 IMPROVE_PREFIX)는 retro 가 아니면 뺀다 — 매니저 하루 회고가 맡아 회고 탭 대기 중인 피드백에 보인다"""
+    if not retro:
+        where = f"({where}) AND title NOT LIKE ?"
+        params = (*params, IMPROVE_PREFIX + "%")
     home = manager_home or globals()["manager_home"]()
     path = os.path.join(home, "state", "manager.db")
     if not os.path.isfile(path):

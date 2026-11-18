@@ -14,12 +14,16 @@ import { reportLoader } from "./task-report.js";
 import { prereqList, prereqSummary } from "./prereq.js";
 import { currentStep, stepList } from "./steps.js";
 import { feedbackLoader } from "./helper-feedback.js";
+import { renderRetro } from "./retro.js";
 
-// 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
+// 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html).
+// 회고는 칸(part) 틀을 쓰지 않는다 — 피드백 입력과 날짜별 펼침이 있어 retro.js 가 따로 그린다
 const SUBTABS = {
   work: ["helpers", "confirms", "decisions", "permissions", "waits"],
   setup: ["automations", "tools"],
+  retro: [],
 };
+const RETRO = "retro";
 const PARTS = Object.values(SUBTABS).flat();
 // 보드 하위 탭처럼 고른 것은 이 화면에 있는 동안만 기억한다 (main.js)
 let activeSubtab = "work";
@@ -74,7 +78,11 @@ export async function renderManager() {
   bindRefresh();
   bindSubtabs();
   showSubtab();
-  await renderParts(SUBTABS[activeSubtab]);
+  await renderSubtab(activeSubtab);
+}
+
+function renderSubtab(name) {
+  return name === RETRO ? renderRetro() : renderParts(SUBTABS[name]);
 }
 
 // 첫 진입에만 칸마다 '불러오는 중'. 보조 세션 칸은 수 초 걸려 빈 칸이 '없음'으로 읽힌다.
@@ -105,7 +113,7 @@ export function selectManagerSubtab(name) {
   if (!(name in SUBTABS) || name === activeSubtab) return Promise.resolve();
   activeSubtab = name;
   showSubtab();
-  return renderParts(SUBTABS[name]);
+  return renderSubtab(name);
 }
 
 function showSubtab() {

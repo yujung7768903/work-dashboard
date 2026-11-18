@@ -477,6 +477,12 @@
               <circle cx="6" cy="11.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
             </svg>
           </button>
+          <button data-subtab="retro" id="mgr-subtab-retro" data-i18n="manager.subtabRetro">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path d="M2.8 8a5.2 5.2 0 1 0 1.6-3.7M2.6 2.6v2.6h2.6M8 5.2V8l2 1.4" fill="none" stroke="currentColor"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
         </nav>
 
         <div id="mgr-pane-work" class="mgr-pane">
@@ -555,6 +561,28 @@
           <div class="mgr-connected" id="mgr-tools-connected" hidden></div>
           <ul id="mgr-tools" class="mgr-list"></ul>
           <nav class="mgr-pager" id="mgr-tools-pager" hidden></nav>
+        </div>
+
+        <!-- 회고 — 매니저 개선건을 메인 매니저 대화·알림과 따로 본다 (static/js/retro.js).
+             위: 대기 중인 피드백(입력창·/피드백·세션 회고의 개선 후보)과 상태, 아래: 날짜별 하루 회고(누르면 상세) -->
+        <div id="mgr-pane-retro" class="mgr-pane" hidden>
+          <h2 class="ar-head mgr-head"><span data-i18n="retro.queue"></span>
+            <span class="mgr-count" id="mgr-retro-count"></span>
+            <button type="button" class="icon-btn mgr-refresh" id="mgr-retro-refresh"
+                    data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
+          <p class="ar-hint" id="retro-queue-hint"></p>
+          <form id="retro-form" class="retro-form">
+            <textarea id="retro-input" rows="2" data-i18n-placeholder="retro.placeholder"
+                      data-i18n-aria-label="retro.placeholder"></textarea>
+            <button type="submit" id="retro-send" data-i18n="retro.send"></button>
+          </form>
+          <p class="retro-form-note" id="retro-form-note" hidden></p>
+          <ul id="mgr-retro-feedback" class="mgr-list"></ul>
+
+          <h2 class="ar-head mgr-head"><span data-i18n="retro.days"></span>
+            <span class="mgr-count" id="mgr-retro-days-count"></span></h2>
+          <p class="ar-hint" data-i18n="retro.daysHint"></p>
+          <ul id="mgr-retro-days" class="mgr-list"></ul>
         </div>
       </section>
 

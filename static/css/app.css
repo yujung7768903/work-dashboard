@@ -926,6 +926,27 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-chip.permission { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--surface)); }
 /* 선행 대기 — 사람을 기다리는 결정 대기(waiting 주황)와 구분해 중립 테두리로. 사전 조건 할일이 끝나야 풀린다 */
 .mgr-chip.prereq { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+/* 회고 — 입력창은 칸 제목 아래 한 줄(넓으면 입력칸 + 버튼, 좁으면 아래로). 피드백 글은 여러 줄이라 줄임 없이 감싼다 */
+.retro-form { display: flex; gap: var(--sp-8); align-items: flex-end; margin: var(--sp-8) 0; }
+.retro-form textarea { flex: 1; min-width: 0; min-height: 40px; resize: vertical; }
+.retro-form button { flex: none; }
+.retro-form-note { margin: 0 0 var(--sp-8); color: var(--muted); font-size: var(--fs-sm); }
+.mgr-row.retro-feedback .retro-text { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: normal; }
+.mgr-row.retro-day .retro-summary { white-space: normal; }
+.retro-detail { list-style: none; padding: var(--sp-8) var(--sp-12); border-bottom: 1px solid var(--line);
+  background: var(--softer); font-size: var(--fs-sm); }
+.retro-items { margin: 0; padding-left: 1.4em; display: grid; gap: var(--sp-8); }
+.retro-item-head { display: flex; gap: var(--sp-8); align-items: center; }
+.retro-fields { display: grid; grid-template-columns: max-content 1fr; gap: var(--sp-2) var(--sp-8); margin: var(--sp-4) 0 0; }
+.retro-fields dt { color: var(--muted); }
+.retro-fields dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.retro-fb .mgr-chip { margin-right: var(--sp-4); }
+.retro-h { margin: var(--sp-8) 0 var(--sp-4); font-size: var(--fs-sm); }
+.retro-plain { margin: 0; padding-left: 1.2em; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .retro-form { flex-direction: column; align-items: stretch; }
+  .retro-fields { grid-template-columns: 1fr; }
+}
 .prereq-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; display: grid; gap: var(--sp-4); }
 /* 줄 = 한 상자 안에 사전 조건 할일 버튼(제목 + 상태 칩, 남은 폭) + 칩 바로 오른쪽 케밥(제거·완료 처리).
    케밥이 상자 밖에 따로 떠 있으면 어느 줄 것인지 흐려지므로 테두리를 줄(li)이 그리고 버튼은 면을 비운다 */
