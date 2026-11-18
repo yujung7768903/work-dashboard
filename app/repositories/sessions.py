@@ -302,15 +302,16 @@ def waiting_by_session(con, claude_session_ids):
     return {row["claude_session_id"]: row["waiting"] for row in rows}
 
 
-def waiting_by_todo(con):
+def waiting_by_todo(con, promote=None):
     """할일마다 그 할일을 지금 붙잡은 세션이 사람을 기다리는지(permission·input).
 
     세션의 현재 할일은 가장 최근에 연결된 하나다(LATEST_LINKED) — 예전에 거쳐 간
     할일에까지 대기 표시가 붙으면 어느 카드를 봐야 할지 흐려진다. 한 할일을 여러
-    세션이 기다리면 권한 대기가 이긴다 — 권한은 답을 줄 때까지 세션이 멈춰 있다
+    세션이 기다리면 권한 대기가 이긴다 — 권한은 답을 줄 때까지 세션이 멈춰 있다.
+    promote(kind, claude_session_id) 가 있으면 대기 종류를 그것으로 고친다 — 매니저 권한 막힘(manager_links.promote)
     """
     rows = con.execute(
-        f"""SELECT s.waiting AS waiting, (SELECT t.id {LATEST_LINKED}) AS todo_id
+        f"""SELECT s.claude_session_id AS sid, s.waiting AS waiting, (SELECT t.id {LATEST_LINKED}) AS todo_id
             FROM sessions s WHERE s.waiting IS NOT NULL AND s.state <> ?""",
         (STATE_ENDED,),
     )
@@ -318,8 +319,9 @@ def waiting_by_todo(con):
     for row in rows:
         if row["todo_id"] is None:
             continue
+        kind = promote(row["waiting"], row["sid"]) if promote else row["waiting"]
         if found.get(row["todo_id"]) != "permission":
-            found[row["todo_id"]] = row["waiting"]
+            found[row["todo_id"]] = kind
     return found
 
 

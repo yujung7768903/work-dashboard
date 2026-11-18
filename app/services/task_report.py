@@ -31,6 +31,8 @@ FIELDS = (
     "id", "title", "kind", "status", "detail", "next_step", "reason", "open_target", "answer", "answer_via",
     "answer_state", "answered_at", "created_at", "priority", "session",
     "after", "prereq_waiting",
+    # 권한 막힘 표시(ask --blocked permission) — 할일 상세가 결정 대기·직접 할 일과 따로 '권한 대기'로 모은다
+    "blocked",
 )
 
 

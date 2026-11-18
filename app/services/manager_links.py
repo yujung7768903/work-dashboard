@@ -12,6 +12,7 @@ import ast
 import json
 import os
 import re
+import sqlite3
 
 from app.repositories import sessions as session_repo
 from app.services import transcript
@@ -49,12 +50,52 @@ def cards(con, session_ids):
     return session_repo.current_cards(con, [sid for sid in session_ids if sid])
 
 
-def waiting(con, session_ids):
+# 대기 종류 (대시보드 sessions.waiting). 매니저 tasks.BLOCKED_PERMISSION 도 같은 낱말이다
+WAIT_INPUT = "input"
+WAIT_PERMISSION = "permission"
+
+
+def waiting(con, session_ids, blocked=None):
     """세션 id → 사람 대기 종류(permission·input). 트리 카드의 대기 표시와 같은 신호(대시보드 sessions.waiting).
+    답 대기(input)인데 그 세션이 권한 막힘을 남겼으면 권한 대기다(blocked — 없으면 permission_sessions() 로 읽는다).
     대기 중이 아니거나 대시보드 DB 가 없으면 그 세션은 빠진다"""
     if con is None:
         return {}
-    return session_repo.waiting_by_session(con, session_ids)
+    found = session_repo.waiting_by_session(con, session_ids)
+    if blocked is None and WAIT_INPUT in found.values():
+        blocked = permission_sessions()
+    return {sid: promote(kind, sid, blocked) for sid, kind in found.items()}
+
+
+def promote(kind, session_id, blocked):
+    """답 대기(input) → 권한 대기(permission), 그 세션이 ask --blocked permission 으로 남긴 열린 할일이 있을 때.
+    매니저 Stop 훅은 열린 결정·권한 막힘을 가리지 않고 waiting=input 을 찍는다 — sessions.waiting=permission 은
+    '권한 창이 떠 있다'는 뜻으로 권한 요청 카드(permission_answer)가 쓰므로 훅이 그 값을 찍게 바꾸지 않고 화면에서 올린다"""
+    return WAIT_PERMISSION if kind == WAIT_INPUT and session_id in (blocked or ()) else kind
+
+
+def permission_sessions(manager_home=None):
+    """ask --blocked permission 으로 남긴 열린 매니저 할일이 있는 세션 id 집합. 매니저 DB 는 읽기 전용으로만 연다.
+    매니저가 없거나 blocked 칸이 없는 예전 DB 면 빈 집합 — 대기 표시는 원래 신호대로 둔다"""
+    if manager_home is None:
+        from app.services import manager_panel
+
+        manager_home = manager_panel.manager_home()
+    path = os.path.join(manager_home, "state", "manager.db")
+    if not os.path.isfile(path):
+        return frozenset()
+    try:
+        manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            rows = manager_con.execute(
+                "SELECT DISTINCT session_id FROM tasks WHERE status='open' AND blocked=? AND session_id IS NOT NULL",
+                (WAIT_PERMISSION,),
+            ).fetchall()
+        finally:
+            manager_con.close()
+    except sqlite3.Error:
+        return frozenset()
+    return frozenset(row[0] for row in rows)
 
 
 def first_request(session_id, manager_home=None, root=None):

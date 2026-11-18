@@ -25,7 +25,7 @@ from app.constants import (
 )
 from app.services import cron, manager_links, manager_tools
 
-PARTS = ("automations", "helpers", "tools", "decisions", "confirms", "waits")
+PARTS = ("automations", "helpers", "tools", "decisions", "permissions", "confirms", "waits")
 STATUS_OK = "ok"
 STATUS_FAIL = "fail"
 STATUS_NODATA = "nodata"
@@ -44,8 +44,12 @@ CONFIRM_STATUS = "confirm"
 ACTION_KIND = "action"
 # 선행 할일이 끝난 것으로 치는 상태 — 매니저 tasks.PREREQ_FINISHED 와 같은 값. 확인 대기(confirm)는 아직이다
 PREREQ_FINISHED = ("done", "invalid")
-# 줄·팝업 상태. prereq = 선행 대기(다른 할일이 끝나야 함), decision = 결정 대기, action = 직접 할 일, confirm = 확인 대기
+# 매니저 tasks.BLOCKED_PERMISSION — ask --blocked permission 으로 남긴 권한·인증·로그인 막힘
+BLOCKED_PERMISSION = "permission"
+# 줄·팝업 상태. prereq = 선행 대기(다른 할일이 끝나야 함), permission = 권한 대기(권한·로그인 막힘 — 종류 무관),
+# decision = 결정 대기(고를 것이 있음), action = 직접 할 일, confirm = 확인 대기
 STATE_PREREQ = "prereq"
+STATE_PERMISSION = "permission"
 STATE_DECISION = "decision"
 STATE_ACTION = "action"
 STATE_CONFIRM = "confirm"
@@ -69,6 +73,7 @@ def snapshot(part=None, now=None, con=None, **sources):
             sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
         ),
         "decisions": lambda: decisions(now, con=con, **_pick(sources, "manager_home")),
+        "permissions": lambda: permissions(now, con=con, **_pick(sources, "manager_home")),
         "confirms": lambda: confirms(now, con=con, **_pick(sources, "manager_home")),
         "waits": lambda: waits(now, con=con, **_pick(sources, "manager_home")),
     }
@@ -746,7 +751,7 @@ def helpers(manager_home=None, helpers_fn=None, con=None):
     rows = (helpers_fn or _run_helpers)(home)
     session_ids = [row.get("session_id") for row in rows]
     linked = manager_links.cards(con, session_ids)
-    waits = manager_links.waiting(con, session_ids)
+    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home))
     return [
         {
             "session_id": row.get("session_id"),
@@ -798,9 +803,19 @@ REPLY_SCAN_BYTES = 512 * 1024
 
 
 def decisions(now, manager_home=None, con=None):
-    """열린 결정(decision). 확인 대기는 confirms 칸이, 선행이 남은 결정은 waits 칸이 따로 든다"""
+    """열린 결정(decision). 확인 대기는 confirms 칸이, 선행이 남은 결정은 waits 칸이, 권한 막힘은 permissions 칸이 따로 든다"""
     rows = _tasks(now, "status=? AND kind=?", (OPEN_STATUS, DECISION_KIND), manager_home, con)
-    return [row for row in rows if row["state"] != STATE_PREREQ]
+    return [row for row in rows if row["state"] == STATE_DECISION]
+
+
+def permissions(now, manager_home=None, con=None):
+    """권한 대기 — ask --blocked permission 으로 남긴 열린 할일(종류 무관). 사용자가 고를 것이 아니라 허용·로그인을 해 줘야
+    보조 세션이 움직인다. 결정 대기에 섞여 '결정 대기'로 보였다(사용자 지시 11-18, 할일 223).
+    판정은 표시(blocked)만 본다 — 매니저 is_permission_blocked 의 글 판정은 열린·닫힌 할일 21건을 잡았는데 절반 넘게
+    '삭제 승인'·'배포 방식 선택' 같은 진짜 결정이었고, 연결 세션이 쉬면 막힘으로 보는 규칙은 결정까지 막힘으로 만든다.
+    선행이 남은 것은 선행 대기(waits)가 먼저다"""
+    rows = _tasks(now, "status=? AND blocked=?", (OPEN_STATUS, BLOCKED_PERMISSION), manager_home, con, need="blocked")
+    return [row for row in rows if row["state"] == STATE_PERMISSION]
 
 
 def waits(now, manager_home=None, con=None):
@@ -842,7 +857,7 @@ def _tasks(now, where, params, manager_home, con, need=None):
         wanted = [
             name
             for name in ("id", "title", "kind", "status", "priority", "created_at",
-                         "updated_at", "hold_until", "snooze_until", "after_ids") + POPUP_FIELDS
+                         "updated_at", "hold_until", "snooze_until", "after_ids", "blocked") + POPUP_FIELDS
             if name in columns
         ]
         rows = manager_con.execute(
@@ -864,7 +879,7 @@ def _tasks(now, where, params, manager_home, con, need=None):
     session_ids = {_get(row, "session_id") for row in rows} - {None}
     replies = _session_replies(con, session_ids)
     linked = manager_links.cards(con, session_ids)
-    waits = manager_links.waiting(con, session_ids)
+    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home))
     items = []
     for row in rows:
         popup = {name: _get(row, name) for name in POPUP_FIELDS}
@@ -877,6 +892,8 @@ def _tasks(now, where, params, manager_home, con, need=None):
             {
                 "id": row["id"],
                 "title": row["title"],
+                # 권한 대기 팝업이 답 칸(결정 답·직접 할 일 완료)을 고른다
+                "kind": _get(row, "kind"),
                 "state": _state(row, prereqs),
                 # 선행 할일 [{id, title, status, finished}] — 선행 대기면 팝업이 사전 조건으로 보이고 눌러 그 할일로 간다
                 "prereqs": prereqs,
@@ -894,7 +911,7 @@ def _tasks(now, where, params, manager_home, con, need=None):
 
 
 def _state(row, prereqs):
-    """줄 상태. 열린 할일에 끝나지 않은 선행이 있으면 종류와 상관없이 선행 대기다"""
+    """줄 상태. 열린 할일에 끝나지 않은 선행이 있으면 종류와 상관없이 선행 대기, 그다음 권한 막힘 표시가 있으면 권한 대기다"""
     status = row["status"]
     if status == CONFIRM_STATUS:
         return STATE_CONFIRM
@@ -902,6 +919,8 @@ def _state(row, prereqs):
         return STATE_CLOSED
     if any(not item["finished"] for item in prereqs):
         return STATE_PREREQ
+    if _get(row, "blocked") == BLOCKED_PERMISSION:
+        return STATE_PERMISSION
     return STATE_DECISION if _get(row, "kind") == DECISION_KIND else STATE_ACTION
 
 
