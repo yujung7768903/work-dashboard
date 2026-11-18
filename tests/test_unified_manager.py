@@ -151,6 +151,14 @@ class CandidatesTest(Fixture):
         ids = [item["id"] for item in result["items"]]
         self.assertIn(after, ids)
         self.assertNotIn(step, ids)
+        # 할일도 단계도 아닌 행(보조 세션 피드백 기록 role=feedback)은 후보·대기·단계 어디에도 없다
+        feedback = self.todo("피드백 기록", 9, role="feedback", kind="feedback", parent_id=stepped)
+        self.con.execute("UPDATE todos SET mgr_status='open' WHERE id=?", (feedback,))
+        self.con.commit()
+        again = candidates.snapshot(self.con, limit=20)
+        self.assertNotIn(feedback, [item["id"] for item in again["items"]])
+        self.assertEqual(again["waiting"], result["waiting"])
+        self.assertNotIn(feedback, [s["id"] for s in task_steps.timeline(self.con, stepped)])
         self.assertEqual(ids[-3:], [low, before, none])
 
     def test_task_worked_by_live_session_is_not_a_candidate(self):

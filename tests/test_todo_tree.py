@@ -292,13 +292,13 @@ class CliTest(unittest.TestCase):
             code = dash.main(list(argv))
         return code, out.getvalue(), err.getvalue()
 
-    def test_add_todo_with_parent_and_set_parent(self):
-        self.run_cli("add-workspace", "개발", "결제 개편")
-        self.run_cli("add-todo", "설계", "--workspace", "1")
-        self.run_cli("add-todo", "구현", "--workspace", "1")
-        code, out, _ = self.run_cli("add-todo", "API", "--parent", "1")
-        self.assertEqual(code, 0)
-        self.assertIn("상위 #1", out)
+    def test_set_parent(self):
+        # 할일 준비는 저장소로 — add-workspace·add-todo 명령은 없다
+        con = connect()
+        space = workspace_repo.create(con, category_repo.get_by_name(con, "개발")["id"], "결제 개편")
+        todo_repo.create(con, "설계", workspace_id=space["id"])
+        todo_repo.create(con, "구현", workspace_id=space["id"])
+        todo_repo.create(con, "API", parent_id=1)
         code, out, _ = self.run_cli("set-parent", "3", "2")
         self.assertEqual(code, 0)
         self.assertIn("#2", out)
@@ -308,13 +308,6 @@ class CliTest(unittest.TestCase):
         code, _, err = self.run_cli("set-parent", "1", "1")
         self.assertNotEqual(code, 0)
         self.assertIn(PARENT_CYCLE_MSG, err)
-
-    def test_set_status_review(self):
-        self.run_cli("add-workspace", "개발", "결제 개편")
-        self.run_cli("add-todo", "설계", "--workspace", "1")
-        code, out, _ = self.run_cli("set-status", "todo", "1", STATUS_REVIEW)
-        self.assertEqual(code, 0)
-        self.assertIn(STATUS_REVIEW, out)
 
 
 class MigrationTest(unittest.TestCase):

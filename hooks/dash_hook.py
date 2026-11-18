@@ -43,9 +43,8 @@ def _on_session_start(con, session_id, payload):
 
 
 def _on_prompt_submit(con, session_id, payload):
-    """분류 전이면 지시를 다시 주입. 분류되면 조용해짐.
-
-    예외로 할일을 끝낸(finish 한) 세션에는 새 요청을 새 할일로 받으라고 다시 알린다.
+    """할일을 끝낸(finish 한) 세션에만 다시 알린다 — 끝난 할일에 새 요청을 얹지 않게.
+    분류 전 세션에 분류 지시를 매 턴 다시 넣던 것은 뺐다 — 분류·할일 연결은 세션 몫이 아니다(session_link NO_FILING_RULE).
 
     자율 실행으로 뜬 잡에 사람이 말을 걸면 그 실행만 인계로 닫는다. autorun 은 계속 돈다.
     판정은 서비스가 하고 훅은 순서만 지킨다 — set_last_prompt 앞에서 불러야 자율 세션
@@ -55,12 +54,7 @@ def _on_prompt_submit(con, session_id, payload):
     autorun.handover_if_human(con, session_id, prompt)
     session_repo.set_state(con, session_id, STATE_WORKING)
     session_repo.set_last_prompt(con, session_id, prompt)
-    session = session_repo.find(con, session_id)
-    if not session:
-        return ""
-    if session["category_id"]:
-        return session_link.released_context(con, session_id)
-    return session_link.render_context(con, session_id)
+    return session_link.released_context(con, session_id)
 
 
 def _on_stop(con, session_id, payload):

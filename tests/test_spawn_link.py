@@ -1,29 +1,22 @@
 """매니저 spawn 이 띄운 세션 — 할일을 바로 만들어 수행으로 잇고, 원래 세션 할일을 상위(계기) 제안으로,
 임시 자리에 만든 할일은 세션이 분류할 때 따라간다"""
-import io
-import os
 import unittest
-from contextlib import redirect_stdout
 
-import dash
 from app.constants import (
     BY_SPAWN,
-    DB_PATH_ENV,
     EDGE_PROPOSED,
     REL_PARENT,
-    SESSION_ID_ENV,
     SPAWN_FALLBACK_CATEGORY,
     SPAWN_TODO_MARK,
     STATUS_DOING,
 )
-from app.db import connect
 from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
 from app.repositories import workspaces as workspace_repo
 from app.services import manager_links, spawn_link
-from tests.support import temp_db, temp_db_path
+from tests.support import temp_db
 
 
 class SpawnLinkTest(unittest.TestCase):
@@ -142,25 +135,6 @@ class UnifiedSpawnTest(unittest.TestCase):
         todo = spawn_link.on_spawn(con, "helper-4", "보조1 | 일", None, task["id"])
         self.assertNotEqual(todo["id"], task["id"])
         self.assertIsNone(todo["role"])
-
-
-class ClassifyCliTest(unittest.TestCase):
-    def setUp(self):
-        os.environ[DB_PATH_ENV] = temp_db_path()
-        os.environ[SESSION_ID_ENV] = "spawned-cli"
-        self.addCleanup(os.environ.pop, DB_PATH_ENV, None)
-        self.addCleanup(os.environ.pop, SESSION_ID_ENV, None)
-
-    def test_classify_moves_provisional_spawn_todo(self):
-        con = connect()
-        category = category_repo.list_all(con)[0]
-        space = workspace_repo.create(con, category["id"], "허브 인증 우회 차단")
-        todo = spawn_link.on_spawn(con, "spawned-cli", "보조1 | WAF 대조")
-        out = io.StringIO()
-        with redirect_stdout(out):
-            dash.main(["classify", "--category", category["name"], "--workspace", str(space["id"])])
-        self.assertIn(f"#{todo['id']}", out.getvalue())
-        self.assertEqual(todo_repo.get(connect(), todo["id"])["workspace_id"], space["id"])
 
 
 if __name__ == "__main__":

@@ -163,24 +163,16 @@ cd work-dashboard
 
 ```bash
 python3 dash.py ls                                   # ツリー全体
-python3 dash.py next                                 # 次にやるタスク 1 件
 python3 dash.py show <ワークスペースid|JIRA-1>         # ワークスペース詳細
 python3 dash.py add-category <名前>
-python3 dash.py add-workspace <カテゴリ> <名前> [--background ...] [--jira KEY]
-python3 dash.py add-todo <タイトル> [--workspace ID] [--note ...] [--precondition ...]
-python3 dash.py move-todo <タスクid> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <状態>
-python3 dash.py reorder <categories|workspaces|todos> <ids...>
-python3 dash.py done-today [--date YYYY-MM-DD]
 ```
 
 ### セッション
 
 ```bash
 python3 dash.py sessions                             # 実行中のセッション
-python3 dash.py classify --category <名前> [--workspace <id>]
 python3 dash.py link-todo <タスクid> [--status done] [--past]
-python3 dash.py show-todo --session
+python3 dash.py show-todo [--session [ID]]
 python3 dash.py show-note <タスクid>                  # コンテキストノート全文
 ```
 
@@ -231,13 +223,12 @@ python3 dash.py autorun-finish               # 完了 — レビュー待ちへ
 
 | 状態 | 条件 | 注入される内容 |
 | --- | --- | --- |
-| `classified` | ブランチの Jira ID で一致したか、`classify --workspace` で紐づいたワークスペースがある | 背景・目的・ゴール・考慮事項、タスク一覧、スコープ遵守の指針 |
+| `classified` | ブランチの Jira ID で一致したワークスペースがある | 背景・目的・ゴール・考慮事項、タスク一覧、スコープ遵守の指針 |
 | `onboarding` | ワークスペースが 1 つもなく、ユーザーが拒否もしていない | 初期設定の手順 |
 | `unclassified` | それ以外 | 現在地・ブランチ、カテゴリ、進行中ワークスペース、分類手順 |
 | `released` | このセッションが取ったタスクがすべて `done` | 新しい依頼は終わったタスクに乗せず、新しいタスクとして受けるよう指示 |
 
-分類そのものは自動ではない — シェルには質問が何についてのものか分からない。フックは指示を
-注入するだけで、Claude が `classify` と `link-todo` で登録する。
+セッションは分類もタスク登録もしない — 分類はダッシュボード、タスクとの紐づけはマネージャーが行う。
 
 ### フック
 

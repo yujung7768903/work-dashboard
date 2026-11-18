@@ -67,11 +67,12 @@ class HookTest(unittest.TestCase):
         self.assertEqual(session["state"], STATE_WORKING)
         self.assertEqual(session["last_prompt"], "락 확인해줘")
 
-    def test_prompt_submit_reinjects_while_unclassified(self):
+    def test_prompt_submit_does_not_nag_unclassified(self):
+        """분류·할일 연결은 세션 몫이 아니다 — 분류 전이라고 매 턴 지시를 다시 넣지 않는다"""
         self.seed_workspace()
         self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
         _, out = self.run_hook("UserPromptSubmit", {"session_id": SID, "prompt": "x"})
-        self.assertIn('state="unclassified"', out)
+        self.assertEqual(out.strip(), "")
 
     def test_prompt_submit_silent_after_classified(self):
         self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})

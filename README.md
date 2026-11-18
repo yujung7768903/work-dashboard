@@ -224,21 +224,14 @@ the web UI, so a change on one side shows up on the other after a refresh.
 
 ```bash
 python3 dash.py ls                                   # the whole tree
-python3 dash.py next                                 # the single next todo
 python3 dash.py show <workspace-id|JIRA-1>           # workspace detail
 python3 dash.py add-category <name>
-python3 dash.py add-workspace <category> <name> [--background ...] [--jira KEY]
-python3 dash.py add-todo <title> [--workspace ID | --parent TODO-ID] [--note ...] [--precondition ...]
 python3 dash.py set-parent <todo-id> <parent-todo-id|none>
 python3 dash.py link <parent|precedes|evidence|related> <from> <to> [--basis trigger|purpose|background] [--evidence ...] [--proposed]
 python3 dash.py edges <node>                         # 12 · ctx:3 · session:<id> · jira:PFD-1
 python3 dash.py edge <confirm|reject|rm> <edge-id>
 python3 dash.py add-context <title> [--workspace ID | --category NAME] [--note ...]
 python3 dash.py collect-results [--session ID] [--dry-run] [--verbose]   # backfill session results from transcripts
-python3 dash.py move-todo <todo-id> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <status>   # todo: todo·doing·review·done
-python3 dash.py reorder <categories|workspaces|todos> <ids...>
-python3 dash.py done-today [--date YYYY-MM-DD]
 ```
 
 `set-parent` keeps the old single parent column (same workspace only) and mirrors
@@ -247,15 +240,14 @@ names 상위·선행·근거·관련 and 계기·목적·배경 work as well). A
 itself or its own sub-todo. With `--parent` the workspace comes from the
 parent. Moving a todo to another workspace carries its sub-todos along;
 deleting a todo lifts its sub-todos one level. `review` means the work is done
-and only your check remains — it stays open, but `next` and autorun skip it.
+and only your check remains — it stays open, but autorun skips it.
 
 ### Sessions
 
 ```bash
 python3 dash.py sessions                             # running sessions
-python3 dash.py classify --category <name> [--workspace <id>]
 python3 dash.py link-todo <todo-id> [--status done] [--past]
-python3 dash.py show-todo --session
+python3 dash.py show-todo [--session [ID]]            # todos this session holds (default: this session)
 python3 dash.py show-note <todo-id>                  # the full context note
 ```
 
@@ -312,14 +304,15 @@ one depends on the state of the board.
 
 | State | When | What is injected |
 | --- | --- | --- |
-| `classified` | The session has a workspace, matched by the branch's Jira ID or set with `classify --workspace` | Background, purpose, goal, considerations, the todo list, and scope rules |
+| `classified` | The session has a workspace, matched by the branch's Jira ID | Background, purpose, goal, considerations, the todo list, and scope rules |
 | `onboarding` | No workspaces exist yet and the user has not declined | The first-time setup procedure |
-| `unclassified` | Anything else | Location, branch, categories, active workspaces, and how to classify |
+| `unclassified` | Anything else | Location, branch, categories, active workspaces, and that filing is not the session's job |
 | `released` | Every todo this session claimed is `done` | Take new requests as a new todo, not on top of a finished one |
 
-Classification itself is not automatic — a shell cannot tell what a question is
-about. The hook injects the instruction, and Claude registers it with `classify`
-and `link-todo`.
+Sessions do not classify themselves or add todos. The dashboard assigns the
+session's category, and the manager links the session to its todo (or a step of
+it). The hook only reminds a session whose todos are all done not to pile new
+work on them.
 
 ### Hooks
 

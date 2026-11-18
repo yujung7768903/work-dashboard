@@ -9,7 +9,9 @@ from unittest import mock
 import dash
 from app.constants import DB_PATH_ENV, SESSION_ID_ENV
 from app.db import connect
+from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
+from app.repositories import todos as todo_repo
 from app.services import session_message
 from tests.support import temp_db_path
 
@@ -28,6 +30,12 @@ class CliTest(unittest.TestCase):
         os.environ.pop(DB_PATH_ENV, None)
         os.environ.pop(SESSION_ID_ENV, None)
 
+    def add_todo(self, title, category="운영", note=None):
+        """할일 준비 — add-todo 명령은 없다(세션이 할일을 만들지 않는다. 매니저·화면이 만든다)"""
+        con = connect()
+        category_id = category_repo.get_by_name(con, category)["id"]
+        return todo_repo.create(con, title, category_id=category_id, note=note)["id"]
+
     def run_cli(self, *argv):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -44,38 +52,8 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("groups", json.loads(out))
 
-    def test_add_workspace_then_add_todo(self):
-        self.run_cli("add-workspace", "개발", "KT 동시성", "--goal", "락 재설계")
-        code, out, _ = self.run_cli("add-todo", "락 초안", "--workspace", "1")
-        self.assertEqual(code, 0)
-        self.assertIn("락 초안", out)
-
-    def test_add_todo_tells_when_not_to_link(self):
-        self.run_cli("add-workspace", "개발", "KT 동시성", "--goal", "락 재설계")
-        _, out, _ = self.run_cli("add-todo", "나중에 할 일", "--workspace", "1")
-        self.assertIn("link-todo 1", out)
-        self.assertIn("연결하지 않는다", out)
-
-    def test_add_todo_requires_category_or_workspace(self):
-        code, _, err = self.run_cli("add-todo", "제목만")
-        self.assertEqual(code, 1)
-        self.assertIn("카테고리", err)
-
-    def test_next_reports_nothing_when_empty(self):
-        code, out, _ = self.run_cli("next")
-        self.assertEqual(code, 0)
-        self.assertIn("없", out)
-
-    def test_move_todo_to_none_unassigns(self):
-        self.run_cli("add-workspace", "개발", "KT")
-        self.run_cli("add-todo", "락", "--workspace", "1")
-        code, out, _ = self.run_cli("move-todo", "1", "--workspace", "none")
-        self.assertEqual(code, 0)
-        self.assertIn("미분류", out)
-
     def test_edit_todo_updates_note(self):
-        self.run_cli("add-workspace", "개발", "KT")
-        self.run_cli("add-todo", "락", "--workspace", "1")
+        self.add_todo("락", "개발")
         code, out, _ = self.run_cli("edit-todo", "1", "--note", "새 컨텍스트")
         self.assertEqual(code, 0)
         self.assertIn("락", out)
@@ -83,25 +61,13 @@ class CliTest(unittest.TestCase):
         self.assertIn("새 컨텍스트", note_out)
 
     def test_edit_todo_without_any_field_exits_one(self):
-        self.run_cli("add-workspace", "개발", "KT")
-        self.run_cli("add-todo", "락", "--workspace", "1")
+        self.add_todo("락", "개발")
         code, _, err = self.run_cli("edit-todo", "1")
         self.assertEqual(code, 1)
         self.assertIn("--title", err)
 
-    def test_show_by_jira_id(self):
-        self.run_cli("add-workspace", "개발", "KT", "--jira", "KT-1530")
-        code, out, _ = self.run_cli("show", "KT-1530")
-        self.assertEqual(code, 0)
-        self.assertIn("KT", out)
-
-    def test_show_unknown_jira_exits_one(self):
-        code, _, err = self.run_cli("show", "KT-9999")
-        self.assertEqual(code, 1)
-        self.assertIn("없음", err)
-
     def test_rm_category_conflict_exits_one(self):
-        self.run_cli("add-todo", "문의", "--category", "운영")
+        self.add_todo("문의", "운영")
         ops_id = 2
         code, _, err = self.run_cli("rm-category", str(ops_id))
         self.assertEqual(code, 1)
@@ -128,23 +94,12 @@ class CliTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.run_cli("nope")
 
-    def test_done_today_json_is_list(self):
-        code, out, _ = self.run_cli("done-today", "--json")
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out), [])
-
-    def test_set_status_todo_to_done(self):
-        self.run_cli("add-todo", "문의", "--category", "운영")
-        code, out, _ = self.run_cli("set-status", "todo", "1", "done")
-        self.assertEqual(code, 0)
-        self.assertIn("done", out)
-
     def test_autorun_request_uses_env_session_when_omitted(self):
         """자율 세션이 `autorun-request "<이유>"` 한 인자만 줘도 자기 세션으로 찾아야 한다"""
         from app.repositories import autorun as autorun_repo
 
         con = connect()
-        self.run_cli("add-todo", "판단 필요한 일", "--category", "운영")
+        self.add_todo("판단 필요한 일", "운영")
         autorun_repo.start_run(con, 1, "env-sess", "job1")
         os.environ[SESSION_ID_ENV] = "env-sess"
         code, out, _ = self.run_cli("autorun-request", "방향이 여러 개인데 note 에 없음")
@@ -157,7 +112,7 @@ class CliTest(unittest.TestCase):
         from app.repositories import autorun as autorun_repo
 
         con = connect()
-        self.run_cli("add-todo", "판단 필요한 일", "--category", "운영")
+        self.add_todo("판단 필요한 일", "운영")
         autorun_repo.start_run(con, 1, "다른세션", "job1")
         code, _, _ = self.run_cli("autorun-request", "다른세션", "토큰이 필요함")
         self.assertEqual(code, 0)
@@ -169,7 +124,7 @@ class CliTest(unittest.TestCase):
         from app.repositories import autorun as autorun_repo
 
         con = connect()
-        self.run_cli("add-todo", "판단 필요한 일", "--category", "운영")
+        self.add_todo("판단 필요한 일", "운영")
         autorun_repo.start_run(con, 1, "다른세션", "job1")
         code, _, err = self.run_cli("autorun-request", "다른세션", "  ")
         self.assertEqual(code, 1)
@@ -180,51 +135,13 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("없", out)
 
-    def test_classify_and_list(self):
-        from app.db import connect
-        from app.repositories import sessions as session_repo
-
-        con = connect()
-        session_repo.register(con, "cli-sess", cwd="/tmp")
-        session_repo.set_last_prompt(con, "cli-sess", "무엇을 하나")
-        code, _, _ = self.run_cli("classify", "cli-sess", "--category", "운영")
-        self.assertEqual(code, 0)
-        code, out, _ = self.run_cli("sessions", "--json")
-        payload = json.loads(out)
-        self.assertEqual(payload["sessions"][0]["category_name"], "운영")
-        self.assertEqual(payload["unclassified_count"], 0)
-
-    def test_classify_unknown_session_exits_one(self):
-        code, _, err = self.run_cli("classify", "nope", "--category", "운영")
-        self.assertEqual(code, 1)
-        self.assertIn("찾을 수 없습니다", err)
-
-    def test_classify_without_session_uses_env(self):
-        from app.db import connect
-        from app.repositories import sessions as session_repo
-
-        con = connect()
-        session_repo.register(con, "env-sess", cwd="/tmp")
-        session_repo.set_last_prompt(con, "env-sess", "무엇을 하나")  # 목록은 프롬프트가 있어야 뜬다
-        os.environ[SESSION_ID_ENV] = "env-sess"
-        code, _, _ = self.run_cli("classify", "--category", "운영")
-        self.assertEqual(code, 0)
-        code, out, _ = self.run_cli("sessions", "--json")
-        self.assertEqual(json.loads(out)["sessions"][0]["category_name"], "운영")
-
-    def test_classify_without_session_or_env_exits_one(self):
-        os.environ.pop(SESSION_ID_ENV, None)
-        code, _, err = self.run_cli("classify", "--category", "운영")
-        self.assertEqual(code, 1)
-        self.assertIn(SESSION_ID_ENV, err)
-
     def test_link_todo_without_session_uses_env(self):
         from app.db import connect
         from app.repositories import sessions as session_repo
 
         session_repo.register(connect(), "env-sess")
         os.environ[SESSION_ID_ENV] = "env-sess"
-        self.run_cli("add-todo", "문의", "--category", "운영")
+        self.add_todo("문의", "운영")
         code, out, _ = self.run_cli("link-todo", "1")
         self.assertEqual(code, 0)
         self.assertIn("연결", out)
@@ -236,7 +153,7 @@ class CliTest(unittest.TestCase):
 
         session_repo.register(connect(), "env-sess")
         os.environ[SESSION_ID_ENV] = "env-sess"
-        self.run_cli("add-todo", "진행할 일", "--category", "운영")
+        self.add_todo("진행할 일", "운영")
         self.run_cli("link-todo", "1")
         self.assertEqual(todo_repo.get(connect(), 1)["status"], "doing")
 
@@ -248,7 +165,7 @@ class CliTest(unittest.TestCase):
 
         session_repo.register(connect(), "env-sess")
         os.environ[SESSION_ID_ENV] = "env-sess"
-        self.run_cli("add-todo", "이미 끝난 일", "--category", "운영")
+        self.add_todo("이미 끝난 일", "운영")
         code, out, _ = self.run_cli("link-todo", "1", "--status", "done")
         self.assertEqual(code, 0)
         self.assertIn("done", out)
@@ -265,7 +182,7 @@ class CliTest(unittest.TestCase):
         """이 세션이 할일을 잡으면 `claude agents` 목록의 이름도 `#id | 제목` 이 된다"""
         session_repo.register(connect(), "env-sess")
         os.environ[SESSION_ID_ENV] = "env-sess"
-        self.run_cli("add-todo", "세션 이름 맞추기", "--category", "운영")
+        self.add_todo("세션 이름 맞추기", "운영")
         sent = []
         live = {"env-sess": {"pid": 77, "name": "옛 이름"}}
         with mock.patch.object(
@@ -280,7 +197,7 @@ class CliTest(unittest.TestCase):
     def test_edit_todo_title_renames_the_live_session(self):
         session_repo.register(connect(), "env-sess")
         os.environ[SESSION_ID_ENV] = "env-sess"
-        self.run_cli("add-todo", "처음 제목", "--category", "운영")
+        self.add_todo("처음 제목", "운영")
         self.run_cli("link-todo", "1")
         sent = []
         live = {"env-sess": {"pid": 77, "name": "#1 | 처음 제목"}}
@@ -291,67 +208,43 @@ class CliTest(unittest.TestCase):
             self.run_cli("edit-todo", "1", "--note", "메모만")  # 제목이 아니면 부르지 않는다
         self.assertEqual([json.loads(line)["name"] for line in sent], ["#1 | 고친 제목"])
 
-    def test_bare_session_flag_scopes_to_env_session(self):
-        from app.db import connect
-        from app.repositories import sessions as session_repo
-
-        self.run_cli("add-workspace", "개발", "KT")
-        con = connect()
-        session_repo.register(con, "env-sess")
-        session_repo.classify(con, "env-sess", workspace_id=1)
-        self.run_cli("add-todo", "워크스페이스 할일", "--workspace", "1")
-        self.run_cli("add-todo", "남의 할일", "--category", "운영")
-        os.environ[SESSION_ID_ENV] = "env-sess"
-        code, out, _ = self.run_cli("show-todo", "--session")
-        self.assertEqual(code, 0)
-        self.assertIn("워크스페이스 할일", out)
-        self.assertNotIn("남의 할일", out)
-
-    def test_session_flag_absent_still_lists_everything(self):
-        """--session 자체를 빼면 예전대로 전체. 환경변수가 있어도 범위를 좁히지 않는다"""
-        self.run_cli("add-todo", "남의 할일", "--category", "운영")
-        os.environ[SESSION_ID_ENV] = "env-sess"
-        code, out, _ = self.run_cli("show-todo")
-        self.assertEqual(code, 0)
-        self.assertIn("남의 할일", out)
-
     def test_link_todo_connects(self):
         from app.db import connect
         from app.repositories import sessions as session_repo
 
         session_repo.register(connect(), "cli-sess")
-        self.run_cli("add-todo", "문의", "--category", "운영")
+        self.add_todo("문의", "운영")
         code, out, _ = self.run_cli("link-todo", "cli-sess", "1")
         self.assertEqual(code, 0)
         self.assertIn("연결", out)
 
-    def test_add_todo_with_session_uses_its_workspace(self):
-        from app.db import connect
-        from app.repositories import sessions as session_repo
+    def test_removed_commands_are_gone(self):
+        """세션이 분류·할일 추가를 하지 않는다 — 분류는 대시보드가, 할일 연결은 매니저가 한다"""
+        for command in ("classify", "add-todo", "next", "set-status", "done-today", "add-workspace", "show",
+                        "move-todo", "reorder"):
+            with self.assertRaises(SystemExit):
+                self.run_cli(command)
 
-        self.run_cli("add-workspace", "개발", "KT")
-        con = connect()
-        session_repo.register(con, "todo-sess")
-        session_repo.classify(con, "todo-sess", workspace_id=1)
-        code, out, _ = self.run_cli(
-            "add-todo", "세션 할일", "--session", "todo-sess", "--note", "파일 경계 메모"
-        )
-        self.assertEqual(code, 0)
-        self.assertIn("세션 할일", out)
-        code, out, _ = self.run_cli("show-note", "1")
-        self.assertIn("파일 경계 메모", out)
+    def test_show_todo_lists_this_sessions_linked_todos(self):
+        session_repo.register(connect(), "env-sess")
+        os.environ[SESSION_ID_ENV] = "env-sess"
+        self.add_todo("잡은 할일", note="메모")
+        self.add_todo("남의 할일")
+        self.run_cli("link-todo", "1")
+        for argv in (("show-todo",), ("show-todo", "--session"), ("show-todo", "--session", "env-sess")):
+            code, out, _ = self.run_cli(*argv)
+            self.assertEqual(code, 0)
+            self.assertIn("1. [doing] 잡은 할일 (컨텍스트)", out)
+            self.assertNotIn("남의 할일", out)
 
-    def test_add_todo_with_unclassified_session_exits_one(self):
-        from app.db import connect
-        from app.repositories import sessions as session_repo
-
+    def test_show_todo_without_linked_todo(self):
         session_repo.register(connect(), "bare-sess")
-        code, _, err = self.run_cli("add-todo", "안 됨", "--session", "bare-sess")
-        self.assertEqual(code, 1)
-        self.assertIn("분류", err)
+        code, out, _ = self.run_cli("show-todo", "--session", "bare-sess")
+        self.assertEqual(code, 0)
+        self.assertIn("없음", out)
 
     def test_show_note_without_note(self):
-        self.run_cli("add-todo", "노트 없음", "--category", "운영")
+        self.add_todo("노트 없음", "운영")
         code, out, _ = self.run_cli("show-note", "1")
         self.assertEqual(code, 0)
         self.assertIn("(없음)", out)
@@ -361,25 +254,9 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("찾을 수 없습니다", err)
 
-    def test_show_todo_lists_ids_and_context_marker(self):
-        self.run_cli("add-workspace", "개발", "KT")
-        self.run_cli("add-todo", "노트 있음", "--workspace", "1", "--note", "메모")
-        self.run_cli("add-todo", "노트 없음", "--workspace", "1")
-        code, out, _ = self.run_cli("show-todo", "--workspace", "1")
-        self.assertEqual(code, 0)
-        self.assertIn("1. [todo] 노트 있음 (컨텍스트)", out)
-        self.assertIn("2. [todo] 노트 없음", out)
-        self.assertNotIn("2. [todo] 노트 없음 (컨텍스트)", out)
-
-    def test_show_todo_empty_scope(self):
-        self.run_cli("add-workspace", "개발", "KT")
-        code, out, _ = self.run_cli("show-todo", "--workspace", "1")
-        self.assertEqual(code, 0)
-        self.assertIn("없음", out)
-
     def test_statusline_shows_the_linked_todo_and_its_status(self):
         session_repo.register(connect(), "sess-line", cwd="/tmp")
-        self.run_cli("add-todo", "락 재설계", "--category", "개발")
+        self.add_todo("락 재설계", "개발")
         self.run_cli("link-todo", "sess-line", "1")
         code, out, _ = self.run_cli("statusline", "sess-line", "--cwd", "/tmp")
         self.assertEqual(code, 0)
@@ -388,13 +265,8 @@ class CliTest(unittest.TestCase):
     def test_statusline_clips_a_long_title_and_counts_the_rest(self):
         """한 줄에 다 못 담는다 — 제목은 자르고 나머지는 개수로"""
         session_repo.register(connect(), "sess-line", cwd="/tmp")
-        self.run_cli(
-            "add-todo",
-            "긴 제목을 가진 할일 하나 여기에 더 길게 붙여서 한 줄을 넘기게 만든 제목 끝",
-            "--category",
-            "개발",
-        )
-        self.run_cli("add-todo", "두 번째", "--category", "개발")
+        self.add_todo("긴 제목을 가진 할일 하나 여기에 더 길게 붙여서 한 줄을 넘기게 만든 제목 끝", "개발")
+        self.add_todo("두 번째", "개발")
         self.run_cli("link-todo", "sess-line", "1")
         self.run_cli("link-todo", "sess-line", "2")
         code, out, _ = self.run_cli("statusline", "sess-line", "--cwd", "/tmp")
@@ -405,7 +277,7 @@ class CliTest(unittest.TestCase):
 
     def test_statusline_marks_read_status_place_port_in_that_order(self):
         session_repo.register(connect(), "sess-line", cwd="/tmp", git_branch="worktree-abc")
-        self.run_cli("add-todo", "락 재설계", "--category", "개발")
+        self.add_todo("락 재설계", "개발")
         self.run_cli("link-todo", "sess-line", "1")
         code, out, _ = self.run_cli("statusline", "sess-line", "--cwd", "/tmp")
         self.assertEqual(code, 0)

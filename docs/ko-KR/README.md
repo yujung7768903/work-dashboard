@@ -190,21 +190,14 @@ SVG, 외부 파비콘을 불러오지 않는다), 누르면 새 탭으로 열거
 
 ```bash
 python3 dash.py ls                                   # 전체 트리
-python3 dash.py next                                 # 다음에 할 일 1건
 python3 dash.py show <워크스페이스id|JIRA-1>           # 워크스페이스 상세
 python3 dash.py add-category <이름>
-python3 dash.py add-workspace <카테고리> <이름> [--background ...] [--jira KEY]
-python3 dash.py add-todo <제목> [--workspace ID | --parent 할일id] [--note ...] [--precondition ...]
 python3 dash.py set-parent <할일id> <상위할일id|none>
 python3 dash.py link <상위|선행|근거|관련> <앞> <뒤> [--basis 계기|목적|배경] [--evidence ...] [--proposed]
 python3 dash.py edges <노드>                          # 12 · ctx:3 · session:<id> · jira:PFD-1
 python3 dash.py edge <confirm|reject|rm> <연결id>
 python3 dash.py add-context <제목> [--workspace ID | --category 이름] [--note ...]
 python3 dash.py collect-results [--session ID] [--dry-run] [--verbose]   # transcript 에서 세션 결과물 다시 뽑기(백필)
-python3 dash.py move-todo <할일id> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <상태>   # 할일: todo·doing·review·done
-python3 dash.py reorder <categories|workspaces|todos> <ids...>
-python3 dash.py done-today [--date YYYY-MM-DD]
 ```
 
 `set-parent` 는 예전 상위 열(같은 워크스페이스만)을 그대로 쓰고 그래프에 같이 적는다. `link` 는
@@ -212,15 +205,14 @@ python3 dash.py done-today [--date YYYY-MM-DD]
 뒤를 한다. 상위 할일(set-parent)은 같은 워크스페이스의 할일이어야 하고, 자기 자신이나 자기 하위를 상위로 둘 수
 없다. `--parent` 를 주면 워크스페이스는 상위 할일의 것을 따른다. 다른 워크스페이스로 옮기면
 하위 할일이 따라가고, 할일을 지우면 그 하위는 한 단계 위로 올라간다. `review` 는 작업은
-끝났고 확인만 남은 상태다 — 열린 할일로 남지만 `next`·자율 수행 후보에서는 빠진다.
+끝났고 확인만 남은 상태다 — 열린 할일로 남지만 자율 수행 후보에서는 빠진다.
 
 ### 세션
 
 ```bash
 python3 dash.py sessions                             # 돌고 있는 세션
-python3 dash.py classify --category <이름> [--workspace <id>]
 python3 dash.py link-todo <할일id> [--status done] [--past]
-python3 dash.py show-todo --session
+python3 dash.py show-todo [--session [ID]]            # 이 세션이 잡은 할일 (생략하면 이 세션)
 python3 dash.py show-note <할일id>                    # 컨텍스트 노트 전문
 ```
 
@@ -274,13 +266,12 @@ python3 dash.py autorun-finish               # 완료 — 검토 대기로
 
 | 상태 | 조건 | 주입 내용 |
 | --- | --- | --- |
-| `classified` | 브랜치의 Jira ID 로 매칭됐거나 `classify --workspace` 로 붙은 워크스페이스가 있음 | 배경·목적·목표·고려사항, 할일 목록, 범위 준수 지침 |
+| `classified` | 브랜치의 Jira ID 로 매칭된 워크스페이스가 있음 | 배경·목적·목표·고려사항, 할일 목록, 범위 준수 지침 |
 | `onboarding` | 워크스페이스가 하나도 없고 사용자가 거절한 적도 없음 | 초기 설정 절차 |
 | `unclassified` | 그 외 | 현재 위치·브랜치, 카테고리, 진행 중 워크스페이스, 분류 절차 |
 | `released` | 이 세션이 잡은 할일이 전부 `done` | 새 요청은 끝난 할일에 얹지 말고 새 할일로 받으라는 지시 |
 
-분류 자체는 자동이 아니다 — 셸은 질문이 무엇에 관한 것인지 알 수 없다. 훅은 지시만
-주입하고, Claude 가 `classify` 와 `link-todo` 로 직접 등록한다.
+세션은 분류도 할일 등록도 하지 않는다 — 카테고리는 대시보드가 정하고 할일 연결은 매니저가 한다.
 
 ### 훅
 

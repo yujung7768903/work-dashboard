@@ -342,9 +342,20 @@ class SessionLinkTest(unittest.TestCase):
         self.assertIn("KT 동시성", text)
         self.assertIn("/home/ujung/work", text)
 
-    def test_context_says_follow_up_todos_are_not_linked(self):
+    def test_context_does_not_ask_the_session_to_file_itself(self):
+        """분류는 대시보드가, 할일 연결은 매니저가 한다 — 세션에게 classify·add-todo 를 시키지 않는다"""
         session_repo.register(self.con, SID, cwd="/home/ujung/work")
-        self.assertIn("후속 할일", session_link.render_context(self.con, SID))
+        block = session_link.render_context(self.con, SID)
+        self.assertIn("할일 연결은 매니저가 한다", block)
+        for command in ("classify", "add-todo", "link-todo", "show-todo"):
+            self.assertNotIn(command, block)
+
+    def test_no_onboarding_after_unification(self):
+        """할일 통합 뒤에는 워크스페이스가 없다 — 빈 목록을 초기 설정 전으로 읽지 않는다"""
+        from app.db import UNIFIED_FLAG, meta_set
+
+        meta_set(self.con, UNIFIED_FLAG)
+        self.assertFalse(session_link.needs_onboarding(self.con))
 
     def test_context_for_missing_session_is_empty(self):
         self.assertEqual(session_link.render_context(self.con, "gone"), "")

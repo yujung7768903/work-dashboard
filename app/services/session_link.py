@@ -9,7 +9,7 @@ from app.constants import (
     STATUS_DONE,
     WORKSPACE_ACTIVE,
 )
-from app.db import meta_get, meta_set
+from app.db import UNIFIED_FLAG, meta_get, meta_set
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
@@ -45,36 +45,20 @@ RELEASE_GUIDE = (
     "다만 하나를 버려야 하거나 동작이 달라지는 선택이면 추측하지 않고 사용자에게 확인한다 "
     "(자율 세션이면 dash.py autorun-request 로 남긴다)."
 )
-# 무엇을 연결하는가. 병합은 연결된 할일을 전부 done 으로 닫으므로 착수하지 않은 것이 섞이면 안 된다
-LINK_SCOPE_RULE = (
-    " 연결하는 것은 지금 이 세션이 착수하는 할일 하나뿐이다. "
-    "나중에 할 일로 만들어 두는 후속 할일은 dash.py add-todo 로 만들기만 하고 "
-    "연결하지 않는다 — 연결하면 병합할 때 착수하지도 않은 채 done 으로 닫힌다. "
-    "그 할일은 실제로 착수하는 세션이 연결한다."
+# 분류·할일 연결은 세션 몫이 아니다(사용자 결정 11-18) — 대시보드가 세션 카테고리를 판정하고 매니저가 세션을 할일
+# (그 할일의 단계)에 잇는다. 세션에게 맡기면 같은 일이 매니저 할일·세션 할일 두 장으로 갈라졌다
+NO_FILING_RULE = (
+    " 이 세션은 카테고리 분류도 할일 등록·연결도 하지 않는다 — 분류는 대시보드가, "
+    "할일 연결은 매니저가 한다."
 )
 # 해제 뒤 같은 세션이 이어질 때. 끝난 할일에 새 작업을 얹으면 무엇이 끝났는지 알 수 없어진다
 RELEASED_GUIDE = (
     "지침: 이 세션이 잡았던 할일은 모두 끝났다(done). "
-    "사용자가 새 요청을 하면 끝난 할일에 얹지 말고 새 할일로 진행한다 — "
-    "dash.py add-todo <제목> --session 으로 만들고 "
-    "dash.py link-todo <todo-id> 로 연결한다. "
-    "단발 조회·설명 질문이면 만들지 않는다."
-    + LINK_SCOPE_RULE
+    "사용자가 새 요청을 하면 끝난 할일에 얹지 않는다."
+    + NO_FILING_RULE
 )
-# 연결은 착수 선언이지만 늘 그런 것은 아니다 — 이미 끝난 작업을 뒤늦게 연결하는 일도 있다.
-# 무엇이 끝난 것인지는 작업 내용을 본 쪽만 알므로 코드가 추측하지 않고 여기서 규칙을 알린다
-LINK_STATUS_RULE = (
-    "연결 상태는 기본 doing 이고, 이미 master 에 병합돼 끝난 작업이면 "
-    "--status done 을 붙인다."
-)
-# 브랜치로 워크스페이스는 알아냈지만 아직 할일을 안 잡은 세션. 잡아야 보드에 보인다
-UNLINKED_GUIDE = (
-    "미연결: 이 세션은 아직 어느 할일도 잡지 않았다. 위 목록에서 이번 작업에 해당하는 "
-    "할일을 dash.py link-todo <todo-id> 로 잡는다. 해당하는 것이 없으면 "
-    "dash.py add-todo <제목> --workspace <id> 로 만들고 연결한다. "
-    + LINK_STATUS_RULE
-    + LINK_SCOPE_RULE
-)
+# 브랜치로 워크스페이스는 알아냈지만 아직 할일을 안 잡은 세션
+UNLINKED_GUIDE = "미연결: 이 세션은 아직 어느 할일에도 이어지지 않았다." + NO_FILING_RULE
 CLASSIFIED_GUIDE = (
     "지침: 이 세션은 위 워크스페이스 작업이다. 배경·목적에 맞게 진행하고 "
     "범위를 벗어나는 작업은 착수 전 사용자에게 확인받는다. "
@@ -82,21 +66,7 @@ CLASSIFIED_GUIDE = (
     "'조건:' 이 붙은 할일은 그 조건이 충족됐는지 먼저 확인하고, "
     "미충족이면 착수하지 않고 사용자에게 알린다."
 )
-UNCLASSIFIED_GUIDE = (
-    "지침: 이번 세션을 한 번 분류한다. "
-    "(1) 위치와 질문 내용으로 카테고리를 정하고 확인 없이 등록한다. "
-    "(2) 관련된 진행 중 워크스페이스가 있다고 판단되면 사용자에게 확인받고 등록한다. "
-    "없으면 카테고리만 등록한다. "
-    "등록: python3 dash.py classify --category <이름> [--workspace <id>] "
-    "코드·문서를 바꾸거나 여러 턴에 걸치거나 산출물이 남는 작업이면 "
-    "dash.py add-todo 로 할일을 만들고 dash.py link-todo <todo-id> 로 연결한다. "
-    + LINK_STATUS_RULE
-    + LINK_SCOPE_RULE
-    + " 단발 조회·설명 질문이면 할일을 만들지 않는다. "
-    "분류 등록 직후에는 이 세션에 워크스페이스 블록이 다시 주입되지 않으므로, "
-    "dash.py show-todo --session 으로 할일을 직접 확인하고 "
-    "(컨텍스트) 표시가 있으면 dash.py show-note <id> 로 읽는다."
-)
+UNCLASSIFIED_GUIDE = "지침:" + NO_FILING_RULE + " 위 목록은 참고용이다."
 ONBOARDING_GUIDE = (
     "지침: 등록된 워크스페이스가 하나도 없다. 초기 설정을 진행한다. "
     "(0) 먼저 화면 언어를 묻는다 — English(en, 기본) / 한국어(ko) / 日本語(ja) / 中文(zh). "
@@ -225,6 +195,9 @@ def needs_onboarding(con):
     상태를 플래그와 실제 데이터 두 곳에 적으면 어긋나고, 그때 믿어야 하는 건 실제 데이터다
     """
     if meta_get(con, ONBOARDING_DECLINED_FLAG):
+        return False
+    # 할일 통합 뒤에는 워크스페이스가 없다(최상위 할일로 바뀌었다) — 빈 워크스페이스 목록이 초기 설정 전이라는 뜻이 아니다
+    if meta_get(con, UNIFIED_FLAG):
         return False
     return not workspace_repo.list_all(con)
 

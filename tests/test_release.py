@@ -248,7 +248,8 @@ class ReleasedContextTest(unittest.TestCase):
         release.finish(self.con, SID)
         block = session_link.released_context(self.con, SID)
         self.assertIn(session_link.STATE_RELEASED, block)
-        self.assertIn("새 할일", block)
+        self.assertIn("끝난 할일에 얹지 않는다", block)
+        self.assertNotIn("add-todo", block)
 
     def test_new_linked_todo_makes_it_quiet_again(self):
         done = todo_repo.create(self.con, "끝난 것", category_id=self.category)
@@ -290,7 +291,7 @@ class PromptHookTest(unittest.TestCase):
         todo = todo_repo.create(self.con, "끝난 것", category_id=self.category)
         session_repo.link_todo(self.con, SID, todo["id"])
         release.finish(self.con, SID)
-        self.assertIn("새 할일", self._run_hook())
+        self.assertIn("끝난 할일에 얹지 않는다", self._run_hook())
 
 
 class GuideTest(unittest.TestCase):

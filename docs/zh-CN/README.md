@@ -143,24 +143,16 @@ cd work-dashboard
 
 ```bash
 python3 dash.py ls                                   # 完整树
-python3 dash.py next                                 # 下一件待办
 python3 dash.py show <工作区id|JIRA-1>                # 工作区详情
 python3 dash.py add-category <名称>
-python3 dash.py add-workspace <分类> <名称> [--background ...] [--jira KEY]
-python3 dash.py add-todo <标题> [--workspace ID] [--note ...] [--precondition ...]
-python3 dash.py move-todo <待办id> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <状态>
-python3 dash.py reorder <categories|workspaces|todos> <ids...>
-python3 dash.py done-today [--date YYYY-MM-DD]
 ```
 
 ### 会话
 
 ```bash
 python3 dash.py sessions                             # 正在运行的会话
-python3 dash.py classify --category <名称> [--workspace <id>]
 python3 dash.py link-todo <待办id> [--status done] [--past]
-python3 dash.py show-todo --session
+python3 dash.py show-todo [--session [ID]]
 python3 dash.py show-note <待办id>                    # 上下文备注全文
 ```
 
@@ -208,13 +200,12 @@ python3 dash.py autorun-finish               # 完成 —— 转入待复核
 
 | 状态 | 条件 | 注入内容 |
 | --- | --- | --- |
-| `classified` | 已有工作区，通过分支的 Jira ID 匹配或用 `classify --workspace` 指定 | 背景、目的、目标、注意事项、待办列表与范围约束 |
+| `classified` | 已有工作区，通过分支的 Jira ID 匹配 | 背景、目的、目标、注意事项、待办列表与范围约束 |
 | `onboarding` | 一个工作区都还没有，且用户也没有拒绝过 | 初始设置流程 |
 | `unclassified` | 其余情况 | 当前位置与分支、分类、进行中的工作区，以及分类步骤 |
 | `released` | 本会话认领的待办全部为 `done` | 提示把新请求作为新待办接收，而不是压在已完成的待办上 |
 
-分类本身不是自动的 —— shell 无法判断一个问题是关于什么的。钩子只注入指令，由 Claude 用
-`classify` 和 `link-todo` 完成登记。
+会话不再自行分类或登记待办 —— 分类由仪表盘决定，待办关联由管理器完成。
 
 ### 钩子
 

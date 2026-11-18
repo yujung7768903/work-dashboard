@@ -388,9 +388,11 @@ class CliTest(unittest.TestCase):
         return code or 0, out.getvalue(), err.getvalue()
 
     def test_link_edges_and_states(self):
-        self.run_cli("add-workspace", "개발", "검색")
-        self.run_cli("add-todo", "사진 분석", "--workspace", "1")
-        self.run_cli("add-todo", "필터 원인", "--workspace", "1")
+        # 할일 준비는 저장소로 — add-workspace·add-todo 명령은 없다
+        con = connect()
+        space = workspace_repo.create(con, category_repo.get_by_name(con, "개발")["id"], "검색")
+        todo_repo.create(con, "사진 분석", workspace_id=space["id"])
+        todo_repo.create(con, "필터 원인", workspace_id=space["id"])
         code, out, _ = self.run_cli("link", "상위", "1", "2", "--basis", "계기", "--evidence", "분석 중 발견", "--proposed")
         self.assertEqual(code, 0)
         self.assertIn("상위(계기)", out)
