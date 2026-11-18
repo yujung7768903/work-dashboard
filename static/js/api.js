@@ -83,6 +83,9 @@ export const sendSessionMessage = (sessionId, text) =>
 // 실패는 상자 안 상태 줄에 보이므로 alert 를 띄우지 않는다
 // 매니저 할일 한 건(매니저 탭 줄과 같은 모양) — 사전 조건 할일을 눌러 그 할일 팝업을 열 때
 export const getManagerTask = (id) => request("GET", `/manager-task/${id}`);
+// 선행 대기 사전 조건 항목 케밥 — remove(그 선행 하나 빼기)·finish(사전 조건 할일 사용자 완료). → {task: 선행을 가진 할일}
+export const prereqAction = (taskId, prereqId, action) =>
+  request("POST", "/prereq-action", { task_id: taskId, prereq_id: prereqId, action });
 export const getTodoDecisions = (todoId) => request("GET", `/decisions?todo_id=${todoId}`);
 export const getDecision = (id) => request("GET", `/decisions/${id}`);
 export const answerDecision = (id, choice, feedback) =>

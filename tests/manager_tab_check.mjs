@@ -147,7 +147,19 @@ const decisionFetched = [];
 const reportFetched = [];
 const helperFetched = [];
 const managerTaskFetched = [];
-globalThis.fetch = async (url) => {
+const prereqPosted = [];
+globalThis.fetch = async (url, options) => {
+  if (url === "/api/prereq-action") {
+    const body = JSON.parse(options.body);
+    prereqPosted.push(body);
+    // 선행이 모두 풀린 할일 — 선행 대기에서 빠져 결정 대기가 된다
+    return {
+      ok: true, status: 200,
+      json: async () => ({ task: { id: body.task_id, title: "문의 자동화에 KT 로그 붙이기", state: "decision", detail: null,
+        priority: 3, priority_max: 3, prereqs: [{ id: 169, title: "KT 로그 Lambda 배포", status: "done", finished: true }],
+        popup: { detail: "muni", next_step: null, session_id: null, request: { status: "no_session" } } } }),
+    };
+  }
   if (url.startsWith("/api/manager-task/")) {
     const id = Number(url.split("/").at(-1));
     managerTaskFetched.push(id);
@@ -344,8 +356,35 @@ assert.equal(prereqItems.length, 2);
 const firstPrereq = prereqItems[0].children[0];
 assert.deepEqual(firstPrereq.children.map((kid) => kid.textContent), ["#168 KT 서버 로그 경로", "남음"]);
 assert.deepEqual(prereqItems[1].children[0].children.map((kid) => kid.textContent), ["#169 KT 로그 Lambda 배포", "확인 대기"]);
+// 사전 조건 줄 오른쪽 끝 케밥 — 제거하기·완료 처리하기. 누르기 전에 되묻고, 처리 뒤 선행 대기·결정 대기 칸을 다시 읽고
+// 팝업을 갱신된 할일로 다시 그린다(선행이 풀리면 답하는 칸이 생긴다). 끝난 사전 조건은 닫을 것이 없어 제거만 있다
+const kebab = prereqItems[0].children[1];
+assert.match(kebab.className, /\bws-menu\b/);
+assert.equal(kebab.children[0].textContent, "⋮");
+assert.equal(kebab.children[1].hidden, true);
+assert.deepEqual(kebab.children[1].children.map((kid) => kid.textContent), ["사전 조건 제거하기", "완료 처리하기"]);
+kebab.children[0].listeners.click({ stopPropagation() {} });
+assert.equal(kebab.children[1].hidden, false);
+const asked = [];
+globalThis.confirm = (text) => (asked.push(text), false);
+kebab.children[1].children[1].listeners.click({ stopPropagation() {} });
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.deepEqual(prereqPosted, [], "되물어 취소하면 보내지 않는다");
+assert.match(asked[0], /#168 KT 서버 로그 경로/);
+globalThis.confirm = (text) => (asked.push(text), true);
+fetched.length = 0;
+await kebab.children[1].children[0].listeners.click({ stopPropagation() {} });
+assert.deepEqual(prereqPosted, [{ task_id: 9, prereq_id: 168, action: "remove" }]);
+assert.match(asked[1], /#9/);
+assert.deepEqual([...fetched].sort(), ["decisions", "waits"]);
+assert.deepEqual(elements["mgr-decision-body"].children.map((section) => section.children[0].textContent),
+  ["사용자 요청", "사전 조건", "지금까지 한 일", "결정할 것", "답하기"]);
+const finishedItem = elements["mgr-decision-body"].children[1].children[1].children[0];
+assert.deepEqual(finishedItem.children[1].children[1].children.map((kid) => kid.textContent), ["사전 조건 제거하기"]);
+waitRows[0].listeners.click();
+const reopenedPrereq = elements["mgr-decision-body"].children[1].children[1].children[0].children[0];
 reportFetched.length = 0;
-firstPrereq.listeners.click({ stopPropagation() {} });
+reopenedPrereq.listeners.click({ stopPropagation() {} });
 for (let i = 0; !managerTaskFetched.length || headTitle() !== "#168 KT 서버 로그 경로"; i += 1) {
   assert.ok(i < 50, "사전 조건 할일 팝업이 열려야 한다");
   await new Promise((resolve) => setTimeout(resolve, 0));

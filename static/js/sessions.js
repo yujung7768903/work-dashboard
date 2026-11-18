@@ -276,14 +276,14 @@ function fillPermissions(slot, todoId, items) {
 function loadDecisions(slot, todoId) {
   api
     .getTodoDecisions(todoId)
-    .then((payload) => fillDecisions(slot, payload?.items, payload?.reports))
+    .then((payload) => fillDecisions(slot, payload?.items, payload?.reports, () => loadDecisions(slot, todoId)))
     .catch((error) => {
       slot.hidden = false;
       slot.replaceChildren(element("p", "muted", t("decision.loadFailed", { error: error.message })));
     });
 }
 
-function fillDecisions(slot, items, reports) {
+function fillDecisions(slot, items, reports, reload) {
   const list = Array.isArray(items) ? items : [];
   const asks = Array.isArray(reports) ? reports : [];
   slot.hidden = !list.length && !asks.length;
@@ -294,6 +294,7 @@ function fillDecisions(slot, items, reports) {
   const options = {
     alive: () => document.getElementById("session-modal").open,
     renderText: (text) => linkify(text).map(notePart),
+    reload,
   };
   // 선행 대기(다른 할일이 먼저 끝나야 함)는 결정·직접 할 일 어느 쪽이든 따로 모은다 — 지금 답할 것이 아니다
   const prereq = [...list, ...asks].filter((item) => item.prereq_waiting);
@@ -328,7 +329,7 @@ function prereqCard(item, options) {
   const card = element("div", "dec-card prereq-card");
   const line = element("p", "dec-head");
   line.append(element("span", "dec-title", `#${item.id} ${item.title}`), prereqChip());
-  card.append(line, element("p", "dec-label", t("prereq.listTitle")), prereqList(item.after));
+  card.append(line, element("p", "dec-label", t("prereq.listTitle")), prereqList(item.after, { owner: item.id, onChange: options.reload }));
   if (item.next_step) card.append(labelled(t("decision.nextStep"), item.next_step, options.renderText));
   return card;
 }
