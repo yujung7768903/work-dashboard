@@ -30,6 +30,7 @@ from app.constants import (
     SESSION_ID_ENV,
     STALE_JUDGE_BATCH,
     STATUS_DOING,
+    STATE_ENDED,
     STATUS_DONE,
     UNASSIGNED_LABEL,
 )
@@ -44,6 +45,7 @@ from app.repositories import settings as settings_repo
 from app.repositories import workspaces as workspace_repo
 from app.repositories import autorun as autorun_repo
 from app.services import (
+    auto_classify,
     autorun,
     board,
     gtasks,
@@ -384,6 +386,19 @@ def _build_parser():
     )
     _add_json_flag(judge_stale)
     judge_stale.set_defaults(handler=_cmd_judge_stale)
+
+    auto_cls = sub.add_parser(
+        "auto-classify",
+        help="미분류 세션·임시 카테고리 할일 일괄 분류 (기본은 판정만 보여주는 dry-run)",
+    )
+    auto_cls.add_argument(
+        "--apply", action="store_true", help="판정대로 실제로 적는다 (애매한 건은 그대로 남김)"
+    )
+    auto_cls.add_argument(
+        "--all", action="store_true", dest="show_all", help="끝난 세션의 애매한 건도 전부 나열"
+    )
+    _add_json_flag(auto_cls)
+    auto_cls.set_defaults(handler=_cmd_auto_classify)
 
     autorun_prompt = sub.add_parser("autorun-prompt", help="자율 세션에 줄 지시 전문")
     autorun_prompt.add_argument("todo_id", type=int)
@@ -1099,6 +1114,36 @@ def _cmd_judge_stale(con, args):
             f"{item['todo_id']}. {item['title']}: {item['verdict']}"
             f" {item['confidence']:.2f} {change} — {item['reason']}"
         )
+
+
+def _cmd_auto_classify(con, args):
+    report = auto_classify.run(con, apply=args.apply)
+    if args.as_json:
+        _emit_json(report)
+        return
+    items = report["items"]
+    print(f"학습한 할일 {report['training_size']}건 · 대상 {len(items)}건"
+          f" (세션 {sum(i['kind'] == 'session' for i in items)}"
+          f" · 임시 카테고리 할일 {sum(i['kind'] == 'todo' for i in items)})")
+    counts = {}
+    for item in items:
+        if item["category"]:
+            key = (item["category"], item["source"])
+            counts[key] = counts.get(key, 0) + 1
+    print("분류:")
+    for (category, source), count in sorted(counts.items(), key=lambda kv: -kv[1]):
+        print(f"  {category} {count}건 ({source})")
+    left = [item for item in items if not item["category"]]
+    shown = [i for i in left if args.show_all or i["state"] != STATE_ENDED]
+    print(f"미분류로 남김 {len(left)}건 — 아래는 {'전부' if args.show_all else '끝나지 않은 것'} {len(shown)}건:")
+    for item in shown:
+        label = "세션" if item["kind"] == "session" else "할일"
+        print(f"  {label} #{item['id']} [{item['state']}] {item['text'][:60]} — {item['reason']}")
+    if report["applied"] is None:
+        print("dry-run — 적지 않았다. 적으려면 --apply")
+    else:
+        applied = report["applied"]
+        print(f"적용: 세션 {applied['sessions']}건 · 할일 {applied['todos']}건")
 
 
 def _cmd_autorun_prompt(con, args):
