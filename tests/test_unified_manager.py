@@ -57,7 +57,10 @@ class UnifiedPanelTest(Fixture):
         self.con.commit()
         ids = lambda items: [item["id"] for item in items]  # noqa: E731
         self.assertEqual(ids(manager_panel.decisions(NOW, manager_home=self.home, con=self.con)), [decision])
-        self.assertEqual(ids(manager_panel.permissions(NOW, manager_home=self.home, con=self.con)), [blocked])
+        # 권한 대기 목록은 매니저(권한대기 --json)가 고른다 — 그 할일 줄은 통합 테이블에서 읽는다
+        waits = lambda _home: [{"source": "task", "task_id": blocked, "session_id": "s-perm"}]  # noqa: E731
+        self.assertEqual(ids(manager_panel.permissions(NOW, manager_home=self.home, con=self.con, waits_fn=waits)),
+                         [blocked])
         self.assertEqual(ids(manager_panel.waits(NOW, manager_home=self.home, con=self.con)), [prereq])
         self.assertEqual(ids(manager_panel.confirms(NOW, manager_home=self.home, con=self.con)), [confirm])
         item = manager_panel.task_item(prereq, NOW, manager_home=self.home, con=self.con)
