@@ -718,6 +718,8 @@
   "manager.permissions": "等待权限",
   "manager.permissionsHint": "辅助会话因权限、认证或登录受阻，等待用户允许、登录或直接执行的工作。与需要选择的等待决定分开显示",
   "manager.empty.permissions": "没有等待权限或登录的工作",
+  "manager.permAllowConfirm": "允许此命令？此操作无法撤销。\n\n{command}",
+  "manager.permAnswerFailed": "无法发送回答：{error}",
   "manager.statePermission": "等待权限",
   "manager.helperPermission": "等待权限",
   "manager.statePrereq": "等待前置",

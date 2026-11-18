@@ -3,7 +3,7 @@
 // 칸은 서버에서 따로 받는다. 보조 세션 목록은 claude agents 를 부르느라 수 초 걸려, 한 번에 받으면
 // 나머지 칸까지 그만큼 늦게 뜬다 (app/services/manager_panel.py). 보이는 하위 탭의 칸만 받고 폴링한다
 import * as api from "./api.js";
-import { language, t } from "./i18n.js";
+import { fromKorean, language, t } from "./i18n.js";
 import { formatAge, notePart, openDetail } from "./sessions.js";
 import { linkify } from "./linkify.js";
 import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
@@ -14,6 +14,7 @@ import { reportLoader } from "./task-report.js";
 import { prereqList, prereqSummary } from "./prereq.js";
 import { currentStep, stepList } from "./steps.js";
 import { feedbackLoader } from "./helper-feedback.js";
+import { permissionCard } from "./permission-answer.js";
 import { renderRetro } from "./retro.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html).
@@ -260,7 +261,7 @@ const ROW_BUILDERS = {
   helpers: helperRow,
   tools: toolRow,
   decisions: decisionRow,
-  permissions: decisionRow,
+  permissions: permissionRow,
   confirms: decisionRow,
   waits: decisionRow,
 };
@@ -388,14 +389,96 @@ function decisionRow(item) {
   );
   // 붙어 있는 카드가 있으면 제목 줄은 카드(트리 + 카드 제목), 결정·확인할 것은 아랫줄로 내린다
   if (item.card) title.className = "mgr-sub";
+  // 권한 막힘을 남긴 세션이 끝났으면 매니저가 단 안내('세션 종료됨 — 허용하면 되살려 재시도')를 아랫줄에
+  const ended = item.ended && item.note ? el("span", "mgr-sub mgr-ended", item.note) : null;
   const line = row({
     title: item.card ? cardTitle(item.card) : title,
-    sub: item.card ? title : (item.state === "prereq" && prereqSummary(item.prereqs)) || item.detail || "",
+    sub: ended || (item.card ? title : (item.state === "prereq" && prereqSummary(item.prereqs)) || item.detail || ""),
     aside: chip,
     asideSub: el("span", "mgr-sub", extra.join(" · ")),
     tone: `mgr-click${item.held ? " off" : ""}`,
   });
   return clickable(line, () => openDecision(item));
+}
+
+// ── 권한 대기 — 매니저 권한대기 목록(app/services/manager_panel.py permissions) ──────────────
+// 걸린 권한 요청(source=request)은 세션 이름·명령 한 줄·허용/거부 버튼, 권한 막힘 할일(source=task)은 할일 줄.
+// 허용·거부는 할일 상세 권한 카드와 같은 길(POST /permission-answer → perm-answer)이고 같은 규칙을 따른다 —
+// 세션 기록에서 전문을 찾지 못한 요청은 허용 버튼이 없고, 허용은 명령 전문을 보여 주고 한 번 더 묻는다
+function permissionRow(item) {
+  return item.source === "request" ? requestRow(item) : decisionRow(item);
+}
+
+function requestRow(item) {
+  const view = item.permission;
+  const who = item.session_name || item.session_id?.slice(0, 8) || "-";
+  const name = el("span", "mgr-title", who);
+  // 명령만 고정폭. 카드가 붙으면 제목 줄이 카드라 세션 이름을 아랫줄 앞에 둔다
+  const command = el("span", "mgr-sub");
+  if (item.card) command.append(document.createTextNode(`${who} · `));
+  command.append(el("span", "mgr-perm-cmd", [item.tool_name, item.summary].filter(Boolean).join(" · ")));
+  const status = el("span", "mgr-sub", item.since ? t("manager.sinceAgo", { age: formatAge(item.since) }) : "");
+  const actions = el("div", "mgr-perm-actions");
+  const replies = view.verified ? ["yes", "no"] : ["no"];
+  for (const reply of replies) {
+    const button = el("button", `mgr-perm-btn perm-${reply}`, t(reply === "yes" ? "permission.allow" : "permission.deny"));
+    button.type = "button";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      answerFromRow(item, reply, actions, status);
+    });
+    // 줄 전체가 키보드로 열리므로 버튼에서 누른 Enter·Space 가 팝업까지 열지 않게
+    button.addEventListener("keydown", (event) => event.stopPropagation());
+    actions.append(button);
+  }
+  const line = row({
+    title: item.card ? cardTitle(item.card) : name,
+    sub: command,
+    aside: actions,
+    asideSub: status,
+    hint: view.calls[0]?.text || view.request?.preview || "",
+    tone: "mgr-click",
+  });
+  return clickable(line, () => openPermission(item));
+}
+
+async function answerFromRow(item, reply, actions, status) {
+  const view = item.permission;
+  const call = view.calls[0];
+  if (reply === "yes" && !window.confirm(t("manager.permAllowConfirm", { command: call?.text ?? "" }))) return;
+  const buttons = [...actions.querySelectorAll("button")];
+  buttons.forEach((button) => (button.disabled = true));
+  try {
+    await api.answerPermission({
+      id: view.request.id,
+      answer: reply,
+      session_id: view.session.claude_session_id,
+      created_at: view.request.created_at,
+      tool_use_id: reply === "yes" ? call?.tool_use_id ?? null : null,
+    });
+    await refreshPart("permissions");
+  } catch (error) {
+    buttons.forEach((button) => (button.disabled = false));
+    status.textContent = t("manager.permAnswerFailed", { error: fromKorean(error.message) });
+    status.classList.add("danger");
+  }
+}
+
+// 줄을 누르면 할일 상세와 같은 권한 카드(도구·명령 전문·기다린 시간·기한, 고르고 '답 보내기')
+function openPermission(item) {
+  const view = item.permission;
+  openWork({
+    title: `${item.tool_name || t("permission.title")} · ${item.session_name || item.session_id?.slice(0, 8) || ""}`,
+    request: item.request,
+    sections: [{ title: t("permission.title"), node: permissionCard(view, { onAnswered: () => refreshPart("permissions") }) }],
+    card: item.card,
+    solo: {
+      title: item.session_name || item.session_id?.slice(0, 8) || "-",
+      status: "doing",
+      label: t("manager.statePermission"),
+      waiting: "permission",
+    },
+  });
 }
 
 // ── 도구 목록 — 휴대폰 '앱 및 서비스 연결하기' 화면처럼 ─────────────────────────

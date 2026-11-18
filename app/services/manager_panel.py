@@ -1,7 +1,8 @@
 """매니저 탭 — 사용자가 손대지 않아도 도는 자동화, 떠 있는 보조 세션, 매니저가 쓰는 도구(manager_tools.py), 사용자 결정 대기·완료 확인 대기.
 
 목록은 실제 설정에서 읽는다. 자동화는 crontab 과 매니저 점검 훅의 상수, 보조 세션은
-`manager.py 보조 --json`, 결정 대기·완료 확인 대기는 매니저 DB(state/manager.db)다. 매니저 DB 는 읽기
+`manager.py 보조 --json`, 권한 대기는 `manager.py 권한대기 --json`(보조 '권한 대기' 배지와 같은 목록), 결정 대기·완료 확인
+대기는 매니저 DB(state/manager.db)다. 매니저 DB 는 읽기
 전용(mode=ro)으로만 열고 여기로 옮겨 담지 않는다 — 정본은 매니저 쪽 하나여야 두 곳이
 어긋나지 않는다.
 
@@ -23,7 +24,8 @@ from app.constants import (
     MANAGER_HOME_ENV,
     MANAGER_HELPERS_TIMEOUT_SEC,
 )
-from app.services import cron, manager_links, manager_tools
+from app.repositories import sessions as session_repo
+from app.services import cron, manager_links, manager_tools, permission_answer
 
 PARTS = ("automations", "helpers", "tools", "decisions", "permissions", "confirms", "waits")
 STATUS_OK = "ok"
@@ -56,11 +58,16 @@ STATE_DECISION = "decision"
 STATE_ACTION = "action"
 STATE_CONFIRM = "confirm"
 STATE_CLOSED = "closed"
+# manager.py 권한대기 --json 행의 source — 걸린 권한 요청 / 권한 막힘 할일 (매니저 perm_grant.waits)
+SOURCE_REQUEST = "request"
+SOURCE_TASK = "task"
+# 권한 대기 줄에 보이는 명령 한 줄의 길이. 전문은 줄을 눌러 여는 카드에 있다
+REQUEST_SUMMARY_CHARS = 120
 
 
 def snapshot(part=None, now=None, con=None, **sources):
     """part 하나만, 없으면 전부. con 은 대시보드 DB(자율 실행 tick 기록을 읽는다).
-    sources 는 테스트 주입점(crontab_text, manager_home, helpers_fn, tools_external_fn)"""
+    sources 는 테스트 주입점(crontab_text, manager_home, helpers_fn, waits_fn, tools_external_fn)"""
     names = (part,) if part else PARTS
     unknown = [name for name in names if name not in PARTS]
     if unknown:
@@ -70,12 +77,12 @@ def snapshot(part=None, now=None, con=None, **sources):
         "automations": lambda: automations(
             now, con=con, **_pick(sources, "crontab_text", "manager_home")
         ),
-        "helpers": lambda: helpers(con=con, **_pick(sources, "manager_home", "helpers_fn")),
+        "helpers": lambda: helpers(con=con, **_pick(sources, "manager_home", "helpers_fn", "waits_fn")),
         "tools": lambda: manager_tools.tools(
             sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
         ),
         "decisions": lambda: decisions(now, con=con, **_pick(sources, "manager_home")),
-        "permissions": lambda: permissions(now, con=con, **_pick(sources, "manager_home")),
+        "permissions": lambda: permissions(now, con=con, **_pick(sources, "manager_home", "waits_fn")),
         "confirms": lambda: confirms(now, con=con, **_pick(sources, "manager_home")),
         "waits": lambda: waits(now, con=con, **_pick(sources, "manager_home")),
     }
@@ -745,15 +752,18 @@ def _last_wake(home):
 # ── 보조 세션 ────────────────────────────────────────────────────────────────
 
 
-def helpers(manager_home=None, helpers_fn=None, con=None):
+def helpers(manager_home=None, helpers_fn=None, con=None, waits_fn=None):
     """manager.py 보조 --json 을 그대로 옮긴다. 상태·진행률 판정은 매니저 몫이다.
     con(대시보드 DB)이 있으면 그 세션이 붙잡은 트리 카드와 첫 요청을 붙인다 — 줄을 카드 기준으로 보이고
-    팝업 '상세'·'트리' 탭을 채우는 재료다"""
+    팝업 '상세'·'트리' 탭을 채우는 재료다. 대기 표시(waiting)의 권한 대기는 '권한 대기' 칸과 같은 목록
+    (권한대기 --json)에 그 세션이 있는지로 정한다 — 칸과 배지가 다른 원천을 보면 배지는 권한 대기인데 칸은 0건이 된다"""
     home = manager_home or globals()["manager_home"]()
     rows = (helpers_fn or _run_helpers)(home)
     session_ids = [row.get("session_id") for row in rows]
     linked = manager_links.cards(con, session_ids)
-    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home))
+    blocked = permission_sessions(home, waits_fn)
+    waits = manager_links.waiting(con, session_ids, blocked)
+    waits.update({sid: manager_links.WAIT_PERMISSION for sid in session_ids if sid in blocked})
     return [
         {
             "session_id": row.get("session_id"),
@@ -772,23 +782,35 @@ def helpers(manager_home=None, helpers_fn=None, con=None):
 
 
 def _run_helpers(home):
+    return _run_manager_json(home, "보조")
+
+
+def _run_permission_waits(home):
+    return _run_manager_json(home, "권한대기")
+
+
+def _run_manager_json(home, command):
+    """manager.py <command> --json 의 JSON 목록. 둘 다 claude agents 를 불러 수 초 걸린다"""
     script = os.path.join(home, "manager.py")
     if not os.path.isfile(script):
         raise FileNotFoundError(f"매니저가 없음: {script}")
     done = subprocess.run(
-        [sys.executable, script, "보조", "--json"],
+        [sys.executable, script, command, "--json"],
         cwd=home,
         capture_output=True,
         text=True,
         timeout=MANAGER_HELPERS_TIMEOUT_SEC,
     )
     if done.returncode != 0:
-        raise RuntimeError((done.stderr or done.stdout).strip().splitlines()[-1:] or "보조 실패")
+        raise RuntimeError(" ".join((done.stderr or done.stdout).strip().splitlines()[-1:]) or f"{command} 실패")
     try:
-        return json.loads(done.stdout or "[]")
+        rows = json.loads(done.stdout or "[]")
     except ValueError:
-        # 보조 --json 이 없던 매니저는 사람용 글을 그대로 찍는다
-        raise RuntimeError("매니저가 '보조 --json' 을 지원하지 않습니다 — 매니저 레포를 최신으로 맞춰 주세요")
+        rows = None
+    if not isinstance(rows, list):
+        # 그 명령이 없던 매니저는 사용법 글을 찍고 0 으로 끝난다
+        raise RuntimeError(f"매니저가 '{command} --json' 을 지원하지 않습니다 — 매니저 레포를 최신으로 맞춰 주세요")
+    return rows
 
 
 # ── 결정 대기 ────────────────────────────────────────────────────────────────
@@ -810,14 +832,82 @@ def decisions(now, manager_home=None, con=None):
     return [row for row in rows if row["state"] == STATE_DECISION]
 
 
-def permissions(now, manager_home=None, con=None):
-    """권한 대기 — ask --blocked permission 으로 남긴 열린 할일(종류 무관). 사용자가 고를 것이 아니라 허용·로그인을 해 줘야
-    보조 세션이 움직인다. 결정 대기에 섞여 '결정 대기'로 보였다(사용자 지시 11-18, 할일 223).
-    판정은 표시(blocked)만 본다 — 매니저 is_permission_blocked 의 글 판정은 열린·닫힌 할일 21건을 잡았는데 절반 넘게
-    '삭제 승인'·'배포 방식 선택' 같은 진짜 결정이었고, 연결 세션이 쉬면 막힘으로 보는 규칙은 결정까지 막힘으로 만든다.
-    선행이 남은 것은 선행 대기(waits)가 먼저다"""
-    rows = _tasks(now, "status=? AND blocked=?", (OPEN_STATUS, BLOCKED_PERMISSION), manager_home, con, need="blocked")
-    return [row for row in rows if row["state"] == STATE_PERMISSION]
+def permissions(now, manager_home=None, con=None, waits_fn=None, root=None):
+    """권한 대기 — 사용자가 허용해 줘야 진행되는 것 한 목록(manager.py 권한대기 --json). 보조 세션 '권한 대기' 배지가
+    같은 목록으로 정해져 칸 건수와 배지가 어긋나지 않는다. 예전엔 매니저 DB 의 blocked 할일만 읽어, 권한 창을 띄우고
+    게이트가 답을 기다리는 보조 세션은 배지만 '권한 대기'이고 칸은 0건이었다(사용자 지시 11-18).
+
+    걸린 권한 요청(source=request)은 세션 이름·명령 요약과 권한 요청 카드(permission_answer.gate_view — 허용·거부는
+    기존 perm-answer 경로)를, 권한 막힘 할일(source=task)은 다른 칸과 같은 할일 줄에 끝난 세션 표시(ended·note)를 단다.
+    선택·판정은 매니저 몫이라 목록을 거르지 않는다 — 선행이 남은 막힘도 매니저가 넣었으면 여기 보인다"""
+    home = manager_home or globals()["manager_home"]()
+    waits = permission_waits(home, waits_fn)
+    task_ids = [item["task_id"] for item in waits if item.get("source") == SOURCE_TASK and item.get("task_id")]
+    rows = {}
+    if task_ids:
+        marks = ", ".join("?" * len(task_ids))
+        rows = {row["id"]: row for row in _tasks(now, f"id IN ({marks})", tuple(task_ids), home, con)}
+    items = []
+    for wait in waits:
+        if wait.get("source") == SOURCE_REQUEST:
+            items.append(_request_row(wait, home, con, now, root))
+            continue
+        row = rows.get(wait.get("task_id"))
+        if row is None:
+            continue  # 목록을 받은 뒤 닫히거나 지워진 할일
+        row.update(source=SOURCE_TASK, state=STATE_PERMISSION, ended=bool(wait.get("ended")), note=wait.get("note"))
+        items.append(row)
+    return items
+
+
+def permission_waits(manager_home=None, waits_fn=None):
+    """manager.py 권한대기 --json 그대로. waits_fn 은 테스트 주입점"""
+    home = manager_home or globals()["manager_home"]()
+    return (waits_fn or _run_permission_waits)(home)
+
+
+def permission_sessions(manager_home=None, waits_fn=None):
+    """권한 대기 목록에 걸린 세션 id 집합 — 매니저 perm_grant.waiting_sessions 와 같은 규칙.
+    권한대기 명령이 없는 예전 매니저면 예전 신호(매니저 DB blocked 할일의 세션)로 돌아간다 — 보조 칸까지 깨지지 않게"""
+    try:
+        waits = permission_waits(manager_home, waits_fn)
+    except (OSError, RuntimeError, subprocess.SubprocessError):
+        return manager_links.permission_sessions(manager_home)
+    return frozenset(item["session_id"] for item in waits if item.get("session_id"))
+
+
+def _request_row(wait, home, con, now, root=None):
+    """걸린 권한 요청 한 건 → 줄(세션 이름·명령 요약) + 권한 요청 카드(허용·거부)"""
+    sid = wait.get("session_id") or ""
+    request = {
+        "id": str(wait.get("request_id") or ""),
+        "created_at": wait.get("created_at") or "",
+        "tool_name": wait.get("tool_name") or "",
+        "preview": wait.get("preview") or "",
+        "deliver": wait.get("deliver") or "",
+    }
+    found = (session_repo.find(con, sid) if con is not None and sid else None) or {}
+    name = _session_name(sid) or ""
+    view = permission_answer.gate_view(
+        request,
+        {"id": found.get("id"), "claude_session_id": sid, "short": sid[:8], "name": name, "cwd": found.get("cwd") or ""},
+        now,
+        root,
+    )
+    call = view["calls"][0] if view["calls"] else None
+    return {
+        "source": SOURCE_REQUEST,
+        "id": request["id"],
+        "session_id": sid,
+        "session_name": name,
+        "tool_name": request["tool_name"],
+        # 줄에 보일 명령 한 줄. 전문을 찾지 못하면 매니저 미리보기(가림·200자 자름)
+        "summary": _first_line((call or {}).get("text") or request["preview"], REQUEST_SUMMARY_CHARS),
+        "since": view["requested_at"],
+        "card": manager_links.cards(con, [sid]).get(sid),
+        "request": manager_links.first_request(sid, home),
+        "permission": view,
+    }
 
 
 def waits(now, manager_home=None, con=None):

@@ -924,6 +924,17 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-chip.confirm { color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--surface)); }
 /* 권한 대기 — 허용·로그인을 해 줘야 보조 세션이 움직인다. 고를 것이 있는 결정 대기(waiting 주황)와 구분해 빨강 */
 .mgr-chip.permission { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--surface)); }
+/* 권한 대기 칸의 걸린 권한 요청 줄 — 명령 한 줄은 고정폭, 오른쪽에 허용·거부. 칩과 같은 높이·둥글기로 맞춘다 */
+.mgr-perm-cmd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mgr-perm-actions { display: flex; gap: var(--sp-4); }
+.mgr-perm-btn {
+  padding: var(--sp-2) var(--sp-8); border-radius: var(--r-ctl); border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg); font-size: var(--fs-micro); font-weight: 600; cursor: pointer;
+}
+.mgr-perm-btn.perm-yes { border-color: var(--accent); color: var(--accent); }
+.mgr-perm-btn:hover:not(:disabled) { background: var(--softer); }
+.mgr-perm-btn:disabled { opacity: 0.5; cursor: progress; }
+.mgr-row .mgr-sub.danger, .mgr-ended { color: var(--danger); }
 /* 선행 대기 — 사람을 기다리는 결정 대기(waiting 주황)와 구분해 중립 테두리로. 사전 조건 할일이 끝나야 풀린다 */
 .mgr-chip.prereq { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 /* 회고 — 입력창은 칸 제목 아래 한 줄(넓으면 입력칸 + 버튼, 좁으면 아래로). 피드백 글은 여러 줄이라 줄임 없이 감싼다 */

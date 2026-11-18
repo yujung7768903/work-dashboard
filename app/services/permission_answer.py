@@ -173,36 +173,47 @@ def _item(row, request, live_row, latest, root, now):
         mode = MODE_ENDED
     else:
         return None
+    short = (live_row or {}).get("id") or sid[:8]
+    session = {
+        "id": row["id"],
+        "claude_session_id": sid,
+        "short": short,
+        "name": (live_row or {}).get("name") or "",
+        "cwd": row.get("cwd") or "",
+    }
     calls = transcript.pending_tool_uses(sid, root)
-    matched = match_call(request, calls) if request else None
     if mode == MODE_GATE:
-        shown = [matched] if matched else []
-    else:
-        shown = calls
-        if not shown:
-            return None  # 무엇을 기다리는지 찾지 못했다 — 보여 줄 것이 없다
+        return _view(mode, session, request, calls, match_call(request, calls), now)
+    if not calls:
+        return None  # 무엇을 기다리는지 찾지 못했다 — 보여 줄 것이 없다
+    return _view(mode, session, None, calls, None, now)
+
+
+def gate_view(request, session, now=None, root=None):
+    """매니저 권한대기 목록의 걸린 요청 한 건(permission_gate 가 결정을 기다림)을 권한 요청 카드 모양으로.
+    매니저 탭 '권한 대기' 칸이 쓴다 — 할일 상세 카드와 같은 확인 규칙(전문을 찾은 호출만 허용 가능)을 따른다.
+    session = {"id", "claude_session_id", "short", "name", "cwd"}"""
+    calls = transcript.pending_tool_uses(session["claude_session_id"], root)
+    return _view(MODE_GATE, session, request, calls, match_call(request, calls), now or _now())
+
+
+def _view(mode, session, request, calls, matched, now):
+    shown = ([matched] if matched else []) if mode == MODE_GATE else calls
     if request:
         requested = _local_time(request.get("created_at"))
     else:
         requested = _utc_time(shown[0].get("at"))
-    short = (live_row or {}).get("id") or sid[:8]
     return {
-        "key": f"{sid}:{request['id'] if request else shown[0]['tool_use_id']}",
+        "key": f"{session['claude_session_id']}:{request['id'] if request else shown[0]['tool_use_id']}",
         "mode": mode,
-        "session": {
-            "id": row["id"],
-            "claude_session_id": sid,
-            "short": short,
-            "name": (live_row or {}).get("name") or "",
-            "cwd": row.get("cwd") or "",
-        },
+        "session": session,
         "request": _request_view(request),
         "calls": [_call_view(call) for call in shown],
         "verified": bool(matched),
         "requested_at": _iso(requested),
         "waited_sec": max(0, int((now - requested).total_seconds())) if requested else None,
         "deadline_at": _iso(requested + timedelta(seconds=MANAGER_GATE_WAIT_SEC)) if request and requested else None,
-        "attach": f"claude attach {short}" if mode == MODE_TERMINAL else None,
+        "attach": f"claude attach {session['short']}" if mode == MODE_TERMINAL else None,
     }
 
 

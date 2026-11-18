@@ -718,6 +718,8 @@
   "manager.permissions": "権限待ち",
   "manager.permissionsHint": "補助セッションが権限・認証・ログインで止まり、許可・ログイン・直接実行を待っている作業。選ぶものがある判断待ちとは分けて表示します",
   "manager.empty.permissions": "権限・ログインを待っている作業はありません",
+  "manager.permAllowConfirm": "このコマンドを許可します。取り消せません。\n\n{command}",
+  "manager.permAnswerFailed": "回答を送れませんでした: {error}",
   "manager.statePermission": "権限待ち",
   "manager.helperPermission": "権限待ち",
   "manager.statePrereq": "先行待ち",
