@@ -46,6 +46,7 @@ from app.services import (
     gtasks_setup,
     helper_feedback,
     manager_panel,
+    retro_panel,
     permission_answer,
     planning,
     prereq_action,
@@ -70,8 +71,9 @@ NONE_LITERAL = "none"
 # 이 PC 에서 온 요청만 받는 POST. 모두 도구가 달린 에이전트 세션에 글을 넣거나 그 세션의 도구 실행을 허락한다.
 # task-report 는 매니저 할일을 닫고(완료·확인) 원 세션에 글을 넣는다. helper-feedback 은 돌고 있는 보조 세션에 글을 넣는다.
 # prereq-action 은 매니저 할일의 선행을 고치거나 사전 조건 할일을 닫는다
+# retro-feedback 은 매니저 하루 회고 대기열에 글을 쌓는다 — 회고가 그 글로 보조 세션을 띄운다
 LOCAL_ONLY_HEADS = ("session-message", "decision-answer", "permission-answer", "task-report", "helper-feedback",
-                    "prereq-action")
+                    "prereq-action", "retro-feedback")
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -211,6 +213,9 @@ def _route_get(con, head, item_id, query):
         if not item_id:
             raise Validation("id 가 필요함")
         return manager_panel.task_item(item_id, con=con)
+    if head == "manager-retro":
+        # 매니저 탭 회고 — id 없으면 대기 중인 피드백 + 날짜별 회고, 있으면 그 회고 상세(근거·바꾼 것·커밋·측정)
+        return retro_panel.show(item_id) if item_id else retro_panel.listing()
     if head == "manager":
         # 칸(part)마다 따로 부른다 — 보조 세션 목록은 수 초 걸려 다른 칸을 붙잡으면 안 된다
         try:
@@ -311,6 +316,9 @@ def _route_post(con, head, body):
     if head == "helper-feedback":
         # 매니저 탭 보조 세션 상세의 피드백. 매니저 helper-ui 가 뒤에서 돌고 화면은 GET helper-feedback 을 폴링한다
         return helper_feedback.start(body.get("session_id"), body.get("feedback"))
+    if head == "retro-feedback":
+        # 매니저 탭 회고의 입력창 — 하루 회고 대기열에 쌓기만 한다(바로 돌아온다)
+        return retro_panel.add(body.get("text"))
     if head == "permission-answer":
         # 할일 상세 권한 요청 칸의 허용·거부. 매니저 permission_gate 가 기다리는 요청에만 닿는다(perm-answer)
         return permission_answer.answer(
