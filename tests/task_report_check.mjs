@@ -265,6 +265,9 @@ const WAITING = {
   ...ACTION, id: 9, title: "문의 자동화에 KT 로그 붙이기", next_step: "PR #69 머지", prereq_waiting: true,
   after: [{ id: 168, title: "KT 서버 로그 경로", status: "open", finished: false },
     { id: 169, title: "KT 로그 Lambda 배포", status: "done", finished: true }],
+  steps: [{ name: "선행 할일 169 KT 로그 Lambda 배포", status: "done" },
+    { name: "선행 할일 끝나기 대기", status: "current", unblock: "할일 168(KT 서버 로그 경로) 끝내기" },
+    { name: "muni PR #69 머지·배포", status: "todo" }],
 };
 decisions = { available: true, items: [], reports: [ACTION, WAITING] };
 const third = await open();
@@ -276,7 +279,13 @@ const prereqCard = find(third.slot, byClass("prereq-card"));
 assert.equal(prereqCard.children[0].children[0].textContent, "#9 문의 자동화에 KT 로그 붙이기");
 assert.match(prereqCard.children[0].children[1].className, /\bprereq\b/);
 assert.equal(prereqCard.children[0].children[1].textContent, "선행 대기");
-const prereqLines = all(prereqCard, byClass("prereq-item"));
+const prereqLines = all(prereqCard, (n) => byClass("prereq-item")(n) && !byClass("step-item")(n));
+// 진행 단계 — 사전 조건 아래에 같은 줄 모양으로. 멈춘 단계를 강조하고 넘어가는 조건을 보인다(답하는 칸은 없다)
+const waitSteps = all(prereqCard, byClass("step-item"));
+assert.deepEqual(waitSteps.map((line) => text(line.children[0])),
+  ["1선행 할일 169 KT 로그 Lambda 배포끝남", "2선행 할일 끝나기 대기여기서 멈춤", "3muni PR #69 머지·배포남음"]);
+assert.ok(byClass("stuck")(waitSteps[1]));
+assert.equal(text(waitSteps[1].children[1]), "넘어가려면할일 168(KT 서버 로그 경로) 끝내기");
 assert.deepEqual(prereqLines.map((line) => text(find(line, byClass("prereq-open")))),
   ["#168 KT 서버 로그 경로남음", "#169 KT 로그 Lambda 배포끝남"]);
 assert.ok(byClass("finished")(prereqLines[1]), "끝난 사전 조건은 흐리게");

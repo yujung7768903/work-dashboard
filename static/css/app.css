@@ -937,6 +937,24 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .prereq-open:hover, .prereq-open:focus-visible { border-color: var(--accent); }
 .prereq-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .prereq-item.finished .prereq-title { color: var(--muted); text-decoration: line-through; }
+/* 진행 단계 — 사전 조건 목록과 같은 줄 모양. 줄 아래에 넘어가는 조건·답하는 상자가 붙어 세로로 쌓는다.
+   멈춘 단계는 결정 대기 칩과 같은 주황으로 테두리·바탕을 칠해 어디서 멈췄는지 한눈에 보이게 한다 */
+.step-item { flex-direction: column; align-items: stretch; gap: var(--sp-4); }
+.step-line {
+  display: flex; align-items: center; gap: var(--sp-8); min-width: 0;
+  padding: var(--sp-4) var(--sp-8); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface);
+}
+.step-no { flex: none; min-width: 1.25em; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; }
+.step-item.step-done .step-name { color: var(--muted); }
+.step-item.stuck .step-line {
+  border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); font-weight: 600;
+}
+.step-item.stuck .step-no { color: var(--warn); }
+.step-unblock { margin: 0; padding: 0 var(--sp-8); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.step-unblock .dec-label { margin-right: var(--sp-8); }
+.step-item.stuck > .dec-loader, .step-item.stuck > .dec-answer {
+  margin-left: var(--sp-8); padding-left: var(--sp-8); border-left: 2px solid var(--warn);
+}
 .mgr-empty, .mgr-error { padding: var(--sp-12) 0; color: var(--muted); font-size: var(--fs-sm); }
 .mgr-error { color: var(--danger); }
 /* 자동화 표 — 주기 / 자동화 내용 / 수행 시간. 같은 주기끼리 왼쪽 칸에서 줄이 맞는다 */

@@ -12,6 +12,7 @@ import { createTreeMap, soloCard } from "./tree-map.js";
 import { decisionLoader } from "./decision-answer.js";
 import { reportLoader } from "./task-report.js";
 import { prereqList, prereqSummary } from "./prereq.js";
+import { currentStep, stepList } from "./steps.js";
 import { feedbackLoader } from "./helper-feedback.js";
 
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html)
@@ -498,9 +499,15 @@ function toolRow(item) {
 // 매니저 DB 와 연결 세션의 마지막 답에 기록된 글만 옮긴다. 요약·추천을 화면이 지어내지 않는다.
 // 결정: 지금까지 한 일 / 결정할 것. 완료 확인: 끝낸 내용 / 작업 사항 / 다음 단계 / 산출물(있을 때만)
 
-export function decisionSections(item) {
+// slot: 멈춘 단계 줄 아래에 넣을 답하는 상자(openDecision 이 준다)
+export function decisionSections(item, slot = null) {
   const popup = item.popup || {};
   const sections = item.state === "confirm" ? confirmSections(popup) : openSections(popup);
+  // 진행 단계 — 어느 단계에서 멈췄고 무엇을 하면 넘어가는지. 기록된 글 앞에 둔다: 무엇 때문에 멈췄는지가 먼저다
+  if (item.steps?.length) {
+    const node = stepList(item.steps, { active: item.state !== "closed", slot });
+    sections.unshift({ title: t("steps.title"), node });
+  }
   // 사전 조건 — 선행 대기면 맨 위에. 이미 풀린 선행도 무엇을 기다렸는지 보이게 남긴다
   if (item.prereqs?.length) {
     const node = prereqList(item.prereqs, { owner: item.id, onChange: afterPrereqChange });
@@ -559,13 +566,19 @@ function replyPart(popup) {
 const ANSWER_AT = 2;
 const CONFIRM_AT = 1;
 
-// 선행 대기·닫힌 할일은 답하는 칸이 없다 — 선행 대기는 사전 조건 할일을 먼저 끝낸다
+// 선행 대기·닫힌 할일은 답하는 칸이 없다 — 선행 대기는 사전 조건 할일을 먼저 끝낸다.
+// 진행 단계에 멈춘 단계가 있으면 결정·직접 할 일의 답하는 상자는 그 단계 줄 바로 아래에 들어간다
 function openDecision(item) {
-  const sections = decisionSections(item);
   const alive = () => document.getElementById("mgr-decision-modal").open;
-  const shift = item.prereqs?.length ? 1 : 0;
   // 권한 대기는 종류대로 받는다 — 예전 ask 가 결정으로 남긴 막힘은 답 칸, 직접 할 일로 남긴 막힘은 완료 칸
   const answerAs = item.state === "permission" ? item.kind : item.state;
+  if ((answerAs === "decision" || answerAs === "action") && currentStep(item.steps)) {
+    const box = answerAs === "decision" ? decisionLoader(item.id, { alive }) : reportLoader(item.id, { alive });
+    openWork(decisionWork(item, decisionSections(item, box)));
+    return;
+  }
+  const sections = decisionSections(item);
+  const shift = (item.prereqs?.length ? 1 : 0) + (item.steps?.length ? 1 : 0);
   if (answerAs === "decision") {
     sections.splice(ANSWER_AT + shift, 0, { title: t("decision.answerTitle"), node: decisionLoader(item.id, { alive }) });
   } else if (answerAs === "action") {
@@ -573,14 +586,18 @@ function openDecision(item) {
   } else if (item.state === "confirm") {
     sections.splice(CONFIRM_AT + shift, 0, { title: t("report.confirmTitle"), node: reportLoader(item.id, { alive }) });
   }
-  openWork({
+  openWork(decisionWork(item, sections));
+}
+
+function decisionWork(item, sections) {
+  return {
     title: `#${item.id} ${item.title}`,
     request: item.popup?.request,
     source: item.popup,
     sections,
     card: item.card,
     solo: decisionSolo(item),
-  });
+  };
 }
 
 // 보조 세션 줄 — 상세는 사용자 요청 / 지금 하는 일 / 피드백 보내기 / 연결 세션.

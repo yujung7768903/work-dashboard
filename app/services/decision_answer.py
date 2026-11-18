@@ -30,7 +30,7 @@ SCRIPT = "manager.py"
 FIELDS = (
     "id", "title", "status", "detail", "next_step", "open_target", "options", "recommend",
     "answer_state", "answer", "answer_choice", "answer_feedback", "answered_at", "created_at", "session",
-    "after", "prereq_waiting",
+    "after", "prereq_waiting", "steps",
     # 권한 막힘 표시(ask --blocked permission) — 할일 상세가 결정 대기·직접 할 일과 따로 '권한 대기'로 모은다
     "blocked",
 )

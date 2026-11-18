@@ -6,6 +6,7 @@
 // 답 상태(answer_state)는 매니저가 계산한 값을 그대로 옮긴다 — 화면이 판정하지 않는다
 import * as api from "./api.js";
 import { fromKorean, t } from "./i18n.js";
+import { currentStep, stepList } from "./steps.js";
 
 // 답 상태 → (칩 색, 문구). 칩 색은 매니저 탭 줄의 칩(.mgr-chip)과 같은 뜻으로 쓴다:
 // 사람을 기다리면 waiting, 넘어가는 중이면 working, 끝났으면 confirm, 원 세션이 이어 가지 못하면 failed.
@@ -79,6 +80,13 @@ function cardParts(state, { head, renderText, draw, alive }) {
     const line = element("p", "dec-head");
     line.append(element("span", "dec-title", `#${item.id} ${item.title}`), stateChip(item));
     parts.push(line, ...contextParts(item, renderText));
+    // 진행 단계가 있으면 답하는 상자를 멈춘 단계 줄 아래에 넣는다 — 무엇을 보내야 넘어가는지 읽고 바로 쓰게
+    if (item.steps?.length) {
+      const open = item.status === "open";
+      const slot = open && currentStep(item.steps) ? answerBox(state, { draw, alive }) : null;
+      parts.push(element("p", "dec-label", t("steps.title")), stepList(item.steps, { active: open, slot }));
+      if (slot) return parts;
+    }
   } else if (item.answer_state !== "unanswered" || item.job) {
     // 팝업 머리에는 답 상태가 없다 — 답한 뒤에만 한 줄로
     const line = element("p", "dec-head");
