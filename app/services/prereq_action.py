@@ -6,7 +6,7 @@
   (task_report.start)으로, task-ui 가 받지 않는 열린 결정은 task done --by-user 로 닫는다 — 둘 다 사용자 말이 곧 확인이라
   바로 완료된다
 
-처리 뒤 선행을 가진 할일(owner)을 매니저 탭 줄 모양으로 다시 읽어 돌려준다. 선행이 모두 풀렸으면 state 가 prereq 가 아니다.
+처리 뒤 선행을 가진 할일(owner)을 매니저 탭 줄 모양으로 다시 읽어 돌려준다(con 은 대시보드 DB — 할일 통합 뒤의 읽기 자리). 선행이 모두 풀렸으면 state 가 prereq 가 아니다.
 """
 import subprocess
 import sys
@@ -23,7 +23,7 @@ FINISH_WAIT_SEC = 15
 FINISH_POLL_SEC = 0.5
 
 
-def remove(task_id, prereq_id, home=None):
+def remove(task_id, prereq_id, home=None, con=None):
     """할일 task_id 의 선행에서 prereq_id 하나만 뺀다"""
     home = home or decision_answer.manager_home()
     row = decision_answer._task(task_id, home)
@@ -32,10 +32,10 @@ def remove(task_id, prereq_id, home=None):
         raise Validation(f"#{task_id} 의 사전 조건이 아닙니다: #{prereq_id}")
     rest = [i for i in ids if i != prereq_id]
     decision_answer._call(["task", "update", str(task_id), "--after", ",".join(map(str, rest)) or "none"], home)
-    return {"task": manager_panel.task_item(task_id, manager_home=home)}
+    return {"task": manager_panel.task_item(task_id, manager_home=home, con=con)}
 
 
-def finish(task_id, prereq_id, home=None, popen=subprocess.Popen, run=subprocess.run, sleep=time.sleep):
+def finish(task_id, prereq_id, home=None, popen=subprocess.Popen, run=subprocess.run, sleep=time.sleep, con=None):
     """할일 task_id 의 사전 조건 prereq_id 를 사용자 완료로 닫는다"""
     home = home or decision_answer.manager_home()
     owner = decision_answer._task(task_id, home)
@@ -55,7 +55,7 @@ def finish(task_id, prereq_id, home=None, popen=subprocess.Popen, run=subprocess
         )
         if done.returncode != 0:
             raise RuntimeError((done.stderr or done.stdout).strip() or f"task done exit {done.returncode}")
-    return {"task": manager_panel.task_item(task_id, manager_home=home)}
+    return {"task": manager_panel.task_item(task_id, manager_home=home, con=con)}
 
 
 def _wait_closed(prereq_id, home, sleep):

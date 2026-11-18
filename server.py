@@ -307,7 +307,7 @@ def _route_post(con, head, body):
         action = PREREQ_ACTIONS.get(body.get("action"))
         if not action or not body.get("task_id") or not body.get("prereq_id"):
             raise Validation("task_id·prereq_id·action(remove|finish) 가 필요함")
-        return action(int(body["task_id"]), int(body["prereq_id"]))
+        return action(int(body["task_id"]), int(body["prereq_id"]), con=con)
     if head == "helper-feedback":
         # 매니저 탭 보조 세션 상세의 피드백. 매니저 helper-ui 가 뒤에서 돌고 화면은 GET helper-feedback 을 폴링한다
         return helper_feedback.start(body.get("session_id"), body.get("feedback"))

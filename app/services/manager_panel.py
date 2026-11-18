@@ -3,7 +3,8 @@
 목록은 실제 설정에서 읽는다. 자동화는 crontab 과 매니저 점검 훅의 상수, 보조 세션은
 `manager.py 보조 --json`, 결정 대기·완료 확인 대기는 매니저 DB(state/manager.db)다. 매니저 DB 는 읽기
 전용(mode=ro)으로만 열고 여기로 옮겨 담지 않는다 — 정본은 매니저 쪽 하나여야 두 곳이
-어긋나지 않는다.
+어긋나지 않는다. 할일 통합(대시보드 meta unified_todos) 뒤에는 매니저 할일의 정본이 대시보드 todos 라
+같은 연결의 뷰 manager_tasks 를 읽는다.
 
 각 칸은 따로 실패한다. 매니저가 없는 PC 에서도 crontab 칸은 떠야 하므로 칸마다
 {"items": [...], "error": 문장|None} 로 돌려준다.
@@ -751,7 +752,7 @@ def helpers(manager_home=None, helpers_fn=None, con=None):
     rows = (helpers_fn or _run_helpers)(home)
     session_ids = [row.get("session_id") for row in rows]
     linked = manager_links.cards(con, session_ids)
-    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home))
+    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home, con))
     return [
         {
             "session_id": row.get("session_id"),
@@ -841,17 +842,14 @@ def confirms(now, manager_home=None, con=None):
 
 
 def _tasks(now, where, params, manager_home, con, need=None):
-    """매니저 DB 할일을 목록 줄 + 팝업 재료로. 읽기 전용 연결로만 읽는다.
+    """매니저 할일을 목록 줄 + 팝업 재료로. 읽기만 한다 — 통합 뒤면 대시보드 DB 의 뷰 manager_tasks(con),
+    그 전이면 매니저 DB 를 읽기 전용 연결로(_task_source).
     con(대시보드 DB)이 있으면 연결 세션의 마지막 답 끝부분을 팝업 재료로 붙인다.
     need 칸이 매니저 DB 에 없으면(선행 관계 이전 매니저) 빈 목록"""
     home = manager_home or globals()["manager_home"]()
-    path = os.path.join(home, "state", "manager.db")
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"매니저 DB 가 없음: {path}")
-    manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    manager_con.row_factory = sqlite3.Row
+    source, table, owned = _task_source(home, con)
     try:
-        columns = {row["name"] for row in manager_con.execute("PRAGMA table_info(tasks)")}
+        columns = {row["name"] for row in source.execute(f"PRAGMA table_info({table})")}
         if need and need not in columns:
             return []
         wanted = [
@@ -860,26 +858,27 @@ def _tasks(now, where, params, manager_home, con, need=None):
                          "updated_at", "hold_until", "snooze_until", "after_ids", "steps", "blocked") + POPUP_FIELDS
             if name in columns
         ]
-        rows = manager_con.execute(
-            f"SELECT {', '.join(wanted)} FROM tasks WHERE {where} ORDER BY priority DESC, created_at, id",
+        rows = source.execute(
+            f"SELECT {', '.join(wanted)} FROM {table} WHERE {where} ORDER BY priority DESC, created_at, id",
             params,
         ).fetchall()
         # 우선순위 '2/3' 의 분모. 보드처럼 열린 할일 전체 기준 — 어느 칸에도 안 뜨는 직접 할 일(action)도 센다
         top = (
-            manager_con.execute(
-                "SELECT MAX(priority) FROM tasks WHERE status IN (?, ?)", (OPEN_STATUS, CONFIRM_STATUS)
+            source.execute(
+                f"SELECT MAX(priority) FROM {table} WHERE status IN (?, ?)", (OPEN_STATUS, CONFIRM_STATUS)
             ).fetchone()[0]
             if "priority" in columns
             else None
         )
-        prereq_of = {row["id"]: _prereqs(manager_con, _get(row, "after_ids")) for row in rows}
+        prereq_of = {row["id"]: _prereqs(source, _get(row, "after_ids"), table) for row in rows}
     finally:
-        manager_con.close()
+        if owned:
+            source.close()
     stamp = now.isoformat(timespec="seconds")
     session_ids = {_get(row, "session_id") for row in rows} - {None}
     replies = _session_replies(con, session_ids)
     linked = manager_links.cards(con, session_ids)
-    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home))
+    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home, con))
     items = []
     for row in rows:
         popup = {name: _get(row, name) for name in POPUP_FIELDS}
@@ -937,12 +936,25 @@ def _steps(raw):
     return [step for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
 
 
-def _prereqs(manager_con, after_ids):
+def _task_source(home, con):
+    """(연결, 표 이름, 닫을지). 통합 뒤면 대시보드 연결 그대로 뷰 manager_tasks — 같은 칸 이름이라 SQL 이 같다.
+    그 전이면 매니저 DB 를 읽기 전용으로 연다(mode=ro — 저널·WAL 도 만들지 않는다)"""
+    if manager_links.unified(con):
+        return con, "manager_tasks", False
+    path = os.path.join(home, "state", "manager.db")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"매니저 DB 가 없음: {path}")
+    manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    manager_con.row_factory = sqlite3.Row
+    return manager_con, "tasks", True
+
+
+def _prereqs(source, after_ids, table="tasks"):
     """'168,169' → 선행 할일 [{id, title, status, finished}]. 지운 할일은 제목·상태 없이 끝나지 않은 것으로 둔다"""
     ids = [int(part) for part in (after_ids or "").split(",") if part.strip().isdigit()]
     out = []
     for task_id in ids:
-        found = manager_con.execute("SELECT id, title, status FROM tasks WHERE id=?", (task_id,)).fetchone()
+        found = source.execute(f"SELECT id, title, status FROM {table} WHERE id=?", (task_id,)).fetchone()
         title, status = (found["title"], found["status"]) if found else (None, None)
         out.append({"id": task_id, "title": title, "status": status, "finished": status in PREREQ_FINISHED})
     return out
