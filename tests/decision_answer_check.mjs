@@ -305,7 +305,7 @@ await settle(() => all(timelineOnly.slot, byClass("step-item")).length === 2);
 assert.equal(timelineOnly.slot.hidden, false, "결정이 없어도 진행 단계가 있으면 칸을 연다");
 assert.equal(text(timelineOnly.slot.children[0]), "진행 단계");
 const metaLine = find(timelineOnly.slot, byClass("step-meta"));
-assert.match(text(metaLine), /^보조2 · 11-18 \d\d:05 · 후보 3개 정리$/, "끝난 단계는 누가·언제·결과 한 줄");
+assert.match(text(metaLine), /^11-18 \d\d:05 · 후보 3개 정리$/, "끝난 단계는 언제·결과 한 줄 — 누가(보조 세션)는 보이지 않는다");
 assert.equal(text(find(timelineOnly.slot, byClass("step-unblock"))), "넘어가려면A·B 중 고르기");
 
 const STEP_ASK = { ...OPEN, id: 302, title: "결정 버튼 › 방식 결정", task_id: 42, steps: ROW_STEPS };

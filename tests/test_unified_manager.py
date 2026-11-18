@@ -99,6 +99,39 @@ class TaskStepsTest(Fixture):
         self.assertEqual([(s["id"], s["status"], s["ask"]) for s in steps],
                          [(doing, "todo", None), (asking, "current", "confirm")])
 
+    def test_timeline_is_time_order_not_status_order(self):
+        """멈춘 단계를 앞뒤로 옮기지 않는다 — 생긴 시각, 같으면 끝난 시각 순(사용자 지적 11-18). sort_order 는 믿지 않는다"""
+        task = self.todo("분석")
+        late = self.step(task, "결론 문서", status="done", completed_at="2026-11-18T03:00:00+00:00")
+        asking = self.step(task, "수정 범위 결정", status="doing", kind="decision")
+        early = self.step(task, "조회", status="done", completed_at="2026-11-16T02:00:00+00:00")
+        tie = self.step(task, "조회 결과 정리", status="done", completed_at="2026-11-16T01:30:00+00:00")
+        no_time = self.step(task, "시각 없음")
+        for ident, created, order in ((late, "2026-11-18T01:00:00+00:00", 1), (asking, "2026-11-16T09:00:00+00:00", 2),
+                                      (early, "2026-11-16T01:00:00+00:00", 3), (tie, "2026-11-16T01:00:00+00:00", 4),
+                                      (no_time, "", 5)):
+            self.con.execute("UPDATE todos SET created_at=?, sort_order=? WHERE id=?", (created, order, ident))
+        self.con.execute("UPDATE todos SET mgr_status='open' WHERE id=?", (asking,))
+        self.con.commit()
+        steps = task_steps.timeline(self.con, task)
+        self.assertEqual([(s["id"], s["status"]) for s in steps],
+                         [(tie, "done"), (early, "done"), (asking, "current"), (late, "done"), (no_time, "todo")])
+
+    def test_step_names_drop_helper_session_numbers(self):
+        task = self.todo("통합DB 사진 노출 원인 분석 (11-16 보조2·5·1)")
+        a = self.step(task, "보조2 | 외신 사진 비교")
+        b = self.step(task, "필터를 풀면 안 보이는 원인 (보조4)")
+        c = self.step(task, "M365 인증이 보조3 세션에 반영 안 됨")
+        d = self.step(task, "보조 세션 허용 목록에 progress 추가")
+        names = {s["id"]: s["name"] for s in task_steps.timeline(self.con, task)}
+        self.assertEqual([names[a], names[b], names[c], names[d]],
+                         ["외신 사진 비교", "필터를 풀면 안 보이는 원인", "M365 인증이 보조 세션에 반영 안 됨",
+                          "보조 세션 허용 목록에 progress 추가"])
+        self.assertEqual(task_steps.plain("11-16 보조5 가 팀즈로 결론을 냄 — 보조1 이 확인"),
+                         "11-16 보조가 팀즈로 결론을 냄 — 보조가 확인")
+        item = task_steps.with_task(self.con, {"id": b, "title": "필터를 풀면 안 보이는 원인 (보조4)"})
+        self.assertEqual(item["title"], "통합DB 사진 노출 원인 분석 › 필터를 풀면 안 보이는 원인")
+
     def test_no_steps_before_unification(self):
         con = temp_db()
         task = todo_repo.create(con, "일", category_id=category_repo.list_all(con)[0]["id"])

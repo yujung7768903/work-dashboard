@@ -745,7 +745,7 @@ elements["mgr-permissions"].children[0].listeners.click();
 assert.equal(headTitle(), "#223 에이전트 크롬에서 OpenSearch Dashboards 로그인해 주기");
 assert.ok(elements["mgr-decision-body"].children.some((section) => section.children[0].textContent === "답하기"));
 
-// 단계 행(할일 통합 뒤)의 진행 단계 — 끝난 단계는 누가·언제·결과 한 줄, 멈춘 단계는 넘어가는 조건
+// 단계 행(할일 통합 뒤)의 진행 단계 — 끝난 단계는 언제·결과 한 줄, 멈춘 단계는 넘어가는 조건
 const { stepList, stepMeta } = await import("../static/js/steps.js");
 const rowSteps = [
   { id: 301, name: "자료 조사", status: "done", by: "보조2", at: "2026-11-18T05:05:00Z", result: "후보 3개 정리" },
@@ -753,7 +753,7 @@ const rowSteps = [
 ];
 const rowList = stepList(rowSteps).children;
 assert.equal(rowList[0].children[1].className, "step-meta");
-assert.match(rowList[0].children[1].textContent, /^보조2 · 11-18 \d\d:05 · 후보 3개 정리$/);
+assert.match(rowList[0].children[1].textContent, /^11-18 \d\d:05 · 후보 3개 정리$/, "누가(보조 세션)는 보이지 않는다");
 assert.equal(rowList[1].children[1].className, "step-unblock");
 assert.equal(stepMeta({ name: "x", status: "done" }), "", "예전 진행 단계(JSON)에는 줄이 없다");
 

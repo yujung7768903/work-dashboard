@@ -977,7 +977,9 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .prereq-item.finished .prereq-title { color: var(--muted); text-decoration: line-through; }
 /* 진행 단계 — 사전 조건 목록과 같은 줄 모양. 줄 아래에 넘어가는 조건·답하는 상자가 붙어 세로로 쌓는다.
    멈춘 단계는 결정 대기 칩과 같은 주황으로 테두리·바탕을 칠해 어디서 멈췄는지 한눈에 보이게 한다 */
-.step-item { flex-direction: column; align-items: stretch; gap: var(--sp-4); }
+/* 칸 폭은 패널 폭까지 — 줄바꿈 안 되는 긴 단계 이름만큼 그리드 칸이 넓어져 가로 스크롤이 생기고 오른쪽 상태 칩이 잘렸다 */
+.step-list { grid-template-columns: minmax(0, 1fr); }
+.step-item { flex-direction: column; align-items: stretch; gap: var(--sp-4); min-width: 0; }
 .step-line {
   display: flex; align-items: center; gap: var(--sp-8); min-width: 0;
   padding: var(--sp-4) var(--sp-8); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface);
