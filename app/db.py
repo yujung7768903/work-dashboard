@@ -571,16 +571,24 @@ def manager_tasks_view_sql():
     return (
         "CREATE VIEW manager_tasks AS SELECT id, COALESCE(mgr_title, title) AS title, "
         f"COALESCE(priority, {MANAGER_DEFAULT_PRIORITY}) AS priority, {mapped}, "
-        "id AS todo_id, status AS todo_status, origin, legacy_task_id "
+        "id AS todo_id, status AS todo_status, origin, legacy_task_id, role, parent_id "
         "FROM todos WHERE mgr_kind IS NOT NULL"
     )
 
 
+# 할일과 단계(사용자 결정 11-18): 할일은 끝나면 결과가 하나 나오는 일이다. 그 과정의 파생 요청(컬럼 추가·셀 수정·
+# 되돌리기·확인 필요 해소 등)과 결정·확인 질문은 새 할일이 아니라 그 할일의 단계로 쌓는다. 단계는 todos 행이고
+# role='step' 이며 상위 연결(edges parent, src=할일 → dst=단계)과 parent_id 로 그 할일 아래에 붙는다. 순서는 sort_order.
+# 결정·확인은 그 단계 행의 mgr_* 칸에 둔다 — 선택지·버튼·답 흐름이 단계 단위로 그대로 돈다.
+# 새 할일로 나누는 것은 결과물이 다를 때뿐이다. role 이 NULL 이면 할일이다
+ROLE_STEP = "step"
+
+
 def _add_manager_task_columns(con):
-    """매니저 할일 칸(mgr_*)·출처(origin)·옛 매니저 id(legacy_task_id)와 뷰 manager_tasks.
+    """매니저 할일 칸(mgr_*)·출처(origin)·옛 매니저 id(legacy_task_id)·단계 표시(role)와 뷰 manager_tasks.
     mgr_title 은 대시보드 일감과 합쳐진 행에서 매니저가 물은 제목이다(일감 제목 title 은 그대로 둔다)"""
     columns = {row["name"] for row in con.execute("PRAGMA table_info(todos)")}
-    wanted = [*manager_task_columns().values(), "mgr_title", "origin", "legacy_task_id"]
+    wanted = [*manager_task_columns().values(), "mgr_title", "origin", "legacy_task_id", "role"]
     for name in wanted:
         if name not in columns:
             kind = "INTEGER" if name == "legacy_task_id" else "TEXT"
