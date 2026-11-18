@@ -720,5 +720,6 @@
   "todo.startHint": "이 할일로 새 세션을 띄운다",
   "todo.delete": "삭제",
   "todo.confirmDelete": "'{title}' 할일을 삭제할까요? 하위 할일은 한 단계 위로 올라갑니다.",
-  "todo.noLabels": "라벨 없음 — 설정 탭에서 만든다"
+  "todo.labelsTitle": "라벨",
+  "todo.noLabels":"라벨 없음 — 설정 탭에서 만든다"
 }

@@ -7,7 +7,7 @@ import { prereqChip, prereqList } from "./prereq.js";
 import { stepList } from "./steps.js";
 import { reportCard } from "./task-report.js";
 import { permissionCard } from "./permission-answer.js";
-import { todoActions } from "./todo-actions.js";
+import { todoActions, todoLabels } from "./todo-actions.js";
 
 const UNCLASSIFIED_LABEL = t("session.unclassified");
 const ROLE_LABELS = { user: t("session.roleUser"), assistant: t("session.roleAssistant") };
@@ -319,9 +319,11 @@ function fillTodoBlock(block, todo) {
     ...(block.decisionSlot ? [block.decisionSlot] : []),
     historySection(events(todo, TIME_FIELDS)),
     conditionSection(todo),
+    // 라벨은 할일의 속성 — 착수 조건 옆 칸으로 둔다
+    ...todoLabels(todo),
     // 하위 할일·단계는 트리에서 펼쳐 보므로 여기서는 안 그린다
     ...textField("note", todo.note),
-    // 시작·라벨·삭제 — 보드 케밥에 있던 것. 지우면 팝업을 닫는다(닫힘을 듣는 트리가 다시 받는다)
+    // 시작·삭제 — 보드 케밥에 있던 것. 지우면 팝업을 닫는다(닫힘을 듣는 트리가 다시 받는다)
     todoActions(todo, { onDeleted: () => document.getElementById("session-modal").close() })
   );
 }
@@ -333,7 +335,7 @@ function editButton(block, todo) {
   return button;
 }
 
-// 제목·우선순위·착수 조건·note 만 고친다. 라벨·시작·삭제는 위 동작 줄(todo-actions.js), 상태는 트리 카드에 있다
+// 제목·우선순위·착수 조건·note 만 고친다. 라벨 칸과 시작·삭제 줄은 todo-actions.js, 상태는 트리 카드에 있다
 function fillTodoEdit(block, todo) {
   const title = element("input");
   title.value = todo.title;

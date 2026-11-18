@@ -720,5 +720,6 @@
   "todo.startHint": "Start a new session on this todo",
   "todo.delete": "Delete",
   "todo.confirmDelete": "Delete '{title}'? Its children move up one level.",
-  "todo.noLabels": "No labels — create them in Settings"
+  "todo.labelsTitle": "Labels",
+  "todo.noLabels":"No labels — create them in Settings"
 }

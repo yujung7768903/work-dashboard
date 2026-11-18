@@ -1,14 +1,25 @@
-// 할일 상세 팝업의 동작 줄 — 시작(세션 띄우기)·라벨 켜고 끄기·삭제. 보드 할일 케밥에 있던 것을
-// 보드가 없어진 뒤(사용자 결정 11-18) 할일 상세로 옮겼다. 트리·매니저·사용량 어디서 열어도 같은 팝업이다
+// 할일 상세 팝업의 라벨 칸과 동작 줄 — 라벨 켜고 끄기, 시작(세션 띄우기)·삭제. 보드 할일 케밥에 있던 것을
+// 보드가 없어진 뒤(사용자 결정 11-18) 할일 상세로 옮겼다. 트리·매니저·사용량 어디서 열어도 같은 팝업이다.
+// 라벨은 할일의 속성이라 착수 조건·note 와 같은 칸으로 따로 두고, 동작 줄은 팝업 맨 아래에 시작(주 동작) 왼쪽 ·
+// 삭제(위험 동작) 오른쪽 끝으로 떼어 둔다 — 한 줄에 셋이 섞여 레이아웃이 이상하다는 지적(11-18)
 import * as api from "./api.js";
 import { fromKorean, t } from "./i18n.js";
 
 /**
- * todo: /api/todos/<id> 의 todo (labels 포함). onChange: 라벨·시작 뒤 다시 그릴 것. onDeleted: 지운 뒤 할 것
+ * 라벨 칸 — [칸 제목, 칩 묶음]. todo: /api/todos/<id> 의 todo (labels 포함). onChange: 라벨을 바꾼 뒤 다시 그릴 것
+ */
+export function todoLabels(todo, { onChange = () => {} } = {}) {
+  const box = element("div", "todo-labels todo-label-picker");
+  fillLabels(box, todo, onChange);
+  return [element("p", "label", t("todo.labelsTitle")), box];
+}
+
+/**
+ * 동작 줄 — 시작 · 삭제. onChange: 시작 뒤 다시 그릴 것. onDeleted: 지운 뒤 할 것
  */
 export function todoActions(todo, { onChange = () => {}, onDeleted = () => {} } = {}) {
   const row = element("div", "todo-actions");
-  const start = element("button", null, t("todo.start"));
+  const start = element("button", "todo-start", t("todo.start"));
   start.type = "button";
   start.title = t("todo.startHint");
   start.addEventListener("click", async () => {
@@ -29,9 +40,7 @@ export function todoActions(todo, { onChange = () => {}, onDeleted = () => {} } 
     await api.deleteTodo(todo.id);
     await onDeleted();
   });
-  const labels = element("span", "todo-labels");
-  row.append(start, labels, remove);
-  fillLabels(labels, todo, onChange);
+  row.append(start, remove);
   return row;
 }
 

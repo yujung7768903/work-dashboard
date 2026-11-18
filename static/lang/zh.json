@@ -720,5 +720,6 @@
   "todo.startHint": "为此待办启动新会话",
   "todo.delete": "删除",
   "todo.confirmDelete": "删除“{title}”吗? 子待办会上移一级。",
-  "todo.noLabels": "没有标签 — 在设置中创建"
+  "todo.labelsTitle": "标签",
+  "todo.noLabels":"没有标签 — 在设置中创建"
 }

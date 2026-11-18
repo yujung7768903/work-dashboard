@@ -53,12 +53,17 @@ const node = (tag) => ({
 globalThis.document = { createElement: node, getElementById: () => node("div") };
 
 await bootKorean();
-const { todoActions } = await import("../static/js/todo-actions.js");
+const { todoActions, todoLabels } = await import("../static/js/todo-actions.js");
 
 const tick = () => new Promise((done) => setTimeout(done, 0));
 let deleted = 0;
+// 라벨은 동작 줄과 떨어진 칸이다 — 동작 줄에는 시작·삭제 둘만 선다
 const row = todoActions(TODO, { onDeleted: () => (deleted += 1) });
-const [start, labels, remove] = row.children;
+assert.equal(row.children.length, 2);
+const [start, remove] = row.children;
+assert.match(remove.className, /todo-delete/);
+const [title, labels] = todoLabels(TODO);
+assert.equal(title.textContent, "라벨");
 for (let i = 0; labels.children.length < LABELS.length && i < 20; i += 1) await tick();
 
 // 1. 시작
