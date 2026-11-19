@@ -7,7 +7,7 @@ import { prereqChip, prereqList } from "./prereq.js";
 import { stepList } from "./steps.js";
 import { reportCard } from "./task-report.js";
 import { permissionCard } from "./permission-answer.js";
-import { todoActions, todoLabels } from "./todo-actions.js";
+import { todoActions, todoLabels, todoTags } from "./todo-actions.js";
 
 const UNCLASSIFIED_LABEL = t("session.unclassified");
 const ROLE_LABELS = { user: t("session.roleUser"), assistant: t("session.roleAssistant") };
@@ -315,12 +315,13 @@ function fillTodoBlock(block, todo) {
   title.append(editButton(block, todo));
   block.replaceChildren(
     title,
+    // 붙은 라벨만 제목 바로 아래 한 줄로 — 별도 칸을 두지 않는다(사용자 지시 11-19). 켜고 끄기는 수정 화면에서
+    ...todoTags(todo),
     ...(block.permissionSlot ? [block.permissionSlot] : []),
-    ...(block.decisionSlot ? [block.decisionSlot] : []),
+    // History 는 진행 단계(결정 칸 맨 앞) 위에 둔다(사용자 지시 11-19)
     historySection(events(todo, TIME_FIELDS)),
+    ...(block.decisionSlot ? [block.decisionSlot] : []),
     conditionSection(todo),
-    // 라벨은 할일의 속성 — 착수 조건 옆 칸으로 둔다
-    ...todoLabels(todo),
     // 하위 할일·단계는 트리에서 펼쳐 보므로 여기서는 안 그린다
     ...textField("note", todo.note),
     // 시작·삭제 — 보드 케밥에 있던 것. 지우면 팝업을 닫는다(닫힘을 듣는 트리가 다시 받는다)
@@ -335,7 +336,8 @@ function editButton(block, todo) {
   return button;
 }
 
-// 제목·우선순위·착수 조건·note 만 고친다. 라벨 칸과 시작·삭제 줄은 todo-actions.js, 상태는 트리 카드에 있다
+// 제목·우선순위·착수 조건·note 를 고친다. 라벨은 눌러서 바로 켜고 끈다(todo-actions.js) — 저장 버튼과 따로 PATCH 하므로
+// 바꿀 때마다 다시 읽어 두어 취소로 돌아가도 제목 아래 태그가 맞는다. 시작·삭제 줄은 todo-actions.js, 상태는 트리 카드에 있다
 function fillTodoEdit(block, todo) {
   const title = element("input");
   title.value = todo.title;
@@ -379,8 +381,15 @@ function fillTodoEdit(block, todo) {
 
   const actions = element("div", "dlg-actions");
   actions.append(save, cancel);
+  const [, labels] = todoLabels(todo, {
+    onChange: () =>
+      api.getTodo(todo.id).then((payload) => {
+        todo.labels = payload.todo.labels;
+      }),
+  });
   block.replaceChildren(
     editField(t("common.title"), title),
+    editField(t("todo.labelsTitle"), labels),
     editField(t("common.priority"), priority, t("common.priorityHint")),
     editField(t("common.precondition"), precondition, t("common.preconditionHint")),
     editField("note", note),

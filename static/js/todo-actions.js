@@ -1,6 +1,6 @@
-// 할일 상세 팝업의 라벨 칸과 동작 줄 — 라벨 켜고 끄기, 시작(세션 띄우기)·삭제. 보드 할일 케밥에 있던 것을
+// 할일 상세 팝업의 라벨(제목 아래 태그 줄·수정 화면의 켜고 끄기)과 동작 줄 — 라벨 켜고 끄기, 시작(세션 띄우기)·삭제. 보드 할일 케밥에 있던 것을
 // 보드가 없어진 뒤(사용자 결정 11-18) 할일 상세로 옮겼다. 트리·매니저·사용량 어디서 열어도 같은 팝업이다.
-// 라벨은 할일의 속성이라 착수 조건·note 와 같은 칸으로 따로 두고, 동작 줄은 팝업 맨 아래 오른쪽에 시작(주 동작) ·
+// 라벨은 별도 칸 없이 제목 아래 태그로만 보이고(사용자 지시 11-19), 동작 줄은 팝업 맨 아래 오른쪽에 시작(주 동작) ·
 // 삭제(위험 동작) 순으로 모은다 — 한 줄에 셋이 섞여 레이아웃이 이상하다는 지적(11-18), 둘 다 오른쪽 정렬 지시(11-19)
 import * as api from "./api.js";
 import { fromKorean, t } from "./i18n.js";
@@ -12,6 +12,22 @@ export function todoLabels(todo, { onChange = () => {} } = {}) {
   const box = element("div", "todo-labels todo-label-picker");
   fillLabels(box, todo, onChange);
   return [element("p", "label", t("todo.labelsTitle")), box];
+}
+
+/**
+ * 제목 아래 태그 줄 — 붙은 라벨만. 없으면 빈 배열(칸을 안 만든다). 누를 수 없는 표시용이다
+ */
+export function todoTags(todo) {
+  const attached = todo.labels ?? [];
+  if (!attached.length) return [];
+  const box = element("div", "todo-labels todo-tags");
+  attached.forEach((label) => {
+    const tag = element("span", "todo-label", label.name);
+    tag.setAttribute("aria-pressed", "true");
+    if (label.color) tag.style.setProperty("--cat", label.color);
+    box.appendChild(tag);
+  });
+  return [box];
 }
 
 /**

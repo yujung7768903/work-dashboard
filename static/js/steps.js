@@ -1,15 +1,13 @@
 // 진행 단계 — 매니저 할일이 어느 단계에서 멈췄고 사용자가 무엇을 하면 넘어가는지(manager.py task update --step).
 // 사전 조건 목록(prereq.js)과 같은 줄 모양으로 늘어놓고, 멈춘 단계(current)를 강조해 그 줄에 '넘어가려면'을 붙인다.
+// 끝난 단계는 '끝남' 칩 대신 상자 안 오른쪽에 완료 시각을, 멈춘 단계는 칩 없이 주황 강조만 둔다 — 멈춘 단계 앞은
+// 어차피 끝난 것이라 칩은 같은 말을 되풀이할 뿐이다(사용자 지시 11-19)
 // slot(답하는 상자)을 주면 멈춘 단계 줄 바로 아래에 넣는다 — 무엇을 보내야 넘어가는지 읽고 바로 쓰게.
 // 매니저 탭 팝업(manager.js)과 할일 상세 결정·직접 할 일·선행 대기 카드(decision-answer.js·task-report.js·sessions.js)가 같이 쓴다
 import { t } from "./i18n.js";
 
-// 단계 상태 → (칩 색, 문구). 키를 문자열 그대로 둔다 — 사전 점검(tests/test_language.py)이 코드에서 키를 찾는다
-const STATUS = {
-  done: ["ok", () => t("steps.status.done")],
-  current: ["waiting", () => t("steps.status.current")],
-  todo: ["", () => t("steps.status.todo")],
-};
+// 칩은 남은 단계에만 단다. 키를 문자열 그대로 둔다 — 사전 점검(tests/test_language.py)이 코드에서 키를 찾는다
+const TODO_CHIP = () => t("steps.status.todo");
 
 /** 멈춘 단계 — 없으면 null */
 export function currentStep(steps) {
@@ -25,13 +23,16 @@ export function stepList(steps, { active = true, slot = null } = {}) {
     const line = element("li", `prereq-item step-item step-${step.status}${stuck ? " stuck" : ""}`);
     const head = element("div", "step-line");
     head.append(element("span", "step-no", String(index + 1)), element("span", "prereq-title step-name", step.name));
-    // 닫힌 할일은 끝난 단계에만 칩을 단다 — 멈춘·남은 단계의 '멈춤'·'남음'은 이제 사실이 아니다
-    if (active || step.status === "done") {
-      const [tone, label] = STATUS[step.status] ?? STATUS.todo;
-      head.append(element("span", `mgr-chip ${tone}`.trim(), label()));
+    // 끝난 단계는 완료 시각. 예전 진행 단계(JSON)는 시각이 없어 비운다
+    if (step.status === "done") {
+      const at = shortTime(step.at);
+      if (at) head.append(element("span", "step-at", at));
+    } else if (active && step.status !== "current") {
+      // 닫힌 할일의 '남음'은 이제 사실이 아니라 단지 않는다
+      head.append(element("span", "mgr-chip", TODO_CHIP()));
     }
     line.append(head);
-    // 단계 행(할일 통합 뒤)은 끝난 단계에 언제·결과 한 줄이 있다 — 어디까지 왔는지를 이 줄로 읽는다
+    // 끝난 단계의 결과 한 줄 — 시각은 상자 안 오른쪽에 있으니 여기엔 결과만
     const meta = stepMeta(step);
     if (meta) line.append(element("p", "step-meta", meta));
     if (stuck && step.unblock) {
@@ -45,11 +46,11 @@ export function stepList(steps, { active = true, slot = null } = {}) {
   return list;
 }
 
-/** '언제 · 결과' — 있는 것만. 예전 진행 단계(JSON)에는 없어서 빈 문자열.
+/** 끝난 단계의 결과 — 예전 진행 단계(JSON)에는 없어서 빈 문자열. 시각은 줄 안(step-at)에 둔다.
  *  누가(보조 세션)는 넣지 않는다 — 사용자에게는 어느 보조가 했는지가 아니라 무엇을 했는지가 중요하다(사용자 지적 11-18) */
 export function stepMeta(step) {
   if (step.status !== "done") return "";
-  return [shortTime(step.at), step.result].filter(Boolean).join(" · ");
+  return step.result || "";
 }
 
 // '11-18 14:05' — 단계는 며칠 안에 끝나므로 연도는 뺀다. 못 읽으면 원문 그대로

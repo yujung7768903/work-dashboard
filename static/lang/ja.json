@@ -686,8 +686,6 @@
   "manager.popupPrereqs": "前提条件",
   "report.actionTitle": "完了・進捗を知らせる",
   "steps.title": "進行段階",
-  "steps.status.done": "完了",
-  "steps.status.current": "ここで停止",
   "steps.status.todo": "残り",
   "steps.unblock": "進めるには",
   "prereq.status.open": "未完了",

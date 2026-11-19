@@ -686,8 +686,6 @@
   "manager.popupPrereqs": "Prerequisites",
   "report.actionTitle": "Report done or progress",
   "steps.title": "Progress steps",
-  "steps.status.done": "Done",
-  "steps.status.current": "Stuck here",
   "steps.status.todo": "Next",
   "steps.unblock": "To move on",
   "prereq.status.open": "Pending",

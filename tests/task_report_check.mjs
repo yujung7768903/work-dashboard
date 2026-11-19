@@ -133,7 +133,7 @@ async function open() {
   openDetail({ todo: { id: 42 } });
   await settle(() => body.children.length === 4);
   const block = body.children[1].children[0];
-  const slot = block.children[2];
+  const slot = block.children.find((child) => child.className === "dlg-decisions");
   await settle(() => !slot.hidden || asked.some((entry) => entry.url.startsWith("/api/decisions?")) && slot.children.length);
   return { block, slot };
 }
@@ -283,7 +283,7 @@ const prereqLines = all(prereqCard, (n) => byClass("prereq-item")(n) && !byClass
 // 진행 단계 — 사전 조건 아래에 같은 줄 모양으로. 멈춘 단계를 강조하고 넘어가는 조건을 보인다(답하는 칸은 없다)
 const waitSteps = all(prereqCard, byClass("step-item"));
 assert.deepEqual(waitSteps.map((line) => text(line.children[0])),
-  ["1선행 할일 169 KT 로그 Lambda 배포끝남", "2선행 할일 끝나기 대기여기서 멈춤", "3muni PR #69 머지·배포남음"]);
+  ["1선행 할일 169 KT 로그 Lambda 배포", "2선행 할일 끝나기 대기", "3muni PR #69 머지·배포남음"]);
 assert.ok(byClass("stuck")(waitSteps[1]));
 assert.equal(text(waitSteps[1].children[1]), "넘어가려면할일 168(KT 서버 로그 경로) 끝내기");
 assert.deepEqual(prereqLines.map((line) => text(find(line, byClass("prereq-open")))),

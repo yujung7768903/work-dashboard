@@ -97,13 +97,13 @@ const edit = title.children.at(-1);
 assert.equal(edit.textContent, "수정");
 
 edit.listeners.click();
-// 제목 / 우선순위 / 착수 조건 / note / 버튼 / 상태
-assert.equal(block.children.length, 6);
+// 제목 / 라벨 / 우선순위 / 착수 조건 / note / 버튼 / 상태 — 라벨 켜고 끄기는 보기 화면이 아니라 여기서
+assert.equal(block.children.length, 7);
 assert.deepEqual(
-  block.children.slice(0, 4).map((field) => field.children[0].textContent),
-  ["제목", "우선순위", "착수 조건", "note"]
+  block.children.slice(0, 5).map((field) => field.children[0].textContent),
+  ["제목", "라벨", "우선순위", "착수 조건", "note"]
 );
-const [titleField, priorityField, conditionField, noteField, actions] = block.children;
+const [titleField, , priorityField, conditionField, noteField, actions] = block.children;
 // 우선순위를 안 정한 할일은 빈 칸
 assert.equal(priorityField.children.at(-1).value, "");
 // 지금 값이 채워져 있어야 한다 — 빈 칸이면 고치려다 지운다

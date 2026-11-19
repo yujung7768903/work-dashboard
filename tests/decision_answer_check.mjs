@@ -135,8 +135,8 @@ async function open() {
   openDetail({ todo: { id: 42 } });
   await settle(() => body.children.length === 4);
   const block = body.children[1].children[0];
-  // 제목 아래 첫 칸은 권한 요청(이 할일엔 없어 숨김), 그다음이 결정
-  const slot = block.children[2];
+  // 제목 아래 첫 칸은 권한 요청(이 할일엔 없어 숨김), 그다음 History, 그다음이 결정(진행 단계가 맨 앞)
+  const slot = block.children[3];
   await settle(() => !slot.hidden || asked.some((entry) => entry.url.startsWith("/api/decisions?")) && slot.children.length);
   return { block, slot };
 }
@@ -146,7 +146,8 @@ const { block, slot } = await open();
 assert.equal(block.children[0].textContent, "#42 | 결정 버튼", "제목이 맨 위");
 assert.equal(block.children[1].className, "dlg-permissions", "권한 요청 칸이 제목 바로 아래");
 assert.equal(block.children[1].hidden, true, "기다리는 권한이 없으면 숨긴다");
-assert.equal(slot.className, "dlg-decisions", "결정 칸은 권한 요청 칸 다음");
+assert.equal(block.children[2].className, "dlg-log", "History 는 진행 단계(결정 칸) 위");
+assert.equal(slot.className, "dlg-decisions", "결정 칸은 History 다음");
 assert.equal(slot.hidden, false);
 assert.equal(text(slot.children[0]), "결정 대기2", "라벨 + 답 대기 건수");
 
@@ -280,7 +281,8 @@ const stepped = await open();
 await settle(() => all(stepped.slot, byClass("dec-card")).length === 2);
 const [stepCard, closedCard] = all(stepped.slot, byClass("dec-card"));
 const stepLines = all(stepCard, byClass("step-item"));
-assert.deepEqual(stepLines.map((line) => text(line.children[0])), ["1조사·선택지 정리끝남", "2선택지 결정여기서 멈춤", "3PR 작성남음"]);
+assert.deepEqual(stepLines.map((line) => text(line.children[0])), ["1조사·선택지 정리", "2선택지 결정", "3PR 작성남음"],
+  "끝남·멈춤 칩은 없다 — 멈춘 단계는 강조만, 시각 없는 예전 단계는 빈 자리");
 assert.ok(byClass("stuck")(stepLines[1]), "멈춘 단계를 강조");
 assert.equal(text(stepLines[1].children[1]), "넘어가려면A/B 중 하나 고르기 (추천 A)");
 assert.equal(stepLines[1].children[2].className, "dec-answer", "답하는 상자는 멈춘 단계 줄 바로 아래");
@@ -291,7 +293,7 @@ const closedLines = all(closedCard, byClass("step-item"));
 assert.equal(closedLines.filter(byClass("stuck")).length, 0);
 assert.equal(text(closedLines[1].children[0]), "2선택지 결정", "닫힌 할일의 멈춘 단계엔 칩이 없다");
 assert.equal(text(closedLines[2].children[0]), "3PR 작성", "닫힌 할일의 남은 단계도 칩이 없다");
-assert.equal(text(closedLines[0].children[0]), "1조사·선택지 정리끝남");
+assert.equal(text(closedLines[0].children[0]), "1조사·선택지 정리");
 assert.equal(closedCard.children.at(-1).className, "dec-answer");
 
 // ── 단계 행(할일 통합 뒤) — 답할 것이 없는 동안은 진행 단계만 따로, 단계의 결정이 있으면 그 카드가 목록을 그린다 ──
@@ -305,7 +307,8 @@ await settle(() => all(timelineOnly.slot, byClass("step-item")).length === 2);
 assert.equal(timelineOnly.slot.hidden, false, "결정이 없어도 진행 단계가 있으면 칸을 연다");
 assert.equal(text(timelineOnly.slot.children[0]), "진행 단계");
 const metaLine = find(timelineOnly.slot, byClass("step-meta"));
-assert.match(text(metaLine), /^11-18 \d\d:05 · 후보 3개 정리$/, "끝난 단계는 언제·결과 한 줄 — 누가(보조 세션)는 보이지 않는다");
+assert.equal(text(metaLine), "후보 3개 정리", "상자 밖 줄은 결과만 — 누가(보조 세션)·시각은 없다");
+assert.match(text(find(timelineOnly.slot, byClass("step-at"))), /^11-18 \d\d:05$/, "완료 시각은 상자 안 칩 자리");
 assert.equal(text(find(timelineOnly.slot, byClass("step-unblock"))), "넘어가려면A·B 중 고르기");
 
 const STEP_ASK = { ...OPEN, id: 302, title: "결정 버튼 › 방식 결정", task_id: 42, steps: ROW_STEPS };

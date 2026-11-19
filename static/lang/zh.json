@@ -686,8 +686,6 @@
   "manager.popupPrereqs": "前置条件",
   "report.actionTitle": "报告完成或进展",
   "steps.title": "进度阶段",
-  "steps.status.done": "已完成",
-  "steps.status.current": "停在这里",
   "steps.status.todo": "待办",
   "steps.unblock": "继续需要",
   "prereq.status.open": "未完成",

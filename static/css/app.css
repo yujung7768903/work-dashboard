@@ -1003,6 +1003,8 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 }
 .step-no { flex: none; min-width: 1.25em; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; }
 .step-item.step-done .step-name { color: var(--muted); }
+/* 끝난 단계의 완료 시각 — 칩 자리(줄 오른쪽)에 둔다. 숫자 폭을 고정해 줄마다 시각의 오른쪽 끝이 맞는다 */
+.step-at { flex: none; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .step-item.stuck .step-line {
   border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); font-weight: 600;
 }
@@ -1832,6 +1834,8 @@ html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
    라벨 칩은 왼쪽부터 접혀 내려가고, 동작 줄은 구분선 아래 오른쪽 정렬로 시작(주 동작) · 삭제(위험 동작) 순
    — 팝업 확인 버튼 자리처럼 오른쪽에 모은다(사용자 지시 11-19). 버튼 둘만 남아 좁은 폭에서도 한 줄이 꼬이지 않는다 */
 .todo-label-picker { justify-content: flex-start; flex: none; }
+/* 제목 바로 아래 붙은 라벨만 한 줄로 — 별도 라벨 칸 대신(사용자 지시 11-19). 켜고 끄기는 수정 화면에서 */
+.todo-tags { justify-content: flex-start; margin: calc(-1 * var(--sp-4)) 0 var(--sp-8); }
 .todo-actions {
   display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-8);
   margin: var(--sp-16) 0 0; padding-top: var(--sp-12); border-top: 1px solid var(--line);
