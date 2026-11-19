@@ -9,6 +9,7 @@ import { linkify } from "./linkify.js";
 import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
 import { priorityBadge } from "./priority.js";
 import { createTreeMap, soloCard } from "./tree-map.js";
+import { treeOfTodo } from "./tree-todos.js";
 import { decisionLoader } from "./decision-answer.js";
 import { reportLoader } from "./task-report.js";
 import { prereqList, prereqSummary } from "./prereq.js";
@@ -20,7 +21,7 @@ import { renderRetro } from "./retro.js";
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html).
 // 회고는 칸(part) 틀을 쓰지 않는다 — 피드백 입력과 날짜별 펼침이 있어 retro.js 가 따로 그린다
 const SUBTABS = {
-  work: ["helpers", "dones", "confirms", "decisions", "permissions", "waits"],
+  work: ["helpers", "dones", "candidates", "confirms", "decisions", "permissions", "waits"],
   setup: ["automations", "tools"],
   retro: [],
 };
@@ -176,9 +177,12 @@ export async function refreshPart(part) {
 
 function showPart(part) {
   const section = sections[part];
+  // 후보 할일 머리는 후보 수가 아니라 빠진 대기 건수 한 줄 — 후보는 많아야 3건이라 수를 볼 일이 없다
   document.getElementById(`mgr-${part}-count`).textContent = section.error
     ? ""
-    : String(section.items.length);
+    : part === "candidates"
+      ? t("manager.candidatesWaiting", { count: section.waiting ?? 0 })
+      : String(section.items.length);
   drawPart(part);
 }
 
@@ -250,6 +254,7 @@ const EMPTY = {
   automations: () => t("manager.empty.automations"),
   helpers: () => t("manager.empty.helpers"),
   dones: () => t("manager.empty.dones"),
+  candidates: () => t("manager.empty.candidates"),
   tools: () => t("manager.empty.tools"),
   decisions: () => t("manager.empty.decisions"),
   permissions: () => t("manager.empty.permissions"),
@@ -261,6 +266,7 @@ const ROW_BUILDERS = {
   automations: automationRow,
   helpers: helperRow,
   dones: doneRow,
+  candidates: candidateRow,
   tools: toolRow,
   decisions: decisionRow,
   permissions: permissionRow,
@@ -393,10 +399,32 @@ function doneWork(item) {
   };
 }
 
-// 줄 제목을 카드 기준으로 — 어느 트리(워크스페이스)인지 칩 하나, 그 뒤 카드 번호·제목
+// 후보 할일 — 지금 일이 끝나면 다음에 할 것(app/services/candidates.py). '#id 우선순위 제목', 아래 카테고리 칩.
+// 누르면 할일 상세
+function candidateRow(item) {
+  const title = el("span", "mgr-title");
+  title.append(
+    document.createTextNode(`#${item.id}`),
+    priorityBadge(item.priority, item.priority_max),
+    document.createTextNode(item.title)
+  );
+  const category = el("span", "mgr-tree-chip", item.category_name || t("common.unassigned"));
+  if (item.category_color) category.style?.setProperty("--cat", item.category_color);
+  const sub = el("span", "mgr-sub");
+  sub.append(category);
+  const line = row({
+    title,
+    sub,
+    aside: el("span", `mgr-chip${item.status === "doing" ? " working" : ""}`, item.status === "doing" ? t("manager.candidateDoing") : t("manager.candidateTodo")),
+    tone: "mgr-click",
+  });
+  return clickable(line, () => openDetail({ todo: { id: item.id } }));
+}
+
+// 줄 제목을 카드 기준으로 — 어느 트리(맨 위 할일)인지 칩 하나, 그 뒤 카드 번호·제목
 function cardTitle(card) {
   const title = el("span", "mgr-title mgr-card-title");
-  const name = card.workspace_name ?? t("common.unassigned");
+  const name = card.root_title ?? t("common.unassigned");
   const tree = el("span", "mgr-tree-chip", name);
   if (card.category_color) tree.style?.setProperty("--cat", card.category_color);
   tree.title = t("manager.cardTree", { tree: name });
@@ -935,8 +963,10 @@ function showPopupTab(tab) {
   if (tab === POP_TREE) drawPopupTree(openedWork);
 }
 
+// 카드가 트리(맨 위 할일·맥락) 안에 있다. 상위·하위 없이 혼자인 할일도 자기가 맨 위라 열쇠가 있으니,
+// 판에 그릴 트리가 실제로 없으면 drawPopupTree 가 카드 한 장으로 되돌린다
 function hasTree(work) {
-  return Boolean(work?.card?.workspace_id);
+  return Boolean(work?.card?.root_id ?? work?.card?.tree_key);
 }
 
 async function drawPopupTree(work) {
@@ -951,15 +981,24 @@ async function drawPopupTree(work) {
   host.dataset.drawn = String(card.todo_id);
   const map = createTreeMap(host, {
     focusId: card.todo_id,
-    onChange: async () => drawTreeOf(map, card.workspace_id),
+    onChange: async () => drawTreeOf(map, card.todo_id),
   });
-  await drawTreeOf(map, card.workspace_id);
+  if (await drawTreeOf(map, card.todo_id)) return;
+  // 그릴 트리가 없다(혼자인 할일) — 카드 한 장으로
+  delete host.dataset.drawn;
+  host.classList.toggle("solo", true);
+  document.getElementById("mgr-decision-modal").classList.toggle("wide", false);
+  drawSolo(host, work);
 }
 
-// 그 카드의 트리 하나. 다른 상위·선행 선(links)은 양 끝이 이 판에 있는 것만 그려진다
-async function drawTreeOf(map, workspaceId) {
+// 그 카드가 있는 트리 하나(tree-todos.treeOfTodo). 다른 상위·선행 선(links)은 양 끝이 이 판에 있는 것만 그려진다.
+// 트리가 없으면 그리지 않고 false
+async function drawTreeOf(map, todoId) {
   const { trees, links } = await api.getTodoTrees();
-  map.render(trees.filter((tree) => tree.workspace.id === workspaceId), { hideDone: true, links });
+  const tree = treeOfTodo(trees, todoId);
+  if (!tree) return false;
+  map.render([tree], { hideDone: true, links });
+  return true;
 }
 
 function refreshFailedNote(error) {

@@ -6,10 +6,17 @@ A local work tracker for people who pair with Claude Code. You drive it from the
 browser, Claude drives it from the CLI, and both read and write the same SQLite
 file. No frameworks, no bundler, no `pip install`.
 
-Work is organised in three layers — **Category → Workspace → Todo**. On top of
-that, every Claude Code session is registered, classified into a workspace and
-linked to the todo it is actually working on, so the board always shows what is
-running and the next session knows where things stand.
+Work is a forest of todos. A todo with no parent is the top of its own tree;
+background, purpose and goal live in that top todo's note, and the steps of a
+todo (derived requests, decisions, confirmations) hang under it. Every Claude
+Code session is registered, gets a category, and is linked by the manager to
+the todo (or step) it is working on, so the tree always shows what is running and
+the next session knows where things stand. There are no workspaces and no board
+any more.
+
+> [!NOTE]
+> Workspaces and the board were removed on 2026-11-18. Where a later section
+> still says *workspace*, read *the tree's top todo*.
 
 > [!NOTE]
 > Single user, no authentication, no external services. Everything lives in one
@@ -33,14 +40,14 @@ token and cost trends.
 
 ## Features
 
-- **Three-layer board** — categories group workspaces, workspaces hold todos.
-  Todos can carry a priority number (higher first, shown as `3/10` against the
-  highest open one), and workspaces are ordered by their highest open priority,
-  then by open todo count. Within a workspace, order is drag-reorderable.
+- **Todo trees** — a todo without a parent is a tree's top; anything can hang
+  under anything through the relation graph. Todos can carry a priority number
+  (higher first, shown as `3/10` against the highest open one), and trees are
+  ordered by their top todo's priority.
 - **Live session tracking** — hooks register each Claude Code session, inject its
-  workspace context, and keep the board in sync while you work.
+  tree context, and keep the tree in sync while you work.
 - **Worktree lifecycle** — see each git worktree's state and commits, and start,
-  restart or stop its dev server straight from the board.
+  restart or stop its dev server from the worktree tab.
 - **One-command merge** — status check → pull the target branch in → run tests →
   merge → release the todo, the server and the branch, in that order.
 - **Autonomous runs** — hand a labelled todo to a background `claude` job on a
@@ -86,12 +93,10 @@ reports no change, and once you move the checkout it rewrites those paths
 instead of adding a second copy. Hooks you added yourself are left alone, and
 the previous file is kept as `settings.json.bak`.
 
-Open a Claude Code session next. With no workspaces yet, that session is handed
-the first-time setup procedure: it reads a one-line-per-session summary of your
-recent history from `~/.claude/projects`, groups it, and proposes workspaces and
-todos for you to correct before anything is written. Send any prompt to begin —
-the hook injects the procedure on the first one, so it does not have to be a
-request to set up. `python3 dash.py onboard --skip` declines it for good.
+Open a Claude Code session next. Sessions are registered by the hooks; the
+dashboard assigns their category and the manager links them to todos.
+`python3 dash.py scan-history` summarises your recent history one line per
+session if you want to seed todos from it.
 
 ## Commands
 
@@ -142,31 +147,19 @@ started inside a worktree.
 
 | Tab | What it holds |
 | --- | --- |
-| Board | The whole tree, the next todo and running sessions (polled every 2s) |
-| Tree | Each workspace as a tree of todos nested to any depth — List and Map views |
+| Tree | Every tree of todos nested to any depth — List, Todos and Map views |
+| Worktrees | Each git worktree's state and commits, grouped by tree or by project |
 | Autorun | The on/off switch, the candidate queue and the runs, grouped by state |
-| Workspaces | Creating a workspace and editing its background, purpose, goal and considerations |
+| Manager | Automations, helper sessions, next-up candidates and the decisions and confirmations waiting on you |
 | Settings | Categories and labels |
 | Usage | Rate-limit windows and the token and cost trend |
 
-The board has two sub-tabs: **Todos** and **Worktrees**. The todo sub-tab
-switches between two views — by workspace (one card per workspace) and by
-status, which stands the same todos up in the columns the todo rows use: todo,
-in progress, needs review and done. In the status view one todo is one card,
-its number and the workspace it belongs to sit above the title as a small
-line, every card
-is the same height and a title longer than two lines is cut with an ellipsis.
-Cards stand in the order their sessions last ran, newest first; todos no
-session has ever claimed gather at the bottom.
-On the worktree sub-tab, the kebab menu (⋮)
-on each row applies (merges) or deletes the worktree, and starts, restarts or
-stops its server. That sub-tab groups worktrees by workspace or by project;
-the project view also lists worktrees no workspace claims. Cards lay out in
-one or two columns (the status view is always four), and the left rail
-collapses to icons.
+On the worktree tab, the kebab menu (⋮) on each row applies (merges) or deletes
+the worktree, and starts, restarts or stops its server. It groups worktrees by
+tree or by project; the project view also lists worktrees no tree claims. The
+left rail collapses to icons.
 
-The tree tab draws one tree per workspace (todos with no workspace share an
-"Unassigned" tree). Todos and *contexts* — background bundles that are not
+The tree tab draws one tree per top todo. Todos and *contexts* — background bundles that are not
 todos themselves — hang under each other through a relation graph stored in
 `edges`: **parent** (why it exists: trigger, purpose or background; a todo may
 have several), **precedes** (what has to finish first), **evidence** (Jira
@@ -220,42 +213,32 @@ Clicking a todo row or a session row opens the same dialog with three tabs:
 `dash.py` is what Claude Code uses. Every command works on the same database as
 the web UI, so a change on one side shows up on the other after a refresh.
 
-### Board
+### Todos and the graph
 
 ```bash
-python3 dash.py ls                                   # the whole tree
-python3 dash.py next                                 # the single next todo
-python3 dash.py show <workspace-id|JIRA-1>           # workspace detail
+python3 dash.py ls [--json]                          # every tree, by top todo
 python3 dash.py add-category <name>
-python3 dash.py add-workspace <category> <name> [--background ...] [--jira KEY]
-python3 dash.py add-todo <title> [--workspace ID | --parent TODO-ID] [--note ...] [--precondition ...]
 python3 dash.py set-parent <todo-id> <parent-todo-id|none>
 python3 dash.py link <parent|precedes|evidence|related> <from> <to> [--basis trigger|purpose|background] [--evidence ...] [--proposed]
 python3 dash.py edges <node>                         # 12 · ctx:3 · session:<id> · jira:PFD-1
 python3 dash.py edge <confirm|reject|rm> <edge-id>
-python3 dash.py add-context <title> [--workspace ID | --category NAME] [--note ...]
+python3 dash.py add-context <title> [--category NAME] [--note ...]
 python3 dash.py collect-results [--session ID] [--dry-run] [--verbose]   # backfill session results from transcripts
-python3 dash.py move-todo <todo-id> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <status>   # todo: todo·doing·review·done
-python3 dash.py reorder <categories|workspaces|todos> <ids...>
-python3 dash.py done-today [--date YYYY-MM-DD]
 ```
 
-`set-parent` keeps the old single parent column (same workspace only) and mirrors
-it into the graph; `link` adds any relation, across workspaces too (Korean
-names 상위·선행·근거·관련 and 계기·목적·배경 work as well). A parent must be a todo in the same workspace, and a todo can never sit under
-itself or its own sub-todo. With `--parent` the workspace comes from the
-parent. Moving a todo to another workspace carries its sub-todos along;
-deleting a todo lifts its sub-todos one level. `review` means the work is done
-and only your check remains — it stays open, but `next` and autorun skip it.
+`set-parent` keeps the single parent column and mirrors it into the graph
+(`none` makes the todo a tree top); `link` adds any relation across trees
+(Korean names 상위·선행·근거·관련 and 계기·목적·배경 work as well). A todo can never
+sit under itself or its own sub-todo; deleting a todo lifts its sub-todos one
+level. `review` means the work is done
+and only your check remains — it stays open, but autorun skips it.
 
 ### Sessions
 
 ```bash
 python3 dash.py sessions                             # running sessions
-python3 dash.py classify --category <name> [--workspace <id>]
 python3 dash.py link-todo <todo-id> [--status done] [--past]
-python3 dash.py show-todo --session
+python3 dash.py show-todo [--session [ID]]            # todos this session holds (default: this session)
 python3 dash.py show-note <todo-id>                  # the full context note
 ```
 
@@ -312,14 +295,14 @@ one depends on the state of the board.
 
 | State | When | What is injected |
 | --- | --- | --- |
-| `classified` | The session has a workspace, matched by the branch's Jira ID or set with `classify --workspace` | Background, purpose, goal, considerations, the todo list, and scope rules |
-| `onboarding` | No workspaces exist yet and the user has not declined | The first-time setup procedure |
-| `unclassified` | Anything else | Location, branch, categories, active workspaces, and how to classify |
+| `classified` | The session holds a todo, or the branch's Jira ID names one | The top todo's note, the tree's todos, and scope rules |
+| `unclassified` | Anything else | Location, branch, categories, open trees, and that filing is not the session's job |
 | `released` | Every todo this session claimed is `done` | Take new requests as a new todo, not on top of a finished one |
 
-Classification itself is not automatic — a shell cannot tell what a question is
-about. The hook injects the instruction, and Claude registers it with `classify`
-and `link-todo`.
+Sessions do not classify themselves or add todos. The dashboard assigns the
+session's category, and the manager links the session to its todo (or a step of
+it). The hook only reminds a session whose todos are all done not to pile new
+work on them.
 
 ### Hooks
 
@@ -694,11 +677,11 @@ the six default categories once. All `*_at` columns are ISO 8601 UTC text.
 | Table | Role |
 | --- | --- |
 | `categories` | Top-level grouping. Does not affect priority. `google_list_id` links the Google list, `gtasks_enabled` is the per-category sync switch (off by default) |
-| `workspaces` | A branch- or Jira-sized piece of work, with background, purpose, goal and considerations. `google_task_id` links the top-level Google task |
-| `todos` | A todo. May belong to a workspace, or hang directly off a category. `parent_id` points at the parent todo in the same workspace (NULL = directly under the workspace). `google_task_id` links the Google subtask |
+| `workspaces` | Legacy, empty after migration — a workspace became the top todo of its tree (background and goal moved into its note) |
+| `todos` | A todo (`role` NULL), a step of its parent todo (`role='step'`), or a hidden record (other roles). `parent_id` points at the parent (NULL = tree top). `mgr_*` columns hold the manager's decision/confirmation state; the view `manager_tasks` shows them under the manager's names. `google_task_id` links the Google task |
 | `labels`, `todo_labels` | Labels describe a todo's nature; a todo can carry several |
 | `sessions` | Claude Code sessions, registered and updated by the hooks |
-| `session_todos` | Which todo a session claimed. A session's workspace is derived from here |
+| `session_todos` | Which todo a session claimed. A session's tree is derived from here |
 | `worktrees` | Worktree history, kept after the directory is merged away or deleted |
 | `transcript_scans` | How far result collection has read each transcript (subagent transcripts included), so a hook reads only the new tail |
 | `usage_samples` | Rate-limit and token samples behind the usage view |
@@ -726,7 +709,7 @@ work-dashboard/
 │   ├── index.html        # single page; carries data-i18n keys, never text
 │   ├── lang/             # en · ko · ja · zh, identical key sets
 │   ├── css/              # app.css defines the tokens, usage.css only uses them
-│   └── js/               # boot, i18n, theme, layout, board, workspace, sessions, usage
+│   └── js/               # boot, i18n, theme, layout, tree, sessions, manager, usage
 ├── tests/                # python3 -m tests
 └── docs/superpowers/     # specs and plans
 ```

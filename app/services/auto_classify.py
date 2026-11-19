@@ -31,7 +31,7 @@ from app.constants import (
     CLASSIFY_MIN_MARGIN,
     CLASSIFY_MIN_TRAINING,
     CLASSIFY_SMOOTHING,
-    SPAWN_PROVISIONAL_LINE,
+    SPAWN_PROVISIONAL_MARK,
     SPAWN_TODO_MARK,
 )
 from app.db import now, transaction
@@ -44,7 +44,7 @@ SOURCE_TODO = "연결 할일"
 SOURCE_TEXT = "본문"
 # spawn 이 임시 카테고리로 만든 할일의 표지. 임시 자리는 사람이 고른 카테고리가 아니라 학습에서 뺀다
 # (넣으면 대체 카테고리가 모든 보조 일을 끌어간다)
-PROVISIONAL_MARK = SPAWN_PROVISIONAL_LINE
+PROVISIONAL_MARK = SPAWN_PROVISIONAL_MARK  # 임시 자리 줄의 머리 — 워크스페이스가 있던 때 줄도 이것으로 시작한다
 # 매니저 spawn 지시문은 본문 뒤에 공통 안내(진행률·결정·권한·보고 방법)가 붙는다. 그 안내의
 # 말이 모든 보조 세션을 같은 카테고리로 끌고 가므로 첫 표지에서 자른다
 BOILERPLATE_MARKERS = (
@@ -290,10 +290,10 @@ def category_for_new_todo(con, title, detail=""):
 
 
 def plan_provisional_todos(con, model=None):
-    """spawn 이 임시 카테고리로 만든 할일(아직 안 끝나고 워크스페이스 없는 것)의 판정 → [(할일, 판정)]"""
+    """spawn 이 임시 카테고리로 만든 할일(아직 안 끝난 것)의 판정 → [(할일, 판정)]"""
     model = model or train(con)
     rows = con.execute(
-        "SELECT * FROM todos WHERE workspace_id IS NULL AND status <> 'done'"
+        "SELECT * FROM todos WHERE status <> 'done'"
         " AND note LIKE ? AND note LIKE ? ORDER BY id",
         (f"{SPAWN_TODO_MARK}%", f"%{PROVISIONAL_MARK}%"),
     ).fetchall()
@@ -305,7 +305,7 @@ def plan_provisional_todos(con, model=None):
 
 def apply_provisional_todos(con, plan):
     """임시 카테고리 할일 중 분류된 것의 카테고리만 바꾼다 → 바꾼 건수.
-    임시 표지는 남긴다 — 워크스페이스는 아직 모르니 세션이 분류하면 그곳으로 옮겨져야 한다"""
+    임시 표지는 남긴다 — 세션이 분류되면 그 카테고리로 다시 옮겨질 수 있게"""
     count = 0
     for todo, verdict in plan:
         if not verdict["category"]:
@@ -318,7 +318,7 @@ def apply_provisional_todos(con, plan):
             continue
         with transaction(con):
             cursor = con.execute(
-                "UPDATE todos SET category_id=?, updated_at=? WHERE id=? AND workspace_id IS NULL"
+                "UPDATE todos SET category_id=?, updated_at=? WHERE id=?"
                 " AND note LIKE ?",
                 (category_id, now(), todo["id"], f"%{PROVISIONAL_MARK}%"),
             )

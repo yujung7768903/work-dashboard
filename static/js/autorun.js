@@ -10,7 +10,8 @@ const POLL_INTERVAL_MS = 5000;
 // 크론 주기는 crontab 이 정하고 이 값은 화면 표시용 상수다 — README "크론" 참고
 const TICK_LABEL = t("autorun.cycle");
 const NO_TICK = t("autorun.noRun");
-const NO_WORKSPACE = t("common.unassigned");
+// 트리 맨 위가 자기 자신인 할일 — 붙일 트리 이름이 없다
+const NO_ROOT = "―";
 const RUNNING_LABEL = t("autorun.running");
 const NO_CANDIDATE = t("autorun.noCandidate");
 const NO_RUN = t("autorun.noRunYet");
@@ -68,7 +69,7 @@ const collapsed = new Set(["failed", "done"]);
 // 데이터 칸의 클래스(.wt·.age…)를 붙이지 않는다 — 그 색·글자 크기까지 따라와
 // 이름 줄이 칸마다 다른 크기로 흩어진다
 const COLUMNS = [
-  t("autorun.colWorkspace"),
+  t("autorun.colTree"),
   t("autorun.colTodo"),
   t("autorun.colWorktree"),
   t("autorun.colPort"),
@@ -133,7 +134,7 @@ function candidateRow(candidate) {
   const item = document.createElement("li");
   item.className = candidate.blocker === "ready" ? "ready" : "held";
   item.dataset.todoId = String(candidate.todo_id);
-  const scope = element("span", "scope", candidate.workspace_name || NO_WORKSPACE);
+  const scope = element("span", "scope", candidate.root_title || NO_ROOT);
   const title = element("span", "prompt", candidate.title);
   item.append(dragHandle(item), scope, title, blockerChip(candidate));
   // 세션 줄·보드 카드와 같은 팝업. 착수 조건 체크리스트는 개요 탭에 있다
@@ -234,8 +235,8 @@ function blockerChip(candidate) {
 // 보드 케밥의 "시작" 이 쓰는 폴더 선택기를 그대로 연다 — 묻는 것이 같으면 묻는 화면도 같아야 한다.
 // 여기서 세션을 띄우지 않는 이유 — 고른 경로는 저장되므로 다음 tick 이 제 순서대로
 // 시작한다. 지금 띄우면 자율 실행 기록 밖에서 도는 세션이 하나 더 생긴다.
-// 저장하는 곳 — 워크스페이스가 있으면 그쪽(그 워크스페이스의 후보가 다 풀린다),
-// 없으면 이 할일에만. 소속 없는 할일은 달리 적어 둘 곳이 없다
+// 저장하는 곳 — 트리 맨 위 할일(root_id). 아래 할일은 가장 가까운 상위의 위치를 물려받으므로
+// 그 트리의 후보가 다 풀린다. 맨 위가 자기 자신이면 이 할일에
 function bindCwdPick(chip, candidate) {
   chip.type = "button";
   chip.addEventListener("click", async (event) => {
@@ -243,9 +244,7 @@ function bindCwdPick(chip, candidate) {
     event.stopPropagation();
     const cwd = await pickDirectory();
     if (!cwd) return;
-    const save = candidate.workspace_id
-      ? api.updateWorkspace(candidate.workspace_id, { cwd })
-      : api.updateTodo(candidate.todo_id, { cwd });
+    const save = api.updateTodo(candidate.root_id ?? candidate.todo_id, { cwd });
     // 실패하면 api.js 가 이미 알렸다. 목록은 그대로 두고 되돌린다
     await save.then(renderAutorun, () => {});
   });
@@ -354,7 +353,7 @@ function emptyRow(text) {
 
 function runRow(run) {
   const item = document.createElement("li");
-  const scope = element("span", "scope", run.workspace_name || NO_WORKSPACE);
+  const scope = element("span", "scope", run.root_title || NO_ROOT);
   const title = element("span", "prompt", run.todo_title);
   const worktree = element("span", "wt", run.worktree || "");
   worktree.title = run.worktree_path || "";

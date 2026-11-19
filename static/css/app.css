@@ -255,14 +255,16 @@ select {
   background-repeat: no-repeat;
   background-position: right var(--sp-12) center;
 }
-#quick-name { flex: 1 1 200px; }
+/* 트리 탭 맨 위 새 할일 추가 줄 */
+#tree-add { margin-top: 0; }
+#tree-add-title { flex: 1 1 200px; }
 /* 아이콘 하나뿐인 버튼은 정사각으로 만들어 누를 면적을 확보 */
-#quick-submit {
-  width: var(--sp-40); flex: none; padding: 0;
+#tree-add > button {
+  width: var(--sp-40); height: auto; flex: none; padding: 0;
   display: flex; align-items: center; justify-content: center;
   background-color: var(--accent); color: #fff; font-weight: 400;
 }
-#quick-submit:hover { background-color: color-mix(in srgb, var(--accent) 84%, #000); }
+#tree-add > button:hover { background-color: color-mix(in srgb, var(--accent) 84%, #000); }
 
 /* 기본 버튼은 옅은 면. 선 대신 면으로 눌리는 느낌을 준다.
    페이지 배경(--bg)과 같은 값을 쓰면 폼 위에서 버튼이 사라지므로 한 단 어둡게 섞는다 */
@@ -994,19 +996,24 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .prereq-item.finished .prereq-title { color: var(--muted); text-decoration: line-through; }
 /* 진행 단계 — 사전 조건 목록과 같은 줄 모양. 줄 아래에 넘어가는 조건·답하는 상자가 붙어 세로로 쌓는다.
    멈춘 단계는 결정 대기 칩과 같은 주황으로 테두리·바탕을 칠해 어디서 멈췄는지 한눈에 보이게 한다 */
-.step-item { flex-direction: column; align-items: stretch; gap: var(--sp-4); }
+/* 칸 폭은 패널 폭까지 — 줄바꿈 안 되는 긴 단계 이름만큼 그리드 칸이 넓어져 가로 스크롤이 생기고 오른쪽 상태 칩이 잘렸다 */
+.step-list { grid-template-columns: minmax(0, 1fr); }
+.step-item { flex-direction: column; align-items: stretch; gap: var(--sp-4); min-width: 0; }
 .step-line {
   display: flex; align-items: center; gap: var(--sp-8); min-width: 0;
   padding: var(--sp-4) var(--sp-8); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface);
 }
 .step-no { flex: none; min-width: 1.25em; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; }
 .step-item.step-done .step-name { color: var(--muted); }
+/* 끝난 단계의 완료 시각 — 칩 자리(줄 오른쪽)에 둔다. 숫자 폭을 고정해 줄마다 시각의 오른쪽 끝이 맞는다 */
+.step-at { flex: none; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .step-item.stuck .step-line {
   border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); font-weight: 600;
 }
 .step-item.stuck .step-no { color: var(--warn); }
 .step-unblock { margin: 0; padding: 0 var(--sp-8); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
 .step-unblock .dec-label { margin-right: var(--sp-8); }
+.step-meta { margin: 0; padding: 0 var(--sp-8); font-size: var(--fs-sm); color: var(--muted); overflow-wrap: anywhere; }
 .step-item.stuck > .dec-loader, .step-item.stuck > .dec-answer {
   margin-left: var(--sp-8); padding-left: var(--sp-8); border-left: 2px solid var(--warn);
 }
@@ -1823,4 +1830,30 @@ html:has(#dir-browse-modal[open]), html:has(#mgr-decision-modal[open]) {
 :where([data-theme="dark"]) .dec-answer .dec-send.primary:disabled { color: #14161f; }
 :where([data-theme="dark"]) select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239095ab' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* 할일 상세 팝업 — 라벨 칸(속성)과 맨 아래 동작 줄 (static/js/todo-actions.js).
+   라벨 칩은 왼쪽부터 접혀 내려가고, 동작 줄은 구분선 아래 오른쪽 정렬로 시작(주 동작) · 삭제(위험 동작) 순
+   — 팝업 확인 버튼 자리처럼 오른쪽에 모은다(사용자 지시 11-19). 버튼 둘만 남아 좁은 폭에서도 한 줄이 꼬이지 않는다 */
+.todo-label-picker { justify-content: flex-start; flex: none; }
+/* 제목 바로 아래 붙은 라벨만 한 줄로 — 별도 라벨 칸 대신(사용자 지시 11-19). 켜고 끄기는 수정 화면에서 */
+.todo-tags { justify-content: flex-start; margin: calc(-1 * var(--sp-4)) 0 var(--sp-8); }
+.todo-actions {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-8);
+  margin: var(--sp-16) 0 0; padding-top: var(--sp-12); border-top: 1px solid var(--line);
+}
+.todo-actions .todo-start { background: var(--accent); color: #fff; }
+.todo-actions .todo-start:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, var(--fg)); }
+.todo-actions .todo-delete {
+  background: transparent; color: var(--danger);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 45%, var(--surface));
+}
+.todo-actions .todo-delete:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }
+.todo-label {
+  padding: 0 var(--sp-8); border-radius: var(--r-pill); font-size: var(--fs-sm); line-height: var(--lh-body);
+  color: var(--muted); background: color-mix(in srgb, var(--fg) 5%, var(--surface));
+}
+.todo-label[aria-pressed="true"] {
+  color: var(--cat, var(--accent)); background: color-mix(in srgb, var(--cat, var(--accent)) 16%, var(--surface));
+  font-weight: 600;
 }

@@ -4,7 +4,8 @@
 `manager.py 보조 --json`, 권한 대기는 `manager.py 권한대기 --json`(보조 '권한 대기' 배지와 같은 목록), 결정 대기·완료 확인
 대기는 매니저 DB(state/manager.db)다. 매니저 DB 는 읽기
 전용(mode=ro)으로만 열고 여기로 옮겨 담지 않는다 — 정본은 매니저 쪽 하나여야 두 곳이
-어긋나지 않는다.
+어긋나지 않는다. 할일 통합(대시보드 meta unified_todos) 뒤에는 매니저 할일의 정본이 대시보드 todos 라
+같은 연결의 뷰 manager_tasks 를 읽는다.
 
 각 칸은 따로 실패한다. 매니저가 없는 PC 에서도 crontab 칸은 떠야 하므로 칸마다
 {"items": [...], "error": 문장|None} 로 돌려준다.
@@ -25,9 +26,9 @@ from app.constants import (
     MANAGER_HELPERS_TIMEOUT_SEC,
 )
 from app.repositories import sessions as session_repo
-from app.services import cron, manager_links, manager_tools, permission_answer
+from app.services import candidates, cron, manager_links, manager_tools, permission_answer, task_steps
 
-PARTS = ("automations", "helpers", "dones", "tools", "decisions", "permissions", "confirms", "waits")
+PARTS = ("automations", "helpers", "dones", "candidates", "tools", "decisions", "permissions", "confirms", "waits")
 STATUS_OK = "ok"
 STATUS_FAIL = "fail"
 STATUS_NODATA = "nodata"
@@ -79,6 +80,8 @@ def snapshot(part=None, now=None, con=None, **sources):
         ),
         "helpers": lambda: helpers(con=con, **_pick(sources, "manager_home", "helpers_fn", "waits_fn")),
         "dones": lambda: dones(con=con, **_pick(sources, "manager_home")),
+        # 후보 할일 — 지금 일이 끝나면 다음에 할 것(app/services/candidates.py). 대기 건수(waiting)를 칸에 함께 싣는다
+        "candidates": lambda: candidates.snapshot(con),
         "tools": lambda: manager_tools.tools(
             sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
         ),
@@ -96,7 +99,11 @@ def _pick(sources, *keys):
 
 def _section(build):
     try:
-        return {"items": build(), "error": None}
+        built = build()
+        # 칸이 목록 말고 덧붙일 값이 있으면 {"items": [...], ...} 로 돌려준다(후보 할일의 대기 건수)
+        if isinstance(built, dict):
+            return {**built, "error": None}
+        return {"items": built, "error": None}
     except Exception as error:  # 한 칸이 깨져도 나머지는 보여야 한다
         return {"items": [], "error": f"{type(error).__name__}: {error}"}
 
@@ -762,7 +769,7 @@ def helpers(manager_home=None, helpers_fn=None, con=None, waits_fn=None):
     rows = (helpers_fn or _run_helpers)(home)
     session_ids = [row.get("session_id") for row in rows]
     linked = manager_links.cards(con, session_ids)
-    blocked = permission_sessions(home, waits_fn)
+    blocked = permission_sessions(home, waits_fn, con)
     waits = manager_links.waiting(con, session_ids, blocked)
     waits.update({sid: manager_links.WAIT_PERMISSION for sid in session_ids if sid in blocked})
     return [
@@ -929,13 +936,14 @@ def permission_waits(manager_home=None, waits_fn=None):
     return (waits_fn or _run_permission_waits)(home)
 
 
-def permission_sessions(manager_home=None, waits_fn=None):
+def permission_sessions(manager_home=None, waits_fn=None, con=None):
     """권한 대기 목록에 걸린 세션 id 집합 — 매니저 perm_grant.waiting_sessions 와 같은 규칙.
-    권한대기 명령이 없는 예전 매니저면 예전 신호(매니저 DB blocked 할일의 세션)로 돌아간다 — 보조 칸까지 깨지지 않게"""
+    권한대기 명령이 없는 예전 매니저면 예전 신호(blocked 할일의 세션 — 통합 뒤면 대시보드 DB, 그 전이면 매니저 DB)로
+    돌아간다 — 보조 칸까지 깨지지 않게"""
     try:
         waits = permission_waits(manager_home, waits_fn)
     except (OSError, RuntimeError, subprocess.SubprocessError):
-        return manager_links.permission_sessions(manager_home)
+        return manager_links.permission_sessions(manager_home, con)
     return frozenset(item["session_id"] for item in waits if item.get("session_id"))
 
 
@@ -996,7 +1004,8 @@ def confirms(now, manager_home=None, con=None):
 
 
 def _tasks(now, where, params, manager_home, con, need=None, retro=False):
-    """매니저 DB 할일을 목록 줄 + 팝업 재료로. 읽기 전용 연결로만 읽는다.
+    """매니저 할일을 목록 줄 + 팝업 재료로. 읽기만 한다 — 통합 뒤면 대시보드 DB 의 뷰 manager_tasks(con),
+    그 전이면 매니저 DB 를 읽기 전용 연결로(_task_source).
     con(대시보드 DB)이 있으면 연결 세션의 마지막 답 끝부분을 팝업 재료로 붙인다.
     need 칸이 매니저 DB 에 없으면(선행 관계 이전 매니저) 빈 목록.
     개선 후보(제목이 IMPROVE_PREFIX)는 retro 가 아니면 뺀다 — 매니저 하루 회고가 맡아 회고 탭 대기 중인 피드백에 보인다"""
@@ -1004,41 +1013,39 @@ def _tasks(now, where, params, manager_home, con, need=None, retro=False):
         where = f"({where}) AND title NOT LIKE ?"
         params = (*params, IMPROVE_PREFIX + "%")
     home = manager_home or globals()["manager_home"]()
-    path = os.path.join(home, "state", "manager.db")
-    if not os.path.isfile(path):
-        raise FileNotFoundError(f"매니저 DB 가 없음: {path}")
-    manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    manager_con.row_factory = sqlite3.Row
+    source, table, owned = _task_source(home, con)
     try:
-        columns = {row["name"] for row in manager_con.execute("PRAGMA table_info(tasks)")}
+        columns = {row["name"] for row in source.execute(f"PRAGMA table_info({table})")}
         if need and need not in columns:
             return []
         wanted = [
             name
             for name in ("id", "title", "kind", "status", "priority", "created_at",
-                         "updated_at", "hold_until", "snooze_until", "after_ids", "steps", "blocked") + POPUP_FIELDS
+                         "updated_at", "hold_until", "snooze_until", "after_ids", "steps", "blocked", "role", "parent_id")
+            + POPUP_FIELDS
             if name in columns
         ]
-        rows = manager_con.execute(
-            f"SELECT {', '.join(wanted)} FROM tasks WHERE {where} ORDER BY priority DESC, created_at, id",
+        rows = source.execute(
+            f"SELECT {', '.join(wanted)} FROM {table} WHERE {where} ORDER BY priority DESC, created_at, id",
             params,
         ).fetchall()
         # 우선순위 '2/3' 의 분모. 보드처럼 열린 할일 전체 기준 — 어느 칸에도 안 뜨는 직접 할 일(action)도 센다
         top = (
-            manager_con.execute(
-                "SELECT MAX(priority) FROM tasks WHERE status IN (?, ?)", (OPEN_STATUS, CONFIRM_STATUS)
+            source.execute(
+                f"SELECT MAX(priority) FROM {table} WHERE status IN (?, ?)", (OPEN_STATUS, CONFIRM_STATUS)
             ).fetchone()[0]
             if "priority" in columns
             else None
         )
-        prereq_of = {row["id"]: _prereqs(manager_con, _get(row, "after_ids")) for row in rows}
+        prereq_of = {row["id"]: _prereqs(source, _get(row, "after_ids"), table) for row in rows}
     finally:
-        manager_con.close()
+        if owned:
+            source.close()
     stamp = now.isoformat(timespec="seconds")
     session_ids = {_get(row, "session_id") for row in rows} - {None}
     replies = _session_replies(con, session_ids)
     linked = manager_links.cards(con, session_ids)
-    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home))
+    waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home, con))
     items = []
     for row in rows:
         popup = {name: _get(row, name) for name in POPUP_FIELDS}
@@ -1047,27 +1054,31 @@ def _tasks(now, where, params, manager_home, con, need=None, retro=False):
         # 그 일을 시작한 사람의 첫 요청. 세션 없이 들어온 할일(Jira·메일 훑기)은 출처를 대신 보인다
         popup["request"] = manager_links.first_request(popup["session_id"], home)
         prereqs = prereq_of[row["id"]]
-        items.append(
-            {
-                "id": row["id"],
-                "title": row["title"],
-                # 권한 대기 팝업이 답 칸(결정 답·직접 할 일 완료)을 고른다
-                "kind": _get(row, "kind"),
-                "state": _state(row, prereqs),
-                # 선행 할일 [{id, title, status, finished}] — 선행 대기면 팝업이 사전 조건으로 보이고 눌러 그 할일로 간다
-                "prereqs": prereqs,
-                # 진행 단계 [{name, status, unblock}] — 팝업이 사전 조건처럼 그리고 멈춘 단계 아래에 답하는 상자를 둔다
-                "steps": _steps(_get(row, "steps")),
-                "detail": _first_line(_get(row, "detail")),
-                "priority": _get(row, "priority"),
-                "priority_max": top,
-                "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
-                "held": _later(row, ("hold_until", "snooze_until"), stamp),
-                "card": linked.get(popup["session_id"]),
-                "waiting": waits.get(popup["session_id"]),
-                "popup": popup,
-            }
-        )
+        item = {
+            "id": row["id"],
+            "title": row["title"],
+            # 권한 대기 팝업이 답 칸(결정 답·직접 할 일 완료)을 고른다
+            "kind": _get(row, "kind"),
+            "state": _state(row, prereqs),
+            # 선행 할일 [{id, title, status, finished}] — 선행 대기면 팝업이 사전 조건으로 보이고 눌러 그 할일로 간다
+            "prereqs": prereqs,
+            # 진행 단계 [{name, status, unblock}] — 팝업이 사전 조건처럼 그리고 멈춘 단계 아래에 답하는 상자를 둔다
+            "steps": _steps(_get(row, "steps")),
+            "detail": _first_line(_get(row, "detail")),
+            "priority": _get(row, "priority"),
+            "priority_max": top,
+            "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
+            "held": _later(row, ("hold_until", "snooze_until"), stamp),
+            "card": linked.get(popup["session_id"]),
+            "waiting": waits.get(popup["session_id"]),
+            "popup": popup,
+        }
+        if task_steps.available(con):
+            # 단계 행이면 '<할일> › <단계>' 와 그 할일의 진행 단계, 단계 행을 가진 할일이면 그 단계 목록(예전 JSON 대신)
+            item = task_steps.with_task(con, item)
+            if _get(row, "role") != task_steps.ROLE_STEP:
+                item["steps"] = task_steps.timeline(con, row["id"]) or item["steps"]
+        items.append(item)
     return items
 
 
@@ -1096,12 +1107,25 @@ def _steps(raw):
     return [step for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
 
 
-def _prereqs(manager_con, after_ids):
+def _task_source(home, con):
+    """(연결, 표 이름, 닫을지). 통합 뒤면 대시보드 연결 그대로 뷰 manager_tasks — 같은 칸 이름이라 SQL 이 같다.
+    그 전이면 매니저 DB 를 읽기 전용으로 연다(mode=ro — 저널·WAL 도 만들지 않는다)"""
+    if manager_links.unified(con):
+        return con, "manager_tasks", False
+    path = os.path.join(home, "state", "manager.db")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"매니저 DB 가 없음: {path}")
+    manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    manager_con.row_factory = sqlite3.Row
+    return manager_con, "tasks", True
+
+
+def _prereqs(source, after_ids, table="tasks"):
     """'168,169' → 선행 할일 [{id, title, status, finished}]. 지운 할일은 제목·상태 없이 끝나지 않은 것으로 둔다"""
     ids = [int(part) for part in (after_ids or "").split(",") if part.strip().isdigit()]
     out = []
     for task_id in ids:
-        found = manager_con.execute("SELECT id, title, status FROM tasks WHERE id=?", (task_id,)).fetchone()
+        found = source.execute(f"SELECT id, title, status FROM {table} WHERE id=?", (task_id,)).fetchone()
         title, status = (found["title"], found["status"]) if found else (None, None)
         out.append({"id": task_id, "title": title, "status": status, "finished": status in PREREQ_FINISHED})
     return out

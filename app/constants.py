@@ -51,8 +51,6 @@ FIRST_SORT_ORDER = 1
 SCOPE_REQUIRED_MSG = "카테고리나 워크스페이스 중 하나를 선택해 주세요"
 PRIORITY_INVALID_MSG = "우선순위는 1 이상 정수로 입력해 주세요"
 # 트리(상위 할일). 화면 alert 와 CLI 가 같은 문장을 쓴다
-PARENT_NEEDS_WORKSPACE_MSG = "워크스페이스에 속한 할일만 상위 할일을 가질 수 있습니다"
-PARENT_OTHER_WORKSPACE_MSG = "상위 할일은 같은 워크스페이스의 할일이어야 합니다"
 PARENT_CYCLE_MSG = "자기 자신이나 하위 할일을 상위로 지정할 수 없습니다"
 PARENT_INVALID_MSG = "상위 할일은 할일 번호로 지정해 주세요"
 
@@ -331,6 +329,11 @@ EDGE_STATES = (EDGE_CONFIRMED, EDGE_PROPOSED, EDGE_REJECTED)
 # 만든 주체. 자동 추출은 출처별로 나눠 둔다 — note 에서 키가 빠지면 note 출처 연결만 걷어낸다
 BY_USER = "user"
 BY_PARENT_COLUMN = "parent_id"  # todos.parent_id 와 짝을 이루는 연결. 이 열을 바꾸면 따라 바뀐다
+# parent_id 와 짝인 연결을 만든 다른 주체 — 매니저 할일 이관(unify)과 매니저가 만든 단계(manager). parent_id 를 바꾸면
+# 이것들도 parent_id 짝처럼 따라 바뀐다(옛 상위 연결이 남아 할일이 두 상위 아래 그려지지 않게)
+BY_UNIFY = "unify"
+BY_MANAGER = "manager"
+PARENT_COLUMN_CREATORS = (BY_PARENT_COLUMN, BY_UNIFY, BY_MANAGER)
 BY_NOTE = "auto:note"
 BY_SHARED_DOC = "auto:shared-doc"
 BY_REBUILD = "rebuild"
@@ -355,7 +358,10 @@ SPAWN_FALLBACK_CATEGORY = "분석/검토"  # 보조 세션 일은 조사·분석
 SPAWN_NOTE_CHARS = 600
 # 워크스페이스를 모르는 spawn 할일의 note 표지. 세션이 분류하면 이 줄을 지우고 그 자리로 옮긴다(spawn_link).
 # 이 줄이 있는 할일의 카테고리는 사람이 고른 것이 아니라 자동 분류 학습·세션 카테고리 상속에서 뺀다
-SPAWN_PROVISIONAL_LINE = "자리: 임시 카테고리 — 이 세션이 분류하면 그 워크스페이스·카테고리로 옮겨진다"
+SPAWN_PROVISIONAL_LINE = "자리: 임시 카테고리 — 이 세션이 분류되면 그 카테고리로 옮겨진다"
+# 임시 자리 할일을 알아보는 머리. 워크스페이스가 있던 때 줄('…분류하면 그 워크스페이스·카테고리로 옮겨진다')도
+# 이 머리로 시작한다 — 운영 DB 에 남은 옛 note 도 같은 할일로 본다
+SPAWN_PROVISIONAL_MARK = "자리: 임시 카테고리 —"
 
 # 근거 문서 키 추출. Jira 키는 모양만 보면 'UTF-8'·'KT-7' 같은 오탐이 많아 이 회사에서 쓰는
 # 프로젝트 접두사만 받는다(11-16 Jira 조회로 확인: PFD 플랫폼개발부문 · YAIW 미디어전략부문 · KT 코리아타임스).
@@ -385,6 +391,11 @@ KNOWN_REPOS = {
 # MCP 서버 이름이 연결 방식마다 달라(Atlassian_Rovo·Atlassian_MCP·Atlassian) 도구 이름 끝부분으로 고른다
 RESULT_CONFLUENCE_CREATE = ("createConfluencePage", "createConfluenceContent")
 RESULT_CONFLUENCE_UPDATE = ("updateConfluencePage", "updateConfluenceContent")
+# 읽기 — 결과가 아니라 카드 제목만 채운다('보고' 로만 남은 페이지는 제목을 모른다)
+RESULT_CONFLUENCE_READ = ("getConfluencePage", "getConfluenceContent")
+# 도구 결과에서 페이지 제목을 찾는 JSON 깊이·파일로 빠진 큰 결과에서 읽는 앞부분 글자 수(제목은 앞쪽 메타에 있다)
+CONFLUENCE_TITLE_DEPTH = 8
+CONFLUENCE_TITLE_SCAN_CHARS = 64 * 1024
 RESULT_JIRA_CREATE = ("createJiraIssue",)
 RESULT_JIRA_EDIT = ("editJiraIssue", "transitionJiraIssue")
 RESULT_JIRA_COMMENT = ("addCommentToJiraIssue", "addOrEditJiraIssueComment")

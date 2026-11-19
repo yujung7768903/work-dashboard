@@ -3,28 +3,33 @@
 // 위로 — 연결 세션이 마지막으로 살아 있던 시각(last_session_at)과 할일 자체의 수정 시각(updated_at) 중 더 최근
 // 값(activeAt). 둘 다 없는 것은 아래. 트리별 목록의 형제 순서(latestFirst)도 같은 값을 쓴다.
 // 줄 왼쪽 막대는 지금 떠 있는 보조 세션이 잡은 할일(holdersByTodo) — 매니저 탭 보조 세션 목록과 같은 판정이다.
-// 할일 카드는 자기 트리(워크스페이스, 없으면 미분류) 하나에만 그려지고, 다른 트리와는 '다른 상위' 연결로만
+// 할일 카드는 자기 트리(주 상위를 따라 올라간 맨 위 할일·맥락) 하나에만 그려지고, 다른 트리와는 '다른 상위' 연결로만
 // 이어진다(app/services/todo_tree.py). 그래서 줄에 붙는 트리 맨 앞은 늘 카드가 있는 자기 트리고,
 // 다른 상위가 있는 트리가 뒤에 붙는다. 다른 트리를 고르면 그 트리 + 자기 트리에서 카드까지의 가지를 함께
 // 그려 카드가 판에 있게 하고, 그 트리의 상위에서 카드로 선이 그어진다.
 // DOM 을 모르는 순수 함수라 node 로 바로 검사한다 (tests/tree_todos_check.mjs)
 
-export const UNASSIGNED_TREE = "none";
 const DOING = "doing";
 const TODO = "todo";
 const PROPOSED = "proposed";
 // 매니저 spawn 이 붙이는 세션 이름 머리 '보조N | 제목' (매니저 spawn.helper_name)
 const HELPER_LABEL = /^보조\d+/;
 
-// 미분류 트리는 워크스페이스 id 가 없어 글자 키로 부른다
+// 트리 id = 맨 위 노드 key (t12·c3)
 export function treeIdOf(tree) {
-  return tree.workspace.id ?? UNASSIGNED_TREE;
+  return tree.key;
+}
+
+/** 그 할일 카드가 있는 트리. 없으면 null — 매니저 탭 팝업처럼 할일 하나의 트리만 그릴 때 쓴다 */
+export function treeOfTodo(trees, todoId) {
+  const key = `t${todoId}`;
+  return trees.find((tree) => findPath(tree.children, key)) ?? null;
 }
 
 /**
  * 진행 중 할일 줄. [{ node, home, trees }] — home 은 카드가 있는 트리 id,
  * trees 는 [{ id, name, color, home, proposed, via }] 로 자기 트리가 맨 앞, 나머지는 트리 순서.
- * name 이 null 이면 미분류. proposed 는 그 트리와의 연결이 전부 아직 제안일 때.
+ * name 은 맨 위 할일 제목. proposed 는 그 트리와의 연결이 전부 아직 제안일 때.
  * via 는 그 트리 안에서 이 할일을 하위로 둔 상위들 [{ key, id, title }] (자기 트리면 빈 배열)
  */
 export function doingTodos(trees) {
@@ -57,8 +62,8 @@ export function panelTrees(trees, { treeId, home = null, focusKey = null }) {
 }
 
 /**
- * 루트에서 그 카드까지 한 줄기만 남긴 트리. 카드 아래(하위·결과물)는 그대로 두고, 거쳐 가는 카드의
- * 다른 가지·결과물은 뺀다 — 다른 트리 옆에 미분류처럼 큰 트리가 통째로 깔리면 카드를 찾기 어렵다.
+ * 맨 위에서 그 카드까지 한 줄기만 남긴 트리. 카드 아래(하위·결과물)는 그대로 두고, 거쳐 가는 카드의
+ * 다른 가지·결과물은 뺀다 — 다른 트리 옆에 큰 트리가 통째로 깔리면 카드를 찾기 어렵다.
  * 루트 카드의 진행률·상태별 개수는 원래 트리 것 그대로다. 카드가 없으면 null
  */
 export function branchTo(tree, key) {
@@ -91,8 +96,8 @@ function memberTrees(node, where, treeRank) {
 function entry(tree, home) {
   return {
     id: treeIdOf(tree),
-    name: tree.workspace.name ?? null,
-    color: tree.workspace.category_color ?? null,
+    name: tree.name ?? null,
+    color: tree.category_color ?? null,
     home,
     proposed: false,
     via: [],
@@ -123,18 +128,6 @@ export function latestFirst(nodes) {
     return latest.get(node);
   };
   return [...nodes].sort((left, right) => newerFirst(latestOf(left), latestOf(right)));
-}
-
-/**
- * 트리에서 사람을 기다리는 할일(waiting 있음) — 최근 손댄 순, 같은 할일은 한 번만.
- * 루트 카드의 '사람 대기 N' 은 개수만 실려 와서, 눌렀을 때 열 할일을 여기서 찾는다
- */
-export function waitingTodos(tree) {
-  const found = new Map();
-  walk(tree.children ?? [], (node) => {
-    if (node.kind !== "context" && node.waiting && !found.has(node.id)) found.set(node.id, node);
-  });
-  return [...found.values()].sort((left, right) => newerFirst(activeAt(left) ?? "", activeAt(right) ?? ""));
 }
 
 /**

@@ -4,8 +4,6 @@ from app.constants import (
     AUTO_TODO_NOTE_RAW_TITLE,
     PARENT_CYCLE_MSG,
     PARENT_INVALID_MSG,
-    PARENT_NEEDS_WORKSPACE_MSG,
-    PARENT_OTHER_WORKSPACE_MSG,
     PRIORITY_INVALID_MSG,
     REVIEW_LOCKED_MSG,
     SCOPE_REQUIRED_MSG,
@@ -25,7 +23,7 @@ from app.repositories import labels as label_repo
 from app.repositories import workspaces as workspace_repo
 
 TABLE = "todos"
-# cwd = 워크스페이스가 없는 할일의 작업 위치. 소속이 있으면 workspaces.cwd 가 그 역할이다
+# cwd = 할일의 작업 위치. 비어 있으면 가장 가까운 상위 할일의 cwd 를 쓴다(app/services/lineage.nearest_cwd)
 EDITABLE_FIELDS = (
     "title", "note", "precondition", "status", "workspace_id", "cwd", "priority",
     "parent_id",
@@ -42,17 +40,17 @@ def create(
     precondition=None,
     parent_id=None,
 ):
-    """workspace_id 가 있으면 카테고리는 그 워크스페이스에서 가져옴.
+    """parent_id 를 주고 카테고리를 안 주면 카테고리는 상위 할일의 것을 따른다.
 
-    parent_id 만 주면 워크스페이스는 상위 할일의 것을 따른다 — 하위 할일은 늘 부모와
-    같은 트리(워크스페이스)에 있어야 하므로 따로 받을 이유가 없다
+    워크스페이스는 없어졌다(사용자 결정 11-18). workspace_id 는 옛 호출이 깨지지 않게 받기만 하고
+    값이 오면 옛 규칙(그 워크스페이스 카테고리)대로 둔다 — 이관 뒤 workspaces 는 비어 있다
     """
     cleaned = _clean_title(title)
     parent_id = clean_parent(parent_id)
-    if parent_id is not None and workspace_id is None:
-        workspace_id = get(con, parent_id)["workspace_id"]
     if parent_id is not None:
-        _validate_parent(con, None, parent_id, workspace_id)
+        _validate_parent(con, None, parent_id)
+        if category_id is None and workspace_id is None:
+            category_id = get(con, parent_id)["category_id"]
     resolved_category = _resolve_category(con, category_id, workspace_id)
     order = ordering.next_order(con, TABLE, *_group_scope(workspace_id))
     stamp = now()
@@ -289,12 +287,7 @@ def _validated_assignments(con, current, fields):
     if "parent_id" in assignments:
         assignments["parent_id"] = clean_parent(assignments["parent_id"])
         if assignments["parent_id"] is not None:
-            _validate_parent(
-                con,
-                current["id"],
-                assignments["parent_id"],
-                assignments.get("workspace_id", current["workspace_id"]),
-            )
+            _validate_parent(con, current["id"], assignments["parent_id"])
     return assignments
 
 
@@ -346,17 +339,14 @@ def clean_parent(value):
         raise Validation(PARENT_INVALID_MSG)
 
 
-def _validate_parent(con, todo_id, parent_id, workspace_id):
-    """부모는 같은 워크스페이스의 할일이고, 자기 자신·자기 하위가 아니어야 한다.
+def _validate_parent(con, todo_id, parent_id):
+    """부모는 있는 할일이고, 자기 자신·자기 하위가 아니어야 한다. 워크스페이스 제약은 없다 —
+    상위 없는 할일이 곧 트리의 맨 위다.
 
     부모가 자기 하위면 트리가 고리가 되어 루트에서 닿지 않는 가지가 생긴다.
     부모 쪽에서 위로 올라가며 자기를 만나는지 본다 (깊이만큼만 돈다)
     """
-    if workspace_id is None:
-        raise Validation(PARENT_NEEDS_WORKSPACE_MSG)
-    parent = get(con, parent_id)
-    if parent["workspace_id"] != workspace_id:
-        raise Validation(PARENT_OTHER_WORKSPACE_MSG)
+    get(con, parent_id)
     node, seen = parent_id, set()
     while node is not None and node not in seen:
         if node == todo_id:

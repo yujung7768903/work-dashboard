@@ -40,7 +40,6 @@ from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import todo_tree
 from tests.support import temp_db, temp_db_path
 
@@ -53,13 +52,15 @@ class GraphFixture(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
         self.category = category_repo.list_all(self.con)[0]
-        self.space = workspace_repo.create(self.con, self.category["id"], "통합DB 검색")
-        self.other = workspace_repo.create(self.con, self.category["id"], "자료라이브러리")
+        # 워크스페이스는 없다 — 상위 없는 할일이 트리 맨 위다
+        self.space = todo_repo.create(self.con, "통합DB 검색", category_id=self.category["id"])
+        self.other = todo_repo.create(self.con, "자료라이브러리", category_id=self.category["id"])
 
-    def _todo(self, title, workspace=None, note=None, loose=False):
-        if loose:
-            return todo_repo.create(self.con, title, category_id=self.category["id"], note=note)
-        return todo_repo.create(self.con, title, workspace_id=(workspace or self.space)["id"], note=note)
+    def _todo(self, title, workspace=None, note=None):
+        """workspace(맨 위 할일)를 주면 그 아래, 아니면 상위 없는 할일(제 트리의 맨 위)"""
+        if workspace is not None:
+            return todo_repo.create(self.con, title, parent_id=workspace["id"], note=note)
+        return todo_repo.create(self.con, title, category_id=self.category["id"], note=note)
 
     def _parent(self, parent, child, state=EDGE_CONFIRMED, basis=BASIS_TRIGGER):
         return graph_repo.add_edge(self.con, parent, child, REL_PARENT, basis=basis, state=state)
@@ -125,7 +126,7 @@ class EdgeRuleTest(GraphFixture):
         self.assertEqual(len(self._edges(REL_RELATED)), 1)
 
     def test_ancestors_follow_multiple_parents(self):
-        context = graph_repo.create_context(self.con, "검색 결과 이상", workspace_id=self.space["id"])
+        context = graph_repo.create_context(self.con, "검색 결과 이상", category_id=self.category["id"])
         a, b, c = self._todo("사진 분석"), self._todo("필터 원인"), self._todo("한국일보 체크")
         self._parent((NODE_CONTEXT, context["id"]), T(a), basis=BASIS_BACKGROUND)
         self._parent(T(a), T(b))
@@ -144,6 +145,25 @@ class ParentColumnTest(GraphFixture):
         todo_repo.update(self.con, child["id"], parent_id=second["id"])
         edges = self._edges(REL_PARENT)
         self.assertEqual([(e["src_id"], e["dst_id"]) for e in edges], [(str(second["id"]), str(child["id"]))])
+
+    def test_unify_and_manager_parent_edges_follow_parent_id_too(self):
+        """이관(unify)·매니저 단계(manager)가 만든 상위 연결도 parent_id 짝이다 — 상위를 바꾸면 옛 연결이 남지 않는다.
+        사람이 이은 상위(user)는 그대로 둔다"""
+        for creator in ("unify", "manager"):
+            with self.subTest(creator=creator):
+                old, new, keep, child = self._todo("옛 상위"), self._todo("새 상위"), self._todo("사람이 이은 상위"), self._todo("단계")
+                stamp = "2026-11-18T00:00:00+00:00"
+                self.con.execute(
+                    "INSERT INTO edges(src_kind, src_id, dst_kind, dst_id, relation, basis, evidence, state, created_by,"
+                    " created_at, updated_at) VALUES('todo', ?, 'todo', ?, ?, 'background', NULL, ?, ?, ?, ?)",
+                    (str(old["id"]), str(child["id"]), REL_PARENT, EDGE_CONFIRMED, creator, stamp, stamp),
+                )
+                self.con.execute("UPDATE todos SET parent_id=? WHERE id=?", (old["id"], child["id"]))
+                self.con.commit()
+                self._parent(T(keep), T(child))
+                todo_repo.update(self.con, child["id"], parent_id=new["id"])
+                sources = sorted(e["src_id"] for e in self._edges(REL_PARENT) if e["dst_id"] == str(child["id"]))
+                self.assertEqual(sources, sorted([str(new["id"]), str(keep["id"])]))
 
     def test_removing_mirrored_edge_clears_parent_id(self):
         root = self._todo("설계")
@@ -166,9 +186,8 @@ class ParentColumnTest(GraphFixture):
         path = temp_db_path()
         con = connect(path)
         category_id = category_repo.list_all(con)[0]["id"]
-        space = workspace_repo.create(con, category_id, "옛 트리")
-        root = todo_repo.create(con, "루트", workspace_id=space["id"])
-        child = todo_repo.create(con, "자식", workspace_id=space["id"])
+        root = todo_repo.create(con, "루트", category_id=category_id)
+        child = todo_repo.create(con, "자식", category_id=category_id)
         # 이 기능 전의 DB — 열 값만 있고 연결도 표시도 없다
         con.execute("UPDATE todos SET parent_id=? WHERE id=?", (root["id"], child["id"]))
         con.execute("DELETE FROM edges")
@@ -289,9 +308,12 @@ class SpawnOriginTest(GraphFixture):
 
 
 class ForestTest(GraphFixture):
-    def _tree(self, workspace_id):
+    def _tree(self, top):
+        """top: 트리 맨 위 할일(또는 (종류, id)). 그 트리와 전체 응답"""
+        kind, ident = top if isinstance(top, tuple) else (NODE_TODO, top["id"])
+        key = f"{'c' if kind == NODE_CONTEXT else 't'}{ident}"
         payload = todo_tree.forest(self.con)
-        return next(t for t in payload["trees"] if t["workspace"]["id"] == workspace_id), payload
+        return next(t for t in payload["trees"] if t["key"] == key), payload
 
     def _flat(self, nodes):
         for node in nodes:
@@ -299,11 +321,11 @@ class ForestTest(GraphFixture):
             yield from self._flat(node["children"])
 
     def test_multi_parent_card_appears_once_and_counts_in_both(self):
-        a, b, child = self._todo("사진 분석"), self._todo("한국일보 체크"), self._todo("필터 원인")
+        a, b, child = self._todo("사진 분석", self.space), self._todo("한국일보 체크", self.space), self._todo("필터 원인")
         self._parent(T(a), T(child))
         self._parent(T(b), T(child), state=EDGE_PROPOSED)
         todo_repo.update(self.con, child["id"], status=STATUS_DONE)
-        tree, payload = self._tree(self.space["id"])
+        tree, payload = self._tree(self.space)
         flat = list(self._flat(tree["children"]))
         self.assertEqual([node["id"] for node in flat].count(child["id"]), 1)
         nodes = {node["id"]: node for node in flat}
@@ -314,39 +336,47 @@ class ForestTest(GraphFixture):
         self.assertEqual(nodes[b["id"]]["progress"], {"done": 1, "total": 1})
         self.assertEqual(len(nodes[child["id"]]["parents"]), 2)
         self.assertEqual(payload["proposals"], 1)
+        # 상위가 생긴 할일은 제 트리가 아니다
+        self.assertNotIn(f"t{child['id']}", [t["key"] for t in payload["trees"]])
 
-    def test_parent_in_other_workspace_is_drawn_as_extra_link(self):
-        foreign = self._todo("YAIW-71 조회", workspace=self.other)
-        mine = self._todo("검색 누락")
+    def test_parent_in_other_tree_is_drawn_as_extra_link(self):
+        """상위가 둘이고 둘이 다른 트리면 주 상위(먼저 확정한 것) 쪽에 카드, 다른 쪽은 선만"""
+        mine = self._todo("검색 누락", self.space)
+        foreign = self._todo("YAIW-71 조회", self.other)
         self._parent(T(foreign), T(mine))
-        tree, payload = self._tree(self.space["id"])
-        self.assertIn(mine["id"], [node["id"] for node in tree["children"]])
-        link = next(l for l in payload["links"] if l["relation"] == REL_PARENT)
+        tree, payload = self._tree(self.space)
+        self.assertIn(mine["id"], [node["id"] for node in tree["children"][0]["children"]])
+        link = next(
+            l for l in payload["links"]
+            if l["relation"] == REL_PARENT and l["from"] == f"t{foreign['id']}"
+        )
         self.assertFalse(link["primary"])
-        other_tree, _ = self._tree(self.other["id"])
-        self.assertEqual(other_tree["children"][0]["extra_children"], [f"t{mine['id']}"])
+        other_tree, _ = self._tree(self.other)
+        self.assertEqual(other_tree["children"][0]["children"][0]["extra_children"], [f"t{mine['id']}"])
 
     def test_context_is_a_root_and_done_when_everything_under_it_is(self):
-        context = graph_repo.create_context(self.con, "검색 결과 이상", workspace_id=self.space["id"])
+        context = graph_repo.create_context(self.con, "검색 결과 이상", category_id=self.category["id"])
         a = self._todo("사진 분석")
         self._parent((NODE_CONTEXT, context["id"]), T(a), basis=BASIS_BACKGROUND)
-        tree, _ = self._tree(self.space["id"])
+        tree, _ = self._tree((NODE_CONTEXT, context["id"]))
         self.assertEqual(tree["children"][0]["kind"], NODE_CONTEXT)
         self.assertEqual(tree["children"][0]["children"][0]["id"], a["id"])
         self.assertEqual(tree["progress"]["total"], 1)  # 맥락은 할일 수에 들지 않는다
         todo_repo.update(self.con, a["id"], status=STATUS_DONE)
-        tree, _ = self._tree(self.space["id"])
+        tree, _ = self._tree((NODE_CONTEXT, context["id"]))
         self.assertEqual(tree["children"][0]["status"], STATUS_DONE)
 
-    def test_unassigned_todos_get_their_own_tree_last(self):
-        self._todo("소속 없음", loose=True)
-        payload = todo_tree.forest(self.con)
-        self.assertTrue(payload["trees"][-1]["workspace"].get("unassigned"))
+    def test_parentless_todo_is_its_own_tree(self):
+        loose = self._todo("소속 없음")
+        tree, _ = self._tree(loose)
+        self.assertEqual(tree["name"], "소속 없음")
+        self.assertEqual(tree["children"][0]["id"], loose["id"])
 
     def test_docs_and_precedes_ride_on_nodes(self):
-        a, b = self._todo("PR 배포", note="hk-herb-server PR #35"), self._todo("완료 처리")
+        a = self._todo("PR 배포", self.space, note="hk-herb-server PR #35")
+        b = self._todo("완료 처리", self.space)
         graph_repo.add_edge(self.con, T(a), T(b), REL_PRECEDES)
-        tree, _ = self._tree(self.space["id"])
+        tree, _ = self._tree(self.space)
         nodes = {node["id"]: node for node in self._flat(tree["children"])}
         self.assertEqual(nodes[a["id"]]["docs"][0]["url"], "https://github.com/hkilbo/hk-herb-server/pull/35")
         self.assertEqual(nodes[b["id"]]["after"][0]["id"], a["id"])
@@ -366,9 +396,10 @@ class ApiTest(GraphFixture):
         self.assertEqual(confirmed["state"], EDGE_CONFIRMED)
         server.route(self.con, "DELETE", f"/api/edges/{edge['id']}", {}, None)
         self.assertEqual(self._edges(REL_PARENT), [])
-        context = server.route(self.con, "POST", "/api/contexts", {}, {"title": "배경", "workspace_id": self.space["id"]})
+        context = server.route(self.con, "POST", "/api/contexts", {}, {"title": "배경", "category_id": self.category["id"]})
         child = server.route(self.con, "POST", "/api/todos", {}, {"title": "맥락 아래", "context_id": context["id"]})
-        self.assertEqual(child["workspace_id"], self.space["id"])
+        # 맥락 카드의 + 로 만든 할일은 그 맥락의 카테고리를 따른다
+        self.assertEqual(child["category_id"], self.category["id"])
         self.assertEqual(self._edges(REL_PARENT)[0]["src_kind"], NODE_CONTEXT)
 
 
@@ -388,9 +419,11 @@ class CliTest(unittest.TestCase):
         return code or 0, out.getvalue(), err.getvalue()
 
     def test_link_edges_and_states(self):
-        self.run_cli("add-workspace", "개발", "검색")
-        self.run_cli("add-todo", "사진 분석", "--workspace", "1")
-        self.run_cli("add-todo", "필터 원인", "--workspace", "1")
+        # 할일 준비는 저장소로 — add-workspace·add-todo 명령은 없다
+        con = connect()
+        dev = category_repo.get_by_name(con, "개발")["id"]
+        todo_repo.create(con, "사진 분석", category_id=dev)
+        todo_repo.create(con, "필터 원인", category_id=dev)
         code, out, _ = self.run_cli("link", "상위", "1", "2", "--basis", "계기", "--evidence", "분석 중 발견", "--proposed")
         self.assertEqual(code, 0)
         self.assertIn("상위(계기)", out)
@@ -400,7 +433,7 @@ class CliTest(unittest.TestCase):
         code, _, err = self.run_cli("link", "상위", "2", "1", "--basis", "배경")
         self.assertNotEqual(code, 0)
         self.assertIn(EDGE_CYCLE_MSG, err)
-        code, out, _ = self.run_cli("add-context", "검색 결과 이상", "--workspace", "1")
+        code, out, _ = self.run_cli("add-context", "검색 결과 이상", "--category", "개발")
         self.assertIn("ctx:1", out)
         code, out, _ = self.run_cli("edges", "#2")
         self.assertIn("todo:1 -상위(계기)-> todo:2", out)

@@ -44,9 +44,8 @@ from app.repositories import autorun as autorun_repo
 from app.repositories import sessions as session_repo
 from app.repositories import stale_judgments as judgment_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.repositories import worktrees as worktree_repo
-from app.services import transcript
+from app.services import lineage, transcript
 
 JSON_OBJECT = re.compile(r"\{[^{}]*\}", re.S)
 STATUS_BY_VERDICT = {
@@ -71,10 +70,10 @@ JSON 하나만 출력해라. 다른 말은 쓰지 마라:
 === 할일 ===
 {todo}
 
-=== 워크스페이스 ===
-{workspace}
+=== 트리 맨 위 할일 (배경·목표) ===
+{root}
 
-=== 같은 워크스페이스의 다른 할일 ===
+=== 같은 상위 아래 다른 할일 ===
 {siblings}
 
 === 이 할일을 잡았던 세션 (최근순) ===
@@ -119,14 +118,21 @@ def candidates(con, now=None):
 
 def evidence(con, todo, root=None):
     """모델에 보여줄 근거. 프롬프트 한 장에 들어가게 조각마다 길이를 자른다"""
-    workspace = workspace_repo.get(con, todo["workspace_id"]) if todo.get("workspace_id") else None
+    # 워크스페이스 대신 트리 맨 위 할일(옛 워크스페이스의 배경·목표가 note 에 있다)과 같은 상위 아래 할일
+    top = lineage.root_todo(con, todo["id"])
+    top = top if top and top["id"] != todo["id"] else None
+    above = lineage.parent_map(con).get(("todo", str(todo["id"])))
     siblings = (
         [
-            other
-            for other in todo_repo.list_by_workspace(con, todo["workspace_id"])
-            if other["id"] != todo["id"]
+            dict(other)
+            for other in con.execute(
+                "SELECT t.* FROM edges e JOIN todos t ON t.id = CAST(e.dst_id AS INTEGER)"
+                " WHERE e.relation='parent' AND e.state<>'rejected' AND e.src_kind=? AND e.src_id=?"
+                " AND e.dst_kind='todo' AND t.id<>? AND t.role IS NULL ORDER BY t.sort_order, t.id",
+                (above[0], above[1], todo["id"]),
+            )
         ][:STALE_JUDGE_SIBLING_LIMIT]
-        if workspace
+        if above
         else []
     )
     sessions = session_repo.list_by_todo(con, todo["id"])[:STALE_JUDGE_SESSION_LIMIT]
@@ -146,9 +152,9 @@ def evidence(con, todo, root=None):
             "created_at": todo["created_at"],
             "updated_at": todo["updated_at"],
         },
-        "workspace": (
-            {"name": workspace["name"], "goal": _clip(workspace.get("goal"), STALE_JUDGE_TEXT_CHARS)}
-            if workspace
+        "root": (
+            {"title": top["title"], "note": _clip(top.get("note"), STALE_JUDGE_TEXT_CHARS)}
+            if top
             else None
         ),
         "siblings": [
@@ -198,7 +204,7 @@ def prompt(facts):
     return PROMPT.format(
         idle_days=STALE_JUDGE_IDLE_DAYS,
         todo=_dump(facts["todo"]),
-        workspace=_dump(facts["workspace"]) if facts["workspace"] else "(없음)",
+        root=_dump(facts["root"]) if facts["root"] else "(없음)",
         siblings=_dump(facts["siblings"]) if facts["siblings"] else "(없음)",
         sessions=_dump(facts["sessions"]) if facts["sessions"] else "(이 할일을 잡은 세션이 없음)",
         tail=_dump(facts["tail"]) if facts["tail"] else "(대화 기록 없음)",

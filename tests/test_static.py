@@ -4,7 +4,6 @@ import unittest
 import server
 from app.errors import Conflict, NotFound, Validation
 from app.repositories import categories as category_repo
-from app.repositories import workspaces as workspace_repo
 from tests.support import temp_db
 
 NOT_FOUND = 404
@@ -64,34 +63,32 @@ class RouteTest(unittest.TestCase):
     def setUp(self):
         self.con = temp_db()
 
-    def test_tree_endpoint_returns_groups(self):
-        payload = server.route(self.con, "GET", "/api/tree", {}, {})
-        self.assertIn("groups", payload)
+    def test_todo_trees_endpoint_returns_trees(self):
+        payload = server.route(self.con, "GET", "/api/todo-trees", {}, {})
+        self.assertIn("trees", payload)
+
+    def test_board_and_workspace_endpoints_are_gone(self):
+        """보드·워크스페이스 화면은 없어졌다(사용자 결정 11-18) — 그 길은 모르는 엔드포인트다"""
+        for method, path in (
+            ("GET", "/api/tree"),
+            ("GET", "/api/workspaces"),
+            ("GET", "/api/workspaces/1"),
+            ("POST", "/api/workspaces"),
+            ("PATCH", "/api/workspaces/1"),
+            ("DELETE", "/api/workspaces/1"),
+        ):
+            with self.subTest(method=method, path=path), self.assertRaises(NotFound):
+                server.route(self.con, method, path, {}, {"name": "x"})
 
     def test_create_category_endpoint(self):
         payload = server.route(self.con, "POST", "/api/categories", {}, {"name": "새것"})
         self.assertEqual(payload["name"], "새것")
 
-    def test_workspaces_list_endpoint(self):
-        dev = category_repo.get_by_name(self.con, "개발")["id"]
-        workspace_repo.create(self.con, dev, "빈 워크스페이스")
-        payload = server.route(self.con, "GET", "/api/workspaces", {}, {})
-        self.assertEqual([item["name"] for item in payload], ["빈 워크스페이스"])
-
-    def test_workspace_detail_endpoint(self):
-        dev = category_repo.get_by_name(self.con, "개발")["id"]
-        created = workspace_repo.create(self.con, dev, "KT")
-        payload = server.route(
-            self.con, "GET", f"/api/workspaces/{created['id']}", {}, {}
-        )
-        self.assertEqual(payload["workspace"]["name"], "KT")
-        self.assertEqual(payload["todos"], [])
-
     def test_route_rejects_bad_requests(self):
         """라우팅 거부 조건이 한자리에. 새 엔드포인트의 거부 규칙도 여기에 붙인다"""
         for exc, why, method, path, body in (
             (NotFound, "없는 엔드포인트", "GET", "/api/nope", {}),
-            (Validation, "지원 안 하는 메서드", "PUT", "/api/tree", {}),
+            (Validation, "지원 안 하는 메서드", "PUT", "/api/todo-trees", {}),
             (Validation, "reorder 의 알 수 없는 kind", "POST", "/api/reorder",
              {"kind": "x", "ids": []}),
             (Validation, "id 없이 할일 조회", "GET", "/api/todos", {}),
@@ -138,24 +135,25 @@ class RouteTest(unittest.TestCase):
         )
         self.assertEqual(payload["category_id"], ops)
 
-    def test_patch_session_with_a_todo_answers_with_the_new_workspace(self):
-        """할일 상세 창에서 워크스페이스를 바꾸면 응답과 할일 양쪽에 새 소속이 실려야 한다"""
+    def test_patch_session_ignores_workspace_and_keeps_the_todo(self):
+        """세션 분류는 카테고리만이다. 옛 화면이 workspace_id 를 보내도 무시하고 할일은 그대로 둔다"""
         from app.repositories import sessions as session_repo
         from app.repositories import todos as todo_repo
 
         dev = category_repo.get_by_name(self.con, "개발")["id"]
-        old = workspace_repo.create(self.con, dev, "예전 방")["id"]
-        new = workspace_repo.create(self.con, dev, "새 방")["id"]
-        todo = todo_repo.create(self.con, "옮길 일", workspace_id=old)
+        ops = category_repo.get_by_name(self.con, "운영")["id"]
+        todo = todo_repo.create(self.con, "그대로 둘 일", category_id=dev)
         session_repo.register(self.con, "route-sess")
         row_id = session_repo.get(self.con, "route-sess")["id"]
         session_repo.link_todo(self.con, "route-sess", todo["id"])
         payload = server.route(
-            self.con, "PATCH", f"/api/sessions/{row_id}", {}, {"workspace_id": new}
+            self.con, "PATCH", f"/api/sessions/{row_id}", {}, {"category_id": ops, "workspace_id": 99}
         )
-        self.assertEqual(payload["workspace_id"], new)
+        self.assertEqual(payload["category_id"], ops)
+        self.assertIsNone(payload["workspace_id"])
+        self.assertEqual(payload["root_title"], "그대로 둘 일")
         self.assertIsNone(payload["created_todo"])
-        self.assertEqual(todo_repo.get(self.con, todo["id"])["workspace_id"], new)
+        self.assertEqual(todo_repo.get(self.con, todo["id"])["category_id"], dev)
 
     def test_delete_todo_endpoint(self):
         ops = category_repo.get_by_name(self.con, "운영")["id"]

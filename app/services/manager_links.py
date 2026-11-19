@@ -1,7 +1,7 @@
 """매니저 탭 줄을 대시보드 트리에 잇는다.
 
 - 카드: 그 일을 하는 세션이 지금 붙잡은 할일(가장 최근 연결 = sessions 의 LATEST_LINKED)과 그 할일의
-  트리(워크스페이스). 매니저 할일은 session_id 로, 보조 세션은 자기 세션 id 로 찾는다.
+  트리(맨 위 할일 — root_id·root_title·tree_key). 매니저 할일은 session_id 로, 보조 세션은 자기 세션 id 로 찾는다.
 - 사용자 요청: 그 세션이 맨 처음 받은 사람의 지시 전문. 무엇 때문에 시작한 일인지를 보이려는 것이다.
   보조 세션의 첫 지시는 매니저 spawn 지시문이고, 끝에 spawn 이 자동으로 붙이는 안내 문단
   (진행률·산출물·결정·권한·완료 보고·매니저 자체 작업)은 사람이 쓴 요청이 아니라 걷어낸다.
@@ -14,6 +14,7 @@ import os
 import re
 import sqlite3
 
+from app.db import UNIFIED_FLAG, meta_get
 from app.repositories import sessions as session_repo
 from app.services import transcript
 
@@ -43,7 +44,9 @@ _request_cache = {}
 
 
 def cards(con, session_ids):
-    """세션 id → 카드 {todo_id, title, status, workspace_id, workspace_name, category_color}.
+    """세션 id → 카드 {todo_id, title, status, category_color, root_id, root_title, tree_key}.
+    root_* 는 그 할일 트리의 맨 위 할일, tree_key 는 트리 화면의 트리 id(t12·c3).
+    workspace_id(늘 None)·workspace_name(=root_title)은 옛 소비자용 별칭이다(sessions.current_cards).
     연결된 할일이 없거나 대시보드 DB 가 없으면 그 세션은 빠진다"""
     if con is None:
         return {}
@@ -63,7 +66,7 @@ def waiting(con, session_ids, blocked=None):
         return {}
     found = session_repo.waiting_by_session(con, session_ids)
     if blocked is None and WAIT_INPUT in found.values():
-        blocked = permission_sessions()
+        blocked = permission_sessions(con=con)
     return {sid: promote(kind, sid, blocked) for sid, kind in found.items()}
 
 
@@ -74,9 +77,28 @@ def promote(kind, session_id, blocked):
     return WAIT_PERMISSION if kind == WAIT_INPUT and session_id in (blocked or ()) else kind
 
 
-def permission_sessions(manager_home=None):
-    """ask --blocked permission 으로 남긴 열린 매니저 할일이 있는 세션 id 집합. 매니저 DB 는 읽기 전용으로만 연다.
+def unified(con):
+    """대시보드 DB 가 매니저 할일을 함께 들고 있는지 — 이관(매니저 tasks → todos)이 끝나면 meta 에 표시가 남는다.
+    그 뒤로 정본은 대시보드 todos(뷰 manager_tasks)이고 매니저 state/manager.db 의 tasks 는 더 갱신되지 않는다"""
+    if con is None:
+        return False
+    try:
+        return meta_get(con, UNIFIED_FLAG) is not None
+    except sqlite3.Error:
+        return False
+
+
+def permission_sessions(manager_home=None, con=None):
+    """ask --blocked permission 으로 남긴 열린 매니저 할일이 있는 세션 id 집합. 통합 뒤(unified)면 대시보드 DB 의
+    뷰 manager_tasks 를, 그 전이면 매니저 DB 를 읽기 전용으로 읽는다.
     매니저가 없거나 blocked 칸이 없는 예전 DB 면 빈 집합 — 대기 표시는 원래 신호대로 둔다"""
+    query = "SELECT DISTINCT session_id FROM {} WHERE status='open' AND blocked=? AND session_id IS NOT NULL"
+    if unified(con):
+        try:
+            rows = con.execute(query.format("manager_tasks"), (WAIT_PERMISSION,)).fetchall()
+        except sqlite3.Error:
+            return frozenset()
+        return frozenset(row[0] for row in rows)
     if manager_home is None:
         from app.services import manager_panel
 
@@ -87,10 +109,7 @@ def permission_sessions(manager_home=None):
     try:
         manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
-            rows = manager_con.execute(
-                "SELECT DISTINCT session_id FROM tasks WHERE status='open' AND blocked=? AND session_id IS NOT NULL",
-                (WAIT_PERMISSION,),
-            ).fetchall()
+            rows = manager_con.execute(query.format("tasks"), (WAIT_PERMISSION,)).fetchall()
         finally:
             manager_con.close()
     except sqlite3.Error:

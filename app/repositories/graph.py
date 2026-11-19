@@ -14,6 +14,7 @@ from app.constants import (
     BASIS_TRIGGER,
     BY_NOTE,
     BY_PARENT_COLUMN,
+    PARENT_COLUMN_CREATORS,
     BY_SHARED_DOC,
     BY_SPAWN,
     BY_TRANSCRIPT,
@@ -138,6 +139,19 @@ def ensure_doc(con, ref, title=None, url=None, created_by=BY_USER):
                 (title, stamp, NODE_DOC, ref, evidence_refs.label_of(ref)),
             )
     return get_doc(con, ref)
+
+
+def fill_doc_title(con, ref, title):
+    """이미 있는 문서 노드의 제목이 라벨뿐('Confluence 번호')이면 채운다 → 채웠나. 노드를 새로 만들지 않는다 —
+    읽기만 한 문서가 결과·근거로 생기면 안 된다"""
+    if not title:
+        return False
+    with transaction(con):
+        cur = con.execute(
+            "UPDATE graph_nodes SET title=?, updated_at=? WHERE kind=? AND ref=? AND title=?",
+            (title, now(), NODE_DOC, ref, evidence_refs.label_of(ref)),
+        )
+    return cur.rowcount > 0
 
 
 def get_doc(con, ref):
@@ -326,14 +340,16 @@ def ancestors(con, node, states=(EDGE_CONFIRMED, EDGE_PROPOSED)):
 
 
 def sync_parent_column(con, todo_id, old_parent, new_parent):
-    """todos.parent_id 가 바뀌면 그 짝 연결(created_by=parent_id)을 따라 바꾼다. 다른 주체가 만든
-    상위 연결은 건드리지 않는다 — 사람이 그래프에서 이은 상위가 열 하나 바꿨다고 사라지면 안 된다"""
+    """todos.parent_id 가 바뀌면 그 짝 연결(created_by=parent_id — 이관 unify·매니저 manager 가 만든 것도 같다)을
+    따라 바꾼다. 다른 주체가 만든 상위 연결은 건드리지 않는다 — 사람이 그래프에서 이은 상위가 열 하나 바꿨다고
+    사라지면 안 된다"""
     child = (NODE_TODO, str(todo_id))
     if old_parent is not None and old_parent != new_parent:
+        marks = ",".join("?" * len(PARENT_COLUMN_CREATORS))
         con.execute(
             "DELETE FROM edges WHERE src_kind=? AND src_id=? AND dst_kind=? AND dst_id=?"
-            " AND relation=? AND created_by=?",
-            (NODE_TODO, str(old_parent), *child, REL_PARENT, BY_PARENT_COLUMN),
+            f" AND relation=? AND created_by IN ({marks})",
+            (NODE_TODO, str(old_parent), *child, REL_PARENT, *PARENT_COLUMN_CREATORS),
         )
     if new_parent is not None:
         stamp = now()

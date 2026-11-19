@@ -39,5 +39,5 @@ globalThis.fetch = async () => ({
   status: 500,
   json: async () => ({ error: "서버 오류" }),
 });
-await api.getTree("category").catch(() => {});
+await api.getTodoTrees().catch(() => {});
 assert.strictEqual(alerts.length, 1);

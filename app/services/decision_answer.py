@@ -60,7 +60,7 @@ def for_todo(con, todo_id, home=None):
     열린 결정(답 대기)이 먼저, 이미 답한 결정(다시 답할 수 있다)은 최근 답 순으로 뒤에.
     같은 규칙으로 고른 직접 할 일·확인 대기(task_report)도 reports 로 함께 준다 — 매니저 목록을 한 번만 읽는다.
     → {"available": 매니저가 있나, "items": [...], "reports": [...]}"""
-    from app.services import task_report
+    from app.services import task_report, task_steps
 
     try:
         rows = _call(["task", "list", "--json", "--all"], home)
@@ -71,8 +71,12 @@ def for_todo(con, todo_id, home=None):
     session_ids = sorted({row.get("session_id") for row in decisions + reports} - {None, ""})
     cards = session_repo.current_cards(con, session_ids)
 
+    # 할일 통합 뒤에는 매니저 할일이 곧 대시보드 할일이고, 결정·확인은 그 할일의 단계 행에 붙는다 — 그 할일 자신과
+    # 단계 행의 것도 이 할일의 것이다(단계를 맡은 보조 세션의 카드는 단계 행이라 위 규칙만으로는 빠진다)
+    own = {todo_id, *task_steps.step_ids(con, todo_id)}
+
     def here(row):
-        return (cards.get(row.get("session_id")) or {}).get("todo_id") == todo_id
+        return row.get("id") in own or (cards.get(row.get("session_id")) or {}).get("todo_id") == todo_id
 
     mine = [row for row in decisions if here(row)]
     waiting = sorted(
@@ -86,14 +90,20 @@ def for_todo(con, todo_id, home=None):
     )
     return {
         "available": True,
-        "items": [_view(row) for row in waiting + answered],
-        "reports": task_report.ordered([row for row in reports if here(row)]),
+        "items": [task_steps.with_task(con, _view(row)) for row in waiting + answered],
+        "reports": [task_steps.with_task(con, row) for row in task_report.ordered([row for row in reports if here(row)])],
+        # 이 할일의 진행 단계(단계 행) — 답할 결정이 없는 동안에도 어디까지 왔고 어디서 멈췄는지 보인다
+        "steps": task_steps.timeline(con, todo_id),
     }
 
 
-def show(task_id, home=None):
-    """결정 한 건 + 뒤에서 도는 답 보내기(job). 화면이 답을 보낸 뒤 이걸 폴링한다"""
-    return _view(_task(task_id, home))
+def show(task_id, home=None, con=None):
+    """결정 한 건 + 뒤에서 도는 답 보내기(job). 화면이 답을 보낸 뒤 이걸 폴링한다.
+    con(대시보드 DB)을 주면 단계 행의 결정은 할일 제목·진행 단계를 붙인다 — 다시 그려도 같은 모양이게"""
+    from app.services import task_steps
+
+    item = _view(_task(task_id, home))
+    return task_steps.with_task(con, item) if con is not None else item
 
 
 def start(task_id, choice=None, feedback=None, home=None, popen=subprocess.Popen):

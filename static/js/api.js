@@ -33,8 +33,7 @@ async function request(method, path, body, { silent } = {}) {
   return payload;
 }
 
-export const getTree = (groupBy) => request("GET", `/tree?group_by=${groupBy}`);
-// 트리 메뉴. 워크스페이스마다 할일 상하 관계째 (보드의 getTree 는 묶음만 준다)
+// 트리 메뉴. 상위 없는 할일·맥락마다 트리 하나, 할일 상하 관계째
 export const getTodoTrees = () => request("GET", "/todo-trees");
 // 할일 관계 그래프. 제안 확인·거절은 state 만 바꾼다
 export const getProposals = () => request("GET", "/graph-proposals");
@@ -43,7 +42,6 @@ export const updateEdge = (id, fields) => request("PATCH", `/edges/${id}`, field
 export const openResultFolder = (id) => request("POST", "/result-folder", { id });
 export const getNext = () => request("GET", "/next");
 export const getCategories = () => request("GET", "/categories");
-export const getWorkspaces = () => request("GET", "/workspaces");
 export const getSessions = () => request("GET", "/sessions");
 export const getSession = (id) => request("GET", `/sessions/${id}`);
 export const classifySession = (id, fields) => request("PATCH", `/sessions/${id}`, fields);
@@ -109,7 +107,6 @@ export const sendRetroFeedback = (text) => request("POST", "/retro-feedback", { 
 // 보낸다 — 그 사이 같은 id 로 바뀐 요청에 답이 가지 않게. 실패는 카드 안에 보이므로 alert 를 띄우지 않는다
 export const getTodoPermissions = (todoId) => request("GET", `/permissions?todo_id=${todoId}`);
 export const answerPermission = (body) => request("POST", "/permission-answer", body, { silent: true });
-export const getWorkspace = (id) => request("GET", `/workspaces/${id}`);
 
 export const createCategory = (name) => request("POST", "/categories", { name });
 export const updateCategory = (id, fields) => request("PATCH", `/categories/${id}`, fields);
@@ -122,9 +119,6 @@ export const updateLabel = (id, fields) => request("PATCH", `/labels/${id}`, fie
 export const deleteLabel = (id, force = false) =>
   request("DELETE", `/labels/${id}${force ? "?force=1" : ""}`);
 
-export const createWorkspace = (fields) => request("POST", "/workspaces", fields);
-export const updateWorkspace = (id, fields) => request("PATCH", `/workspaces/${id}`, fields);
-export const deleteWorkspace = (id) => request("DELETE", `/workspaces/${id}`);
 
 export const getTodo = (id) => request("GET", `/todos/${id}`);
 export const createTodo = (fields) => request("POST", "/todos", fields);

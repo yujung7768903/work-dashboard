@@ -5,9 +5,10 @@
 一个面向「与 Claude Code 搭档工作」的本地任务管理工具。人从浏览器操作，Claude 从 CLI
 操作，两边读写同一个 SQLite 文件。没有框架，没有打包器，也不需要 `pip install`。
 
-工作按 **分类 → 工作区 → 待办** 三层组织。在此之上，每个 Claude Code 会话都会被注册、
-归入某个工作区，并关联到它实际正在处理的待办。因此看板始终显示当前在跑什么，下一个会话
-也能在了解进度的前提下开始。
+工作是一片待办之林。没有上级的待办就是其树的顶端，背景、目的、目标写在顶端待办的
+note 里。由待办派生的请求、决定与确认作为该待办的步骤挂在其下。会话由钩子登记，分类由
+仪表盘决定，待办（步骤）关联由管理器完成。工作区与看板已于 2026-11-18 移除 —— 下文若仍写
+「工作区」，请理解为「树的顶端待办」。
 
 > [!NOTE]
 > 单人使用，无鉴权，不依赖任何外部服务。所有数据都在本机的一个 SQLite 文件里。
@@ -143,24 +144,15 @@ cd work-dashboard
 
 ```bash
 python3 dash.py ls                                   # 完整树
-python3 dash.py next                                 # 下一件待办
-python3 dash.py show <工作区id|JIRA-1>                # 工作区详情
 python3 dash.py add-category <名称>
-python3 dash.py add-workspace <分类> <名称> [--background ...] [--jira KEY]
-python3 dash.py add-todo <标题> [--workspace ID] [--note ...] [--precondition ...]
-python3 dash.py move-todo <待办id> --workspace <id|none>
-python3 dash.py set-status <todo|workspace> <id> <状态>
-python3 dash.py reorder <categories|workspaces|todos> <ids...>
-python3 dash.py done-today [--date YYYY-MM-DD]
 ```
 
 ### 会话
 
 ```bash
 python3 dash.py sessions                             # 正在运行的会话
-python3 dash.py classify --category <名称> [--workspace <id>]
 python3 dash.py link-todo <待办id> [--status done] [--past]
-python3 dash.py show-todo --session
+python3 dash.py show-todo [--session [ID]]
 python3 dash.py show-note <待办id>                    # 上下文备注全文
 ```
 
@@ -208,13 +200,12 @@ python3 dash.py autorun-finish               # 完成 —— 转入待复核
 
 | 状态 | 条件 | 注入内容 |
 | --- | --- | --- |
-| `classified` | 已有工作区，通过分支的 Jira ID 匹配或用 `classify --workspace` 指定 | 背景、目的、目标、注意事项、待办列表与范围约束 |
+| `classified` | 已有工作区，通过分支的 Jira ID 匹配 | 背景、目的、目标、注意事项、待办列表与范围约束 |
 | `onboarding` | 一个工作区都还没有，且用户也没有拒绝过 | 初始设置流程 |
 | `unclassified` | 其余情况 | 当前位置与分支、分类、进行中的工作区，以及分类步骤 |
 | `released` | 本会话认领的待办全部为 `done` | 提示把新请求作为新待办接收，而不是压在已完成的待办上 |
 
-分类本身不是自动的 —— shell 无法判断一个问题是关于什么的。钩子只注入指令，由 Claude 用
-`classify` 和 `link-todo` 完成登记。
+会话不再自行分类或登记待办 —— 分类由仪表盘决定，待办关联由管理器完成。
 
 ### 钩子
 

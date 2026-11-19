@@ -10,7 +10,6 @@ from unittest import mock
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
 from app.repositories import todos as todo_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import manager_links, manager_panel, transcript
 from tests.support import temp_db
 
@@ -97,9 +96,10 @@ class CardTest(LinkFixture):
         super().setUp()
         self.con = temp_db()
         category = category_repo.list_all(self.con)[0]
-        self.space = workspace_repo.create(self.con, category["id"], "작업 대시보드")
-        self.old = todo_repo.create(self.con, "지난 일", workspace_id=self.space["id"])
-        self.todo = todo_repo.create(self.con, "트리 메뉴", workspace_id=self.space["id"])
+        # 워크스페이스는 없다 — 트리 맨 위 할일 아래에 둔다
+        self.space = todo_repo.create(self.con, "작업 대시보드", category_id=category["id"])
+        self.old = todo_repo.create(self.con, "지난 일", parent_id=self.space["id"])
+        self.todo = todo_repo.create(self.con, "트리 메뉴", parent_id=self.space["id"])
         session_repo.register(self.con, "helper", cwd="/tmp")
         session_repo.link_todo(self.con, "helper", self.old["id"])
         session_repo.link_todo(self.con, "helper", self.todo["id"])
@@ -110,7 +110,10 @@ class CardTest(LinkFixture):
         self.assertEqual(set(found), {"helper"})
         card = found["helper"]
         self.assertEqual((card["todo_id"], card["title"]), (self.todo["id"], "트리 메뉴"))
-        self.assertEqual((card["workspace_id"], card["workspace_name"]), (self.space["id"], "작업 대시보드"))
+        self.assertEqual((card["root_id"], card["root_title"]), (self.space["id"], "작업 대시보드"))
+        self.assertEqual(card["tree_key"], f"t{self.space['id']}")
+        # 옛 소비자용 별칭 — workspace_id 는 늘 None, workspace_name 은 맨 위 할일 제목
+        self.assertEqual((card["workspace_id"], card["workspace_name"]), (None, "작업 대시보드"))
 
     def test_waiting_is_the_sessions_dashboard_signal(self):
         # 트리 카드의 대기 표시와 같은 신호(sessions.waiting). 끝난 세션·대기 아닌 세션은 빠진다

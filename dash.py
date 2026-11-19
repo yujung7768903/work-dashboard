@@ -32,46 +32,34 @@ from app.constants import (
     STATUS_DOING,
     STATE_ENDED,
     STATUS_DONE,
-    UNASSIGNED_LABEL,
 )
 from app import evidence as evidence_refs
 from app.db import connect
-from app.errors import DomainError, NeedsConfirm, NotFound, Validation
+from app.errors import DomainError, NeedsConfirm, Validation
 from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import settings as settings_repo
-from app.repositories import workspaces as workspace_repo
 from app.repositories import autorun as autorun_repo
 from app.services import (
     auto_classify,
     autorun,
-    board,
     gtasks,
     gtasks_auth,
     history,
+    lineage,
     merge,
-    planning,
     release,
     session_link,
     session_name,
     session_results,
-    spawn_link,
     stale_judge,
     usage,
 )
 
 NONE_LITERAL = "none"
-REORDER_KINDS = ("categories", "workspaces", "todos")
-STATUS_TARGETS = ("todo", "workspace")
-CONTEXT_ARGS = ("background", "purpose", "goal", "considerations")
-DETAIL_LABELS = (
-    ("배경", "background"),
-    ("목적", "purpose"),
-    ("목표", "goal"),
-    ("고려사항", "considerations"),
-)
+UNTITLED_TREE = "맥락"  # 맨 위가 할일이 아닌 트리(맥락 노드 아래)
 # 조건은 참·거짓이 갈리는 문장으로. 그래야 읽는 쪽이 탐색 없이 착수 여부를 판정한다.
 # 문구는 팝업과 공유한다 (app.constants.PRECONDITION_HINT)
 PRECONDITION_HELP = f"착수 가능 조건. {PRECONDITION_HINT}"
@@ -119,62 +107,16 @@ def _build_parser():
     parser = argparse.ArgumentParser(description="작업 대시보드 CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    listing = sub.add_parser("ls", help="전체 트리 개요")
-    listing.add_argument(
-        "--group-by",
-        default=board.GROUP_BY_WORKSPACE,
-        choices=board.GROUP_BY_CHOICES,
-        dest="group_by",
-    )
+    listing = sub.add_parser("ls", help="전체 트리 개요 (맨 위 할일별)")
     _add_json_flag(listing)
     listing.set_defaults(handler=_cmd_ls)
-
-    upcoming = sub.add_parser("next", help="다음에 할 일 1건")
-    upcoming.add_argument("--workspace", type=int, default=None)
-    _add_session_arg(upcoming, required=False,
-                     note="이 세션이 잡은 할일은 후보로 남기고 남의 것은 뺌.")
-    _add_json_flag(upcoming)
-    upcoming.set_defaults(handler=_cmd_next)
-
-    show = sub.add_parser("show", help="워크스페이스 상세")
-    show.add_argument("target", help="워크스페이스 id 또는 Jira ID")
-    _add_json_flag(show)
-    show.set_defaults(handler=_cmd_show)
 
     add_category = sub.add_parser("add-category")
     add_category.add_argument("name")
     add_category.set_defaults(handler=_cmd_add_category)
 
-    add_workspace = sub.add_parser("add-workspace")
-    add_workspace.add_argument("category")
-    add_workspace.add_argument("name")
-    for field in CONTEXT_ARGS:
-        add_workspace.add_argument(f"--{field}", default=None)
-    add_workspace.add_argument("--jira", default=None)
-    add_workspace.set_defaults(handler=_cmd_add_workspace)
-
-    add_todo = sub.add_parser("add-todo")
-    add_todo.add_argument("title")
-    add_todo.add_argument("--category", default=None)
-    add_todo.add_argument("--workspace", default=None)
-    _add_session_arg(add_todo, required=False, note="이 세션이 붙은 워크스페이스에 추가.")
-    add_todo.add_argument("--note", default=None, help="이 할일에만 필요한 컨텍스트")
-    add_todo.add_argument("--precondition", default=None, help=PRECONDITION_HELP)
-    add_todo.add_argument(
-        "--parent",
-        type=int,
-        default=None,
-        help="상위 할일 id. 워크스페이스는 상위 할일의 것을 따른다",
-    )
-    add_todo.set_defaults(handler=_cmd_add_todo)
-
-    move_todo = sub.add_parser("move-todo")
-    move_todo.add_argument("todo_id", type=int)
-    move_todo.add_argument("--workspace", required=True, help="워크스페이스 id 또는 none")
-    move_todo.set_defaults(handler=_cmd_move_todo)
-
     set_parent = sub.add_parser(
-        "set-parent", help="상위 할일 변경 (같은 워크스페이스만, none 이면 워크스페이스 바로 아래)"
+        "set-parent", help="상위 할일 변경 (none 이면 트리 맨 위로)"
     )
     set_parent.add_argument("todo_id", type=int)
     set_parent.add_argument("parent", help="상위 할일 id 또는 none")
@@ -201,10 +143,9 @@ def _build_parser():
     edge_state.add_argument("edge_id", type=int)
     edge_state.set_defaults(handler=_cmd_edge)
 
-    add_context = sub.add_parser("add-context", help="맥락(할일은 아니지만 배경이 되는 묶음) 추가 — 워크스페이스 아래 루트")
+    add_context = sub.add_parser("add-context", help="맥락(할일은 아니지만 배경이 되는 묶음) 추가 — 트리의 맨 위")
     add_context.add_argument("title")
-    add_context.add_argument("--workspace", type=int, default=None)
-    add_context.add_argument("--category", default=None, help="워크스페이스가 없을 때 카테고리 이름")
+    add_context.add_argument("--category", default=None, help="카테고리 이름")
     add_context.add_argument("--note", default=None)
     add_context.set_defaults(handler=_cmd_add_context)
 
@@ -217,6 +158,13 @@ def _build_parser():
     collect.add_argument("--verbose", action="store_true", help="결과마다 한 줄")
     collect.set_defaults(handler=_cmd_collect_results)
 
+    titles = sub.add_parser(
+        "fill-result-titles",
+        help="제목 없이 'Confluence 번호' 로만 보이는 카드의 페이지 제목을 transcript 에서 찾아 채우기(백필)",
+    )
+    titles.add_argument("--dry-run", action="store_true", dest="dry_run", help="DB 를 안 바꾸고 찾은 제목만 보기")
+    titles.set_defaults(handler=_cmd_fill_result_titles)
+
     edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건·우선순위 수정")
     edit_todo.add_argument("todo_id", type=int)
     edit_todo.add_argument("--title", default=None)
@@ -227,22 +175,6 @@ def _build_parser():
     )
     edit_todo.set_defaults(handler=_cmd_edit_todo)
 
-    set_status = sub.add_parser("set-status")
-    set_status.add_argument("target", choices=STATUS_TARGETS)
-    set_status.add_argument("item_id", type=int)
-    set_status.add_argument("status")
-    set_status.set_defaults(handler=_cmd_set_status)
-
-    reorder = sub.add_parser("reorder")
-    reorder.add_argument("kind", choices=REORDER_KINDS)
-    reorder.add_argument(
-        "--scope",
-        default=None,
-        help="todos 면 워크스페이스 id(미분류는 none)",
-    )
-    reorder.add_argument("ids", nargs="+", type=int)
-    reorder.set_defaults(handler=_cmd_reorder)
-
     remove_category = sub.add_parser("rm-category")
     remove_category.add_argument("category_id", type=int)
     remove_category.add_argument(
@@ -252,24 +184,12 @@ def _build_parser():
     )
     remove_category.set_defaults(handler=_cmd_rm_category)
 
-    done_today = sub.add_parser("done-today")
-    done_today.add_argument("--date", default=None)
-    _add_json_flag(done_today)
-    done_today.set_defaults(handler=_cmd_done_today)
-
     sessions = sub.add_parser("sessions", help="활성 세션 목록")
     _add_json_flag(sessions)
     sessions.set_defaults(handler=_cmd_sessions)
 
-    classify = sub.add_parser("classify", help="세션 분류 등록")
-    _add_session_arg(classify)
-    classify.add_argument("--category", default=None)
-    classify.add_argument("--workspace", type=int, default=None)
-    classify.set_defaults(handler=_cmd_classify)
-
-    show_todo = sub.add_parser("show-todo", help="할일 목록 (id·제목·컨텍스트 유무)")
-    show_todo.add_argument("--workspace", type=int, default=None)
-    _add_session_arg(show_todo, required=False, note="이 세션이 붙은 범위만.")
+    show_todo = sub.add_parser("show-todo", help="이 세션이 잡은 할일 (id·상태·제목·컨텍스트 유무)")
+    _add_session_arg(show_todo, required=False, note="그 세션이 잡은 할일. 생략해도 이 세션.")
     _add_json_flag(show_todo)
     show_todo.set_defaults(handler=_cmd_show_todo)
 
@@ -464,109 +384,37 @@ def _self_session():
 
 
 def _cmd_ls(con, args):
-    tree = board.tree(con, args.group_by)
+    """트리(맨 위 할일)별로 할일을 묶어 보인다 — 순서는 트리 화면과 같다(lineage.grouped_todos)"""
+    todos = [dict(row) for row in con.execute("SELECT * FROM todos ORDER BY sort_order, id")]
+    groups = [
+        {
+            "root_id": head["id"] if head else None,
+            "name": head["title"] if head else UNTITLED_TREE,
+            "done_count": sum(todo["status"] == STATUS_DONE for todo in members),
+            "total_count": len(members),
+            "todos": [{key: todo[key] for key in ("id", "title", "status", "priority")} for todo in members],
+        }
+        for _, head, members in lineage.grouped_todos(con, todos)
+    ]
     if args.as_json:
-        _emit_json(tree)
+        _emit_json({"groups": groups})
         return
-    for group in tree["groups"]:
+    if not groups:
+        print("할일이 없음")
+    for group in groups:
         print(f"{group['name']}  {group['done_count']}/{group['total_count']}")
         for todo in group["todos"]:
             print(f"  [{todo['status']}] {todo['id']}. {todo['title']}")
-
-
-def _cmd_next(con, args):
-    picked = planning.next_todo(con, args.workspace, args.session)
-    if args.as_json:
-        _emit_json(picked)
-        return
-    if not picked:
-        print("다음에 할 일이 없음")
-        return
-    scope = picked["workspace"]["name"] if picked["workspace"] else UNASSIGNED_LABEL
-    print(f"{scope} / {picked['todo']['title']}")
-
-
-def _cmd_show(con, args):
-    workspace = _resolve_workspace(con, args.target)
-    todos = todo_repo.list_by_workspace(con, workspace["id"])
-    if args.as_json:
-        _emit_json({"workspace": workspace, "todos": todos})
-        return
-    print(f"{workspace['name']} [{workspace['status']}]")
-    for label, key in DETAIL_LABELS:
-        print(f"{label}: {workspace[key] or '(미입력)'}")
-    for todo in todos:
-        print(f"  [{todo['status']}] {todo['id']}. {todo['title']}")
 
 
 def _cmd_add_category(con, args):
     print(category_repo.create(con, args.name)["name"])
 
 
-def _cmd_add_workspace(con, args):
-    category = category_repo.get_by_name(con, args.category)
-    created = workspace_repo.create(
-        con,
-        category["id"],
-        args.name,
-        background=args.background,
-        purpose=args.purpose,
-        goal=args.goal,
-        considerations=args.considerations,
-        jira_id=args.jira,
-    )
-    print(f"{created['id']}. {created['name']}")
-
-
-def _cmd_add_todo(con, args):
-    category_id = (
-        category_repo.get_by_name(con, args.category)["id"] if args.category else None
-    )
-    workspace_id = int(args.workspace) if args.workspace else None
-    # 상위 할일을 주면 워크스페이스는 그쪽에서 정해진다 — 세션 범위로 덮으면 서로 어긋난다
-    no_scope = workspace_id is None and category_id is None and args.parent is None
-    if args.session and no_scope:
-        workspace_id, category_id = _scope_from_session(con, args.session)
-    created = todo_repo.create(
-        con,
-        args.title,
-        category_id=category_id,
-        workspace_id=workspace_id,
-        note=args.note,
-        precondition=args.precondition,
-        parent_id=args.parent,
-    )
-    parent = f" (상위 #{created['parent_id']})" if created["parent_id"] else ""
-    print(f"{created['id']}. {created['title']}{parent}")
-    print(
-        f"지금 이 세션이 착수하는 작업이면 link-todo {created['id']} 로 연결한다."
-        " 나중에 할 후속 할일이면 연결하지 않는다 — 착수하는 세션이 연결한다."
-    )
-
-
-def _scope_from_session(con, claude_session_id):
-    """세션이 붙은 워크스페이스(없으면 카테고리)에 할일을 만들기 위한 소속 결정"""
-    session = session_repo.get(con, claude_session_id)
-    if session["workspace_id"] is None and session["category_id"] is None:
-        raise Validation("세션이 아직 분류되지 않아 할일을 붙일 곳이 없음")
-    return session["workspace_id"], session["category_id"]
-
-
-def _cmd_move_todo(con, args):
-    workspace_id = None if args.workspace == NONE_LITERAL else int(args.workspace)
-    moved = todo_repo.update(con, args.todo_id, workspace_id=workspace_id)
-    scope = (
-        workspace_repo.get(con, workspace_id)["name"]
-        if workspace_id
-        else UNASSIGNED_LABEL
-    )
-    print(f"{moved['title']} → {scope}")
-
-
 def _cmd_set_parent(con, args):
     parent_id = None if args.parent == NONE_LITERAL else args.parent
     updated = todo_repo.update(con, args.todo_id, parent_id=parent_id)
-    scope = f"#{updated['parent_id']}" if updated["parent_id"] else "워크스페이스 바로 아래"
+    scope = f"#{updated['parent_id']}" if updated["parent_id"] else "트리 맨 위"
     print(f"{updated['id']}. {updated['title']} → {scope}")
 
 
@@ -618,6 +466,14 @@ def _cmd_link(con, args):
     print(_edge_line(edge))
 
 
+def _cmd_fill_result_titles(con, args):
+    found = session_results.fill_titles(con, dry_run=args.dry_run)
+    for ref, title in sorted(found.items()):
+        print(f"{ref} {title}")
+    label = "찾음(DB 안 바꿈)" if args.dry_run else "채움"
+    print(f"제목 {len(found)}건 {label}")
+
+
 def _cmd_collect_results(con, args):
     """백필·재수집. 세션마다 지난번 읽은 곳 뒤만 읽으므로 다시 돌려도 겹치지 않는다"""
     sessions = [args.session] if args.session else None
@@ -660,7 +516,7 @@ def _cmd_add_context(con, args):
     if args.category:
         category_id = category_repo.get_by_name(con, args.category)["id"]
     context = graph_repo.create_context(
-        con, args.title, workspace_id=args.workspace, category_id=category_id, note=args.note
+        con, args.title, category_id=category_id, note=args.note
     )
     print(f"{CONTEXT_PREFIX}{context['id']} {context['title']}")
 
@@ -701,26 +557,6 @@ def _cmd_edit_todo(con, args):
     print(f"{updated['id']}. {updated['title']}")
 
 
-def _cmd_set_status(con, args):
-    updaters = {
-        "workspace": workspace_repo.update,
-        "todo": todo_repo.update,
-    }
-    updated = updaters[args.target](con, args.item_id, status=args.status)
-    print(f"{updated.get('title') or updated.get('name')} → {updated['status']}")
-
-
-def _cmd_reorder(con, args):
-    if args.kind == "categories":
-        category_repo.reorder(con, args.ids)
-    elif args.kind == "workspaces":
-        workspace_repo.reorder(con, args.ids)
-    else:
-        scope = None if args.scope in (None, NONE_LITERAL) else int(args.scope)
-        todo_repo.reorder(con, args.ids, scope)
-    print(f"{len(args.ids)}건 재정렬")
-
-
 def _cmd_rm_category(con, args):
     """세션이 붙어 있으면 무엇이 바뀌는지 알리고 --force 를 요구한다"""
     try:
@@ -728,18 +564,6 @@ def _cmd_rm_category(con, args):
     except NeedsConfirm as error:
         raise NeedsConfirm(f"{error} 확인했으면 --force 로 다시 실행하세요")
     print("삭제됨")
-
-
-def _cmd_done_today(con, args):
-    rows = planning.done_on(con, args.date)
-    if args.as_json:
-        _emit_json(rows)
-        return
-    if not rows:
-        print("완료한 할일이 없음")
-        return
-    for row in rows:
-        print(f"- {row['workspace_name']} / {row['title']}")
 
 
 def _cmd_sessions(con, args):
@@ -750,54 +574,17 @@ def _cmd_sessions(con, args):
     if not payload["sessions"]:
         print("돌고 있는 세션이 없음")
     for session in payload["sessions"]:
-        scope = session["workspace_name"] or session["category_name"] or "분류 전"
+        scope = session.get("root_title") or session["category_name"] or "분류 전"
         print(f"[{session['state']}] {scope} / {session['last_prompt'] or '(지시 없음)'}")
     if payload["unclassified_count"]:
         print(f"분류 전 {payload['unclassified_count']}건")
 
 
-def _cmd_classify(con, args):
-    """카테고리만 세션에 남는다. 워크스페이스 소속은 할일을 연결해야 생긴다"""
-    updated = session_repo.classify(
-        con, args.session, category_name=args.category, workspace_id=args.workspace
-    )
-    print(f"분류됨: category={updated['category_id']}")
-    # 매니저 spawn 이 임시 자리에 만들어 둔 이 세션의 할일은 분류한 곳으로 따라간다
-    moved = spawn_link.follow_classification(
-        con, updated["claude_session_id"], updated["category_id"], args.workspace
-    )
-    if moved:
-        print("spawn 할일을 분류한 곳으로 옮김: " + ", ".join(f"#{todo_id}" for todo_id in moved))
-    if args.workspace is None:
-        return
-    print(_link_candidates(con, args.workspace, args.session))
-
-
-def _link_candidates(con, workspace_id, claude_session_id):
-    """분류는 할일 연결까지 해야 끝난다 — 그 워크스페이스에서 아직 아무도 안 잡은 할일.
-
-    무엇이 이 세션의 작업인지는 의미 판단이라 코드가 고르지 않는다. 후보만 좁혀 준다
-    """
-    claimed = todo_repo.ids_claimed_by_others(con, claude_session_id)
-    open_todos = [
-        todo
-        for todo in todo_repo.list_by_workspace(con, workspace_id)
-        if todo["status"] != STATUS_DONE and todo["id"] not in claimed
-    ]
-    if not open_todos:
-        return (
-            f"연결할 후보 없음. 새로 만들 것:"
-            f" add-todo <제목> --workspace {workspace_id} 후 link-todo <todo-id>"
-        )
-    lines = ["이 세션의 작업을 고를 것 (없으면 add-todo 로 새로 만든다):"]
-    lines += [f"  {todo['id']}. [{todo['status']}] {todo['title']}" for todo in open_todos]
-    lines.append("  → link-todo <todo-id>")
-    return "\n".join(lines)
-
-
 def _cmd_show_todo(con, args):
-    """할일 목록. 컨텍스트 전문은 show-note 로 따로 꺼냄"""
-    todos = _todos_in_scope(con, args)
+    """그 세션이 잡은 할일. 매니저 컴팩션 인수인계(edit-todo --note)·spawn 지시가 할일 id 를 찾을 때 쓴다.
+    컨텍스트 전문은 show-note 로 따로 꺼냄"""
+    session = args.session if args.session not in (None, SELF_SESSION) else _self_session()
+    todos = _linked_todos(con, session)
     if args.as_json:
         _emit_json(todos)
         return
@@ -810,23 +597,6 @@ def _cmd_show_todo(con, args):
         print(f"{todo['id']}. [{todo['status']}] {todo['title']}{rank}{marker}")
         if todo["precondition"]:
             print(f"    조건: {_one_line(todo['precondition'])}")
-
-
-def _todos_in_scope(con, args):
-    """--workspace / --session 이 있으면 그 범위, 없으면 전체"""
-    if args.session:
-        workspace_id, category_id = _scope_from_session(con, args.session)
-        if workspace_id is not None:
-            return todo_repo.list_by_workspace(con, workspace_id)
-        return todo_repo.list_by_category(con, category_id)
-    if args.workspace is not None:
-        workspace_repo.get(con, args.workspace)
-        return todo_repo.list_by_workspace(con, args.workspace)
-    return [
-        todo
-        for group in board.tree(con, board.GROUP_BY_CATEGORY)["groups"]
-        for todo in group["todos"]
-    ]
 
 
 def _cmd_merge(con, args):
@@ -1054,16 +824,6 @@ def _age_text(seconds):
     return f"{seconds // SECONDS_PER_HOUR}시간"
 
 
-def _resolve_workspace(con, target):
-    """숫자면 id, 아니면 Jira ID 로 조회"""
-    if target.isdigit():
-        return workspace_repo.get(con, int(target))
-    found = workspace_repo.get_by_jira(con, target)
-    if not found:
-        raise NotFound(f"'{target}' 에 해당하는 워크스페이스 없음")
-    return found
-
-
 def _cmd_autorun(con, args):
     """켜고 끄기는 명시적. 기본 off 이고 자동으로 다시 켜지는 경로는 두지 않는다"""
     if args.action != "status":
@@ -1149,13 +909,10 @@ def _cmd_auto_classify(con, args):
 def _cmd_autorun_prompt(con, args):
     """자율 세션에 실제로 들어가는 지시. 띄우기 전에 사람이 눈으로 볼 수 있어야 한다"""
     todo = todo_repo.get(con, args.todo_id)
-    workspace = (
-        workspace_repo.get(con, todo["workspace_id"]) if todo["workspace_id"] else None
-    )
-    cwd = args.cwd or autorun.target_cwd(con, workspace)
+    cwd = args.cwd or autorun.target_cwd(con, todo)
     if not cwd:
         raise Validation(autorun.REASON_NO_CWD + " — --cwd 로 지정할 것")
-    print(autorun.build_prompt(todo, workspace, cwd))
+    print(autorun.build_prompt(todo, lineage.ancestor_todos(con, todo["id"]), cwd))
 
 
 def _cmd_autorun_reopen(con, args):

@@ -8,7 +8,7 @@ from app.constants import DB_PATH_ENV, STATE_ENDED, STATE_IDLE, STATE_WORKING
 from app.db import connect
 from app.repositories import categories as category_repo
 from app.repositories import sessions as session_repo
-from app.repositories import workspaces as workspace_repo
+from app.repositories import todos as todo_repo
 from app.services import session_link
 from tests.support import temp_db_path
 
@@ -34,9 +34,9 @@ class HookTest(unittest.TestCase):
         return result.returncode, result.stdout
 
     def seed_workspace(self):
-        """워크스페이스가 하나라도 있어야 온보딩 대신 분류 블록이 나온다"""
+        """할일이 하나라도 있어야 온보딩 대신 분류 블록이 나온다"""
         dev = category_repo.get_by_name(self.con, "개발")["id"]
-        workspace_repo.create(self.con, dev, "기존 작업")
+        todo_repo.create(self.con, "기존 작업", category_id=dev)
 
     def test_session_start_registers_and_injects_catalog(self):
         self.seed_workspace()
@@ -45,12 +45,12 @@ class HookTest(unittest.TestCase):
         self.assertIn('state="unclassified"', out)
         self.assertIsNotNone(session_repo.find(self.con, SID))
 
-    def test_session_start_injects_onboarding_when_no_workspace_exists(self):
-        """빈 DB 는 분류가 아니라 초기 설정이 먼저다"""
+    def test_session_start_has_no_onboarding_block(self):
+        """워크스페이스 초기 설정은 없어졌다 — 빈 DB 에서도 분류 전 블록이 나온다"""
         code, out = self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
         self.assertEqual(code, 0)
-        self.assertIn('state="onboarding"', out)
-        self.assertIn("scan-history", out)
+        self.assertIn('state="unclassified"', out)
+        self.assertNotIn("scan-history", out)
 
     def test_onboarding_stops_after_user_declines(self):
         session_link.decline(self.con)
@@ -67,11 +67,12 @@ class HookTest(unittest.TestCase):
         self.assertEqual(session["state"], STATE_WORKING)
         self.assertEqual(session["last_prompt"], "락 확인해줘")
 
-    def test_prompt_submit_reinjects_while_unclassified(self):
+    def test_prompt_submit_does_not_nag_unclassified(self):
+        """분류·할일 연결은 세션 몫이 아니다 — 분류 전이라고 매 턴 지시를 다시 넣지 않는다"""
         self.seed_workspace()
         self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
         _, out = self.run_hook("UserPromptSubmit", {"session_id": SID, "prompt": "x"})
-        self.assertIn('state="unclassified"', out)
+        self.assertEqual(out.strip(), "")
 
     def test_prompt_submit_silent_after_classified(self):
         self.run_hook("SessionStart", {"session_id": SID, "cwd": "/tmp"})
@@ -119,11 +120,11 @@ class HookTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out.strip(), "")
 
-    def test_branch_jira_attaches_workspace(self):
+    def test_branch_jira_attaches_tree(self):
+        """브랜치 Jira 키가 적힌 할일의 트리 컨텍스트(맨 위 할일 note)가 주입된다 — 옛 워크스페이스 jira_id 는
+        이관이 맨 위 할일 note 로 옮겼다"""
         dev = category_repo.get_by_name(self.con, "개발")["id"]
-        workspace_repo.create(
-            self.con, dev, "KT 동시성", jira_id="KT-1530", background="엑셀 충돌"
-        )
+        todo_repo.create(self.con, "KT 동시성", category_id=dev, note="Jira: KT-1530\n배경: 엑셀 충돌")
         repo_dir = os.path.join(os.path.dirname(self.path), "repo")
         os.makedirs(repo_dir, exist_ok=True)
         subprocess.run(["git", "init", "-q"], cwd=repo_dir, capture_output=True)

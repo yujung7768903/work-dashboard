@@ -36,10 +36,8 @@ from app.repositories import labels as label_repo
 from app.repositories import todos as todo_repo
 from app.repositories import sessions as session_repo
 from app.repositories import settings as settings_repo
-from app.repositories import workspaces as workspace_repo
 from app.services import (
     autorun,
-    board,
     browse,
     decision_answer,
     gtasks,
@@ -56,7 +54,6 @@ from app.services import (
     session_message,
     session_name,
     session_results,
-    session_todo,
     spawn_link,
     task_report,
     todo_tree,
@@ -86,7 +83,6 @@ STATUS_BY_ERROR = (
     (Validation, HTTPStatus.BAD_REQUEST),
 )
 PREREQ_ACTIONS = {"remove": prereq_action.remove, "finish": prereq_action.finish}
-WORKSPACE_CREATE_FIELDS = ("background", "purpose", "goal", "considerations", "jira_id")
 
 
 def status_for(error):
@@ -114,7 +110,7 @@ def resolve_static(url_path):
 
 
 def resolve_page(url_path):
-    """탭 경로(/board 등)에는 파일이 없다. 확장자가 없으면 index 를 주고 SPA 가 라우팅한다"""
+    """탭 경로(/tree 등)에는 파일이 없다. 확장자가 없으면 index 를 주고 SPA 가 라우팅한다"""
     resolved = resolve_static(url_path)
     if resolved and os.path.isfile(resolved):
         return resolved
@@ -142,10 +138,8 @@ def route(con, method, path, query, body):
 
 
 def _route_get(con, head, item_id, query):
-    if head == "tree":
-        return board.tree(con, _single(query, "group_by", board.GROUP_BY_WORKSPACE))
     if head == "todo-trees":
-        # '트리' 메뉴. 보드의 tree(카테고리>워크스페이스>할일 묶음)와 달리 할일 상하 관계째 준다
+        # '트리' 메뉴. 상위 없는 할일·맥락 하나가 트리 하나, 할일 상하 관계째 준다
         return todo_tree.forest(con)
     if head == "graph-proposals":
         # 트리 메뉴의 제안 칸. 사람이 확인·거절할 연결만
@@ -158,13 +152,6 @@ def _route_get(con, head, item_id, query):
         return category_repo.list_all(con)
     if head == "labels":
         return label_repo.list_all(con)
-    if head == "workspaces":
-        if item_id:
-            return {
-                "workspace": workspace_repo.get(con, item_id),
-                "todos": todo_repo.list_by_workspace(con, item_id),
-            }
-        return workspace_repo.list_all(con)
     if head == "todos":
         if not item_id:
             raise Validation("id 가 필요함")
@@ -176,7 +163,7 @@ def _route_get(con, head, item_id, query):
     if head == "usage":
         return usage.snapshot(con)
     if head == "worktrees":
-        return worktrees.overview(con, _single(query, "group_by", worktrees.GROUP_BY_WORKSPACE))
+        return worktrees.overview(con, _single(query, "group_by", worktrees.GROUP_BY_TREE))
     if head == "autorun":
         return _autorun_payload(con)
     if head == "gtasks":
@@ -188,7 +175,7 @@ def _route_get(con, head, item_id, query):
     if head == "decisions":
         # 결정 답하기. 한 건(답 보낸 뒤 폴링)이거나 할일 상세에 붙은 결정들
         if item_id:
-            return decision_answer.show(item_id)
+            return decision_answer.show(item_id, con=con)
         todo_id = _single(query, "todo_id", None)
         if not todo_id:
             raise Validation("todo_id 가 필요함")
@@ -198,7 +185,7 @@ def _route_get(con, head, item_id, query):
         # 할일 상세에 붙은 것은 decisions?todo_id= 의 reports 로 함께 온다
         if not item_id:
             raise Validation("id 가 필요함")
-        return task_report.show(item_id)
+        return task_report.show(item_id, con=con)
     if head == "helper-feedback":
         # 매니저 탭 보조 세션 상세의 피드백 칸 — 세션 생사와 화면에서 보낸 피드백. 보낸 뒤 화면이 이것을 폴링한다
         return helper_feedback.show(_single(query, "session_id", None))
@@ -230,24 +217,16 @@ def _route_post(con, head, body):
         return category_repo.create(con, body.get("name"))
     if head == "labels":
         return label_repo.create(con, body.get("name"))
-    if head == "workspaces":
-        extra = {key: body.get(key) for key in WORKSPACE_CREATE_FIELDS}
-        return workspace_repo.create(
-            con, body.get("category_id"), body.get("name"), **extra
-        )
     if head == "todos":
         context_id = body.get("context_id")
-        workspace_id = body.get("workspace_id")
-        if context_id is not None and workspace_id is None and body.get("category_id") is None:
-            # 맥락 카드의 + — 할일은 그 맥락의 워크스페이스(없으면 카테고리)에 생긴다
+        if context_id is not None and body.get("category_id") is None:
+            # 맥락 카드의 + — 할일은 그 맥락의 카테고리에 생긴다
             context = graph_repo.get_context(con, context_id)
-            workspace_id = context["workspace_id"]
             body = {**body, "category_id": context["category_id"]}
         created = todo_repo.create(
             con,
             body.get("title"),
             category_id=body.get("category_id"),
-            workspace_id=workspace_id,
             note=body.get("note"),
             precondition=body.get("precondition"),
             parent_id=body.get("parent_id"),
@@ -273,7 +252,6 @@ def _route_post(con, head, body):
         return graph_repo.create_context(
             con,
             body.get("title"),
-            workspace_id=body.get("workspace_id"),
             category_id=body.get("category_id"),
             note=body.get("note"),
         )
@@ -312,7 +290,7 @@ def _route_post(con, head, body):
         action = PREREQ_ACTIONS.get(body.get("action"))
         if not action or not body.get("task_id") or not body.get("prereq_id"):
             raise Validation("task_id·prereq_id·action(remove|finish) 가 필요함")
-        return action(int(body["task_id"]), int(body["prereq_id"]))
+        return action(int(body["task_id"]), int(body["prereq_id"]), con=con)
     if head == "helper-feedback":
         # 매니저 탭 보조 세션 상세의 피드백. 매니저 helper-ui 가 뒤에서 돌고 화면은 GET helper-feedback 을 폴링한다
         return helper_feedback.start(body.get("session_id"), body.get("feedback"))
@@ -372,8 +350,6 @@ def _route_patch(con, head, item_id, body):
         return category_repo.update(con, item_id, **body)
     if head == "labels":
         return label_repo.update(con, item_id, **body)
-    if head == "workspaces":
-        return workspace_repo.update(con, item_id, **body)
     if head == "todos":
         updated = todo_repo.update(con, item_id, **body)
         # 제목이 바뀌면 그 할일을 잡은 세션 이름도 같이 맞춘다
@@ -394,24 +370,13 @@ def _route_patch(con, head, item_id, body):
         category_repo.set_gtasks_enabled(con, item_id, bool(body.get("enabled")))
         return gtasks_setup.panel(con)
     if head == "sessions":
-        session = session_repo.classify_by_ids(
-            con,
-            item_id,
-            category_id=body.get("category_id"),
-            workspace_id=body.get("workspace_id"),
-        )
-        # 매니저 spawn 이 임시 자리에 만들어 둔 할일은 분류한 곳으로 따라간다
-        spawn_link.follow_classification(
-            con, session["claude_session_id"], session["category_id"], body.get("workspace_id")
-        )
-        # 워크스페이스로 분류한 세션은 할일을 만들어 붙이거나, 이미 붙은 할일을 옮긴다.
-        # 카테고리만이면 None. 세션이 그 워크스페이스에 속한다는 사실은 할일 연결로만
-        # 남으므로, 그 뒤 세션 행을 다시 읽어 파생된 워크스페이스가 응답에 실리게 한다
-        created = session_todo.ensure_from_session(
-            con, item_id, body.get("workspace_id")
-        )
+        # 세션 분류는 카테고리만이다 — 워크스페이스는 없어졌다(사용자 결정 11-18). 옛 화면이 workspace_id 를
+        # 보내도 무시한다
+        session = session_repo.classify_by_ids(con, item_id, category_id=body.get("category_id"))
+        # 매니저 spawn 이 임시 자리에 만들어 둔 할일은 분류한 카테고리로 따라간다
+        spawn_link.follow_classification(con, session["claude_session_id"], session["category_id"])
         session = session_repo.get_by_row_id(con, item_id)
-        return {**session, "created_todo": created}
+        return {**session, "created_todo": None}
     raise UnknownEndpoint("알 수 없는 엔드포인트")
 
 
@@ -422,7 +387,6 @@ def _route_delete(con, head, item_id, query):
     deleters = {
         "categories": lambda con, item_id: category_repo.delete(con, item_id, force),
         "labels": lambda con, item_id: label_repo.delete(con, item_id, force),
-        "workspaces": workspace_repo.delete,
         "todos": todo_repo.delete,
         "edges": graph_repo.delete_edge,
         "contexts": graph_repo.delete_context,
@@ -449,8 +413,6 @@ def _reorder(con, body):
         category_repo.reorder(con, ids)
     elif kind == "labels":
         label_repo.reorder(con, ids)
-    elif kind == "workspaces":
-        workspace_repo.reorder(con, ids)
     elif kind == "todos":
         todo_repo.reorder(con, ids, None if scope in (None, NONE_LITERAL) else scope)
     elif kind == "autorun":

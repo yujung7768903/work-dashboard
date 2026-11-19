@@ -6,7 +6,6 @@ import { t } from "./i18n.js";
 import { resultLogo, resultView } from "./result-card.js";
 import { openDetail } from "./sessions.js";
 import { CARD_H, CARD_W, LANE_PAD, MORE, RESULT, layoutForest, pathKeys } from "./tree-layout.js";
-import { waitingTodos } from "./tree-todos.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DONE = "done";
@@ -396,8 +395,9 @@ export function createTreeMap(host, options = {}) {
     node.style.top = `${lane.top}px`;
     node.style.width = `${layout.width + LANE_PAD * 2}px`;
     node.style.height = `${lane.bottom - lane.top}px`;
-    if (lane.tree.workspace.category_color) node.style.setProperty("--cat", lane.tree.workspace.category_color);
-    node.appendChild(element("span", "tm-lane-name", lane.tree.workspace.name ?? t("common.unassigned")));
+    if (lane.tree.category_color) node.style.setProperty("--cat", lane.tree.category_color);
+    const label = [lane.tree.name, lane.tree.category_name].filter(Boolean).join(" · ");
+    node.appendChild(element("span", "tm-lane-name", label));
     return node;
   }
 
@@ -405,9 +405,7 @@ export function createTreeMap(host, options = {}) {
 
   function cardElement(card, onPath) {
     const node =
-      card.kind === "root"
-        ? rootCard(card.tree)
-        : card.kind === CONTEXT
+      card.kind === CONTEXT
           ? contextCard(card.data)
           : card.kind === RESULT
             ? resultCard(card.data)
@@ -422,43 +420,6 @@ export function createTreeMap(host, options = {}) {
     if (onPath.has(card.key)) node.classList.add("tm-on-path");
     if (card.kind === "todo" && card.data.id === options.focusId) node.classList.add("tm-focus");
     return node;
-  }
-
-  // 루트 = 워크스페이스. 트리 전체의 진행률과 상태별 개수를 싣는다.
-  // 워크스페이스 상세 팝업은 따로 없다 — 사람 대기가 있으면 제목·배지를 눌러 기다리는 할일(최근 것)의 상세를 연다.
-  // 대기가 없으면 열 대상이 없어 제목은 글자로 둔다
-  function rootCard(tree) {
-    const card = element("div", "tm-card tm-root");
-    if (tree.workspace.category_color) card.style.setProperty("--cat", tree.workspace.category_color);
-    if (tree.complete) card.dataset.status = DONE;
-    const head = element("div", "tm-head");
-    head.append(element("span", "tm-cat", tree.workspace.category_name ?? t("common.unassigned")));
-    const name = tree.workspace.name ?? t("common.unassigned");
-    const waiting = tree.waiting ? waitingTodos(tree) : [];
-    const [waitingTodo] = waiting;
-    let title;
-    if (waitingTodo) {
-      const hint = t("tree.openWaiting", { id: waitingTodo.id, title: waitingTodo.title });
-      const badge = element("button", "tm-waiting", t("tree.treeWaiting", { count: tree.waiting }));
-      badge.type = "button";
-      badge.title = waiting.map((todo) => `#${todo.id} ${todo.title}`).join("\n");
-      badge.addEventListener("click", () => showDetail(waitingTodo.id));
-      head.appendChild(badge);
-      title = element("button", "tm-title", name);
-      title.type = "button";
-      title.title = `${name} — ${hint}`;
-      title.addEventListener("click", () => showDetail(waitingTodo.id));
-    } else {
-      if (tree.waiting) head.appendChild(waitingBadge(t("tree.treeWaiting", { count: tree.waiting })));
-      title = element("div", "tm-title", name);
-      title.title = name;
-    }
-    const foot = element("div", "tm-foot");
-    foot.append(progress(tree.progress), countsLine(tree.counts));
-    // 미분류 트리는 워크스페이스가 없어 여기서 바로 만들 할일의 소속을 정할 수 없다
-    if (tree.workspace.id != null) foot.appendChild(addButton(card, foot, { workspace_id: tree.workspace.id }));
-    card.append(head, title, element("div", "tm-meta"), foot);
-    return card;
   }
 
   // 맥락 = 할일이 아니라 배경 묶음. 상태를 고르지 않고, 아래 할일 진행률과 + 만 있다
@@ -496,7 +457,13 @@ export function createTreeMap(host, options = {}) {
     else foot.appendChild(element("span", "tm-spacer"));
     if (todo.status === REVIEW && !todo.autorun_locked) foot.appendChild(completeButton(todo));
     foot.appendChild(addButton(card, foot, { parent_id: todo.id }));
-    card.append(head, title, metaLine(todo, true), foot);
+    card.append(head, title, metaLine(todo, true));
+    // 단계는 하위 카드가 아니라 이 할일 안의 순서 목록이다 — 카드 높이가 고정이라 한 줄로 줄여 싣는다
+    if (todo.steps?.length) {
+      card.dataset.steps = "";
+      card.appendChild(stepStrip(todo.steps));
+    }
+    card.appendChild(foot);
     return card;
   }
 
@@ -644,6 +611,34 @@ export function createTreeMap(host, options = {}) {
       keepFocus();
     },
   };
+}
+
+// 할일 카드 안 단계 줄 — 순서대로 점 하나씩(상태 색, 사람 답을 기다리는 단계는 테두리), 그 뒤에 지금 단계
+// (첫 미완료) 제목. 단계 전체는 툴팁에 순서대로. 결정이 걸린 단계가 답을 기다리면 '단계 대기' 칩을 붙인다
+export function stepStrip(steps) {
+  const strip = element("div", "tm-steps");
+  const dots = element("span", "tm-step-dots");
+  steps.forEach((step) => {
+    const dot = element("span", "tm-step-dot");
+    dot.dataset.status = step.status;
+    if (step.waiting) dot.dataset.waiting = "";
+    dots.appendChild(dot);
+  });
+  const current = steps.find((step) => step.status !== DONE);
+  const waiting = steps.filter((step) => step.waiting);
+  strip.appendChild(dots);
+  strip.appendChild(element("span", "tm-step-now", current ? current.title : t("tree.stepsAllDone")));
+  if (waiting.length) strip.appendChild(element("span", "tm-waiting", t("tree.stepWaiting", { count: waiting.length })));
+  strip.title = stepLines(steps).join("\n");
+  return strip;
+}
+
+/** 단계 목록 글줄 — '1. [진행중] 셀 수정 (결정 대기)'. 툴팁·목록 보기가 같은 표기를 쓴다 */
+export function stepLines(steps) {
+  return steps.map((step, index) => {
+    const wait = step.waiting ? ` (${t("tree.stepWaitingOne")})` : "";
+    return `${index + 1}. [${STATUS_LABEL[step.status] ?? step.status}] ${step.title}${wait}`;
+  });
 }
 
 // ── 트리 없이 혼자 서는 카드 ──────────────────────────────────────────────
