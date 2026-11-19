@@ -184,6 +184,20 @@ class ForestTest(TreeFixture):
         self.assertEqual(sum(tree["counts"].values()), 3)
         self.assertEqual(tree["waiting"], 1)
 
+    def test_card_steps_follow_the_detail_time_order(self):
+        """카드의 단계 목록도 할일 상세 진행 단계와 같은 순서 — 끝난 단계는 끝난 시각, 안 끝난 단계는 그 아래(사용자 지적 11-19)"""
+        task = self._todo("원인 분석")
+        asking = self._step("수정 범위 결정", task, mgr_kind="decision", mgr_status="open")
+        late = self._step("결론 문서", task, status=STATUS_DONE)
+        early = self._step("조회", task, status=STATUS_DONE)
+        for ident, created, completed in ((asking, "2026-11-16T09:00:00+00:00", None),
+                                          (late, "2026-11-16T02:00:00+00:00", "2026-11-18T03:00:00+00:00"),
+                                          (early, "2026-11-16T05:00:00+00:00", "2026-11-16T06:00:00+00:00")):
+            self.con.execute("UPDATE todos SET created_at=?, completed_at=? WHERE id=?", (created, completed, ident["id"]))
+        self.con.commit()
+        node = self._kids()[0]
+        self.assertEqual([step["id"] for step in node["steps"]], [early["id"], late["id"], asking["id"]])
+
     def test_hidden_roles_are_not_in_the_tree(self):
         """role 이 NULL·step 이 아닌 행(매니저 보조 피드백 기록)은 어디에도 없다"""
         note = self._todo("피드백 기록", top=True)

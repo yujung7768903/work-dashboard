@@ -39,6 +39,7 @@ from app.repositories import graph as graph_repo
 from app.repositories import sessions as session_repo
 from app.services import lineage
 from app.services import manager_links
+from app.services import task_steps
 
 # updated_at — 트리 목록이 '최근 작업·수정 순' 으로 세울 때 last_session_at 과 함께 본다(static/js/tree-todos.js)
 NODE_FIELDS = ("id", "title", "status", "parent_id", "priority", "sort_order", "category_id", "cwd", "updated_at")
@@ -120,6 +121,8 @@ def _load_nodes(con):
                 "title": todo["title"],
                 "status": todo["status"],
                 "sort_order": todo["sort_order"],
+                "created_at": todo["created_at"],
+                "completed_at": todo["completed_at"],
                 "parent_id": todo["parent_id"],
                 # 결정·확인이 걸린 단계 — 매니저 칸(mgr_*)이 아직 답을 기다리면 화면이 '대기' 를 붙인다
                 "decision": todo.get("mgr_kind"),
@@ -254,7 +257,8 @@ def _break_primary_cycles(nodes):
 
 def _attach_steps(nodes, steps, parents):
     """단계를 그 할일 카드의 steps 로. 상위는 parent_id, 없으면 그 단계로 가는 주 상위 연결(lineage.parent_map)"""
-    for step in sorted(steps.values(), key=lambda item: (item["sort_order"] or 0, item["id"])):
+    # 할일 상세 진행 단계와 같은 순서 — 보이는 날짜 순(task_steps.time_key). sort_order 순이면 멈춘 단계가 가운데 낀다
+    for step in sorted(steps.values(), key=task_steps.time_key):
         owner = nodes.get(key_of(NODE_TODO, step["parent_id"])) if step["parent_id"] is not None else None
         if owner is None:
             above = parents.get((NODE_TODO, str(step["id"])))

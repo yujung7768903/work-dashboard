@@ -10,6 +10,7 @@ app/db.py ROLE_STEP). 화면은 단계 목록 하나로 (a) 끝난 단계 — �
 """
 import re
 import sqlite3
+from datetime import datetime, timezone
 
 from app.db import ROLE_STEP, UNIFIED_FLAG, meta_get
 
@@ -23,6 +24,7 @@ ASK_DECISION = "decision"
 ASK_CONFIRM = "confirm"
 ASK_PERMISSION = "permission"
 SEPARATOR = " › "
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 # 단계 이름의 보조 세션 번호 — 사용자에게는 어느 보조가 했는지가 아니라 무엇을 했는지가 중요하다(사용자 지적 11-18).
 # '보조2 | 조사' 접두어, '(보조4)'·'(11-16 보조2·5·1)' 괄호는 통째로 빼고, 문장 속 '보조3 세션' 은 '보조 세션' 으로
 _HELPER_PREFIX = re.compile(r"^\s*보조\d+\s*[|:]\s*")
@@ -54,20 +56,34 @@ def plain(text):
     return re.sub(r"\s{2,}", " ", out).strip() or text
 
 
+def _instant(text):
+    """ISO 시각 → UTC datetime. 비었거나 못 읽으면 None — 'Z'·'+00:00'·'+09:00' 이 섞여도 문자열 비교로 어긋나지 않게"""
+    if not text:
+        return None
+    try:
+        when = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def time_key(row):
+    """화면에 보이는 날짜 순서. 끝난 단계는 '언제' 로 끝난 시각을 보이므로 끝난 시각 순으로 위에서 아래로 늘어놓고,
+    안 끝난 단계(멈춤·남음)는 아직 날짜가 없으니 그 아래에 생긴 시각 순으로 둔다 — 지금 하는 일은 맨 끝이다.
+    생긴 시각으로 정렬하면 11-16 에 생겨 11-18 에 끝난 단계가 11-16 줄 사이에 끼고, 멈춘 단계가 가운데 남는다(사용자 지적 11-19).
+    시각이 빈 행은 그 묶음의 맨 뒤, 그 안에서는 sort_order. 트리 카드의 단계 목록(todo_tree)도 이 순서를 쓴다"""
+    done = row.get("status") == STATUS_DONE
+    when = _instant(row.get("completed_at")) or _instant(row.get("created_at")) if done else _instant(row.get("created_at"))
+    return (not done, when is None, when or _EPOCH, row.get("sort_order") or 0, row["id"])
+
+
 def step_rows(con, task_id):
-    """그 할일의 단계 행 — 시간 순서(생긴 시각, 같으면 끝난 시각). 상태로 순서를 바꾸지 않는다: 멈춘 단계도 생긴 자리에
-    둔다(사용자 지적 11-18). sort_order 는 이관 때만 시간순이고 그 뒤 생긴 단계는 전역 끝 번호라 믿지 않는다.
-    시각이 빈 행은 맨 뒤, 그 안에서는 sort_order"""
+    """그 할일의 단계 행 — 화면에 보이는 날짜 순(time_key). sort_order 는 이관 때만 시간순이고 그 뒤 생긴 단계는
+    전역 끝 번호라 믿지 않는다"""
     if not available(con):
         return []
-    return [
-        dict(row)
-        for row in con.execute(
-            "SELECT * FROM todos WHERE parent_id=? AND role=? ORDER BY created_at IS NULL OR created_at='', created_at,"
-            " completed_at IS NULL OR completed_at='', completed_at, sort_order, id",
-            (task_id, ROLE_STEP),
-        )
-    ]
+    rows = [dict(row) for row in con.execute("SELECT * FROM todos WHERE parent_id=? AND role=?", (task_id, ROLE_STEP))]
+    return sorted(rows, key=time_key)
 
 
 def ask_of(row):

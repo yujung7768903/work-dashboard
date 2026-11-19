@@ -99,23 +99,27 @@ class TaskStepsTest(Fixture):
         self.assertEqual([(s["id"], s["status"], s["ask"]) for s in steps],
                          [(doing, "todo", None), (asking, "current", "confirm")])
 
-    def test_timeline_is_time_order_not_status_order(self):
-        """멈춘 단계를 앞뒤로 옮기지 않는다 — 생긴 시각, 같으면 끝난 시각 순(사용자 지적 11-18). sort_order 는 믿지 않는다"""
+    def test_timeline_follows_the_shown_dates(self):
+        """끝난 단계는 보이는 날짜(끝난 시각) 순, 안 끝난 단계는 그 아래 생긴 시각 순(사용자 지적 11-19).
+        11-16 에 생겨 11-18 에 끝난 단계가 11-16 줄 사이에 끼지 않고, 멈춘 단계가 가운데 남지 않는다. sort_order 는 믿지 않는다"""
         task = self.todo("분석")
         late = self.step(task, "결론 문서", status="done", completed_at="2026-11-18T03:00:00+00:00")
+        # 먼저 생겼지만 늦게 끝난 단계 — 끝난 날짜 자리(11-17)로 간다
+        slow = self.step(task, "오래 걸린 조회", status="done", completed_at="2026-11-17T12:00:00+09:00")
         asking = self.step(task, "수정 범위 결정", status="doing", kind="decision")
         early = self.step(task, "조회", status="done", completed_at="2026-11-16T02:00:00+00:00")
         tie = self.step(task, "조회 결과 정리", status="done", completed_at="2026-11-16T01:30:00+00:00")
         no_time = self.step(task, "시각 없음")
         for ident, created, order in ((late, "2026-11-18T01:00:00+00:00", 1), (asking, "2026-11-16T09:00:00+00:00", 2),
                                       (early, "2026-11-16T01:00:00+00:00", 3), (tie, "2026-11-16T01:00:00+00:00", 4),
-                                      (no_time, "", 5)):
+                                      (no_time, "", 5), (slow, "2026-11-15T00:00:00Z", 6)):
             self.con.execute("UPDATE todos SET created_at=?, sort_order=? WHERE id=?", (created, order, ident))
         self.con.execute("UPDATE todos SET mgr_status='open' WHERE id=?", (asking,))
         self.con.commit()
         steps = task_steps.timeline(self.con, task)
         self.assertEqual([(s["id"], s["status"]) for s in steps],
-                         [(tie, "done"), (early, "done"), (asking, "current"), (late, "done"), (no_time, "todo")])
+                         [(tie, "done"), (early, "done"), (slow, "done"), (late, "done"), (asking, "current"),
+                          (no_time, "todo")])
 
     def test_step_names_drop_helper_session_numbers(self):
         task = self.todo("통합DB 사진 노출 원인 분석 (11-16 보조2·5·1)")
