@@ -60,6 +60,26 @@ const PAYLOAD = {
     ],
   },
   helpers: { error: "RuntimeError: claude agents 응답 없음", items: [] },
+  dones: {
+    error: null,
+    items: [
+      {
+        id: 263, session_id: "s-done-1", name: "보조1 | 9083 할일 상세 수정", title: "9083 할일 상세 수정", at: agoMinutes(20),
+        result: "할일 상세를 고치고 커밋함", summary: "할일 상세를 고치고 커밋함\n\n| 요구 | 반영 |", commits: ["8d9fd6c"],
+        open_target: "https://github.com/hkilbo/hk-herb-server/pull/40", auto: false, card: null, request: { status: "no_session" },
+      },
+      {
+        id: 262, session_id: "s-done-2", name: "보조2 | 통합DB 페이지", title: "통합DB 페이지", at: agoMinutes(60 * 30),
+        result: "v28 → v29 반영", summary: "v28 → v29 반영", commits: [], auto: false, request: { status: "no_session" },
+        open_target: "https://hankookilbo.atlassian.net/wiki/spaces/2/pages/7343210524",
+        card: { todo_id: 474, title: "카드 제목", workspace_name: "작업 대시보드", workspace_id: 3, status: "done" },
+      },
+      {
+        id: 261, session_id: "s-done-3", name: "보조3 | 정리됨", title: "정리됨", at: agoMinutes(90), result: "끝난 세션",
+        summary: "끝난 세션", commits: [], open_target: null, auto: true, card: null, request: { status: "no_session" },
+      },
+    ],
+  },
   tools: {
     error: null,
     items: [
@@ -242,7 +262,7 @@ assert.match(manager.cycleText({ days: { kind: "dow", values: [3] }, time: { kin
 await manager.renderManager();
 
 // 처음은 작업 탭 — 그 탭 칸만 받고, 설정 판은 숨긴다
-assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "helpers", "permissions", "waits"], "작업 탭 칸만 받는다");
+assert.deepEqual([...fetched].sort(), ["confirms", "decisions", "dones", "helpers", "permissions", "waits"], "작업 탭 칸만 받는다");
 assert.equal(elements["mgr-pane-work"].hidden, false);
 assert.equal(elements["mgr-pane-setup"].hidden, true);
 assert.match(elements["mgr-subtab-work"].className, /\bactive\b/);
@@ -717,5 +737,32 @@ assert.deepEqual(stepItems[2].children[0].children.map((kid) => kid.textContent)
 elements["mgr-permissions"].children[0].listeners.click();
 assert.equal(headTitle(), "#223 에이전트 크롬에서 OpenSearch Dashboards 로그인해 주기");
 assert.ok(elements["mgr-decision-body"].children.some((section) => section.children[0].textContent === "답하기"));
+
+// 최근 완료 — 보조 세션 아래 3줄. 제목('보조N | ' 뗀 이름 또는 카드)·결과 한 줄, 오른쪽에 끝난 시각·산출물 링크
+await manager.selectManagerSubtab("work");
+const doneRows = elements["mgr-dones"].children;
+assert.equal(doneRows.length, 3);
+assert.equal(doneRows[0].children[0].children[0].textContent, "9083 할일 상세 수정");
+assert.equal(doneRows[0].children[0].children[1].textContent, "할일 상세를 고치고 커밋함");
+assert.match(doneRows[0].children[1].children[0].textContent, /^\d{2}:\d{2}$|^\d{2}-\d{2} \d{2}:\d{2}$/);
+const doneLink = doneRows[0].children[1].children[1];
+assert.equal(doneLink.tag, "a");
+assert.equal(doneLink.textContent, "PR hk-herb-server#40");
+assert.equal(doneLink.href, "https://github.com/hkilbo/hk-herb-server/pull/40");
+let bubbled = true;
+doneLink.listeners.click({ stopPropagation: () => { bubbled = false; } });
+assert.equal(bubbled, false, "링크를 눌러도 줄 팝업이 같이 열리지 않는다");
+assert.match(doneRows[1].children[1].children[0].textContent, /^\d{2}-\d{2} \d{2}:\d{2}$/, "어제 것은 날짜를 붙인다");
+assert.equal(doneRows[1].children[1].children[1].textContent, "Confluence");
+assert.equal(doneRows[2].children[1].children[1].textContent, "점검이 정리함", "링크 없는 점검 정리 보고");
+assert.equal(manager.targetLabel("/home/u/work/x/.claude/worktrees/unified-todos/"), "unified-todos");
+assert.equal(manager.targetLabel("https://example.com/a/b"), "example.com");
+// 줄을 누르면 완료 보고 전문 팝업
+doneRows[0].listeners.click();
+assert.equal(headTitle(), "9083 할일 상세 수정");
+assert.deepEqual(elements["mgr-decision-body"].children.map((section) => section.children[0].textContent),
+  ["사용자 요청", "완료 보고", "산출물", "연결 세션"]);
+assert.equal(elements["mgr-pager"]?.hidden ?? true, true);
+assert.equal(elements["mgr-dones-pager"].hidden, true, "3건이라 넘김이 없다");
 
 console.log("ok");

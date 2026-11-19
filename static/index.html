@@ -493,6 +493,14 @@
           <ul id="mgr-helpers" class="mgr-list"></ul>
           <nav class="mgr-pager" id="mgr-helpers-pager" hidden></nav>
 
+          <!-- 최근 완료 — 보조 세션이 퇴근-보조 로 남긴 완료 보고 최신 3건(사용자 지시 11-19). 넘김 없이 3줄 고정 -->
+          <h2 class="ar-head mgr-head"><span data-i18n="manager.dones"></span>
+            <span class="mgr-count" id="mgr-dones-count"></span>
+            <button type="button" class="icon-btn mgr-refresh" id="mgr-dones-refresh"
+                    data-i18n-title="manager.refresh" data-i18n-aria-label="manager.refresh"></button></h2>
+          <ul id="mgr-dones" class="mgr-list"></ul>
+          <nav class="mgr-pager" id="mgr-dones-pager" hidden></nav>
+
           <div class="mgr-cols">
             <div class="mgr-col">
               <h2 class="ar-head mgr-head"><span data-i18n="manager.confirms"></span>

@@ -27,7 +27,7 @@ from app.constants import (
 from app.repositories import sessions as session_repo
 from app.services import cron, manager_links, manager_tools, permission_answer
 
-PARTS = ("automations", "helpers", "tools", "decisions", "permissions", "confirms", "waits")
+PARTS = ("automations", "helpers", "dones", "tools", "decisions", "permissions", "confirms", "waits")
 STATUS_OK = "ok"
 STATUS_FAIL = "fail"
 STATUS_NODATA = "nodata"
@@ -78,6 +78,7 @@ def snapshot(part=None, now=None, con=None, **sources):
             now, con=con, **_pick(sources, "crontab_text", "manager_home")
         ),
         "helpers": lambda: helpers(con=con, **_pick(sources, "manager_home", "helpers_fn", "waits_fn")),
+        "dones": lambda: dones(con=con, **_pick(sources, "manager_home")),
         "tools": lambda: manager_tools.tools(
             sources.get("manager_home") or manager_home(), external_fn=sources.get("tools_external_fn")
         ),
@@ -779,6 +780,68 @@ def helpers(manager_home=None, helpers_fn=None, con=None, waits_fn=None):
         }
         for row in rows
     ]
+
+
+# ── 최근 완료 ────────────────────────────────────────────────────────────────
+
+# 보조 세션 칸 아래에 보이는 최근 완료 보고 수 (사용자 지시 11-19 '이것도 최근 3건')
+RECENT_DONE_LIMIT = 3
+# 보조 세션 이름 앞의 '보조N | ' — 끝난 세션은 번호가 다시 쓰여 줄 제목에서는 뗀다(원래 이름은 hint 로)
+HELPER_PREFIX = re.compile(r"^보조\d+\s*\|\s*")
+# 결과 한 줄로 쓰지 않는 마크다운 줄 — 표 줄·구분선. 머리 기호(#·-·*·숫자.)는 떼고 쓴다
+SKIP_RESULT_LINE = re.compile(r"^(\||[-=*_]{3,}\s*$)")
+RESULT_LINE_MARK = re.compile(r"^(#+|[-*]|\d+[.)])\s+")
+
+
+def dones(manager_home=None, con=None, limit=RECENT_DONE_LIMIT):
+    """보조 세션이 퇴근-보조 로 남긴 완료 보고(매니저 DB done_reports) 최신순 limit 건. 매니저 DB 는 읽기 전용.
+    점검(reap.py)이 끝난 세션을 정리하며 남긴 보고(auto)도 끝난 일이라 함께 보이고 auto 로 구분한다.
+    con(대시보드 DB)이 있으면 그 세션이 마지막으로 잡은 트리 카드를 붙인다 — 보조 세션 줄과 같은 제목 기준"""
+    home = manager_home or globals()["manager_home"]()
+    path = os.path.join(home, "state", "manager.db")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"매니저 DB 가 없음: {path}")
+    manager_con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    manager_con.row_factory = sqlite3.Row
+    try:
+        if not manager_con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='done_reports'").fetchone():
+            return []
+        rows = [dict(row) for row in manager_con.execute(
+            "SELECT * FROM done_reports ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)
+        )]
+    finally:
+        manager_con.close()
+    linked = manager_links.cards(con, [row.get("session_id") for row in rows])
+    return [
+        {
+            "id": row["id"],
+            "session_id": row.get("session_id"),
+            "name": row.get("name") or "",
+            "title": HELPER_PREFIX.sub("", row.get("name") or ""),
+            "at": _utc_iso(row.get("created_at")),
+            "result": result_line(row.get("summary")),
+            "summary": row.get("summary") or "",
+            "open_target": row.get("open_target") or None,
+            "commits": (row.get("commits") or "").split(),
+            "auto": bool(row.get("auto")),
+            "card": linked.get(row.get("session_id")),
+            # 팝업 '사용자 요청' — 무엇 때문에 띄운 보조였는지. 첫 요청은 캐시돼 3건이면 가볍다
+            "request": manager_links.first_request(row.get("session_id"), home),
+        }
+        for row in rows
+    ]
+
+
+def result_line(summary, limit=200):
+    """완료 보고 본문의 첫 문장 줄 — 표·구분선은 건너뛰고 머리 기호·굵게 표시는 뗀다"""
+    for raw in (summary or "").splitlines():
+        line = raw.strip()
+        if not line or SKIP_RESULT_LINE.match(line):
+            continue
+        line = RESULT_LINE_MARK.sub("", line).replace("**", "").strip()
+        if line:
+            return _first_line(line, limit)
+    return ""
 
 
 def _run_helpers(home):
