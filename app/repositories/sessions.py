@@ -16,7 +16,7 @@ from app.constants import (
     STATUS_REVIEW,
     STATUS_TODO,
 )
-from app.db import now, transaction
+from app.db import ROLE_STEP, now, transaction
 from app.errors import NotFound, Validation
 from app.repositories import categories as category_repo
 from app.repositories import graph as graph_repo
@@ -354,20 +354,53 @@ def current_cards(con, claude_session_ids):
         tuple(claude_session_ids),
     )
     parents = lineage.parent_map(con)
-    cards = {}
-    for row in rows:
-        card = {key: row[key] for key in row.keys() if key != "session_id"}
-        top = lineage.top_of(con, card["todo_id"], parents)
-        root = lineage.root_todo(con, card["todo_id"], parents)
-        card.update(
-            tree_key=lineage.tree_key(top),
-            root_id=root["id"] if root else None,
-            root_title=root["title"] if root else None,
-            workspace_id=None,
-            workspace_name=root["title"] if root else None,
-        )
-        cards[row["session_id"]] = card
-    return cards
+    return {row["session_id"]: _card(con, row, parents) for row in rows}
+
+
+def todo_cards(con, todo_ids):
+    """할일 id → 그 할일 자신의 카드(current_cards 와 같은 모양). 통합 뒤 매니저 할일 줄은 할일 행 자체라
+    세션이 지금 잡은 할일이 아니라 이것으로 그린다 — 세션은 그 뒤 다른 할일로 옮겨 갈 수 있다.
+    단계 행이면 트리에 카드가 없어 tree_todo_id·트리 열쇠를 그 단계를 가진 할일로 잡는다 — 단계의 단계면
+    단계가 아닌 할일이 나올 때까지 올라간다"""
+    ids = [todo_id for todo_id in todo_ids if todo_id is not None]
+    if not ids:
+        return {}
+    rows = con.execute(
+        f"""SELECT t.id AS todo_id, t.title AS title, t.status AS status, c.color AS category_color
+            FROM todos t LEFT JOIN categories c ON c.id = t.category_id
+            WHERE t.id IN ({_placeholders(ids)})""",
+        tuple(ids),
+    )
+    step_of = {row["id"]: row["parent_id"] for row in con.execute(
+        "SELECT id, parent_id FROM todos WHERE role=? AND parent_id IS NOT NULL", (ROLE_STEP,))}
+    parents = lineage.parent_map(con)
+    return {row["todo_id"]: _card(con, row, parents, holder=_holder(row["todo_id"], step_of)) for row in rows}
+
+
+def _holder(todo_id, step_of):
+    """단계 행이면 트리에서 그 자리를 대신하는 단계 아닌 할일, 단계가 아니면 None. 순환(손으로 고친 DB)이면 멈춘다"""
+    seen, current = {todo_id}, todo_id
+    while current in step_of and step_of[current] not in seen:
+        current = step_of[current]
+        seen.add(current)
+    return None if current == todo_id else current
+
+
+def _card(con, row, parents, holder=None):
+    """카드 한 장. holder 는 트리에서 이 카드 자리를 대신하는 할일(단계의 할일) — 없으면 자기 자신"""
+    card = {key: row[key] for key in ("todo_id", "title", "status", "category_color")}
+    anchor = holder or card["todo_id"]
+    top = lineage.top_of(con, anchor, parents)
+    root = lineage.root_todo(con, anchor, parents)
+    card.update(
+        tree_todo_id=anchor,
+        tree_key=lineage.tree_key(top),
+        root_id=root["id"] if root else None,
+        root_title=root["title"] if root else None,
+        workspace_id=None,
+        workspace_name=root["title"] if root else None,
+    )
+    return card
 
 
 def cwds_by_todos(con, todo_ids):

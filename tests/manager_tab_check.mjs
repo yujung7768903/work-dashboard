@@ -157,6 +157,9 @@ PAYLOAD.waits = {
       ],
       popup: { detail: "muni log_search", next_step: "168·169 처리 뒤 PR #69 머지", session_id: null, source_ref: null,
         request: { status: "no_session" } },
+      // 통합 뒤 카드는 그 할일 자신(단계면 트리 자리는 그 단계를 가진 할일 tree_todo_id). 세션 카드가 아니다
+      card: { todo_id: 9, title: "문의 자동화에 KT 로그 붙이기", status: "doing", tree_todo_id: 4, root_id: 4, tree_key: "t4",
+        root_title: "문의 자동화", category_color: "#4a5ae8" },
     },
   ],
 };
@@ -422,7 +425,9 @@ assert.doesNotMatch(modal.className, /\bwide\b/);
 // 답하는 칸은 없다. 사전 조건을 누르면 그 할일 한 건을 받아 그 팝업으로 바뀐다(직접 할 일이면 완료·진행 상황 칸)
 const waitRows = elements["mgr-waits"].children;
 assert.equal(elements["mgr-waits-count"].textContent, "1");
-assert.deepEqual(texts(waitRows[0]), ["#9 3/3 문의 자동화에 KT 로그 붙이기", "#168 · #169 끝나야 함", "선행 대기", "30m 전"]);
+// 자기 카드면 제목 줄 앞에 트리 칩만 붙고 그 할일 번호·우선순위·제목은 그대로 — 다른 할일 카드로 바뀌지 않는다
+assert.deepEqual(texts(waitRows[0]), ["문의 자동화 #9 3/3 문의 자동화에 KT 로그 붙이기", "#168 · #169 끝나야 함", "선행 대기", "30m 전"]);
+assert.equal(waitRows[0].children[0].children[0].children[0].className, "mgr-tree-chip");
 assert.match(waitRows[0].children[1].children[0].className, /\bprereq\b/);
 waitRows[0].listeners.click();
 assert.equal(headTitle(), "#9 문의 자동화에 KT 로그 붙이기");

@@ -67,6 +67,32 @@ class UnifiedPanelTest(Fixture):
         self.assertEqual(item["prereqs"], [{"id": decision, "title": "락 방식", "status": "open", "finished": False}])
         self.assertEqual(manager_links.permission_sessions(self.home, self.con), frozenset({"s-perm"}))
 
+    def test_task_row_card_is_the_task_itself_not_what_its_session_holds_now(self):
+        # 선행 대기 단계(after)를 맡았던 세션이 그 뒤 같은 할일의 다른 단계(sibling, 선행 없음·끝남)를 잡았다.
+        # 줄 카드를 세션의 지금 할일로 그리면 끝난 sibling 이 '선행 대기' 로 보인다 — 카드는 그 할일 자신이어야 한다
+        task = self.todo("KT 내부 헤더 인증", 3, status="doing")
+        before = self.todo("정기 배포", 2, kind="action")
+        after = self.step(task, "11-24 배포", status="doing", kind="action", after_ids=str(before), session_id="s-2")
+        sibling = self.step(task, "취소선 이유 확인", status="done", completed_at="2026-11-18T08:00:00Z")
+        self.con.execute("UPDATE todos SET mgr_status='open' WHERE id IN (?, ?)", (before, after))
+        self.con.commit()
+        session_repo.register(self.con, "s-2", cwd="/tmp")
+        session_repo.link_todo(self.con, "s-2", after)
+        session_repo.link_todo(self.con, "s-2", sibling)
+        self.assertEqual(manager_links.cards(self.con, ["s-2"])["s-2"]["todo_id"], sibling)
+        [item] = manager_panel.waits(NOW, manager_home=self.home, con=self.con)
+        self.assertEqual((item["id"], item["state"]), (after, manager_panel.STATE_PREREQ))
+        card = item["card"]
+        self.assertEqual((card["todo_id"], card["title"], card["status"]), (after, "11-24 배포", "doing"))
+        # 단계는 트리에 카드가 없다 — 트리 팝업은 그 단계를 가진 할일 카드에 맞춘다
+        self.assertEqual((card["tree_todo_id"], card["root_id"]), (task, task))
+        # 끝난 sibling 은 선행 대기 어디에도 없다
+        self.assertNotIn(sibling, [i["id"] for i in manager_panel.waits(NOW, manager_home=self.home, con=self.con)])
+        # 단계의 단계 — 트리 자리는 단계가 아닌 할일까지 올라간다
+        nested = self.step(sibling, "운영 반영")
+        self.assertEqual(session_repo.todo_cards(self.con, [nested])[nested]["tree_todo_id"], task)
+        self.assertEqual(session_repo.todo_cards(self.con, [task])[task]["tree_todo_id"], task)
+
     def test_without_flag_keeps_legacy_manager_db(self):
         con = temp_db()
         with self.assertRaises(FileNotFoundError):

@@ -1045,6 +1045,9 @@ def _tasks(now, where, params, manager_home, con, need=None, retro=False):
     session_ids = {_get(row, "session_id") for row in rows} - {None}
     replies = _session_replies(con, session_ids)
     linked = manager_links.cards(con, session_ids)
+    # 줄 카드는 그 할일 자신 — 세션 카드(세션이 지금 잡은 할일)는 세션이 다른 할일로 옮겨 가면 엉뚱한 할일에
+    # 이 줄의 상태(선행 대기 등)를 붙인다. 통합 전이라 자기 카드가 없을 때만 세션 카드로
+    own = manager_links.task_cards(con, [row["id"] for row in rows])
     waits = manager_links.waiting(con, session_ids, manager_links.permission_sessions(home, con))
     items = []
     for row in rows:
@@ -1069,7 +1072,7 @@ def _tasks(now, where, params, manager_home, con, need=None, retro=False):
             "priority_max": top,
             "since": _utc_iso(row["updated_at"] if row["status"] == CONFIRM_STATUS else row["created_at"]),
             "held": _later(row, ("hold_until", "snooze_until"), stamp),
-            "card": linked.get(popup["session_id"]),
+            "card": own.get(row["id"]) or linked.get(popup["session_id"]),
             "waiting": waits.get(popup["session_id"]),
             "popup": popup,
         }

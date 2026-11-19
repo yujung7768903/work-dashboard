@@ -53,6 +53,14 @@ def cards(con, session_ids):
     return session_repo.current_cards(con, [sid for sid in session_ids if sid])
 
 
+def task_cards(con, task_ids):
+    """매니저 할일 id → 그 할일 자신의 카드. 통합 뒤(unified)에만 — 매니저 할일이 곧 대시보드 할일이다.
+    통합 전에는 매니저 할일과 대시보드 할일이 다른 번호라 빈 dict(줄은 세션 카드 cards 로 그린다)"""
+    if not unified(con):
+        return {}
+    return session_repo.todo_cards(con, task_ids)
+
+
 # 대기 종류 (대시보드 sessions.waiting). 매니저 tasks.BLOCKED_PERMISSION 도 같은 낱말이다
 WAIT_INPUT = "input"
 WAIT_PERMISSION = "permission"

@@ -424,12 +424,22 @@ function candidateRow(item) {
 // 줄 제목을 카드 기준으로 — 어느 트리(맨 위 할일)인지 칩 하나, 그 뒤 카드 번호·제목
 function cardTitle(card) {
   const title = el("span", "mgr-title mgr-card-title");
+  title.append(treeChip(card), document.createTextNode(`#${card.todo_id} ${card.title}`));
+  return title;
+}
+
+// 카드가 있는 트리(맨 위 할일) 칩
+function treeChip(card) {
   const name = card.root_title ?? t("common.unassigned");
   const tree = el("span", "mgr-tree-chip", name);
   if (card.category_color) tree.style?.setProperty("--cat", card.category_color);
   tree.title = t("manager.cardTree", { tree: name });
-  title.append(tree, document.createTextNode(`#${card.todo_id} ${card.title}`));
-  return title;
+  return tree;
+}
+
+// 트리에서 그 카드 자리 — 단계 카드는 트리에 따로 없어 그 단계를 가진 할일(tree_todo_id)이다
+function treeTodoId(card) {
+  return card.tree_todo_id ?? card.todo_id;
 }
 
 function clickable(line, open) {
@@ -468,19 +478,23 @@ function decisionRow(item) {
     item.held ? t("manager.held") : "",
   ].filter(Boolean);
   // '#8 2/3 제목' — 번호 오른쪽에 보드 할일 줄과 같은 우선순위 배지. 분모는 매니저 DB 의 열린 할일 중 최고
-  const title = el("span", "mgr-title");
+  // 붙어 있는 카드가 있으면 제목 줄은 카드(트리 + 카드 제목), 결정·확인할 것은 아랫줄로 내린다.
+  // 통합 뒤 카드는 그 할일 자신(own) — 제목 줄 앞에 트리 칩만 붙이고 아랫줄은 카드 없는 줄과 같다.
+  // 세션 카드(세션이 지금 잡은 할일)로 제목을 바꾸면 다른 할일이 이 줄의 상태(선행 대기 등)를 단 것처럼 보인다
+  const own = Boolean(item.card) && item.card.todo_id === item.id;
+  const title = el("span", own ? "mgr-title mgr-card-title" : item.card ? "mgr-sub" : "mgr-title");
   title.append(
+    ...(own ? [treeChip(item.card)] : []),
     document.createTextNode(`#${item.id}`),
     priorityBadge(item.priority, item.priority_max),
     document.createTextNode(item.title)
   );
-  // 붙어 있는 카드가 있으면 제목 줄은 카드(트리 + 카드 제목), 결정·확인할 것은 아랫줄로 내린다
-  if (item.card) title.className = "mgr-sub";
   // 권한 막힘을 남긴 세션이 끝났으면 매니저가 단 안내('세션 종료됨 — 허용하면 되살려 재시도')를 아랫줄에
   const ended = item.ended && item.note ? el("span", "mgr-sub mgr-ended", item.note) : null;
+  const plainSub = (item.state === "prereq" && prereqSummary(item.prereqs)) || item.detail || "";
   const line = row({
-    title: item.card ? cardTitle(item.card) : title,
-    sub: ended || (item.card ? title : (item.state === "prereq" && prereqSummary(item.prereqs)) || item.detail || ""),
+    title: item.card && !own ? cardTitle(item.card) : title,
+    sub: ended || (item.card && !own ? title : plainSub),
     aside: chip,
     asideSub: el("span", "mgr-sub", extra.join(" · ")),
     tone: `mgr-click${item.held ? " off" : ""}`,
@@ -852,7 +866,7 @@ function drawSolo(host, work) {
         title: card.title,
         status: card.status,
         waiting: work.solo?.waiting ?? null,
-        onOpen: () => openDetail({ todo: { id: card.todo_id } }),
+        onOpen: () => openDetail({ todo: { id: treeTodoId(card) } }),
       }
     : work.solo;
   const board = el("div", "tm-viewport mgr-solo");
@@ -977,13 +991,14 @@ async function drawPopupTree(work) {
     drawSolo(host, work);
     return;
   }
-  if (host.dataset.drawn === String(card.todo_id)) return;
-  host.dataset.drawn = String(card.todo_id);
+  const focusId = treeTodoId(card);
+  if (host.dataset.drawn === String(focusId)) return;
+  host.dataset.drawn = String(focusId);
   const map = createTreeMap(host, {
-    focusId: card.todo_id,
-    onChange: async () => drawTreeOf(map, card.todo_id),
+    focusId,
+    onChange: async () => drawTreeOf(map, focusId),
   });
-  if (await drawTreeOf(map, card.todo_id)) return;
+  if (await drawTreeOf(map, focusId)) return;
   // 그릴 트리가 없다(혼자인 할일) — 카드 한 장으로
   delete host.dataset.drawn;
   host.classList.toggle("solo", true);
