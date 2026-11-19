@@ -4,7 +4,7 @@
 import * as api from "./api.js";
 import { pickDirectory } from "./browse.js";
 import { fromKorean, t } from "./i18n.js";
-import { formatAge, openDetail } from "./sessions.js";
+import { formatAge, formatClock, openDetail } from "./sessions.js";
 
 const POLL_INTERVAL_MS = 5000;
 // 크론 주기는 crontab 이 정하고 이 값은 화면 표시용 상수다 — README "크론" 참고
@@ -407,19 +407,6 @@ function outcomeBadge(run) {
       });
   });
   return button;
-}
-
-// 시작·종료는 절대 시각으로 적는다 — 둘 다 "몇 분 전"이면 그 사이가 얼마인지 못 읽는다.
-// 오늘 것은 시:분만, 날이 넘어간 것에만 날짜를 붙인다 (경과 칸이 어제인지 알려 준다)
-function formatClock(iso) {
-  if (!iso) return "";
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return "";
-  const at = new Date(ms);
-  const pad = (value) => String(value).padStart(2, "0");
-  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
-  if (at.toDateString() === new Date().toDateString()) return clock;
-  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${clock}`;
 }
 
 function element(tag, className, text) {

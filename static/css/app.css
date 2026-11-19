@@ -937,6 +937,8 @@ html:has(#gtasks-auth[open]), html:has(#gtasks-plan[open]) { overflow: hidden; }
 .mgr-perm-btn:hover:not(:disabled) { background: var(--softer); }
 .mgr-perm-btn:disabled { opacity: 0.5; cursor: progress; }
 .mgr-row .mgr-sub.danger, .mgr-ended { color: var(--danger); }
+/* 최근 완료 줄 오른쪽 아래 산출물 링크 — 긴 경로·호스트가 왼쪽 결과 줄을 밀지 않게 폭을 묶고 줄인다 */
+.mgr-row .mgr-done-link { max-width: 16em; color: var(--accent); font-size: var(--fs-sm); }
 /* 선행 대기 — 사람을 기다리는 결정 대기(waiting 주황)와 구분해 중립 테두리로. 사전 조건 할일이 끝나야 풀린다 */
 .mgr-chip.prereq { background: var(--surface); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 /* 회고 — 입력창은 칸 제목 아래 한 줄(넓으면 입력칸 + 버튼, 좁으면 아래로). 피드백 글은 여러 줄이라 줄임 없이 감싼다 */

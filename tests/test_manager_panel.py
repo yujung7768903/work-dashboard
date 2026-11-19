@@ -662,6 +662,58 @@ class DecisionsTest(unittest.TestCase):
         self.assertEqual(os.listdir(os.path.dirname(self.db)), ["manager.db"])
 
 
+class DonesTest(unittest.TestCase):
+    """최근 완료 — 매니저 DB done_reports 최신 3건(읽기 전용)"""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.home, "state"))
+        con = sqlite3.connect(os.path.join(self.home, "state", "manager.db"))
+        con.execute(
+            "CREATE TABLE done_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, name TEXT, summary TEXT,"
+            " commits TEXT DEFAULT '', open_target TEXT, restart TEXT DEFAULT '', created_at TEXT, auto INTEGER DEFAULT 0)"
+        )
+        rows = [
+            ("s1", "보조1 | 첫째", "첫째 결과", "", None, "2026-11-19T10:00:00", 0),
+            ("s2", "보조2 | 둘째", "| 표 | 머리 |\n| --- | --- |\n- **둘째** 결과\n자세히", "abc def", "https://x/pr/1",
+             "2026-11-19T11:00:00", 0),
+            ("s3", "보조1 | 셋째", "## 셋째 결과", "", None, "2026-11-19T12:00:00", 1),
+            ("s4", "넷째", "넷째 결과", "", "/home/u/a", "2026-11-19T13:00:00", 0),
+        ]
+        con.executemany(
+            "INSERT INTO done_reports (session_id, name, summary, commits, open_target, created_at, auto)"
+            " VALUES (?,?,?,?,?,?,?)",
+            rows,
+        )
+        con.commit()
+        con.close()
+
+    def test_latest_three_newest_first(self):
+        items = manager_panel.dones(manager_home=self.home)
+        self.assertEqual([item["session_id"] for item in items], ["s4", "s3", "s2"])
+        # '보조N | ' 는 제목에서 떼고, 원래 이름은 name 에 남는다
+        self.assertEqual([item["title"] for item in items], ["넷째", "셋째", "둘째"])
+        self.assertEqual(items[2]["name"], "보조2 | 둘째")
+        # 결과 한 줄 — 표·머리 기호·굵게 표시를 건너뛴 첫 문장 줄
+        self.assertEqual([item["result"] for item in items], ["넷째 결과", "셋째 결과", "둘째 결과"])
+        self.assertEqual(items[2]["commits"], ["abc", "def"])
+        self.assertEqual(items[2]["open_target"], "https://x/pr/1")
+        self.assertIsNone(items[1]["open_target"])
+        self.assertTrue(items[1]["auto"])
+        self.assertTrue(items[0]["at"].startswith("2026-11-19T13:00:00"))
+
+    def test_old_manager_without_reports_table_is_empty(self):
+        home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(home, "state"))
+        sqlite3.connect(os.path.join(home, "state", "manager.db")).close()
+        self.assertEqual(manager_panel.dones(manager_home=home), [])
+
+    def test_snapshot_part(self):
+        payload = manager_panel.snapshot("dones", now=NOW, manager_home=self.home)
+        self.assertIsNone(payload["dones"]["error"])
+        self.assertEqual(len(payload["dones"]["items"]), 3)
+
+
 class SnapshotTest(unittest.TestCase):
     def test_each_part_fails_alone(self):
         home = tempfile.mkdtemp()

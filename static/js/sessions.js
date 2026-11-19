@@ -50,6 +50,19 @@ const PERMISSION_RELOAD_MS = 1500;
 // 매니저 할일의 권한 막힘 표시(tasks.blocked) — 할일 상세가 결정 대기·직접 할 일과 따로 '권한 대기'로 모은다
 const PERMISSION_BLOCK = "permission";
 const SENT_PREVIEW_CHARS = 60;
+// 절대 시각 — 자율 수행 시작·종료(둘 다 "몇 분 전"이면 그 사이를 못 읽는다)와 매니저 탭 최근 완료가 쓴다.
+// 오늘 것은 시:분만, 날이 넘어간 것에만 날짜를 붙인다 (경과 칸이 어제인지 알려 준다)
+export function formatClock(iso) {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const at = new Date(ms);
+  const pad = (value) => String(value).padStart(2, "0");
+  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  if (at.toDateString() === new Date().toDateString()) return clock;
+  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${clock}`;
+}
+
 // 경과 시간 표기. usage.js 에도 같은 규칙의 구현이 따로 있다. autorun.js 는 이걸 그대로 쓴다
 export function formatAge(iso) {
   if (!iso) return "";

@@ -85,10 +85,12 @@ class ManagerTabTest(unittest.TestCase):
         work, setup = html.index('id="mgr-pane-work"'), html.index('id="mgr-pane-setup"')
         cols = html.index('class="mgr-cols"')
         self.assertLess(html.index('id="manager-tabs"'), work)
-        order = [html.index(f'id="mgr-{part}"') for part in ("helpers", "confirms", "decisions", "automations", "tools")]
+        parts = ("helpers", "dones", "confirms", "decisions", "automations", "tools")
+        order = [html.index(f'id="mgr-{part}"') for part in parts]
         self.assertEqual(order, sorted(order))
-        self.assertTrue(work < order[0] < cols < order[1] < order[2] < setup < order[3])
-        for part in ("helpers", "confirms", "decisions", "automations", "tools"):
+        # 최근 완료는 보조 세션 바로 아래, 2컬럼 위 (사용자 지시 11-19)
+        self.assertTrue(work < order[0] < order[1] < cols < order[2] < order[3] < setup < order[4])
+        for part in parts:
             self.assertLess(html.index(f'id="mgr-{part}"'), html.index(f'id="mgr-{part}-pager"'))
 
     def test_current_automations_use_one_format(self):

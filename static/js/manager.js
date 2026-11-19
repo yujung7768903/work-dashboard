@@ -1,10 +1,10 @@
 // 매니저 탭 — 휴대폰 '예약 작업' 목록처럼 한 줄에 하나씩, 보기 전용.
-// 하위 탭 둘: '작업'(보조 세션·완료 확인 대기·결정 대기)과 '설정'(자동화·도구 목록).
+// 하위 탭 둘: '작업'(보조 세션·최근 완료·완료 확인 대기·결정 대기)과 '설정'(자동화·도구 목록).
 // 칸은 서버에서 따로 받는다. 보조 세션 목록은 claude agents 를 부르느라 수 초 걸려, 한 번에 받으면
 // 나머지 칸까지 그만큼 늦게 뜬다 (app/services/manager_panel.py). 보이는 하위 탭의 칸만 받고 폴링한다
 import * as api from "./api.js";
 import { fromKorean, language, t } from "./i18n.js";
-import { formatAge, notePart, openDetail } from "./sessions.js";
+import { formatAge, formatClock, notePart, openDetail } from "./sessions.js";
 import { linkify } from "./linkify.js";
 import { CHEVRON_SVG, REFRESH_SVG } from "./icons.js";
 import { priorityBadge } from "./priority.js";
@@ -21,7 +21,7 @@ import { renderRetro } from "./retro.js";
 // 하위 탭마다 그 안의 칸 (화면 배치는 static/index.html).
 // 회고는 칸(part) 틀을 쓰지 않는다 — 피드백 입력과 날짜별 펼침이 있어 retro.js 가 따로 그린다
 const SUBTABS = {
-  work: ["helpers", "candidates", "confirms", "decisions", "permissions", "waits"],
+  work: ["helpers", "dones", "candidates", "confirms", "decisions", "permissions", "waits"],
   setup: ["automations", "tools"],
   retro: [],
 };
@@ -253,6 +253,7 @@ function pagerButton(className, disabled, onClick) {
 const EMPTY = {
   automations: () => t("manager.empty.automations"),
   helpers: () => t("manager.empty.helpers"),
+  dones: () => t("manager.empty.dones"),
   candidates: () => t("manager.empty.candidates"),
   tools: () => t("manager.empty.tools"),
   decisions: () => t("manager.empty.decisions"),
@@ -264,6 +265,7 @@ const EMPTY = {
 const ROW_BUILDERS = {
   automations: automationRow,
   helpers: helperRow,
+  dones: doneRow,
   candidates: candidateRow,
   tools: toolRow,
   decisions: decisionRow,
@@ -338,6 +340,63 @@ function helperRow(item) {
     tone: "mgr-click",
   });
   return clickable(line, () => openWork(helperWork(item)));
+}
+
+// ── 최근 완료 — 보조 세션 완료 보고(app/services/manager_panel.py dones) ──────────────────────
+// 왼쪽: 제목(붙은 카드면 카드 기준, 아니면 '보조N | ' 뗀 세션 이름)·결과 한 줄. 오른쪽: 끝난 시각·산출물 링크.
+// 링크는 줄 클릭(완료 보고 전문 팝업)과 따로 누른다
+function doneRow(item) {
+  const time = el("span", "mgr-next", formatClock(item.at) || "-");
+  if (item.at) time.title = t("manager.sinceAgo", { age: formatAge(item.at) });
+  const line = row({
+    title: item.card ? cardTitle(item.card) : item.title || item.name,
+    sub: item.result || "",
+    aside: time,
+    asideSub: item.open_target ? targetLink(item.open_target) : el("span", "mgr-sub", item.auto ? t("manager.doneAuto") : ""),
+    hint: item.name,
+    tone: "mgr-click",
+  });
+  return clickable(line, () => openWork(doneWork(item)));
+}
+
+// 산출물 위치 → 짧은 이름. PR·Confluence 는 종류로, 그 밖의 URL 은 호스트, 경로는 마지막 이름
+export function targetLabel(target) {
+  const pr = /github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(target);
+  if (pr) return `PR ${pr[1]}#${pr[2]}`;
+  if (/atlassian\.net\/wiki/.test(target)) return "Confluence";
+  if (/^https?:\/\//.test(target)) {
+    try {
+      return new URL(target).host;
+    } catch {
+      return target;
+    }
+  }
+  return target.replace(/\/+$/, "").split("/").pop() || target;
+}
+
+function targetLink(target) {
+  const part = notePart({ type: /^https?:\/\//.test(target) ? "url" : "path", value: target });
+  part.textContent = targetLabel(target);
+  part.title = target;
+  part.className = "note-link mgr-sub mgr-done-link";
+  // 링크를 눌러도 줄 클릭(팝업)이 같이 열리지 않게
+  part.addEventListener?.("click", (event) => event.stopPropagation?.());
+  return part;
+}
+
+function doneWork(item) {
+  const outputs = [item.open_target, item.commits?.length ? `commit ${item.commits.join(" ")}` : ""];
+  return {
+    title: item.card ? `#${item.card.todo_id} ${item.card.title}` : item.title || item.name,
+    request: item.request,
+    sections: [
+      { title: t("manager.popupDoneReport"), parts: [{ text: item.summary }] },
+      { title: t("manager.popupOutput"), parts: [{ text: outputs.filter(Boolean).join("\n") }] },
+      { title: t("manager.popupSession"), parts: [{ text: [item.name, formatClock(item.at)].filter(Boolean).join(" · ") }] },
+    ],
+    card: item.card,
+    solo: { title: item.title || item.name, status: "done", label: t("manager.doneLabel"), waiting: null },
+  };
 }
 
 // 후보 할일 — 지금 일이 끝나면 다음에 할 것(app/services/candidates.py). '#id 우선순위 제목', 아래 카테고리 칩.

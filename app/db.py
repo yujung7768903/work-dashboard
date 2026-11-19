@@ -550,7 +550,7 @@ MANAGER_TASK_PLAIN = (
     "answered_at", "delivered_at", "notified_at", "plan", "plan_status", "plan_at", "open_target", "due_at",
     "due_unsure", "snooze_until", "hold_until", "hold_session", "handoff", "remind_at", "validated_at", "blocked",
     "options", "recommend", "answer_choice", "answer_feedback", "answer_via", "delivery", "delivery_at",
-    "after_ids", "steps", "await_screen", "await_until", "await_result",
+    "after_ids", "steps", "await_screen", "await_until", "await_result", "screen_url", "screen_chrome",
 )
 # 매니저 이름 → todos 칸. title·priority 는 대시보드 칸과 나눠 쓴다(아래 뷰 정의)
 MANAGER_TASK_RENAMED = {"status": "mgr_status", "created_at": "mgr_created_at", "updated_at": "mgr_updated_at"}
