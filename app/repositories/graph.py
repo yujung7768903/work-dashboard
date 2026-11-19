@@ -141,6 +141,19 @@ def ensure_doc(con, ref, title=None, url=None, created_by=BY_USER):
     return get_doc(con, ref)
 
 
+def fill_doc_title(con, ref, title):
+    """이미 있는 문서 노드의 제목이 라벨뿐('Confluence 번호')이면 채운다 → 채웠나. 노드를 새로 만들지 않는다 —
+    읽기만 한 문서가 결과·근거로 생기면 안 된다"""
+    if not title:
+        return False
+    with transaction(con):
+        cur = con.execute(
+            "UPDATE graph_nodes SET title=?, updated_at=? WHERE kind=? AND ref=? AND title=?",
+            (title, now(), NODE_DOC, ref, evidence_refs.label_of(ref)),
+        )
+    return cur.rowcount > 0
+
+
 def get_doc(con, ref):
     row = con.execute(
         "SELECT * FROM graph_nodes WHERE kind=? AND ref=?", (NODE_DOC, ref)

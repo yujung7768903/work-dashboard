@@ -391,6 +391,11 @@ KNOWN_REPOS = {
 # MCP 서버 이름이 연결 방식마다 달라(Atlassian_Rovo·Atlassian_MCP·Atlassian) 도구 이름 끝부분으로 고른다
 RESULT_CONFLUENCE_CREATE = ("createConfluencePage", "createConfluenceContent")
 RESULT_CONFLUENCE_UPDATE = ("updateConfluencePage", "updateConfluenceContent")
+# 읽기 — 결과가 아니라 카드 제목만 채운다('보고' 로만 남은 페이지는 제목을 모른다)
+RESULT_CONFLUENCE_READ = ("getConfluencePage", "getConfluenceContent")
+# 도구 결과에서 페이지 제목을 찾는 JSON 깊이·파일로 빠진 큰 결과에서 읽는 앞부분 글자 수(제목은 앞쪽 메타에 있다)
+CONFLUENCE_TITLE_DEPTH = 8
+CONFLUENCE_TITLE_SCAN_CHARS = 64 * 1024
 RESULT_JIRA_CREATE = ("createJiraIssue",)
 RESULT_JIRA_EDIT = ("editJiraIssue", "transitionJiraIssue")
 RESULT_JIRA_COMMENT = ("addCommentToJiraIssue", "addOrEditJiraIssueComment")

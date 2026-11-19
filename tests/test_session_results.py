@@ -103,6 +103,32 @@ class ExtractTest(unittest.TestCase):
         # 시각은 DB 모양(+00:00, 초) — 할일 연결 시각과 글자로 견준다
         self.assertEqual(found[0]["at"], "2026-11-16T01:00:03+00:00")
 
+    def test_confluence_title_from_nested_result_or_saved_overflow(self):
+        """부분 수정(edits)은 입력에 제목이 없고 결과 data.content.title 에 있다. 결과가 커서 파일로 빠지면
+        'Error: … exceeds maximum allowed tokens' 로 와도 실패가 아니다 — 그 파일 앞부분에서 제목을 읽는다(사용자 지적 11-19)"""
+        saved = os.path.join(tempfile.mkdtemp(), "toolu_big.txt")
+        self.addCleanup(shutil.rmtree, os.path.dirname(saved))
+        nested = {"data": {"ok": True, "content": {"id": "7341867013", "type": "page", "title": "서비스별 점검표 (2026-11)"}}}
+        with open(saved, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps([{"type": "text", "text": json.dumps({"data": {"content": {
+                "id": "7341113367", "title": "[긴급] Java 보안 취약점 점검"}}}, ensure_ascii=False)}], ensure_ascii=False))
+        overflow = f"Error: result (69,904 characters across 1 line) exceeds maximum allowed tokens. Output has been saved to {saved}."
+        log = Transcript()
+        log.call("mcp__claude_ai_Atlassian_MCP__updateConfluenceContent",
+                 {"contentId": "7341867013", "edits": [{"name": "replaceNode"}]},
+                 [{"type": "text", "text": json.dumps(nested, ensure_ascii=False)}])
+        log.call("mcp__claude_ai_Atlassian_MCP__updateConfluenceContent", {"contentId": "7341113367", "edits": []},
+                 overflow, extra=overflow)
+        log.call("mcp__claude_ai_Atlassian_MCP__getConfluenceContent", {"content_id": "7341867013"},
+                 [{"type": "text", "text": json.dumps(nested, ensure_ascii=False)}])
+        found = log.extract()
+        self.assertEqual(
+            [(item["ref"], item["action"], item["title"], bool(item.get("hint"))) for item in found],
+            [("confluence:7341867013", "수정", "서비스별 점검표 (2026-11)", False),
+             ("confluence:7341113367", "수정", "[긴급] Java 보안 취약점 점검", False),
+             ("confluence:7341867013", None, "서비스별 점검표 (2026-11)", True)],
+        )
+
     def test_jira_create_edit_comment_need_a_real_key(self):
         log = Transcript()
         log.call("mcp__claude_ai_Atlassian_Rovo__createJiraIssue", {"summary": "권한 검사 누락"},
@@ -362,6 +388,29 @@ class ScanTest(ResultFixture):
         self.assertEqual(self.refs(), ["jira:PFD-1", "jira:PFD-2"])
         done = self.con.execute("SELECT offset FROM transcript_scans WHERE path=?", (self.path,)).fetchone()["offset"]
         self.assertEqual(done, os.path.getsize(self.path))
+
+    def test_report_only_card_gets_the_title_of_a_page_read(self):
+        """'보고'(--open)로만 남은 Confluence 카드는 제목을 모른다 — 읽은 페이지 결과의 제목으로 채운다.
+        읽기만 한 페이지는 카드가 되지 않는다. 지나간 transcript 는 fill-result-titles 로 백필한다"""
+        page = "https://hankookilbo.atlassian.net/wiki/pages/viewpage.action?pageId=7341867013"
+        log = Transcript()
+        log.call("mcp__claude_ai_Atlassian_Rovo__getConfluencePage", {"pageId": "7341867013"},
+                 json.dumps({"content": {"nodes": [{"id": "7341867013", "title": "서비스별 점검표"}]}}, ensure_ascii=False))
+        log.call("mcp__claude_ai_Atlassian_Rovo__getConfluencePage", {"pageId": "7000000099"},
+                 json.dumps({"content": {"nodes": [{"id": "7000000099", "title": "읽기만 한 페이지"}]}}, ensure_ascii=False))
+        log.call("Bash", {"command": f"python3 ~/work/manager/manager.py 퇴근-보조 --summary 끝 --open '{page}'"}, "ok")
+        self.write(self.path, log)
+        session_results.collect(self.con, SID, root=self.root)
+        self.assertEqual(self.refs(), ["confluence:7341867013"])
+        self.assertEqual(graph_repo.get_doc(self.con, "confluence:7341867013")["title"], "서비스별 점검표")
+
+        # 백필: 제목 없이 남은 카드 — 오프셋과 무관하게 처음부터 읽어 채운다
+        self.con.execute("UPDATE graph_nodes SET title='Confluence 7341867013' WHERE ref='confluence:7341867013'")
+        self.con.commit()
+        self.assertEqual(session_results.fill_titles(self.con, root=self.root),
+                         {"confluence:7341867013": "서비스별 점검표"})
+        self.assertEqual(graph_repo.get_doc(self.con, "confluence:7341867013")["title"], "서비스별 점검표")
+        self.assertIsNone(self.con.execute("SELECT 1 FROM graph_nodes WHERE ref='confluence:7000000099'").fetchone())
 
     def test_subagent_results_belong_to_the_parent_session(self):
         self.write(self.path, Transcript())

@@ -27,7 +27,10 @@ from datetime import datetime, timezone
 
 from app import evidence as evidence_refs
 from app.constants import (
+    CONFLUENCE_TITLE_DEPTH,
+    CONFLUENCE_TITLE_SCAN_CHARS,
     RESULT_CONFLUENCE_CREATE,
+    RESULT_CONFLUENCE_READ,
     RESULT_CONFLUENCE_UPDATE,
     RESULT_FILE_SKIP_DIRS,
     RESULT_FILE_SKIP_PARTS,
@@ -56,6 +59,9 @@ REPORT_COMMANDS = ("ask", "퇴근-보조")
 OPEN_FLAG = "--open"
 BLOCKED_FLAG = "--blocked"
 SUBAGENT_GLOB = os.path.join("subagents", "*.jsonl")
+OVERFLOWED = "exceeds maximum allowed tokens"
+SAVED_TO = re.compile(r"Output has been saved to (/\S+?)(?:[\s'\"]|\.?$)")
+TITLE_NEAR = r'"id"\s*:\s*"{page}"[^{{}}]*?"title"\s*:\s*"((?:[^"\\]|\\.)*)"'
 
 # 결과 하나 = {"ref", "action", "at", "title", "url"}
 
@@ -86,6 +92,41 @@ def backfill(con, root=None, dry_run=False, sessions=None):
         if rows:
             found[claude_session_id] = rows
     return found
+
+
+def fill_titles(con, root=None, dry_run=False):
+    """제목이 라벨뿐인('Confluence 번호') Confluence 카드의 제목을 transcript 전체에서 찾아 채운다 → {ref: 제목}.
+    오프셋과 무관하게 처음부터 읽는다(이미 지나간 읽기·수정 결과에 제목이 있다). 일회성 백필용 — 훅은 쓰지 않는다"""
+    targets = {
+        row["ref"]: row["ref"].partition(":")[2]
+        for row in con.execute("SELECT ref, title FROM graph_nodes WHERE kind='doc' AND ref LIKE ?",
+                               (f"{evidence_refs.CONFLUENCE}:%",))
+        if row["title"] == evidence_refs.label_of(row["ref"])
+    }
+    if not targets:
+        return {}
+    needles = [page.encode() for page in targets.values()]
+    titles = {}
+    paths = [path for group in _transcript_index(root).values() for path in group]
+    for path in paths:
+        if len(titles) == len(targets):
+            break
+        extractor = Extractor(is_result_file=lambda _path: False)
+        try:
+            with open(path, "rb") as handle:
+                for raw in handle:
+                    # 결과 줄은 페이지 번호가 없을 수 있다(파일로 빠진 큰 결과) — 호출을 들고 있을 때만 본다
+                    if extractor.pending or any(needle in raw for needle in needles):
+                        extractor.feed(raw)
+        except OSError:
+            continue
+        for item in extractor.found:
+            if item["ref"] in targets and item.get("title") and item["ref"] not in titles:
+                titles[item["ref"]] = item["title"]
+    if not dry_run:
+        for ref, title in titles.items():
+            graph_repo.fill_doc_title(con, ref, title)
+    return titles
 
 
 def transcript_paths(claude_session_id, root=None):
@@ -132,20 +173,25 @@ def scan_file(con, path, claude_session_id, max_bytes=None, dry_run=False):
             extractor.feed(raw, position)
             position += len(raw)
     offset = extractor.resume_offset(position)
+    found = [item for item in extractor.found if not item.get("hint")]
     if dry_run:
-        return extractor.found
-    for item in extractor.found:
+        return found
+    for item in found:
         graph_repo.add_result(
             con, claude_session_id, item["ref"], item["action"], item["at"],
             title=item.get("title"), url=item.get("url"),
         )
+    # 읽은 페이지의 제목 — 결과를 이은 뒤에 채워야 같은 꼬리에서 처음 생긴 카드에도 들어간다
+    for item in extractor.found:
+        if item.get("hint"):
+            graph_repo.fill_doc_title(con, item["ref"], item["title"])
     with transaction(con):
         con.execute(
             "INSERT INTO transcript_scans(path, claude_session_id, offset, scanned_at) VALUES(?,?,?,?)"
             " ON CONFLICT(path) DO UPDATE SET offset=excluded.offset, scanned_at=excluded.scanned_at",
             (path, claude_session_id, offset, now()),
         )
-    return extractor.found
+    return found
 
 
 def open_folder(con, node_id):
@@ -217,6 +263,8 @@ def _handlers(name, data):
         return (_confluence_create,)
     if short in RESULT_CONFLUENCE_UPDATE:
         return (_confluence_update,)
+    if short in RESULT_CONFLUENCE_READ:
+        return (_confluence_read,)
     if short in RESULT_JIRA_CREATE:
         return (_jira_create,)
     if short in RESULT_JIRA_EDIT:
@@ -245,21 +293,88 @@ def _confluence_create(data, text, extra, extractor):
     payload = _json_text(text)
     page = str(payload.get("id") or "") if isinstance(payload, dict) else ""
     if not page.isdigit():
-        match = PAGE_ID_IN_RESULT.search(text)
+        match = PAGE_ID_IN_RESULT.search(text) or PAGE_ID_IN_RESULT.search(_saved_head(text))
         page = match.group(1) if match else ""
     if not page:
         return []
-    title = data.get("title") or (payload.get("title") if isinstance(payload, dict) else None)
+    title = data.get("title") or page_title(text, page)
     return [{"ref": f"{evidence_refs.CONFLUENCE}:{page}", "action": CREATE, "title": title}]
 
 
 def _confluence_update(data, text, extra, extractor):
-    page = str(data.get("pageId") or data.get("contentId") or data.get("id") or "").strip()
-    if not page.isdigit():
+    page = _page_arg(data)
+    if not page:
         return []
-    payload = _json_text(text)
-    title = data.get("title") or (payload.get("title") if isinstance(payload, dict) else None)
+    # 부분 수정(edits)은 입력에 제목이 없다 — 결과의 data.content.title 에 있다(Atlassian MCP)
+    title = data.get("title") or page_title(text, page)
     return [{"ref": f"{evidence_refs.CONFLUENCE}:{page}", "action": EDIT, "title": title}]
+
+
+def _confluence_read(data, text, extra, extractor):
+    """읽기는 결과가 아니다. 다만 결과에 페이지 제목이 있어 '보고'(--open)로만 남은 카드의 제목을 채운다(hint)"""
+    page = _page_arg(data)
+    title = page and page_title(text, page)
+    if not title:
+        return []
+    return [{"ref": f"{evidence_refs.CONFLUENCE}:{page}", "action": None, "title": title, "hint": True}]
+
+
+def _page_arg(data):
+    page = str(data.get("pageId") or data.get("contentId") or data.get("content_id") or data.get("id") or "").strip()
+    return page if page.isdigit() else ""
+
+
+def page_title(text, page):
+    """도구 결과에서 그 페이지의 제목. JSON 이면 id 가 그 페이지인 객체의 title(어느 깊이든), 아니면 글자에서
+    '"id":"<page>" … "title":"…"' 를 찾는다. 결과가 커서 파일로 빠졌으면 그 파일 앞부분에서 찾는다. 없으면 None"""
+    found = _title_in(_json_text(text), page) or _title_near(text, page)
+    if found:
+        return found
+    head = _saved_head(text)
+    return (_title_in(_json_text(head), page) or _title_near(head, page)) if head else None
+
+
+def _title_in(value, page, depth=0):
+    if depth > CONFLUENCE_TITLE_DEPTH:
+        return None
+    if isinstance(value, dict):
+        title = value.get("title")
+        if str(value.get("id") or "") == page and isinstance(title, str) and title.strip():
+            return title.strip()
+        children = list(value.values())
+        # MCP 결과 블록 [{"type":"text","text":"{…json…}"}] — 글자 안의 JSON 도 연다
+        if isinstance(value.get("text"), str):
+            children.append(_json_text(value["text"]))
+        return next((hit for child in children if (hit := _title_in(child, page, depth + 1))), None)
+    if isinstance(value, list):
+        return next((hit for child in value if (hit := _title_in(child, page, depth + 1))), None)
+    return None
+
+
+def _title_near(text, page):
+    if not text or page not in text:
+        return None
+    plain = text.replace('\\"', '"')  # 한 번 더 JSON 글자로 싸인 결과(파일로 빠진 것)
+    match = re.search(TITLE_NEAR.format(page=re.escape(page)), plain)
+    if not match:
+        return None
+    raw = match.group(1)
+    try:
+        return json.loads(f'"{raw}"').strip() or None
+    except ValueError:
+        return raw.strip() or None
+
+
+def _saved_head(text):
+    """'… exceeds maximum allowed tokens. Output has been saved to <경로>' 면 그 파일 앞부분. 아니면 ''"""
+    match = SAVED_TO.search(text or "")
+    if not match:
+        return ""
+    try:
+        with open(match.group(1), encoding="utf-8", errors="ignore") as handle:
+            return handle.read(CONFLUENCE_TITLE_SCAN_CHARS)
+    except OSError:
+        return ""
 
 
 def _jira_create(data, text, extra, extractor):
@@ -416,6 +531,10 @@ def _flag_values(words, flag):
 def _failed(block, extra):
     if block.get("is_error"):
         return True
+    # 결과가 커서 파일로 빠진 것은 실패가 아니다 — 'Error: result … exceeds maximum allowed tokens' 로 시작해도
+    # 호출은 성공했다. 실패로 보면 큰 Confluence 페이지 수정이 결과에서 통째로 빠졌다
+    if isinstance(extra, str) and OVERFLOWED in extra:
+        return False
     return isinstance(extra, str) and extra.startswith("Error")
 
 

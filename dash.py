@@ -158,6 +158,13 @@ def _build_parser():
     collect.add_argument("--verbose", action="store_true", help="결과마다 한 줄")
     collect.set_defaults(handler=_cmd_collect_results)
 
+    titles = sub.add_parser(
+        "fill-result-titles",
+        help="제목 없이 'Confluence 번호' 로만 보이는 카드의 페이지 제목을 transcript 에서 찾아 채우기(백필)",
+    )
+    titles.add_argument("--dry-run", action="store_true", dest="dry_run", help="DB 를 안 바꾸고 찾은 제목만 보기")
+    titles.set_defaults(handler=_cmd_fill_result_titles)
+
     edit_todo = sub.add_parser("edit-todo", help="할일 제목·note·착수조건·우선순위 수정")
     edit_todo.add_argument("todo_id", type=int)
     edit_todo.add_argument("--title", default=None)
@@ -457,6 +464,14 @@ def _cmd_link(con, args):
         state=EDGE_PROPOSED if args.proposed else EDGE_CONFIRMED,
     )
     print(_edge_line(edge))
+
+
+def _cmd_fill_result_titles(con, args):
+    found = session_results.fill_titles(con, dry_run=args.dry_run)
+    for ref, title in sorted(found.items()):
+        print(f"{ref} {title}")
+    label = "찾음(DB 안 바꿈)" if args.dry_run else "채움"
+    print(f"제목 {len(found)}건 {label}")
 
 
 def _cmd_collect_results(con, args):
